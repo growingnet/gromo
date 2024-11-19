@@ -1,0 +1,75 @@
+default_language_version:
+  python: python3
+
+exclude: '.*svg$|.*ipynb$|.*md$|.*png$|.*odg|.*tex'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-executables-have-shebangs
+      - id: check-toml
+      - id: check-docstring-first
+      - id: check-added-large-files
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-case-conflict
+      - id: mixed-line-ending
+      - id: end-of-file-fixer
+      - id: check-case-conflict
+      - id: forbid-new-submodules
+
+
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        args: [ --line-length=90, --target-version=py311 ]
+
+  -   repo: https://github.com/asottile/blacken-docs
+      rev: 1.16.0
+      hooks:
+      -   id: blacken-docs
+          additional_dependencies: [black==23.3.0]
+          exclude: ^.github/
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        additional_dependencies: [
+          'flake8-blind-except',
+          'flake8-docstrings',
+          'flake8-bugbear',
+          'flake8-comprehensions',
+          'flake8-docstrings',
+          'flake8-implicit-str-concat',
+          'pydocstyle>=5.0.0',
+        ]
+        exclude: ^docs/ | ^setup\.py$ |
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.6
+    hooks:
+      - id: codespell
+        args:
+          - --ignore-words-list=additionals,alle,alot,bund,currenty,datas,farenheit,falsy,fo,haa,hass,iif,incomfort,ines,ist,nam,nd,pres,pullrequests,resset,rime,ser,serie,te,technik,ue,unsecure,withing,zar,crate
+          - --skip="./.*,*.csv,*.json,*.ambr"
+          - --quiet-level=2
+        exclude_types: [ csv, json, svg ]
+        exclude: ^tests/|generated/
+
+  # - repo: local
+  #   hooks:
+  #     - id: run-unit-tests-coverage
+  #       name: Run Unit Tests with Coverage
+  #       entry: bash bash/test_coverage.sh
+  #       language: system
+  #       always_run: true
+  #       pass_filenames: false

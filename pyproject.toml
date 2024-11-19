@@ -1,0 +1,57 @@
+[tool.isort]
+profile = "black"
+line_length = 90
+lines_after_imports = 2
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "**/__init__.py",
+    "**/tests/**",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    # Missing debug-only code
+    "def __str__",
+    "def __repr__",
+    "if self\\.debug",
+
+    # Non-runnable code
+    "if 0:",
+    "if __name__ == .__main__.:",
+
+    # Abstract methods
+    "@(abc\\.)?abstractmethod",
+
+    # Defensive assertion code
+    "raise NotImplementedError",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gromo"]
+
+[project]
+name = "gromo"
+version = "0.0.0"
+authors = [
+    { name="Manon Verbockhaven", email="manon.verbockhaven@inria.fr" },
+    { name="Stella Douka", email="styliani.douka@inria.fr" },
+    { name="Theo Rudkiewicz", email="theo.rudkiewicz@inria.fr" },
+    { name="Stephane Rivaud", email="stephane.a.rivaud@inria.fr" },
+    { name="Guillaume Charpiat", email="guillaume.charpiat@inria.fr" },
+    { name="Sylvain Chevallier", email="sylvain.a.chevallier@inria.fr" },
+    { name="Francois Landes", email="francois.landes@universite-paris-saclay.fr" },
+]
+description = "Growing module for pytorch"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+]
