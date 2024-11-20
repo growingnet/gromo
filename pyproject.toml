@@ -1,6 +1,6 @@
 [project]
 name = "gromo"
-version = "0.0.0"
+version = "0.0.1"
 authors = [
     { name="Manon Verbockhaven", email="manon.verbockhaven@inria.fr" },
     { name="Stella Douka", email="styliani.douka@inria.fr" },
