@@ -45,7 +45,7 @@ jobs:
 
       - uses: codecov/codecov-action@v4
         with:
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           files: ./coverage.xml
           flags: unittests
           name: codecov-ci-gromo
@@ -55,10 +55,11 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV2_TOKEN }}
 
-      - shell: bash
-        env:
-          CODECOVSEC: ${{ secrets.CODECOV_TOKEN }}
-        run: |
-          curl -Os https://cli.codecov.io/latest/linux/codecov
-          chmod +x codecov
-          ./codecov --verbose upload-process --fail-on-error -n 'gh-actions'-${{ github.run_id }} -F ci -f coverage.xml -t "${CODECOVSEC}"
+      #  alternative if codecov/codecov-action fails
+      # - shell: bash
+      #   env:
+      #     CODECOVSEC: ${{ secrets.CODECOV_TOKEN }}
+      #   run: |
+      #     curl -Os https://cli.codecov.io/latest/linux/codecov
+      #     chmod +x codecov
+      #     ./codecov --verbose upload-process --fail-on-error -n 'gh-actions'-${{ github.run_id }} -F ci -f coverage.xml -t "${CODECOVSEC}"
