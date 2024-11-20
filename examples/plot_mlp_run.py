@@ -18,8 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-from auxilliary_functions import *
-from tqdm.notebook import tqdm
+from helpers.auxilliary_functions import *
 
 from gromo.growing_block import GrowingBlock, LinearGrowingBlock, LinearGrowingModule
 from gromo.growing_mlp import GrowingMLP

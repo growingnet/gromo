@@ -40,7 +40,8 @@ doc = [
     "sphinx-rtd-theme",
     "sphinx_copybutton",
     "sphinxcontrib-bibtex",
-    "sphinx-favicon"
+    "sphinx-favicon",
+    "tqdm",
 ]
 
 [build-system]
