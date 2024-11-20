@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [ ubuntu-latest ]  # windows-latest, macOS-latest -> OSX problem with MAGMA/CUDA 12.1
+        os: [ windows-latest, ubuntu-latest ]  # macOS-latest -> OSX problem with MAGMA/CUDA 12.1
         python-version: [ "3.11", "3.12" ]
     defaults:
       run:
