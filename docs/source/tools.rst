@@ -12,7 +12,7 @@ Matrix inversion
 
 .. autosummary::
     :toctree: generated/
-    :template: class.rst
+    :template: function.rst
 
     sqrt_inverse_matrix_semi_positive
 
@@ -22,7 +22,7 @@ Helpers
 
 .. autosummary::
     :toctree: generated/
-    :template: class.rst
+    :template: function.rst
 
     compute_optimal_added_parameters
     compute_output_shape_conv
