@@ -43,12 +43,20 @@ jobs:
           coverage xml
           coverage report -m
 
-      - uses: codecov/codecov-action@v5
-        with:
-          fail_ci_if_error: true
-          files: ./coverage.xml
-          flags: unittests
-          name: codecov-ci-gromo
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: true
-          slug: growingnet/gromo
+      # - uses: codecov/codecov-action@v5
+      #   with:
+      #     fail_ci_if_error: true
+      #     files: ./coverage.xml
+      #     flags: unittests
+      #     name: codecov-ci-gromo
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     verbose: true
+      #     slug: growingnet/gromo
+
+      - name: Codecov report
+        run: |
+          pip install codecov-cli
+          codecovcli -v create-commit --slug growingnet/gromo --git-service github --commit-sha ${{ github.sha }}  --token ${{ secrets.CODECOV_TOKEN }}
+          codecovcli -v create-report --code codecov-ci-gromo --slug growingnet/gromo --git-service github --token ${{ secrets.CODECOV_TOKEN }}
+          codecovcli -v do-upload --report-code codecov-ci-gromo -f coverage.xml --slug growingnet/gromo --git-service github --token ${{ secrets.CODECOV_TOKEN }}
+          codecovcli -v create-report-results --code codecov-ci-gromo --slug growingnet/gromo --git-service github --token ${{ secrets.CODECOV_TOKEN }}
