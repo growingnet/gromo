@@ -122,7 +122,7 @@ def linkcode_resolve(domain, info):  # noqa: C901
             fn = None
     if not fn:
         return None
-    fn = op.relpath(fn, start=op.dirname(moabb.__file__))
+    fn = op.relpath(fn, start=op.dirname(gromo.__file__))
     fn = "/".join(op.normpath(fn).split(os.sep))  # in case on Windows
 
     try:
@@ -135,10 +135,10 @@ def linkcode_resolve(domain, info):  # noqa: C901
     else:
         linespec = ""
 
-    # if "dev" in moabb.__version__:
+    # if "dev" in gromo.__version__:
     #     kind = "develop"
     # else:
-    #     kind = "master"
+    #     kind = "main"
     return f"{repo}/blob/main/gromo/{fn}{linespec}"
 
 
