@@ -3,7 +3,7 @@ from warnings import warn
 import numpy as np
 import torch
 import torch.nn as nn
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 from gromo.utils.utils import global_device
 
