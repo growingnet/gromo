@@ -1,3 +1,38 @@
+[project]
+name = "gromo"
+version = "0.0.0"
+authors = [
+    { name="Manon Verbockhaven", email="manon.verbockhaven@inria.fr" },
+    { name="Stella Douka", email="styliani.douka@inria.fr" },
+    { name="Theo Rudkiewicz", email="theo.rudkiewicz@inria.fr" },
+    { name="Stephane Rivaud", email="stephane.a.rivaud@inria.fr" },
+    { name="Guillaume Charpiat", email="guillaume.charpiat@inria.fr" },
+    { name="Sylvain Chevallier", email="sylvain.a.chevallier@inria.fr" },
+    { name="Francois Landes", email="francois.landes@universite-paris-saclay.fr" },
+]
+description = "Growing module for pytorch"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "build",
+    "networkx",
+    "torch",
+]
+[project.optional-dependencies]
+test = ["coverage"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gromo"]
+
 [tool.black]
 line-length = 90
 target-version = ["py311", "py312"]
@@ -31,38 +66,3 @@ exclude_also = [
     # Defensive assertion code
     "raise NotImplementedError",
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/gromo"]
-
-[project]
-name = "gromo"
-version = "0.0.0"
-authors = [
-    { name="Manon Verbockhaven", email="manon.verbockhaven@inria.fr" },
-    { name="Stella Douka", email="styliani.douka@inria.fr" },
-    { name="Theo Rudkiewicz", email="theo.rudkiewicz@inria.fr" },
-    { name="Stephane Rivaud", email="stephane.a.rivaud@inria.fr" },
-    { name="Guillaume Charpiat", email="guillaume.charpiat@inria.fr" },
-    { name="Sylvain Chevallier", email="sylvain.a.chevallier@inria.fr" },
-    { name="Francois Landes", email="francois.landes@universite-paris-saclay.fr" },
-]
-description = "Growing module for pytorch"
-readme = "README.md"
-requires-python = ">=3.11"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Operating System :: OS Independent",
-]
-dependencies = [
-    "build",
-    "networkx",
-    "torch",
-]
-[project.optional-dependencies]
-test = ["coverage"]
