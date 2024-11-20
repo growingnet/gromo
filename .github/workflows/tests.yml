@@ -53,10 +53,12 @@ jobs:
       #     verbose: true
       #     slug: growingnet/gromo
 
-      - name: Codecov report
+      - shell: bash
+        env:
+          CODECOVSEC: ${{ secrets.CODECOV_TOKEN }}
         run: |
           pip install codecov-cli
-          codecovcli -v create-commit --slug growingnet/gromo --git-service github --commit-sha ${{ github.sha }}  --token ${{ secrets.CODECOV_TOKEN }}
-          codecovcli -v create-report --code codecov-ci-gromo --slug growingnet/gromo --git-service github --token ${{ secrets.CODECOV_TOKEN }}
-          codecovcli -v do-upload --report-code codecov-ci-gromo -f coverage.xml --slug growingnet/gromo --git-service github --token ${{ secrets.CODECOV_TOKEN }}
-          codecovcli -v create-report-results --code codecov-ci-gromo --slug growingnet/gromo --git-service github --token ${{ secrets.CODECOV_TOKEN }}
+          codecovcli -v create-commit --slug growingnet/gromo --git-service github --commit-sha ${{ github.sha }}  --token "$CODECOVSEC"
+          codecovcli -v create-report --code codecov-ci-gromo --slug growingnet/gromo --git-service github --token "$CODECOVSEC"
+          codecovcli -v do-upload --report-code codecov-ci-gromo -f coverage.xml --slug growingnet/gromo --git-service github --token "$CODECOVSEC"
+          codecovcli -v create-report-results --code codecov-ci-gromo --slug growingnet/gromo --git-service github --token "$CODECOVSEC"
