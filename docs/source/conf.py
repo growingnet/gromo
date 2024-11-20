@@ -232,10 +232,10 @@ html_theme_options = {
     "navbar_end": ["theme-switcher"],
     "footer_items": ["copyright"],
     "pygment_light_style": "default",
-    "announcement": "https://raw.githubusercontent.com/growingnet/gromo"
-    "/develop/docs/source/_templates/custom-template.html",
+    # "announcement": "https://raw.githubusercontent.com/growingnet/gromo"
+    # "/develop/docs/source/_templates/custom-template.html",
     "show_version_warning_banner": True,
-    "analytics": dict(google_analytics_id="G-5WJBKDMSTE"),
+    "analytics": dict(google_analytics_id="XXXX"),
 }
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
