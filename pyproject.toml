@@ -22,6 +22,8 @@ dependencies = [
     "build",
     "networkx",
     "torch",
+    "numpy",
+    "matplotlib",
 ]
 [project.optional-dependencies]
 test = ["coverage"]
