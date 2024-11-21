@@ -1,6 +1,6 @@
 :html_theme.sidebar_secondary.remove:
 
-.. mdinclude:: README.md
+.. include:: README.rst
 
 .. toctree::
    :glob:
