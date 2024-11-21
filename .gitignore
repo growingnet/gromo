@@ -9,6 +9,11 @@ __pycache__/
 # OS X files
 .DS_Store
 
+# Doc generated files
+docs/source/auto_examples/
+docs/source/generated/
+docs/source/sg_execution_times.rst
+
 # Distribution / packaging
 .Python
 build/
