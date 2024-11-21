@@ -24,6 +24,6 @@ Gromo are described in the [TMLR24]_.
 The package is still in development, if you would like to contribute, please
 contact us!
 
-.. [TMLKR] Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G.
+.. [TMLR24] Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G.
         (2024). Growing tiny networks: Spotting expressivity bottlenecks and
         fixing them optimally. TMLR.
