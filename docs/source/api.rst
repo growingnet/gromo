@@ -2,5 +2,5 @@ API Reference
 =============
 
 .. include:: growingmodule.rst
-.. include:: growinglinearmodule.rst
+.. include:: lineargrowingmodule.rst
 .. include:: tools.rst

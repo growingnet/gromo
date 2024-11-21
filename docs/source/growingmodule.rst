@@ -14,5 +14,5 @@ Growing module
     :toctree: generated/
     :template: class.rst
 
-    AdditionGrowingModule
     GrowingModule
+    AdditionGrowingModule

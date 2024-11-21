@@ -14,5 +14,5 @@ Linear growing module
     :toctree: generated/
     :template: class.rst
 
-    LinearAdditionGrowingModule
     LinearGrowingModule
+    LinearAdditionGrowingModule

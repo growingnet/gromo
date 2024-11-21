@@ -138,7 +138,7 @@ def linkcode_resolve(domain, info):  # noqa: C901
     #     kind = "develop"
     # else:
     #     kind = "main"
-    return f"{repo}/blob/main/gromo/{fn}{linespec}"
+    return f"{repo}/blob/main/gromo/src/{fn}{linespec}"
 
 
 # -- Path setup --------------------------------------------------------------
