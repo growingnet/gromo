@@ -3,7 +3,7 @@
 </p>
 
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)
-
+![tests](https://github.com/github/docs/actions/workflows/tests.yml/badge.svg)
 
 # GroMo
 
