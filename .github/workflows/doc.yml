@@ -32,7 +32,7 @@ jobs:
 
       - name: Cache docs build
         id: cache-docs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           key: docs-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: docs/build
@@ -53,7 +53,6 @@ jobs:
           path: docs/build/html/
 
   deploy_gh_pages:
-    if: ${{ github.ref == 'refs/heads/main' }}
     needs: build_docs
     runs-on: ${{ matrix.os }}
     strategy:
@@ -66,7 +65,7 @@ jobs:
 
       - name: Restore cached docs build
         id: cache-docs
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           key: docs-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: docs/build
