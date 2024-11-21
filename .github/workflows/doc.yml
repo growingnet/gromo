@@ -53,6 +53,7 @@ jobs:
           path: docs/build/html/
 
   deploy_gh_pages:
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: build_docs
     runs-on: ${{ matrix.os }}
     strategy:
