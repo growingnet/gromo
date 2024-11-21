@@ -75,12 +75,12 @@ jobs:
         if: steps.cache-docs.outputs.cache-hit != 'true'
         run: exit 1
 
-    #   - name: Deploy gh-pages
-    #     uses: peaceiris/actions-gh-pages@v4
-    #     with:
-    #       github_token: ${{ secrets.GITHUB_TOKEN }}
-    #       deploy_key: ${{ secrets.GROMO_DEPLOY_KEY }}
-    #       destination_dir: docs/
-    #       publish_branch: gh-pages
-    #       publish_dir: ./docs/build/html
-    #       cname: growingnet.github.io/gromo/
+      - name: Deploy gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          destination_dir: docs/
+          publish_branch: gh-pages
+          publish_dir: ./docs/build/html
+          cname: growingnet.github.io/gromo/
