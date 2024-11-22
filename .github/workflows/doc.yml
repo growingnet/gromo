@@ -48,6 +48,7 @@ jobs:
   deploy_gh_pages:
     needs: build_docs
     runs-on: ubuntu-latest
+    environment: github-pages
 
     steps:
       - name: Checkout with SSH
