@@ -24,8 +24,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ssh-key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -54,8 +52,8 @@ jobs:
     steps:
       - name: Checkout with SSH
         uses: actions/checkout@v4
-        with:
-          ssh-key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+        # with:
+        #   ssh-key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
 
       - name: Download docs artifact
         uses: actions/download-artifact@v4
@@ -76,6 +74,5 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           publish_branch: gh-pages
           publish_dir: ./docs/build/html
