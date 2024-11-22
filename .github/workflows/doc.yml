@@ -52,7 +52,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout with SSH
+        uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
 
       - name: Download docs artifact
         uses: actions/download-artifact@v4
