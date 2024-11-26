@@ -526,6 +526,9 @@ class GrowingModule(torch.nn.Module):
                 f"\tTensor S (internal) : {self._tensor_s}",
                 f"\tTensor S : {self.tensor_s}",
                 f"\tTensor M : {self.tensor_m}",
+                f"\tOptimal delta layer : {self.optimal_delta_layer}",
+                f"\tExtended input layer : {self.extended_input_layer}",
+                f"\tExtended output layer : {self.extended_output_layer}",
             ]
             return "\n".join(txt)
         else:
@@ -636,7 +639,10 @@ class GrowingModule(torch.nn.Module):
             pre_activity -= linear_factor * self.optimal_delta_layer(x)
 
         if self.extended_input_layer:
-            assert x_ext is not None, "x_ext must be provided."
+            assert x_ext is not None, (
+                f"x_ext must be provided got None for {self.name}."
+                f"As the input is extended, an extension is needed."
+            )
             pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
 
         if self.extended_output_layer:
