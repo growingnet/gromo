@@ -1,0 +1,91 @@
+name: Docs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build_docs:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: [ "3.11" ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Check GITHUB_TOKEN Info
+        env:
+            GH_PAT_SECRET: ${{ secrets.GH_PAT }}
+            ACTIONS_DEPLOY_KEY_SECRET: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+
+        run: |
+          echo "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"
+          echo "GH_PAT: ${{ secrets.GH_PAT }}"
+          echo "SSH KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}"
+          echo "GH_PAT: ${GH_PAT_SECRET}"
+          echo "SSH KEY: ${ACTIONS_DEPLOY_KEY_SECRET}"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test,doc]
+
+      - name: Build docs
+        run: |
+          cd docs && make html
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DocumentationHTML
+          path: docs/build/html/
+
+  deploy_gh_pages:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    needs: build_docs
+    runs-on: ubuntu-latest
+    environment: github-pages
+
+    steps:
+      - name: Checkout with SSH
+        uses: actions/checkout@v4
+
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DocumentationHTML
+          path: docs/build/html/
+
+      - name: Add CNAME
+        run: echo 'growingnet.github.io/gromo/' > docs/build/html/CNAME
+
+      # DEBUG only
+      - name: Check GITHUB_TOKEN Info
+        run: |
+          echo "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"
+          echo "GH_PAT: ${{ secrets.GH_PAT }}"
+          echo "SSH KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}"
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./docs/build/html
