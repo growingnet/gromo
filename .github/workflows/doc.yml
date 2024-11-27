@@ -42,17 +42,6 @@ jobs:
           echo "GH_PAT: ${GH_PAT_SECRET}"
           echo "SSH KEY: ${ACTIONS_DEPLOY_KEY_SECRET}"
 
-      - name: Test Git Push Permissions
-        run: |
-          echo "Testing push permissions..."
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b test-push
-          echo "test" > test.txt
-          git add test.txt
-          git commit -m "Test push"
-          git push origin test-push
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
