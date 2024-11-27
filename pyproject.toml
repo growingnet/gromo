@@ -28,6 +28,21 @@ dependencies = [
 ]
 [project.optional-dependencies]
 test = ["coverage"]
+doc = [
+    "Sphinx",
+    "sphinx-gallery",
+    "sphinx-bootstrap-theme",
+    "pydata-sphinx-theme",
+    "numpydoc",
+    "pre-commit",
+    # "m2r2",
+    "sphinx-design",
+    "sphinx-rtd-theme",
+    "sphinx_copybutton",
+    "sphinxcontrib-bibtex",
+    "sphinx-favicon",
+    "tqdm",
+]
 
 [build-system]
 requires = ["hatchling"]
