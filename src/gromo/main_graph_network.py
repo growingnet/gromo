@@ -33,8 +33,6 @@ def setup_experiment_tags():
     return tags
 
 
-# loss_train, loss_dev, loss_val, loss_test = [], [], [], []
-# acc_train, acc_dev, acc_val, acc_test = [], [], [], []
 acc_test = []
 indices = []
 
@@ -62,14 +60,6 @@ def grow_network(
             inter_train=inter_train,
             verbose=verbose,
         )
-        # Temporary stats
-        # loss_train.append(net.growth_loss_train)
-        # loss_dev.append(net.loss_dev)
-        # loss_val.append(net.loss_val)
-        # loss_test.append(net.loss_test)
-        # acc_train.append(net.acc_train)
-        # acc_dev.append(net.acc_dev)
-        # acc_val.append(net.acc_val)
         acc_test.append(net.acc_test)
         indices.append(len(net.hist_loss_dev))
 
@@ -85,7 +75,6 @@ def grow_network(
         #         net.logger.log_artifact(pyvis_path)
         # except Exception as error:
         #     print(error)
-    # print(mlflow.MlflowClient().get_run(run.info.run_id).data)
     net.logger.end_run()
     return net
 
@@ -96,7 +85,6 @@ if __name__ == "__main__":
     )
     net.load_MNIST_data()
     print(net.dag)
-    # net.dag.draw()
     print(net.device)
     print()
 
@@ -116,9 +104,6 @@ if __name__ == "__main__":
     p1 = ax1.plot(net.hist_loss_dev, label="development loss")
     p2 = ax2.plot(net.hist_acc_dev, label="development accuracy")
     # p3 = ax2.plot(net.hist_acc_val, label="validation accuracy")
-    # p4 = ax1.scatter(indices, loss_train, marker='o', label="train loss")
-    # p5 = ax1.scatter(indices, loss_test, marker='o', label="test loss")
-    # p6 = ax2.scatter(indices, acc_train, marker='^', label="train accuracy")
     p7 = ax2.scatter(indices, acc_test, marker="^", label="test accuracy")
     plots = p1 + p2 + [p7]
     labels = [p.get_label() for p in plots]
