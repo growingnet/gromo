@@ -639,11 +639,18 @@ class GrowingModule(torch.nn.Module):
             pre_activity -= linear_factor * self.optimal_delta_layer(x)
 
         if self.extended_input_layer:
-            assert x_ext is not None, (
-                f"x_ext must be provided got None for {self.name}."
-                f"As the input is extended, an extension is needed."
-            )
+            if x_ext is None:
+                raise ValueError(
+                    f"x_ext must be provided got None for {self.name}."
+                    f"As the input is extended, an extension is needed."
+                )
             pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
+        else:
+            if x_ext is not None:
+                raise ValueError(
+                    f"x_ext must be None got {x_ext} for {self.name}."
+                    f"As the input is not extended, no extension is needed."
+                )
 
         if self.extended_output_layer:
             supplementary_pre_activity = sqrt_factor * self.extended_output_layer(x)
