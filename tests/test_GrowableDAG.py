@@ -1,11 +1,11 @@
 import unittest
 
-import networkx as nx
 import torch
 
 from gromo.graph_network.GrowableDAG import GrowableDAG
 from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
-
+from gromo.constant_module import ConstantModule
+from gromo.utils.utils import global_device
 
 # torch.set_default_tensor_type(torch.DoubleTensor)
 
@@ -74,6 +74,9 @@ class TestGrowableDAG(unittest.TestCase):
         assert self.dag.get_edge_module("start", "end").next_module
         assert self.dag.get_node_module("end").previous_modules
 
+        self.dag.add_direct_edge(prev_node="start", next_node="end", edge_attributes={"constant":True})
+        assert isinstance(self.dag.get_edge_module("start", "end"), ConstantModule)
+
     def test_add_node_with_two_edges(self) -> None:
         assert len(self.dag.nodes) == 2
         assert self.dag.out_degree("start") == 0
@@ -101,6 +104,18 @@ class TestGrowableDAG(unittest.TestCase):
         assert self.dag.get_edge_module("1", "end").previous_module
         assert self.dag.get_edge_module("1", "end").next_module
         assert self.dag.get_node_module("end").previous_modules
+    
+    def test_remove_direct_edge(self) -> None:
+        self.dag.add_direct_edge(prev_node="start", next_node="end")
+        self.dag.remove_direct_edge(prev_node="start", next_node="end")
+        assert len(list(self.dag.edges)) == 0
+        assert self.dag.out_degree("start") == 0
+        assert self.dag.in_degree("end") == 0
+
+        self.dag.remove_direct_edge(prev_node="start", next_node="end")
+        assert len(list(self.dag.edges)) == 0
+        assert self.dag.out_degree("start") == 0
+        assert self.dag.in_degree("end") == 0
 
     def test_update_nodes(self) -> None:
         new_node = "new"
@@ -141,6 +156,9 @@ class TestGrowableDAG(unittest.TestCase):
         assert self.dag.get_edge_module("start", "end").next_module is None
 
     def test_update_connections(self) -> None:
+        self.dag.update_connections([])
+        assert self.dag.is_empty()
+
         self.dag.add_node_with_two_edges(
             "start", "1", "end", node_attributes={"type": "L", "size": 20}
         )
@@ -175,6 +193,63 @@ class TestGrowableDAG(unittest.TestCase):
             self.dag.get_edge_module("1", "end")
         ]
         assert self.dag.get_node_module("end").next_modules == []
+
+    def test_is_empty(self) -> None:
+        assert self.dag.is_empty()
+
+        self.dag.add_edge("start", "end")
+        assert not self.dag.is_empty()
+
+    def test_get_ancestors(self) -> None:
+        self.dag.add_direct_edge("start", "end")
+        assert self.dag.ancestors["start"] == set(["start"])
+        assert self.dag.ancestors["end"] == set(["start", "end"])
+        
+        self.dag.add_node_with_two_edges("start", "1", "end", node_attributes={"type": "L", "size":10})
+        assert self.dag.ancestors["start"] == set(["start"])
+        assert self.dag.ancestors["1"] == set(["start", "1"])
+        assert self.dag.ancestors["end"] == set(["start", "1", "end"])
+
+
+        self.dag.add_node_with_two_edges("start", "2", "1", node_attributes={"type": "L", "size":10})
+        assert self.dag.ancestors["start"] == set(["start"])
+        assert self.dag.ancestors["1"] == set(["start", "2", "1"])
+        assert self.dag.ancestors["2"] == set(["start", "2"])
+        assert self.dag.ancestors["end"] == set(["start", "2", "1", "end"])
+
+    def test_forward(self) -> None:
+        self.dag.add_direct_edge("start", 'end')
+        self.dag.add_node_with_two_edges("start", "1", "end", node_attributes={"type": "L", "size":10})
+        
+        x = torch.rand((50, 784), device=global_device())
+        x_a = self.dag.get_edge_module("start", "end")(x)
+        x_b = self.dag.get_edge_module("start", "1")(x)
+        x_b = self.dag.get_node_module("1")(x_b)
+        x_b = self.dag.get_edge_module("1", "end")(x_b)
+        out = x_a.add(x_b)
+        out = self.dag.get_node_module("end")(out)
+
+        actual_out = self.dag(x)
+        assert torch.all(out == actual_out)
+    
+    def test_extended_forward(self) -> None:
+        self.dag.add_direct_edge("start", 'end')
+        self.dag.get_edge_module("start", "end").optimal_delta_layer = torch.nn.Linear(in_features=784, out_features=10, device=global_device())
+        self.dag.add_node_with_two_edges("start", "1", "end", node_attributes={"type": "L", "size":10})
+        self.dag.get_edge_module("start", "1").extended_output_layer = torch.nn.Linear(in_features=784, out_features=5, device=global_device())
+        self.dag.get_edge_module("1", "end").extended_input_layer = torch.nn.Linear(in_features=5, out_features=10, device=global_device())
+
+        
+        x = torch.rand((50, 784), device=global_device())
+        x_a = self.dag.get_edge_module("start", "end").extended_forward(x)[0]
+        x_b = self.dag.get_edge_module("start", "1").extended_forward(x)
+        x_b = self.dag.get_node_module("1")(x_b)
+        x_b = self.dag.get_edge_module("1", "end").extended_forward(*x_b)
+        out = x_a.add(x_b[0])
+        out = self.dag.get_node_module("end")(out)
+
+        actual_out = self.dag.extended_forward(x)
+        assert torch.all(out == actual_out)
 
 
 if __name__ == "__main__":

@@ -55,27 +55,27 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
     @property
     def nodes(self) -> nx.reportviews.NodeView:
-        return super().nodes  # type: ignore
+        return super().nodes
 
     @property
     def edges(self) -> nx.reportviews.OutEdgeView:
-        return super().edges  # type: ignore
+        return super().edges
 
     @property
     def out_edges(self) -> nx.reportviews.OutEdgeView:
-        return super().out_edges  # type: ignore
+        return super().out_edges
 
     @property
     def in_edges(self) -> nx.reportviews.InEdgeView:
-        return super().in_edges  # type: ignore
+        return super().in_edges
 
     @property
     def in_degree(self) -> nx.reportviews.InDegreeView:
-        return super().in_degree  # type: ignore
+        return super().in_degree
 
     @property
     def out_degree(self) -> nx.reportviews.OutDegreeView:
-        return super().out_degree  # type: ignore
+        return super().out_degree
 
     def __set_edge_module(
         self, prev_node: str, next_node: str, module: LinearGrowingModule
@@ -383,7 +383,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
     @profile_function
     def _get_ancestors(self, root: str, pre_root: int = 0) -> None:
-        """Discover ancestors of nodes
+        """Discover all eventual ancestors of nodes
 
         Parameters
         ----------
@@ -550,7 +550,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         update : bool
             update the nodes_visited dictionary with all predecessors
         """
-        if not q:
+        if len(q) == 0:
             return
 
         previous_node, node = edge = q.popleft()
@@ -707,7 +707,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
             output[node] = (
                 addition_module(output[node][0]),
                 addition_module(output[node][1]),
-            )
+            ) # TODO: simplify
         if verbose:
             print()
         return output[self.end][0]
@@ -752,11 +752,3 @@ class GrowableDAG(nx.DiGraph, nn.Module):
             for param in self.get_edge_module(*edge).parameters()
         )
 
-    # def __deepcopy__(self, memo):
-    #     cls = self.__class__
-    #     result = cls.__new__(cls)
-    #     memo[id(self)] = result
-    #     for k, v in self.__dict__.items():
-    #         # print(k, v)
-    #         setattr(result, k, copy.deepcopy(v, memo))
-    #     return result
