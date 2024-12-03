@@ -98,7 +98,7 @@ def create_parser() -> argparse.ArgumentParser:
         choices=activation_functions.keys(),
     )
     architecture_group.add_argument(
-        "--bias", default=True, help="use bias (default: True)", choices=[True, False]
+        "--no-bias", action="store_false", default=True, help="disables bias"
     )
 
     # dataset arguments
@@ -378,7 +378,7 @@ def main(args: argparse.Namespace):
             hidden_shape=args.hidden_size,
             number_hidden_layers=args.nb_hidden_layer,
             activation=activation_functions[args.activation.lower().strip()],
-            bias=args.bias,
+            bias=not args.no_bias,
             seed=args.seed,
             device=device,
         )
