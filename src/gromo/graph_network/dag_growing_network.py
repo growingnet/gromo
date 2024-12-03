@@ -14,7 +14,6 @@ from fvcore.nn import ActivationCountAnalysis, FlopCountAnalysis
 # from memory_profiler import profile as memprofile
 from torch.utils.data import DataLoader, Dataset, random_split
 from torchmetrics import classification
-from torchvision import datasets, transforms
 
 
 # from memory_profiler import LogFile
@@ -670,7 +669,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         # TODO FUTURE : Save updates to return
 
         return loss_train, loss_dev, acc_train, acc_dev, loss_history
-
 
     @profile_function
     # @memprofile

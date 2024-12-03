@@ -64,12 +64,3 @@ repos:
           - --quiet-level=2
         exclude_types: [ csv, json, svg ]
         exclude: ^tests/|generated/
-
-  # - repo: local
-  #   hooks:
-  #     - id: run-unit-tests-coverage
-  #       name: Run Unit Tests with Coverage
-  #       entry: bash bash/test_coverage.sh
-  #       language: system
-  #       always_run: true
-  #       pass_filenames: false
