@@ -1,12 +1,12 @@
 import copy
 import json
+import operator
 
 # import sys
 import os
-from typing import Iterator, Optional
+from typing import Iterator
 
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 from fvcore.nn import ActivationCountAnalysis, FlopCountAnalysis
@@ -142,8 +142,7 @@ class GraphGrowingNetwork(torch.nn.Module):
             end: {
                 "type": "L",
                 "size": self.out_features,
-                "activation": "softmax",
-                # "module": LinearAdditionGrowingModule(in_features=self.out_features, name='end')
+                "use_batch_norm": self.use_batch_norm,
             },
         }
         edge_attributes = {"type": "L", "use_bias": self.use_bias}
@@ -1296,8 +1295,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         verbose : bool, optional
             print info, by default False
         """
-        # DF = pd.DataFrame.from_dict(options, orient="index")
-        DF = pd.DataFrame.from_dict(options)  # type: ignore
 
         # TODO: reinit metrics
         # DF["train loss reduction"] = self.loss_train - DF["loss_train"]
@@ -1315,8 +1312,15 @@ class GraphGrowingNetwork(torch.nn.Module):
         # )
 
         # Greedy choice based on validation loss
-        best_ind = int(DF["loss_val"].idxmin())
-        del DF
+        selection = {}
+        if regularization:
+            for index, item in enumerate(options):
+                selection[index] = item["BIC"]
+        else:
+            for index, item in enumerate(options):
+                selection[index] = item["loss_val"]
+
+        best_ind = min(selection.items(), key=operator.itemgetter(1))[0]
 
         if verbose:
             print("Chose option", best_ind)

@@ -42,6 +42,10 @@ class Logger:
         if self.api == "mlflow":
             mlflow.log_artifact(path)
 
+    def log_metrics(self, metrics: dict, step: int) -> None:
+        for key, value in metrics.items():
+            self.log_metric(key, value, step)
+
     def log_metric(self, key: str, value, step: int) -> None:
         if self.api == "mlflow":
             mlflow.log_metric(key, value, step)
@@ -56,7 +60,7 @@ class Logger:
         if not torch.is_tensor(value):
             self.log_metric(name, value, step=step)
             return
-        elif value.dim() <= 1:
+        elif value.dim() < 1:
             self.log_metric(name, value, step=step)
             return
 
@@ -78,7 +82,11 @@ class Logger:
             )
             mlflow.pytorch.log_model(model, f"{name}", signature=signature)
 
-    def save_metric(self, name: str, value: torch.Tensor) -> None:
+    def save_metrics(self, metrics: dict) -> None:
+        for key, value in metrics.items():
+            self.save_metric(key, value)
+
+    def save_metric(self, name: str, value: torch.Tensor | int | float) -> None:
         """
         Save growth statistics
         :param str name: name of tensor

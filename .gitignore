@@ -171,3 +171,9 @@ cython_debug/
 
 # Log files
 mlruns/*
+
+# VSCode auto generated files
+.vscode
+
+# Data
+data/*
