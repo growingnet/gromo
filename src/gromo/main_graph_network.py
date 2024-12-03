@@ -8,6 +8,7 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 
 from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
+from gromo.utils.gpu_tracking import GpuTracker
 
 
 def parse_args():
@@ -143,6 +144,7 @@ def grow_network(
 
     for _ in tqdm(range(steps)):
         print("\nStep", net.global_step + 1)
+        with GpuTracker(gpu_index=[tags["gpu_index"]], logger=net.logger) as tracker:
             net.grow_step(
                 train_dataset=trainset,
                 test_dataset=testset,
@@ -150,6 +152,7 @@ def grow_network(
                 inter_train=inter_train,
                 verbose=verbose,
             )
+        net.logger.log_all_metrics(step=net.global_step)
         # Temporary stats
         acc_test.append(net.acc_test)
         indices.append(len(net.hist_loss_dev))
@@ -188,7 +191,7 @@ if __name__ == "__main__":
 
     # trainset, testset = load_FashionMNIST_data()
     trainset, testset = load_MNIST_data()
-    
+
     data_rng = torch.Generator()
     grow_network(
         net,

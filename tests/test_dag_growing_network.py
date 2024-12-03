@@ -1,12 +1,14 @@
 import unittest
 
-
 from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
+
 
 class TestGraphGrowingNetwork(unittest.TestCase):
     def setUp(self) -> None:
         self.net = GraphGrowingNetwork(in_features=20, out_features=10)
-        self.net.dag.add_node_with_two_edges("start", "1", "end", node_attributes={"type": "L", "size": self.net.neurons})
+        self.net.dag.add_node_with_two_edges(
+            "start", "1", "end", node_attributes={"type": "L", "size": self.net.neurons}
+        )
 
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
@@ -30,7 +32,7 @@ class TestGraphGrowingNetwork(unittest.TestCase):
             # neurons_updated=[("start", "end")],
             # nodes_added=["1"]
         )
-        
+
         for edge in self.net.dag.edges:
             assert str(edge) in self.net.growth_history[self.net.global_step]
         assert self.net.growth_history[self.net.global_step][str(("start", "1"))] == 2
