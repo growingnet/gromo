@@ -3,7 +3,7 @@ import json
 
 # import sys
 import os
-from typing import Iterator
+from typing import Iterator, Optional
 
 import numpy as np
 import pandas as pd
@@ -12,7 +12,7 @@ import torch.nn as nn
 from fvcore.nn import ActivationCountAnalysis, FlopCountAnalysis
 
 # from memory_profiler import profile as memprofile
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, random_split
 from torchmetrics import classification
 from torchvision import datasets, transforms
 
@@ -21,6 +21,7 @@ from torchvision import datasets, transforms
 
 try:
     from graph_network.GrowableDAG import GrowableDAG  # type: ignore
+    from linear_growing_module import LinearAdditionGrowingModule  # type: ignore
     from utils.logger import Logger  # type: ignore
     from utils.profiling import CustomProfile, profile_function  # type: ignore
     from utils.utils import (  # type: ignore
@@ -31,6 +32,7 @@ try:
     )
 except ModuleNotFoundError:
     from gromo.graph_network.GrowableDAG import GrowableDAG
+    from gromo.linear_growing_module import LinearAdditionGrowingModule
     from gromo.utils.logger import Logger
     from gromo.utils.profiling import CustomProfile, profile_function
     from gromo.utils.utils import (
@@ -42,11 +44,18 @@ except ModuleNotFoundError:
 
 
 def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
-    """
-    Safe Linear forward function for empty input tensors
+    """Safe Linear forward function for empty input tensors
     Resolves bug with shape transformation when using cuda
-    :param torch.Tensor x: input tensor
-    :returns torch.Tensor: F.linear forward function output
+
+    Parameters
+    ----------
+    input : torch.Tensor
+        input tensor
+
+    Returns
+    -------
+    torch.Tensor
+        F.linear forward function output
     """
     assert (
         input.shape[1] == self.in_features
@@ -59,40 +68,46 @@ def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
 
 
 class GraphGrowingNetwork(torch.nn.Module):
+    """Growable DAG Network
+
+    Parameters
+    ----------
+    in_features : int, optional
+        size of input features, by default 5
+    out_features : int, optional
+        size of output dimension, by default 1
+    use_bias : bool, optional
+        automatically use bias in the layers, by default True
+    use_batch_norm : bool, optional
+        use batch normalization on the last layer, by default False
+    neurons : int, optional
+        default number of neurons to add at each step, by default 20
+    device : str | None, optional
+        default device, by default None
+    exp_name : str, optional
+        experiment name for logger, by default "Debug"
+    with_profiler : bool, optional
+        execute with profiling, by default False
+    """
+
     def __init__(
         self,
         in_features: int = 5,
         out_features: int = 1,
         use_bias: bool = True,
+        use_batch_norm: bool = False,
         neurons: int = 20,
-        batch_size: int = 50_000,
+        test_batch_size: int = 256,
         device: str | None = None,
         exp_name: str = "Debug",
         with_profiler: bool = False,
     ) -> None:
-        """Initialize Linear DAG Growing Network
-
-        Parameters
-        ----------
-        in_features : int, optional
-            size of input features, by default 5
-        out_features : int, optional
-            size of output dimensions, by default 1
-        use_bias : bool, optional
-            automatically use bias in the layers, by default True
-        neurons : int, optional
-            default number of neurons to add at each step, by default 20
-        device : str, optional
-            default device, by default None
-        with_profiler : bool, optional
-            execute profiling, by default False
-        """
         super(GraphGrowingNetwork, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.use_bias = use_bias
         self.neurons = neurons
-        self.batch_size = batch_size
+        self.test_batch_size = test_batch_size
         self.device = device if device else global_device()
         self.with_profiler = with_profiler
         self.global_step = 0
@@ -148,6 +163,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         """Reset graph to empty"""
         self.init_empty_graph()
         self.global_step = 0
+        self.global_epoch = 0
         self.logger.clear()
         self.growth_history = {}
         self.growth_history_step()
@@ -155,10 +171,16 @@ class GraphGrowingNetwork(torch.nn.Module):
     def growth_history_step(
         self, neurons_added: list = [], neurons_updated: list = [], nodes_added: list = []
     ) -> None:
-        """
-        Record modified graph on history dictionary
-        :param list edges_added: list of edges that were added on current step
-        :param list edges_updated: list of edges whose weights that were updated on current step
+        """Record recent modifications on history dictionary
+
+        Parameters
+        ----------
+        neurons_added : list, optional
+            list of edges that were added or increased in dimension, by default []
+        neurons_updated : list, optional
+            list of edges whose weights were updated, by default []
+        nodes_added : list, optional
+            list of nodes that were added, by default []
         """
         # TODO: keep track of updated edges/neurons_updated
         if self.global_step not in self.growth_history:
@@ -182,10 +204,12 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.growth_history[self.global_step].update(step)
 
     def log_growth_info(self, x: torch.Tensor) -> None:
-        """
-        Log important metrics at the end of each step
-        Save model and growth history file
-        :param torch.Tensor x: input features batches to infer model signature
+        """Log important metrics at the end of each step
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input features batch to infer model signature
         """
         self.logger.log_metric(
             "growth train loss", self.growth_loss_train, self.global_epoch
@@ -283,58 +307,52 @@ class GraphGrowingNetwork(torch.nn.Module):
             print(f"[Interactive DAG] {error}")
 
     @profile_function
-    def load_MNIST_data(self) -> None:
-        """Load MNIST dataset on memory and create test dataloader"""
-        transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.5,), (0.5,)),
-                transforms.Lambda(lambda x: torch.flatten(x)),
-            ]
-        )
-        # transform = transforms.Compose([transforms.ToTensor(),
-        #                             ])
-        self.trainset = datasets.MNIST(
-            "data/MNIST/train", download=True, train=True, transform=transform
-        )
-        testset = datasets.MNIST(
-            "data/MNIST/validation",
-            download=True,
-            train=False,
-            transform=transform,
-        )
-        self.testloader = DataLoader(testset, batch_size=150, shuffle=False)
-
-    @profile_function
-    def setup_train_datasets(self, generator: torch.Generator) -> tuple:
-        """Create train dataloader and split in three parts for train, development and validation of growth
+    def setup_train_datasets(
+        self, train_dataset: Dataset, generator: torch.Generator
+    ) -> tuple:
+        """Split train dataset in three parts for train, development and validation
 
         Parameters
         ----------
+        train_dataset : Dataset
+            whole train dataset
         generator : torch.Generator
             random generator for dataset shuffling
 
         Returns
         -------
-        tuple[torch.Tensor]
-            tensors of train, development and validation
+        tuple
+            features and labels of train, development and validation datasets
         """
-        super_trainloader = DataLoader(
-            self.trainset, batch_size=self.batch_size, shuffle=True, generator=generator
+        split_length = int(len(train_dataset) / 3)
+        train_dataset, dev_dataset, val_dataset = random_split(
+            train_dataset, (split_length, split_length, split_length), generator
         )
-        X, Y = next(iter(super_trainloader))
-        # X, Y = X.double(), Y.long()
-        X, Y = X.to(self.device), Y.to(self.device)
 
-        indices = torch.randperm(self.batch_size, generator=generator)
-        ind1, ind2, ind3 = (
-            indices[: int(self.batch_size / 3)],
-            indices[int(self.batch_size / 3) : int(self.batch_size * 2 / 3)],
-            indices[int(self.batch_size * 2 / 3) :],
+        train_loader = DataLoader(
+            train_dataset, len(train_dataset), shuffle=True, generator=generator
         )
-        X_train, Y_train = X[ind1], Y[ind1]
-        X_dev, Y_dev = X[ind2], Y[ind2]
-        X_val, Y_val = X[ind3], Y[ind3]
+        dev_loader = DataLoader(
+            dev_dataset, len(dev_dataset), shuffle=True, generator=generator
+        )
+        val_loader = DataLoader(
+            val_dataset, len(val_dataset), shuffle=True, generator=generator
+        )
+        # print("Length of the train_loader:", len(train_loader))
+        # print("Length of the dev_loader:", len(dev_loader))
+        # print("Length of the val_loader:", len(val_loader))
+
+        # # This way does not call the transforms!
+        # X_train, Y_train = trainset.dataset.data[trainset.indices].to(self.device), trainset.dataset.targets[trainset.indices].to(self.device)
+        # X_dev, Y_dev = devset.dataset.data[devset.indices].to(self.device), devset.dataset.targets[devset.indices].to(self.device)
+        # X_val, Y_val = valset.dataset.data[valset.indices].to(self.device), valset.dataset.targets[valset.indices].to(self.device)
+
+        X_train, Y_train = next(iter(train_loader))
+        X_train, Y_train = X_train.to(self.device), Y_train.to(self.device)
+        X_dev, Y_dev = next(iter(dev_loader))
+        X_dev, Y_dev = X_dev.to(self.device), Y_dev.to(self.device)
+        X_val, Y_val = next(iter(val_loader))
+        X_val, Y_val = X_val.to(self.device), Y_val.to(self.device)
 
         return X_train, Y_train, X_dev, Y_dev, X_val, Y_val
 
@@ -346,7 +364,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         x: torch.Tensor,
         sigma: nn.Module,
     ) -> torch.Tensor:
-        """Output of connection with specific weights
+        """Output of block connection with specific weights
         Calculates A = omega*sigma(alpha*x + b)
 
         Parameters
@@ -360,12 +378,12 @@ class GraphGrowingNetwork(torch.nn.Module):
         x : torch.Tensor
             input vector (in_features, batch_size)
         sigma : nn.Module
-            activation function of module
+            activation function
 
         Returns
         -------
         torch.Tensor
-            pre-activity of new connection (out_features, batch_size)
+            pre-activity of new connection block (out_features, batch_size)
         """
         return torch.matmul(
             omega, sigma(torch.matmul(alpha, x) + bias.sum(dim=1).unsqueeze(1))
@@ -385,7 +403,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         Returns
         -------
-        float
+        torch.Tensor
             norm of loss
         """
         loss = activity - bottleneck
@@ -401,10 +419,33 @@ class GraphGrowingNetwork(torch.nn.Module):
         bottleneck: torch.Tensor,
         verbose: bool = True,
     ) -> list[float]:
-        # Bi-level optimization of new weights with respect to the expressivity bottleneck
+        """Bi-level optimization of new weights block with respect to the expressivity bottleneck
         # Calculates f = ||A - bottleneck||^2
 
-        def forward_fn():
+        Parameters
+        ----------
+        alpha : torch.Tensor
+            alpha input weights (neurons, in_features)
+        omega : torch.Tensor
+            omega output weights (out_features, neurons)
+        bias : torch.Tensor
+            bias of input layer (neurons,)
+        B : torch.Tensor
+            input vector (batch_size, in_features)
+        sigma : nn.Module
+            activation function
+        bottleneck : torch.Tensor
+            expressivity bottleneck on the output of the block
+        verbose : bool, optional
+            print info, by default True
+
+        Returns
+        -------
+        list[float]
+            evolution of bottleneck loss over training of the block
+        """
+
+        def forward_fn(B):
             return self.block_forward(alpha, omega, bias, B.T, sigma).T
 
         # # TODO FUTURE : try with extended forward, you have to set extended layers on all modules, avoid copying the model
@@ -438,7 +479,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
     @profile_function
     # @memprofile
-    def _expand_node(
+    def expand_node(
         self,
         node: str,
         prev_nodes: list[str],
@@ -453,18 +494,41 @@ class GraphGrowingNetwork(torch.nn.Module):
         parallel: bool = True,
         verbose: bool = True,
     ) -> tuple[float, float, float, float, list]:
-        """
-        Expand node with more neurons
+        """Increase block dimension by expanding node with more neurons
         Increase output size of incoming layers and input size of outgoing layers
-        :param str node: name of node where we add neurons
-        :param torch.Tensor x: train input features batches
-        :param torch.Tensor y: train true labels of batches
-        :param torch.Tensor x1: development input features batches
-        :param torch.Tensor y1: development true labels of batches
-        :param bool gradient_descent: use gradient descent to compute new weights or random normalized
-        :param bool parallel: compute bottleneck taking into account parallel nodes or only outgoing nodes
-        :param bool verbose: print output
-        :returns tuple[list]: loss train history, loss development history, train accuracy, development accuracy
+        Train new neurons to minimize the expressivity bottleneck
+
+        Parameters
+        ----------
+        node : str
+            name of node where we add neurons
+        prev_nodes : list[str]
+            list of predecessor connected nodes
+        next_nodes : list[str]
+            list of successor connected nodes
+        bottlenecks : dict
+            dictionary with node names as keys and their calculated bottleneck tensors as values
+        activities : dict
+            dictionary with node names as keys and their pre-activity tensors as values
+        x : torch.Tensor
+            train input features batch
+        y : torch.Tensor
+            train true labels of batch
+        x1 : torch.Tensor
+            development input features batch
+        y1 : torch.Tensor
+            development true labels batch
+        amplitude_factor : bool, optional
+            find and apply amplitude factor on the block and its parallel connections, by default True
+        parallel : bool, optional
+            take into account parallel connections, by default True
+        verbose : bool, optional
+            print info, by default True
+
+        Returns
+        -------
+        tuple[float, float, float, float, list]
+            train loss, development loss, train accuracy, development accuracy, bottleneck loss history
         """
 
         # Enact safe forward for layers with zero in features
@@ -607,43 +671,6 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         return loss_train, loss_dev, acc_train, acc_dev, loss_history
 
-    def expand_node(
-        self,
-        node,
-        prev_nodes: list[str],
-        next_nodes: list[str],
-        bottlenecks: dict,
-        activities: dict,
-        x,
-        y,
-        x1,
-        y1,
-        amplitude_factor=True,
-        parallel=True,
-        verbose=True,
-    ) -> tuple[float, float, float, float, list]:
-        """
-        Wrapping expand_node function with torch profiler
-        Too heavy to perform on whole pipeline
-        #TODO: temporary solution
-        """
-
-        # with CustomProfile(active=self.with_profiler, on_trace_ready=self.trace_handler):
-        res = self._expand_node(
-            node,
-            prev_nodes,
-            next_nodes,
-            bottlenecks,
-            activities,
-            x,
-            y,
-            x1,
-            y1,
-            amplitude_factor,
-            parallel,
-            verbose,
-        )
-        return res
 
     @profile_function
     # @memprofile
@@ -660,16 +687,36 @@ class GraphGrowingNetwork(torch.nn.Module):
         amplitude_factor: bool = True,
         verbose: bool = True,
     ) -> tuple[float, float, float, float, list]:
-        """
-        Update weights of a single incoming edge
-        :param str prev_node: node at the start of the edge
-        :param str next_node: node at the end of the edge
-        :param torch.Tensor x: train input features batches
-        :param torch.Tensor y: train true labels of batches
-        :param torch.Tensor x1: development input features batches
-        :param torch.Tensor y1: development true labels of batches
-        :param bool verbose: print output
-        :returns tuple[list]: loss train history, loss development history, train accuracy, development accuracy
+        """Update weights of a single layer edge
+        Train layer to minimize the expressivity bottleneck
+
+        Parameters
+        ----------
+        prev_node : str
+            node at the start of the edge
+        next_node : str
+            node at the end of the edge
+        bottlenecks : dict
+            dictionary with node names as keys and their calculated bottleneck tensors as values
+        activities : dict
+            dictionary with node names as keys and their pre-activity tensors as values
+        x : torch.Tensor
+            train input features batch
+        y : torch.Tensor
+            train true labels batch
+        x1 : torch.Tensor
+            development input features batch
+        y1 : torch.Tensor
+            development true labels batch
+        amplitude_factor : bool, optional
+            find and apply amplitude factor on the block and its parallel connections, by default True
+        verbose : bool, optional
+            print info, by default True
+
+        Returns
+        -------
+        tuple[float, float, float, float, list]
+            train loss, development loss, train accuracy, development accuracy, bottleneck loss history
         """
 
         new_edge_module = self.dag.get_edge_module(prev_node, next_node)
@@ -758,7 +805,31 @@ class GraphGrowingNetwork(torch.nn.Module):
 
     @profile_function
     # @memprofile
-    def find_input_amplitude_factor(self, x, y, next_module, verbose=True):
+    def find_input_amplitude_factor(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        next_module: LinearAdditionGrowingModule,
+        verbose: bool = True,
+    ) -> float:
+        """Find amplitude factor with line search for a single layer edge with extended updates
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input features batch
+        y : torch.Tensor
+            true labels batch
+        next_module : LinearAdditionGrowingModule
+            node module at the end of the edge
+        verbose : bool, optional
+            print info, by default True
+
+        Returns
+        -------
+        float
+            amplitude factor that minimizes overall loss
+        """
 
         def simulate_loss(gamma_factor, module=next_module):
             # TODO: Change with extended_forward
@@ -792,30 +863,60 @@ class GraphGrowingNetwork(torch.nn.Module):
         y: torch.Tensor,
         x1: torch.Tensor,
         y1: torch.Tensor,
+        epochs: int = 500,
+        lrate: float = 1e-3,
+        return_eval: bool = False,
         verbose: bool = True,
-    ) -> tuple[list[float], list[float]]:
-        """_summary_
+    ) -> (
+        tuple[list[float], list[float], list[float]]
+        | tuple[
+            list[float], list[float], list[float], list[float], list[float], list[float]
+        ]
+    ):
+        """Perform training on the model
+        Batch gradient descent with AdamW with lrate of 1e-3 and no weight decay
+        Log train and validation metrics with logger
 
         Parameters
         ----------
         x : torch.Tensor
-            _description_
+            train input features batch
         y : torch.Tensor
-            _description_
+            train true labels batch
+        x1 : torch.Tensor
+            validation input features batch
+        y1 : torch.Tensor
+            validation true labels batch
+        epochs : int, optional
+            maximum number of epochs, by default 500
+        lrate : float, optional
+            learning rate, by default 1e-3
+        return_eval : bool, optional
+            return evaluation metrics on the validation set, by default False
         verbose : bool, optional
-            _description_, by default True
+            print info, by default True
 
         Returns
         -------
-        tuple[list[float], list[float]]
-            _description_
+        tuple[list[float], list[float], list[float]] | tuple[list[float], list[float], list[float], list[float], list[float], list[float]]:
+            train loss history, train accuracy history, train f1-score history
         """
+
+        f1score_history = []
+        loss_val_history, acc_val_history, f1score_val_history = [], [], []
 
         def forward_fn() -> torch.Tensor:
             return self(x)
 
         def eval_fn() -> None:
-            val_acc, val_loss = self.evaluate(x1, y1, verbose=False)
+            val_acc, val_loss, val_f1score = self.evaluate(
+                x1, y1, with_f1score=True, verbose=False
+            )
+            _, _, dev_f1score = self.evaluate(x, y, with_f1score=True, verbose=False)
+            f1score_history.append(dev_f1score)
+            loss_val_history.append(val_loss)
+            acc_val_history.append(val_acc)
+            f1score_val_history.append(val_f1score)
             self.logger.log_metric(
                 "Intermediate training/val loss",
                 val_loss,
@@ -857,57 +958,78 @@ class GraphGrowingNetwork(torch.nn.Module):
                 self.global_epoch - epochs + i,
             )
 
-        return loss_history, acc_history
+        if return_eval:
+            return (
+                loss_history,
+                acc_history,
+                f1score_history,
+                loss_val_history,
+                acc_val_history,
+                f1score_val_history,
+            )
+
+        return loss_history, acc_history, f1score_history
 
     @profile_function
     # @memprofile
     def grow_step(
         self,
+        train_dataset: Dataset,
+        test_dataset: Dataset,
         generator: torch.Generator,
         amplitude_factor: bool = True,
         inter_train: bool = True,
         parallel: bool = True,
         verbose: bool = True,
     ) -> None:
-        """_summary_
+        """Increase the size of the DAG network as one step
+        Perform all possible growth actions and choose greedily the one that minimizes the validation loss
+        Log important metrics
 
         Parameters
         ----------
+        train_dataset : Dataset
+            training dataset object
+        test_dataset : Dataset
+            test dataset object
         generator : torch.Generator
-            _description_
+            random generator for dataset shuffling
         amplitude_factor : bool, optional
-            _description_, by default True
+            apply amplitude factor to the new neurons, by default True
         inter_train : bool, optional
-            _description_, by default True
+            train the network after growth, by default True
         parallel : bool, optional
-            _description_, by default True
+            take into account parallel layers, by default True
         verbose : bool, optional
-            _description_, by default True
+            print info, by default True
         """
+
         self.global_step += 1
+
+        # Find new ways to grow the DAG
         generations = self.define_next_generations()
         if verbose:
             print(f"{generations=}")
 
         constant_module = False
         if self.dag.is_empty():
+            # Create constant module if the graph is empty
             constant_module = True
             edge_attributes = {"type": "L", "use_bias": self.use_bias, "constant": True}
             self.dag.add_direct_edge("start", "end", edge_attributes)
 
+        # Split train dataset into 3 parts
         X_train, Y_train, X_dev, Y_dev, X_val, Y_val = self.setup_train_datasets(
-            generator=generator
+            train_dataset=train_dataset, generator=generator
         )
+        # super_train_loader = DataLoader(train_dataset, self.test_batch_size, shuffle=True)
+        test_loader = DataLoader(test_dataset, self.test_batch_size)
 
-        # new_node_modules = set()
+        # Find nodes of interest
         prev_node_modules = set()
         next_node_modules = set()
         for gen in generations:
             attributes = gen.get("attributes", {})
-
-            # new_node = attributes.get("new_node")
-            # if new_node:
-            #     new_node_modules.add(new_node)
 
             prev_node = attributes.get("previous_node")
             next_node = attributes.get("next_node")
@@ -919,7 +1041,7 @@ class GraphGrowingNetwork(torch.nn.Module):
             prev_node_modules.update(prev_node)
             next_node_modules.update(next_node)
 
-        # new_node_modules = self.dag.get_node_modules(new_node_modules)
+        # Add hooks on node modules of interest
         prev_node_modules = self.dag.get_node_modules(prev_node_modules)
         next_node_modules = self.dag.get_node_modules(next_node_modules)
         for node_module in prev_node_modules:
@@ -943,15 +1065,42 @@ class GraphGrowingNetwork(torch.nn.Module):
             node_module.previous_tensor_m.update()
 
             # Compute optimal possible updates
-            node_module.compute_optimal_delta(update=True, return_deltas=False)
+            deltas = node_module.compute_optimal_delta(update=True, return_deltas=True)
 
             # Compute expressivity bottleneck
             bottleneck[node_module.name] = (
                 node_module.projected_v_goal().clone().detach()
             )  # (batch_size, out_features)
 
+            # Log possible optimal updates
+            assert deltas is not None
+            assert node_module.pre_activity is not None
+            assert node_module.pre_activity.grad is not None
+            for i, edge_module in enumerate(node_module.previous_modules):
+                self.logger.log_metric_with_stats(
+                    f"growth/possible update/edge {edge_module._name}/weight",
+                    deltas[i][0],
+                    self.global_step,
+                )
+                if edge_module.use_bias:
+                    self.logger.log_metric_with_stats(
+                        f"growth/possible update/edge {edge_module._name}/bias",
+                        deltas[i][1],
+                        self.global_step,
+                    )
+            del deltas
+            self.logger.log_metric_with_stats(
+                f"growth/desired update/node {node_module._name}",
+                node_module.pre_activity.grad,
+                self.global_step,
+            )
+            self.logger.log_metric_with_stats(
+                f"growth/bottleneck/node {node_module._name}",
+                bottleneck[node_module._name],
+                self.global_step,
+            )
+
             if constant_module:
-                assert node_module.pre_activity is not None
                 assert torch.all(
                     bottleneck[node_module.name] == node_module.pre_activity.grad
                 ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module.name]}"
@@ -959,15 +1108,7 @@ class GraphGrowingNetwork(torch.nn.Module):
             # Reset tensors and remove hooks
             node_module.reset_computation()
 
-        # bottleneck = (
-        #     torch.cat((bottleneck.values()), dim=0).detach().clone()
-        # )  # (batch_size, total_out_features)
-
-        # Count total features of block
-        # total_out_features = np.sum(
-        #     [node_module.in_features for node_module in next_node_modules]
-        # )
-        # total_in_features = 0
+        # Retrieve input activities
         for node_module in prev_node_modules:
             assert node_module.activity is not None
             # Save input activity of input layers
@@ -978,6 +1119,9 @@ class GraphGrowingNetwork(torch.nn.Module):
             node_module.store_activity = False
             # node_module.delete_update()
 
+        # bottleneck = (
+        #     torch.cat((bottleneck.values()), dim=0).detach().clone()
+        # )  # (batch_size, total_out_features)
         # concatenated_input_B = torch.cat(list(input_B.values()), dim=0)#.clone().detach()
 
         # Reset all hooks
@@ -989,16 +1133,15 @@ class GraphGrowingNetwork(torch.nn.Module):
             # Delete activities
             next_node_module.delete_update()
 
-        # for node_module in prev_node_modules: # TODO : move to previous loop
-        #     node_module.delete_update()
-
         if constant_module:
+            # Remove constant module if needed
             self.dag.remove_direct_edge("start", "end")
 
-        # TODO: Graph Growth
         # We have bottleneck, activities, optimal updates
         # do we need the name for each activity? probably
         # do we save the node name?
+
+        # Execute all graph growth options
         for gen in generations:
             # Create a new edge
             if gen.get("type") == "edge":
@@ -1105,8 +1248,12 @@ class GraphGrowingNetwork(torch.nn.Module):
         # Intermediate training
         # TODO with validation set?
         if inter_train:
-            hist_loss_dev, hist_acc_dev = self.inter_training(
-                X_dev, Y_dev, X_val, Y_val, verbose=verbose
+            hist_loss_dev, hist_acc_dev, _ = self.inter_training(
+                torch.cat([X_train, X_dev], dim=0),
+                torch.cat([Y_train, Y_dev], dim=0),
+                X_val,
+                Y_val,
+                verbose=verbose,
             )
             self.loss_dev = hist_loss_dev[-1]
             self.acc_dev = hist_acc_dev[-1]
@@ -1118,7 +1265,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # Evaluation
         self.acc_val, self.loss_val = self.evaluate(X_val, Y_val, verbose=False)
-        self.acc_test, self.loss_test = self.evaluate_dataset(self.testloader)
+        self.acc_test, self.loss_test = self.evaluate_dataset(test_loader)
 
         # TODO: log metrics
         self.log_growth_info(X_train)
@@ -1136,14 +1283,20 @@ class GraphGrowingNetwork(torch.nn.Module):
         #     node_module.delete_update()
 
     def choose_growth_best_action(
-        self, options: list[dict], verbose: bool = False
+        self, options: list[dict], regularization: bool = False, verbose: bool = False
     ) -> None:
-        """
-        Choose the growth action with the minimum validation loss greedily
+        """Choose the growth action with the minimum validation loss greedily
         Log average metrics of the current growth step
-        Reconstruct graph and evaluate on test set
-        :param dict options: dictionary with all possible graphs and their statistics
-        :param bool verbose: print output
+        Reconstruct chosen graph and discard the rest
+
+        Parameters
+        ----------
+        options : list[dict]
+            dictionary with all possible graphs and their statistics
+        regularization : bool, optional
+            take into account the regularization term, by default False
+        verbose : bool, optional
+            print info, by default False
         """
         # DF = pd.DataFrame.from_dict(options, orient="index")
         DF = pd.DataFrame.from_dict(options)  # type: ignore
@@ -1189,13 +1342,14 @@ class GraphGrowingNetwork(torch.nn.Module):
 
     @profile_function
     def define_next_generations(self) -> list[dict]:
-        """_summary_
+        """Find all possible growth extensions for the current graph
 
         Returns
         -------
         list[dict]
-            _description_
+            list of dictionaries with growth information
         """
+        # TODO: check if they allow growing
         direct_edges, one_hop_edges = self.dag.find_possible_extensions()
 
         # gen_id = 0
@@ -1262,7 +1416,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         return generations
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward function for DAG model
+        """Forward function of DAG network
 
         Parameters
         ----------
@@ -1277,16 +1431,40 @@ class GraphGrowingNetwork(torch.nn.Module):
         return self.dag(x)
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward function of DAG network including extensions of the modules
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output of the extended model
+        """
         return self.dag.extended_forward(x)
 
     def parameters(self) -> Iterator:
+        """Iterator of network parameters
+
+        Yields
+        ------
+        Iterator
+            parameters iterator
+        """
         return self.dag.parameters()
 
     def evaluate(
-        self, x: torch.Tensor, y: torch.Tensor, verbose: bool = True
-    ) -> tuple[float, float]:
-        """Evaluate model on batch
-        Assume that the batch is already on the correct device
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        with_f1score: bool = False,
+        verbose: bool = True,
+    ) -> tuple[float, float] | tuple[float, float, float]:
+        """Evaluate network on batch
+
+        Important: Assumes that the batch is already on the correct device
 
         Parameters
         ----------
@@ -1294,23 +1472,31 @@ class GraphGrowingNetwork(torch.nn.Module):
             input features tensor
         y : torch.Tensor
             true labels tensor
+        with_f1score : bool, optional
+            calculate f1-score, by default False
+        verbose : bool, optional
+            print info, by default True
 
         Returns
         -------
-        tuple[float, float]
-            accuracy and loss on the data
+        tuple[float, float] | tuple[float, float, float]
+            accuracy and loss, optionally f1-score
         """
         with torch.no_grad():
             pred = self(x)
             loss = self.loss_fn(pred, y)
 
-        final_pred = pred.argmax(axis=1)
-        correct = (final_pred == y).int().sum()
-        mca = classification.MulticlassAccuracy(
-            num_classes=self.out_features, average="micro"
-        ).to(self.device)
+        if self.out_features > 1:
+            final_pred = pred.argmax(axis=1)
+            correct = (final_pred == y).int().sum()
+            accuracy = (correct / pred.shape[0]).item()
+        else:
+            accuracy = -1
 
-        if verbose:
+        if verbose and self.out_features > 1:
+            mca = classification.MulticlassAccuracy(
+                num_classes=self.out_features, average="micro"
+            ).to(self.device)
             print(f"{mca(final_pred, y)=}")
             confmat = classification.ConfusionMatrix(
                 task="multiclass", num_classes=self.out_features
@@ -1318,10 +1504,21 @@ class GraphGrowingNetwork(torch.nn.Module):
             confmat(final_pred, y)
             confmat.plot()
 
-        return (correct / pred.shape[0]).item(), loss.item()
+        if with_f1score:
+            if self.out_features > 1:
+                f1 = classification.MulticlassF1Score(
+                    num_classes=self.out_features,
+                    average="micro",
+                ).to(self.device)
+                f1score = f1(pred, y).item()
+            else:
+                f1score = -1
+            return accuracy, loss.item(), f1score
+
+        return accuracy, loss.item()
 
     def evaluate_dataset(self, dataloader: DataLoader) -> tuple[float, float]:
-        """Evaluate model on dataset
+        """Evaluate network on dataset
 
         Parameters
         ----------
@@ -1331,10 +1528,10 @@ class GraphGrowingNetwork(torch.nn.Module):
         Returns
         -------
         tuple[float, float]
-            accuracy and loss on the data
+            accuracy and loss
         """
         correct, total = 0, 0
-        print(len(dataloader))
+
         loss = []
         for x, y in dataloader:
             x = x.to(self.device)
