@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Iterable
 
 import matplotlib.cm as mpl_cm
 import matplotlib.colors as mpl_colors
@@ -234,8 +234,6 @@ def batch_gradient_descent(
 
         if not fast:
             labels = ["train"]
-            if eval_fn:
-                labels.extend(["test"] * (len(acc_history[0]) - 1))
             plt.figure()
             plt.plot(acc_history, label=labels)
             plt.xlabel("epochs")
@@ -260,12 +258,13 @@ def DAG_to_pyvis(dag):
             "label": node,
             "title": str(size),
             "color": size_to_color(size),
+            "size": np.sqrt(size),
             "mass": 4,
         }
         if node == "start":
-            attrs.update({"x": -20.0, "y": 0.0, "physics": False})
+            attrs.update({"x": -150.0, "y": 0.0, "physics": False})
         elif node == "end":
-            attrs.update({"x": 20.0, "y": 0.0, "physics": False})
+            attrs.update({"x": 150.0, "y": 0.0, "physics": False})
         nt.add_node(node, **attrs)
     for edge in dag.edges:
         prev_node, next_node = edge
