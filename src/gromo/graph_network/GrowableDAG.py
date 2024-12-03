@@ -707,7 +707,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
             output[node] = (
                 addition_module(output[node][0]),
                 addition_module(output[node][1]),
-            ) # TODO: simplify
+            )  # TODO: simplify
         if verbose:
             print()
         return output[self.end][0]
@@ -751,4 +751,3 @@ class GrowableDAG(nx.DiGraph, nn.Module):
             for edge in edges
             for param in self.get_edge_module(*edge).parameters()
         )
-
