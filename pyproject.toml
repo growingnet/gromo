@@ -25,6 +25,7 @@ dependencies = [
     "numpy",
     "matplotlib",
     "pyvis",
+    "fvcore",
 ]
 [project.optional-dependencies]
 test = ["coverage"]
