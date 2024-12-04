@@ -30,18 +30,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Check GITHUB_TOKEN Info
-        env:
-            GH_PAT_SECRET: ${{ secrets.GH_PAT }}
-            ACTIONS_DEPLOY_KEY_SECRET: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-
-        run: |
-          echo "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"
-          echo "GH_PAT: ${{ secrets.GH_PAT }}"
-          echo "SSH KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}"
-          echo "GH_PAT: ${GH_PAT_SECRET}"
-          echo "SSH KEY: ${ACTIONS_DEPLOY_KEY_SECRET}"
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
