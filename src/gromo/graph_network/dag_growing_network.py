@@ -547,10 +547,10 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         bottleneck, input_x = [], []
         for next_node_module in next_node_modules:
-            bottleneck.append(bottlenecks[next_node_module.name])
+            bottleneck.append(bottlenecks[next_node_module._name])
         bottleneck = torch.cat(bottleneck, dim=1)  # (batch_size, total_out_features)
         for prev_node_module in prev_node_modules:  # TODO: check correct order
-            input_x.append(activities[prev_node_module.name])
+            input_x.append(activities[prev_node_module._name])
         input_x = torch.cat(input_x, dim=1)  # (batch_size, total_in_features)
 
         total_in_features = input_x.shape[1]
@@ -729,8 +729,8 @@ class GraphGrowingNetwork(torch.nn.Module):
         prev_node_module = self.dag.get_node_module(prev_node)
         next_node_module = self.dag.get_node_module(next_node)
 
-        bottleneck = bottlenecks[next_node_module.name]
-        activity = activities[prev_node_module.name]
+        bottleneck = bottlenecks[next_node_module._name]
+        activity = activities[prev_node_module._name]
 
         # TODO: gradient to find edge weights
         # [bi-level]  loss = edge_weight - bottleneck
@@ -1074,7 +1074,7 @@ class GraphGrowingNetwork(torch.nn.Module):
             deltas = node_module.compute_optimal_delta(update=True, return_deltas=True)
 
             # Compute expressivity bottleneck
-            bottleneck[node_module.name] = (
+            bottleneck[node_module._name] = (
                 node_module.projected_v_goal().clone().detach()
             )  # (batch_size, out_features)
 
@@ -1108,8 +1108,8 @@ class GraphGrowingNetwork(torch.nn.Module):
 
             if constant_module:
                 assert torch.all(
-                    bottleneck[node_module.name] == node_module.pre_activity.grad
-                ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module.name]}"
+                    bottleneck[node_module._name] == node_module.pre_activity.grad
+                ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
 
             # Reset tensors and remove hooks
             node_module.reset_computation()
@@ -1118,8 +1118,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         for node_module in prev_node_modules:
             assert node_module.activity is not None
             # Save input activity of input layers
-            input_B[node_module.name] = node_module.activity.clone().detach()
-            # total_in_features += node_module.out_features
+            input_B[node_module._name] = node_module.activity.clone().detach()
 
             # Reset tensors and remove hooks
             node_module.store_activity = False

@@ -26,6 +26,7 @@ class AdditionGrowingModule(torch.nn.Module):
     ) -> None:
 
         super(AdditionGrowingModule, self).__init__()
+        self._name = name
         self.name = (
             self.__class__.__name__
             if name is None
@@ -377,6 +378,7 @@ class GrowingModule(torch.nn.Module):
         )
 
         super(GrowingModule, self).__init__()
+        self._name = name
         self.name = (
             self.__class__.__name__
             if name is None
