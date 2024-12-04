@@ -282,3 +282,106 @@ def size_to_color(size):
     norm = mpl_colors.Normalize(vmin=0, vmax=784)
     rgba = cmap(norm(size))
     return mpl_colors.rgb2hex(rgba)
+
+
+def calculate_true_positives(
+    actual: torch.Tensor, predicted: torch.Tensor, label: int
+) -> tuple[float, float, float]:
+    """Calculate true positives, false positives and false negatives of a specific label
+
+    Parameters
+    ----------
+    actual : torch.Tensor
+        true labels
+    predicted : torch.Tensor
+        predicted labels
+    label : int
+        target label to calculate metrics
+
+    Returns
+    -------
+    tuple[float, float, float]
+        true positives, false positives, false negatives
+    """
+    true_positives = np.sum((actual == label) & (predicted == label))
+    false_positives = np.sum((actual != label) & (predicted == label))
+    false_negatives = np.sum((predicted != label) & (actual == label))
+
+    return true_positives, false_positives, false_negatives
+
+
+def f1(actual: torch.Tensor, predicted: torch.Tensor, label: int) -> float:
+    """Calculate f1 score of specific label
+
+    Parameters
+    ----------
+    actual : torch.Tensor
+        true labels
+    predicted : torch.Tensor
+        predicted labels
+    label : int
+        target label to calculate f1 score
+
+    Returns
+    -------
+    float
+        f1 score of label
+    """
+    # F1 = 2 * (precision * recall) / (precision + recall)
+    tp, fp, fn = calculate_true_positives(actual, predicted, label)
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    f1 = 2 * (precision * recall) / (precision + recall)
+    return f1
+
+
+def f1_micro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
+    """Calculate f1 score with micro average
+
+    Parameters
+    ----------
+    actual : torch.Tensor
+        true labels
+    predicted : torch.Tensor
+        predicted labels
+
+    Returns
+    -------
+    float
+        micro-average f1 score
+    """
+    true_positives, false_positives, false_negatives = {}, {}, {}
+    for label in np.unique(actual):
+        tp, fp, fn = calculate_true_positives(actual, predicted, label)
+        true_positives[label] = tp
+        false_positives[label] = fp
+        false_negatives[label] = fn
+
+    all_true_positives = np.sum(list(true_positives.values()))
+    all_false_positives = np.sum(list(false_positives.values()))
+    all_false_negatives = np.sum(list(false_negatives.values()))
+
+    micro_precision = all_true_positives / (all_true_positives + all_false_positives)
+    micro_recall = all_true_positives / (all_true_positives + all_false_negatives)
+
+    f1 = 2 * (micro_precision * micro_recall) / (micro_precision + micro_recall)
+
+    return f1
+
+
+def f1_macro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
+    """Calculate f1 score with macro average
+
+    Parameters
+    ----------
+    actual : torch.Tensor
+        true labels
+    predicted : torch.Tensor
+        predicted labels
+
+    Returns
+    -------
+    float
+        macro-average f1 score
+    """
+    return float(np.mean([f1(actual, predicted, label) for label in np.unique(actual)]))

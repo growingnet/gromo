@@ -9,11 +9,12 @@ from typing import Iterator
 import numpy as np
 import torch
 import torch.nn as nn
-from fvcore.nn import ActivationCountAnalysis, FlopCountAnalysis
 
 # from memory_profiler import profile as memprofile
 from torch.utils.data import DataLoader, Dataset, random_split
-from torchmetrics import classification
+
+
+# from fvcore.nn import ActivationCountAnalysis, FlopCountAnalysis
 
 
 # from memory_profiler import LogFile
@@ -23,9 +24,10 @@ try:
     from linear_growing_module import LinearAdditionGrowingModule  # type: ignore
     from utils.logger import Logger  # type: ignore
     from utils.profiling import CustomProfile, profile_function  # type: ignore
-    from utils.utils import (  # type: ignore
+    from utils.utils import (  # type: ignore;
         DAG_to_pyvis,
         batch_gradient_descent,
+        f1_micro,
         global_device,
         line_search,
     )
@@ -37,6 +39,7 @@ except ModuleNotFoundError:
     from gromo.utils.utils import (
         DAG_to_pyvis,
         batch_gradient_descent,
+        f1_micro,
         global_device,
         line_search,
     )
@@ -230,17 +233,17 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.logger.log_metric("val accuracy", self.acc_val, self.global_epoch)
         self.logger.log_metric("test accuracy", self.acc_test, self.global_epoch)
 
-        model_copy = copy.deepcopy(self)
-        model_copy.to(self.device)
-        for param in model_copy.parameters():
-            param.requires_grad = False
-        flops = FlopCountAnalysis(model_copy, x)
-        self.logger.log_metric("complexity/flops", flops.total(), self.global_epoch)
-        activations = ActivationCountAnalysis(model_copy, x)
-        self.logger.log_metric(
-            "complexity/activations", activations.total(), self.global_epoch
-        )
-        del model_copy
+        # model_copy = copy.deepcopy(self)
+        # model_copy.to(self.device)
+        # for param in model_copy.parameters():
+        #     param.requires_grad = False
+        # flops = FlopCountAnalysis(model_copy, x)
+        # self.logger.log_metric("complexity/flops", flops.total(), self.global_epoch)
+        # activations = ActivationCountAnalysis(model_copy, x)
+        # self.logger.log_metric(
+        #     "complexity/activations", activations.total(), self.global_epoch
+        # )
+        # del model_copy
 
         self.logger.log_metric(
             "complexity/nb of parameters",
@@ -324,7 +327,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         """
         split_length = int(len(train_dataset) / 3)
         train_dataset, dev_dataset, val_dataset = random_split(
-            train_dataset, (split_length, )*3, generator
+            train_dataset, (split_length,) * 3, generator
         )
 
         train_loader = DataLoader(
@@ -1495,24 +1498,21 @@ class GraphGrowingNetwork(torch.nn.Module):
         else:
             accuracy = -1
 
-        if verbose and self.out_features > 1:
-            mca = classification.MulticlassAccuracy(
-                num_classes=self.out_features, average="micro"
-            ).to(self.device)
-            print(f"{mca(final_pred, y)=}")
-            confmat = classification.ConfusionMatrix(
-                task="multiclass", num_classes=self.out_features
-            ).to(self.device)
-            confmat(final_pred, y)
-            confmat.plot()
+        # if verbose and self.out_features > 1:
+        # TODO: replace dependency
+        #     mca = classification.MulticlassAccuracy(
+        #         num_classes=self.out_features, average="micro"
+        #     ).to(self.device)
+        #     print(f"{mca(final_pred, y)=}")
+        #     confmat = classification.ConfusionMatrix(
+        #         task="multiclass", num_classes=self.out_features
+        #     ).to(self.device)
+        #     confmat(final_pred, y)
+        #     confmat.plot()
 
         if with_f1score:
             if self.out_features > 1:
-                f1 = classification.MulticlassF1Score(
-                    num_classes=self.out_features,
-                    average="micro",
-                ).to(self.device)
-                f1score = f1(pred, y).item()
+                f1score = f1_micro(y, final_pred)
             else:
                 f1score = -1
             return accuracy, loss.item(), f1score
