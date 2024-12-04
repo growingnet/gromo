@@ -249,6 +249,9 @@ def DAG_to_pyvis(dag):
     # nt = Network('500px', '500px', directed=True, notebook=True, cdn_resources='remote')
     nt = Network(directed=True)
 
+    default_offset_x = 150.0
+    default_offset_y = 0.0
+
     for node in dag.nodes:
         size = dag.nodes[node]["size"]
         attrs = {
@@ -262,9 +265,11 @@ def DAG_to_pyvis(dag):
             "mass": 4,
         }
         if node == "start":
-            attrs.update({"x": -150.0, "y": 0.0, "physics": False})
+            attrs.update(
+                {"x": -default_offset_x, "y": -default_offset_y, "physics": False}
+            )
         elif node == "end":
-            attrs.update({"x": 150.0, "y": 0.0, "physics": False})
+            attrs.update({"x": default_offset_x, "y": default_offset_y, "physics": False})
         nt.add_node(node, **attrs)
     for edge in dag.edges:
         prev_node, next_node = edge

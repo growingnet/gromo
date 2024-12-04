@@ -5,7 +5,13 @@ from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
 
 class TestGraphGrowingNetwork(unittest.TestCase):
     def setUp(self) -> None:
-        self.net = GraphGrowingNetwork(in_features=20, out_features=10, with_logger=False)
+        self.in_features = 5
+        self.out_features = 2
+        self.net = GraphGrowingNetwork(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            with_logger=False,
+        )
         self.net.dag.add_node_with_two_edges(
             "start", "1", "end", node_attributes={"type": "L", "size": self.net.neurons}
         )
@@ -20,8 +26,8 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         assert self.net.dag.out_degree("start") == 0
         assert self.net.dag.in_degree("end") == 0
         assert self.net.dag.out_degree("end") == 0
-        assert self.net.dag.nodes["start"]["size"] == 20
-        assert self.net.dag.nodes["end"]["size"] == 10
+        assert self.net.dag.nodes["start"]["size"] == self.in_features
+        assert self.net.dag.nodes["end"]["size"] == self.out_features
         assert self.net.dag.nodes["start"]["type"] == "L"
         assert self.net.dag.nodes["end"]["type"] == "L"
         # assert self.net.dag.nodes["end"]["use_batch_norm"] == False
@@ -30,7 +36,6 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         self.net.growth_history_step(
             neurons_added=[("start", "1"), ("1", "end")],
             # neurons_updated=[("start", "end")],
-            # nodes_added=["1"]
         )
 
         for edge in self.net.dag.edges:
