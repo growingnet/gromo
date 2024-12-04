@@ -5,7 +5,7 @@ from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
 
 class TestGraphGrowingNetwork(unittest.TestCase):
     def setUp(self) -> None:
-        self.net = GraphGrowingNetwork(in_features=20, out_features=10)
+        self.net = GraphGrowingNetwork(in_features=20, out_features=10, with_logger=False)
         self.net.dag.add_node_with_two_edges(
             "start", "1", "end", node_attributes={"type": "L", "size": self.net.neurons}
         )

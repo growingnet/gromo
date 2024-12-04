@@ -1,14 +1,22 @@
+import importlib
 import logging
 
-import mlflow
 import numpy as np
 import torch
 
 
 class Logger:
     def __init__(
-        self, experiment_name: str, port: int = 27027, api: str = "mlflow"
+        self,
+        experiment_name: str,
+        port: int = 27027,
+        api: str = "mlflow",
+        enabled: bool = True,
     ) -> None:
+        self.enabled = enabled
+        if not self.enabled:
+            return
+
         self.experiment_name = experiment_name
         self.default_port = port
         self.api = api.lower().strip()
@@ -16,37 +24,52 @@ class Logger:
         assert (
             self.api in self.__implemented_apis
         ), "Choose implemented tracking API from {self.__implemented_apis}. Found {self.api}"
+        self.__choose_module()
 
         self.metrics: dict = {}
         logging.getLogger("mlflow").setLevel(logging.DEBUG)
 
     def setup_tracking(self, online: bool = False, port: int | None = None) -> None:
+        if not self.enabled:
+            return
         if port is None:
             port = self.default_port
         if self.api == "mlflow":
             self.__setup_mlflow_tracking(self.experiment_name, port, online)
 
     def start_run(self, **kwargs) -> None:
+        if not self.enabled:
+            return
         if self.api == "mlflow":
             self.__start_mlflow_run(**kwargs)
 
     def end_run(self):
+        if not self.enabled:
+            return
         if self.api == "mlflow":
             self.__end_mlflow_run()
 
     def log_parameter(self, key: str, value: str) -> None:
+        if not self.enabled:
+            return
         if self.api == "mlflow":
             mlflow.log_param(key, value)
 
     def log_artifact(self, path) -> None:
+        if not self.enabled:
+            return
         if self.api == "mlflow":
             mlflow.log_artifact(path)
 
     def log_metrics(self, metrics: dict, step: int) -> None:
+        if not self.enabled:
+            return
         for key, value in metrics.items():
             self.log_metric(key, value, step)
 
     def log_metric(self, key: str, value, step: int) -> None:
+        if not self.enabled:
+            return
         if self.api == "mlflow":
             mlflow.log_metric(key, value, step)
 
@@ -57,6 +80,8 @@ class Logger:
         :param str name: name of the matrix
         :param torch.Tensor value: value of matrix
         """
+        if not self.enabled:
+            return
         if not torch.is_tensor(value):
             self.log_metric(name, value, step=step)
             return
@@ -76,6 +101,8 @@ class Logger:
         )
 
     def log_pytorch_model(self, model, name, x) -> None:
+        if not self.enabled:
+            return
         if self.api == "mlflow":
             signature = mlflow.models.infer_signature(
                 x.cpu().numpy(), model(x).detach().cpu().numpy()
@@ -83,6 +110,8 @@ class Logger:
             mlflow.pytorch.log_model(model, f"{name}", signature=signature)
 
     def save_metrics(self, metrics: dict) -> None:
+        if not self.enabled:
+            return
         for key, value in metrics.items():
             self.save_metric(key, value)
 
@@ -92,9 +121,13 @@ class Logger:
         :param str name: name of tensor
         :param torch.Tensor value: value of tensor
         """
+        if not self.enabled:
+            return
         self.metrics[name] = value
 
     def log_all_metrics(self, step: int, with_stats: bool = True) -> None:
+        if not self.enabled:
+            return
         for key, value in self.metrics.items():
             if with_stats:
                 self.log_metric_with_stats(key, value, step)
@@ -102,7 +135,14 @@ class Logger:
                 self.log_metric(key, value, step)
 
     def clear(self) -> None:
+        if not self.enabled:
+            return
         self.metrics.clear()
+
+    def __choose_module(self) -> None:
+        if self.api == "mlflow":
+            global mlflow
+            import mlflow
 
     def __start_mlflow_run(self, tags: dict | None = None) -> None:
         mlflow.start_run(log_system_metrics=True, tags=tags)

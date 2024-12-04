@@ -92,6 +92,8 @@ class GraphGrowingNetwork(torch.nn.Module):
         experiment name for logger, by default "Debug"
     with_profiler : bool, optional
         execute with profiling, by default False
+    with_logger : bool, optional
+        log results during execution, by default True
     """
 
     def __init__(
@@ -105,6 +107,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         device: str | None = None,
         exp_name: str = "Debug",
         with_profiler: bool = False,
+        with_logger: bool = True,
     ) -> None:
         super(GraphGrowingNetwork, self).__init__()
         self.in_features = in_features
@@ -118,8 +121,9 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.global_epoch = 0
         self.loss_fn = nn.CrossEntropyLoss()
 
-        self.logger = Logger(exp_name)
-        self.logger.setup_tracking()
+        self.logger = Logger(exp_name, enabled=with_logger)
+        if with_logger:
+            self.logger.setup_tracking()
 
         # sys.stdout = LogFile('temp/memory_profile_log')
 
