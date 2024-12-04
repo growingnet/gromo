@@ -324,7 +324,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         """
         split_length = int(len(train_dataset) / 3)
         train_dataset, dev_dataset, val_dataset = random_split(
-            train_dataset, (split_length, split_length, split_length), generator
+            train_dataset, (split_length, )*3, generator
         )
 
         train_loader = DataLoader(
