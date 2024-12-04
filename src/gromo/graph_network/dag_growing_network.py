@@ -151,7 +151,7 @@ class GraphGrowingNetwork(torch.nn.Module):
             end: {
                 "type": "L",
                 "size": self.out_features,
-                "use_batch_norm": self.use_batch_norm,
+                # "use_batch_norm": self.use_batch_norm,
             },
         }
         edge_attributes = {"type": "L", "use_bias": self.use_bias}
