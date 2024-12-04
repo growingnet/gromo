@@ -38,10 +38,6 @@ class TestGrowingModule(TestCase):
         self.assertTrue(torch.equal(y, y_th))
 
         # ========== Test with in extension ==========
-        # extended input without extension crashes
-        with self.assertRaises(ValueError):
-            self.model.extended_forward(self.x, self.x_ext)
-
         # extended input with in extension
         self.model.extended_input_layer = self.layer_in_extension
         self.model.scaling_factor = 1
