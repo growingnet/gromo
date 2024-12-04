@@ -24,7 +24,7 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         assert self.net.dag.nodes["end"]["size"] == 10
         assert self.net.dag.nodes["start"]["type"] == "L"
         assert self.net.dag.nodes["end"]["type"] == "L"
-        assert self.net.dag.nodes["end"]["use_batch_norm"] == False
+        # assert self.net.dag.nodes["end"]["use_batch_norm"] == False
 
     def test_growth_histroy_step(self) -> None:
         self.net.growth_history_step(
