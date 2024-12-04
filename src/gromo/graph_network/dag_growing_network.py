@@ -84,6 +84,8 @@ class GraphGrowingNetwork(torch.nn.Module):
         use batch normalization on the last layer, by default False
     neurons : int, optional
         default number of neurons to add at each step, by default 20
+    test_batch_size : int, optional
+        batch size to use on the test set, by default 256
     device : str | None, optional
         default device, by default None
     exp_name : str, optional
