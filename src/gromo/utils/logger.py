@@ -1,5 +1,5 @@
-import importlib
 import logging
+import sys
 
 import numpy as np
 import torch
@@ -14,11 +14,6 @@ class Logger:
         enabled: bool = True,
     ) -> None:
         self.enabled = enabled
-        if not self.enabled:
-            return
-
-        self.experiment_name = experiment_name
-        self.default_port = port
         self.api = api.lower().strip()
         self.__implemented_apis = ["mlflow"]
         assert (
@@ -26,8 +21,12 @@ class Logger:
         ), "Choose implemented tracking API from {self.__implemented_apis}. Found {self.api}"
         self.__choose_module()
 
-        self.metrics: dict = {}
-        logging.getLogger("mlflow").setLevel(logging.DEBUG)
+        if self.enabled:
+            self.experiment_name = experiment_name
+            self.default_port = port
+
+            self.metrics: dict = {}
+            logging.getLogger("mlflow").setLevel(logging.DEBUG)
 
     def setup_tracking(self, online: bool = False, port: int | None = None) -> None:
         """Set up remote tracking with logging server
@@ -214,9 +213,14 @@ class Logger:
         self.metrics.clear()
 
     def __choose_module(self) -> None:
-        if self.api == "mlflow":
-            global mlflow
-            import mlflow
+        try:
+            if self.api == "mlflow":
+                global mlflow
+                import mlflow
+        except ImportError as err:
+            print(err)
+            print("Logging will be skipped")
+            self.enabled = False
 
     def __start_mlflow_run(self, tags: dict | None = None) -> None:
         mlflow.start_run(log_system_metrics=True, tags=tags)
