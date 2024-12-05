@@ -1,5 +1,5 @@
 import logging
-import sys
+import warnings
 
 import numpy as np
 import torch
@@ -227,13 +227,14 @@ class Logger:
         self.metrics.clear()
 
     def __choose_module(self) -> None:
+        if not self.enabled:
+            return
         try:
             if self.api == "mlflow":
                 global mlflow
                 import mlflow
         except ImportError as err:
-            print(err)
-            print("Logging will be skipped")
+            warnings.warn(f"{err}. Logging will be skipped.", ImportWarning)
             self.enabled = False
 
     def __start_mlflow_run(self, tags: dict | None = None) -> None:

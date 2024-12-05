@@ -39,3 +39,7 @@ class TestLogger(unittest.TestCase):
             assert not logger.enabled
         else:
             assert logger.enabled
+
+
+if __name__ == "__main__":
+    unittest.main()
