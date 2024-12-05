@@ -24,12 +24,13 @@ try:
     from linear_growing_module import LinearAdditionGrowingModule  # type: ignore
     from utils.logger import Logger  # type: ignore
     from utils.profiling import CustomProfile, profile_function  # type: ignore
-    from utils.utils import (  # type: ignore;
+    from utils.utils import (  # type: ignore
         DAG_to_pyvis,
         batch_gradient_descent,
         f1_micro,
         global_device,
         line_search,
+        mini_batch_gradient_descent,
     )
 except ModuleNotFoundError:
     from gromo.graph_network.GrowableDAG import GrowableDAG
@@ -42,6 +43,7 @@ except ModuleNotFoundError:
         f1_micro,
         global_device,
         line_search,
+        mini_batch_gradient_descent,
     )
 
 
@@ -457,18 +459,19 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # # TODO FUTURE : try with extended forward, you have to set extended layers on all modules, avoid copying the model
         # new_activity = self.block_forward(alpha, omega, B.T, sigma).T # (batch_size, total_out_features)
-        optimizer = torch.optim.AdamW([alpha, omega, bias], lr=1e-3, weight_decay=0)
-
-        loss_history, _ = batch_gradient_descent(
-            forward_fn=forward_fn,
+        loss_history, _ = mini_batch_gradient_descent(
+            model=forward_fn,
+            parameters=[alpha, omega, bias],
             cost_fn=self.bottleneck_loss,
-            target=bottleneck,
-            optimizer=optimizer,
-            fast=True,
+            X=B,
+            Y=bottleneck,
+            batch_size=256,
+            lrate=1e-3,
             max_epochs=100,
+            fast=True,
             verbose=verbose,
-            loss_name="expected bottleneck",
-            title=f"[Step {self.global_step}] Adding new block",
+            # loss_name="expected bottleneck",
+            # title=f"[Step {self.global_step}] Adding new block",
         )
 
         return loss_history
@@ -748,21 +751,21 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # # Testing
         # weight = torch.nn.init.orthogonal_(weight)
+        forward_fn = lambda activity: nn.functional.linear(activity, weight, bias)
 
-        optimizer = torch.optim.AdamW([weight, bias], lr=1e-3, weight_decay=0)
-
-        forward_fn = lambda: nn.functional.linear(activity, weight, bias)
-
-        loss_history, _ = batch_gradient_descent(
-            forward_fn=forward_fn,
+        loss_history, _ = mini_batch_gradient_descent(
+            model=forward_fn,
+            parameters=[weight, bias],
             cost_fn=self.bottleneck_loss,
-            target=bottleneck,
-            optimizer=optimizer,
-            fast=True,
+            X=activity,
+            Y=bottleneck,
+            batch_size=256,
+            lrate=1e-3,
             max_epochs=100,
+            fast=True,
             verbose=verbose,
-            loss_name="expected bottleneck",
-            title=f"[Step {self.global_step}] Adding direct edge ({prev_node}, {next_node})",
+            # loss_name="expected bottleneck",
+            # title=f"[Step {self.global_step}] Adding direct edge ({prev_node}, {next_node})",
         )
 
         # Record layer extensions
@@ -935,20 +938,17 @@ class GraphGrowingNetwork(torch.nn.Module):
             )
             self.global_epoch += 1
 
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=0)
-        epochs = 500
-
-        loss_history, acc_history = batch_gradient_descent(
-            forward_fn=forward_fn,
+        loss_history, acc_history = mini_batch_gradient_descent(
+            model=self,
             cost_fn=self.loss_fn,
-            target=y,
-            optimizer=optimizer,
+            X=x,
+            Y=y,
+            lrate=lrate,
+            batch_size=256,
             max_epochs=epochs,
             fast=False,
             eval_fn=eval_fn,
             verbose=verbose,
-            loss_name="overall loss",
-            title=f"[Step {self.global_step}] Intermediate training",
         )
 
         # Log intermediate training

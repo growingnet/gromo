@@ -170,6 +170,137 @@ def line_search(cost_fn: Callable, verbose: bool = True) -> tuple[float, float]:
     return factor, min_loss
 
 
+def mini_batch_gradient_descent(
+    model: nn.Module | Callable,
+    cost_fn: Callable,
+    X: torch.Tensor,
+    Y: torch.Tensor,
+    lrate: float,
+    max_epochs: int,
+    batch_size: int,
+    parameters: Iterable | None = None,
+    fast: bool = False,
+    eval_fn: Callable | None = None,
+    verbose: bool = True,
+) -> tuple[list[float], list[float]]:
+    """Mini-batch gradient descent implementation
+    Uses AdamW with no weight decay and shuffled DataLoader
+
+    Parameters
+    ----------
+    model : nn.Module
+        pytorch model or forwards function
+    cost_fn : Callable
+        cost function
+    X : torch.Tensor
+        input features
+    Y : torch.Tensor
+        true labels
+    lrate : float
+        learning rate
+    max_epochs : int
+        maximum epochs
+    batch_size : int
+        batch size
+    parameters: iterable | None, optional
+        list of torch parameters in case the model is just a forward function, by default None
+    fast : bool, optional
+        fast implementation without evaluation, by default False
+    eval_fn : Callable | None, optional
+        evaluation function, by default None
+    verbose : bool, optional
+        print info, by default True
+
+    Returns
+    -------
+    tuple[list[float], list[float]]
+        train loss history, train accuracy history
+    """
+    loss_history, acc_history = [], []
+    full_loss = []
+    gradients = []
+
+    dataset = torch.utils.data.TensorDataset(X, Y)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    if not isinstance(model, nn.Module):
+        if (parameters is None) or (len(parameters) < 1):
+            raise AttributeError(
+                "When the model is just a forward function, the parameters argument must not be None or empty"
+            )
+    else:
+        parameters = model.parameters()
+        saved_parameters = list(model.parameters())
+    optimizer = torch.optim.AdamW(parameters, lr=lrate, weight_decay=0)
+
+    for epoch in range(max_epochs):
+        correct, total, epoch_loss = 0, 0, 0
+        for x_batch, y_batch in dataloader:
+            optimizer.zero_grad(set_to_none=True)
+
+            output = model(x_batch)
+            loss = cost_fn(output, y_batch)
+            epoch_loss += loss.item()
+            full_loss.append(loss.item())
+
+            if not fast:
+                correct += (output.argmax(axis=1) == y_batch).int().sum().item()
+                total += len(output)
+
+            loss.backward()
+
+            if isinstance(model, nn.Module):
+                avg_grad_norm = 0.0
+                for param in model.parameters():
+                    avg_grad_norm += param.grad.norm()
+                avg_grad_norm /= len(saved_parameters)
+                gradients.append(avg_grad_norm.cpu())
+            optimizer.step()
+
+        loss_history.append(epoch_loss / len(dataloader))
+        if not fast:
+            accuracy = correct / total
+            acc_history.append(accuracy)
+            if eval_fn is not None:
+                eval_fn()
+
+        if verbose and epoch % 10 == 0:
+            if fast:
+                print(f"Epoch {epoch}: Train loss {loss_history[-1]}")
+            else:
+                print(
+                    f"Epoch {epoch}: Train loss {loss_history[-1]} Train Accuracy {accuracy}"
+                )
+
+    if verbose:
+        plt.figure()
+        plt.plot(gradients)
+        plt.xlabel("epochs")
+        plt.ylabel("gradients average norm")
+        plt.show()
+
+        plt.figure()
+        plt.plot(full_loss)
+        plt.xlabel("epochs")
+        plt.ylabel("batch loss")
+        plt.show()
+
+        plt.figure()
+        plt.plot(loss_history)
+        plt.xlabel("epochs")
+        plt.ylabel("average epoch loss")
+        plt.show()
+
+        if not fast:
+            plt.figure()
+            plt.plot(acc_history)
+            plt.xlabel("epochs")
+            plt.ylabel("accuracy")
+            plt.show()
+
+    return loss_history, acc_history
+
+
 def batch_gradient_descent(
     forward_fn: Callable,
     cost_fn: Callable,
