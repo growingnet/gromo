@@ -984,6 +984,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         generator: torch.Generator,
         amplitude_factor: bool = True,
         inter_train: bool = True,
+        bic_criterion: bool = False,
         parallel: bool = True,
         verbose: bool = True,
     ) -> None:
@@ -1003,6 +1004,8 @@ class GraphGrowingNetwork(torch.nn.Module):
             apply amplitude factor to the new neurons, by default True
         inter_train : bool, optional
             train the network after growth, by default True
+        bic_criterion : bool, optional
+            use BIC to select the network expansion, by default False
         parallel : bool, optional
             take into account parallel layers, by default True
         verbose : bool, optional
@@ -1237,6 +1240,8 @@ class GraphGrowingNetwork(torch.nn.Module):
             gen["acc_train"] = acc_train
             gen["acc_dev"] = acc_dev
             gen["acc_val"] = acc_val
+            gen["nb_params"] = model_copy.dag.count_parameters_all()
+            gen["BIC"] = model_copy.BIC(loss_val, n=len(X_val))
 
             # TEMP: save DAG
             gen["dag"] = model_copy.dag
@@ -1246,11 +1251,10 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # Find option that generates minimum loss
         self.choose_growth_best_action(
-            generations, verbose=verbose
-        )  # TODO: apply best option
+            generations, use_bic=bic_criterion, verbose=verbose
+        )
 
         # Intermediate training
-        # TODO with validation set?
         if inter_train:
             hist_loss_dev, hist_acc_dev, _ = self.inter_training(
                 torch.cat([X_train, X_dev], dim=0),
@@ -1287,7 +1291,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         #     node_module.delete_update()
 
     def choose_growth_best_action(
-        self, options: list[dict], regularization: bool = False, verbose: bool = False
+        self, options: list[dict], use_bic: bool = False, verbose: bool = False
     ) -> None:
         """Choose the growth action with the minimum validation loss greedily
         Log average metrics of the current growth step
@@ -1297,8 +1301,8 @@ class GraphGrowingNetwork(torch.nn.Module):
         ----------
         options : list[dict]
             dictionary with all possible graphs and their statistics
-        regularization : bool, optional
-            take into account the regularization term, by default False
+        use_bic : bool, optional
+            use BIC to select the network expansion, by default False
         verbose : bool, optional
             print info, by default False
         """
@@ -1320,7 +1324,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # Greedy choice based on validation loss
         selection = {}
-        if regularization:
+        if use_bic:
             for index, item in enumerate(options):
                 selection[index] = item["BIC"]
         else:
@@ -1463,6 +1467,25 @@ class GraphGrowingNetwork(torch.nn.Module):
             parameters iterator
         """
         return self.dag.parameters()
+
+    def BIC(self, loss: float, n: int) -> float:
+        """Bayesian Information Criterion
+        BIC = k*log(n) - 2log(L), where k is the number of parameters
+
+        Parameters
+        ----------
+        loss : float
+            loss of the model
+        n : int
+            number of samples used for training
+
+        Returns
+        -------
+        float
+            BIC score
+        """
+        k = self.dag.count_parameters_all()
+        return k * np.log2(n) - 2 * np.log2(loss)
 
     def evaluate(
         self,
