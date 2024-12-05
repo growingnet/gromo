@@ -115,6 +115,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.use_bias = use_bias
+        self.use_batch_norm = use_batch_norm
         self.neurons = neurons
         self.test_batch_size = test_batch_size
         self.device = device if device else global_device()
@@ -143,17 +144,15 @@ class GraphGrowingNetwork(torch.nn.Module):
         end = "end"
         edges = [(start, end)]
         node_attributes = {
-            # TODO: change to actual modules rather than strings
             start: {
                 "type": "L",  # shows what follows
                 "size": self.in_features,
                 # "activation": "id",
-                # "module": LinearAdditionGrowingModule(in_features=self.in_features, name="start")
             },
             end: {
                 "type": "L",
                 "size": self.out_features,
-                # "use_batch_norm": self.use_batch_norm,
+                "use_batch_norm": self.use_batch_norm,
             },
         }
         edge_attributes = {"type": "L", "use_bias": self.use_bias}

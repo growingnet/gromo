@@ -17,6 +17,7 @@ class AdditionGrowingModule(torch.nn.Module):
     def __init__(
         self,
         post_addition_function: torch.nn.Module = torch.nn.Identity(),
+        batch_norm: bool = False,
         previous_modules: list["AdditionGrowingModule | GrowingModule"] = None,
         next_modules: list["AdditionGrowingModule | GrowingModule"] = None,
         allow_growing: bool = False,
@@ -37,6 +38,7 @@ class AdditionGrowingModule(torch.nn.Module):
             device if device else global_device()
         )  # FIXME: this could be removed
 
+        self.batch_norm = batch_norm
         self.post_addition_function: torch.nn.Module = post_addition_function
         if self.post_addition_function:
             self.post_addition_function = self.post_addition_function.to(self.device)
@@ -174,8 +176,12 @@ class AdditionGrowingModule(torch.nn.Module):
             self.input = x
             self.input.retain_grad()
 
-        if (self.post_addition_function) and (x is not None):
-            y = self.post_addition_function(x)
+        if x is not None:
+            if self.batch_norm:
+                x = torch.nn.BatchNorm1d(x.shape[1], affine=False, device=self.device)(x)
+
+            if self.post_addition_function:
+                y = self.post_addition_function(x)
         else:
             y = x
 
