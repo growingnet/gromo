@@ -6,10 +6,17 @@ from torch.profiler.profiler import ProfilerAction
 
 
 def profile_function(function: Callable) -> Callable:
-    """
-    Function decorator for profiling the function with torch
-    :param Callable function: callable function to profile
-    :returns Callable: wrapped function
+    """Function decorator for profiling the function with torch
+
+    Parameters
+    ----------
+    function : Callable
+        callable function to profile
+
+    Returns
+    -------
+    Callable
+        wrapped function
     """
 
     @wraps(function)

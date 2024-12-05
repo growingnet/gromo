@@ -18,9 +18,10 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-- Add CI (:gh:`2` by `Sylvain Chevallier`_)
 - Unified documentation style (:gh:`14` by `Stella Douka`_)
 - Updated Unit Tests (:gh:`14` by `Stella Douka`_)
+- Option to disable logging (:gh: `14` by `Stella Douka`_)
+- Add CI (:gh:`2` by `Sylvain Chevallier`_)
 
 Bugs
 ~~~~
