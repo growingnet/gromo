@@ -6,6 +6,20 @@ import torch
 
 
 class Logger:
+    """Wrapper for logging servers
+
+    Parameters
+    ----------
+    experiment_name : str
+        name of logging epxeriment
+    port : int, optional
+        port number, by default 27027
+    api : str, optional
+        name of logging server module, by default "mlflow"
+    enabled : bool, optional
+        enable logging, by default True
+    """
+
     def __init__(
         self,
         experiment_name: str,
