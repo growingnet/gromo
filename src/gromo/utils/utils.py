@@ -47,10 +47,17 @@ def global_device() -> torch.device:
 
 
 def torch_zeros(*size: tuple[int, int], **kwargs) -> torch.Tensor:
-    """
-    Create zero tensors on selected device
-    :param tuple[int, int] size: size of tensor
-    :returns torch.Tensor: zero-initialized tensor of defined size on device
+    """Create zero tensors on global selected device
+
+    Parameters
+    ----------
+    size : tuple[int, int]
+        size of tensor
+
+    Returns
+    -------
+    torch.Tensor
+        zero-initialized tensor of defined size on global device
     """
     global __global_device
     try:
@@ -60,10 +67,17 @@ def torch_zeros(*size: tuple[int, int], **kwargs) -> torch.Tensor:
 
 
 def torch_ones(*size: tuple[int, int], **kwargs) -> torch.Tensor:
-    """
-    Create zero tensors on selected device
-    :param tuple[int, int] size: size of tensor
-    :returns torch.Tensor: zero-initialized tensor of defined size on device
+    """Create one tensors on global selected device
+
+    Parameters
+    ----------
+    size : tuple[int, int]
+        size of tensor
+
+    Returns
+    -------
+    torch.Tensor
+        one-initialized tensor of defined size on global device
     """
     global __global_device
     try:
@@ -73,17 +87,17 @@ def torch_ones(*size: tuple[int, int], **kwargs) -> torch.Tensor:
 
 
 def activation_fn(fn_name: str) -> nn.Module:
-    """_summary_
+    """Create activation function module by name
 
     Parameters
     ----------
     fn_name : str
-        _description_
+        name of activation function
 
     Returns
     -------
     torch.nn.Module
-        _description_
+        activation function module
     """
     if fn_name is None:
         return nn.Identity()
@@ -169,7 +183,7 @@ def batch_gradient_descent(
     loss_name: str = "loss",
     title: str = "",
 ) -> tuple[list[float], list[float]]:
-    """_summary_
+    """Batch gradient descent implementation
 
     Parameters
     ----------
@@ -246,6 +260,18 @@ def batch_gradient_descent(
 
 
 def DAG_to_pyvis(dag):
+    """Create pyvis graph based on GrowableDAG
+
+    Parameters
+    ----------
+    dag : GrowableDAG
+        growable dag object
+
+    Returns
+    -------
+    _type_
+        pyvis object
+    """
     # nt = Network('500px', '500px', directed=True, notebook=True, cdn_resources='remote')
     nt = Network(directed=True)
 
