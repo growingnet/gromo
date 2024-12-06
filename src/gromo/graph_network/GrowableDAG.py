@@ -295,6 +295,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                         post_addition_function=activation_fn(
                             self.nodes[node].get("activation")
                         ),
+                        batch_norm=attributes.get("use_batch_norm", False),
                         device=self.device,
                         name=f"{node}",
                     ),
