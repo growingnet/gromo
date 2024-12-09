@@ -63,6 +63,9 @@ lines_after_imports = 2
 
 [tool.coverage.run]
 branch = true
+include = [
+    "src/*",
+]
 omit = [
     "**/__init__.py",
     "**/tests/**",
@@ -79,6 +82,7 @@ exclude_also = [
     # Non-runnable code
     "if 0:",
     "if __name__ == .__main__.:",
+    "pass",
 
     # Abstract methods
     "@(abc\\.)?abstractmethod",
