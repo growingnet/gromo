@@ -397,9 +397,9 @@ class GrowingModule(torch.nn.Module):
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
         self._allow_growing = allow_growing
         assert not self._allow_growing or isinstance(
-            next_module, (GrowingModule, AdditionGrowingModule)
+            previous_module, (GrowingModule, AdditionGrowingModule)
         ), (
-            f"to grow next_module must be an instance of GrowingModule"
+            f"to grow previous_module must be an instance of GrowingModule"
             f"or AdditionGrowingModule, but got {type(next_module)}"
         )
 

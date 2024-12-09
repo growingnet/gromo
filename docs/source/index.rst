@@ -12,3 +12,4 @@
    Gallery <auto_examples/index>
    API reference <api>
    Release notes <whats_new>
+   Technical notes <tech_notes>

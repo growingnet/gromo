@@ -55,7 +55,6 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.ifconfig",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.imgmath",
     "sphinx.ext.napoleon",
     "sphinx.ext.linkcode",
     "sphinx.ext.mathjax",
@@ -155,8 +154,8 @@ sphinx_gallery_conf = {
     "gallery_dirs": ["auto_examples"],
     "doc_module": ("gromo"),
     "backreferences_dir": "generated",
-    "show_memory": True,
-    # "reference_url": dict(gromo=None),
+    "show_memory": False,
+    "reference_url": dict(gromo=None),
     "filename_pattern": "(/plot_|/tutorial_)",
     "default_thumb_file": "../images/gromo-small.png",
     "within_subsection_order": FileNameSortKey,
@@ -342,7 +341,11 @@ prolog += """
 prolog += """
 .. |ensp| unicode:: U+2002 .. EN SPACE
 """
+# -- Options for MathJax ---------------------------------------
 
+mathjax_path = (
+    "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+)
 
 # -- Options for manual page output ---------------------------------------
 
