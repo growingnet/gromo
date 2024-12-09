@@ -39,7 +39,7 @@ jobs:
 
       - name: Run tests
         run: |
-          coverage run -m unittest
+          coverage run -m unittest --source=src
           coverage xml
           coverage report -m
 
