@@ -26,7 +26,6 @@ try:
     from utils.profiling import CustomProfile, profile_function  # type: ignore
     from utils.utils import (  # type: ignore
         DAG_to_pyvis,
-        batch_gradient_descent,
         f1_micro,
         global_device,
         line_search,
@@ -39,36 +38,11 @@ except ModuleNotFoundError:
     from gromo.utils.profiling import CustomProfile, profile_function
     from gromo.utils.utils import (
         DAG_to_pyvis,
-        batch_gradient_descent,
         f1_micro,
         global_device,
         line_search,
         mini_batch_gradient_descent,
     )
-
-
-def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
-    """Safe Linear forward function for empty input tensors
-    Resolves bug with shape transformation when using cuda
-
-    Parameters
-    ----------
-    input : torch.Tensor
-        input tensor
-
-    Returns
-    -------
-    torch.Tensor
-        F.linear forward function output
-    """
-    assert (
-        input.shape[1] == self.in_features
-    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
-    if self.in_features == 0:
-        return torch.zeros(
-            input.shape[0], self.out_features, device=global_device(), requires_grad=True
-        )
-    return nn.functional.linear(input, self.weight, self.bias)
 
 
 class GraphGrowingNetwork(torch.nn.Module):
@@ -125,8 +99,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.loss_fn = nn.CrossEntropyLoss()
 
         self.logger = Logger(exp_name, enabled=with_logger)
-        if with_logger:
-            self.logger.setup_tracking()
+        self.logger.setup_tracking()
 
         # sys.stdout = LogFile('temp/memory_profile_log')
 
@@ -137,8 +110,6 @@ class GraphGrowingNetwork(torch.nn.Module):
 
     def init_empty_graph(self) -> None:
         """Create empty DAG with start and end nodes"""
-        # start_module = LinearAdditionGrowingModule(in_features=self.in_features, name="start")
-        # end_module = LinearAdditionGrowingModule(in_features=self.out_features, name="end")
 
         start = "start"
         end = "end"
@@ -539,9 +510,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         tuple[float, float, float, float, list]
             train loss, development loss, train accuracy, development accuracy, bottleneck loss history
         """
-
-        # Enact safe forward for layers with zero in features
-        nn.Linear.forward = safe_forward
 
         node_module = self.dag.get_node_module(node)
         prev_node_modules = self.dag.get_node_modules(prev_nodes)

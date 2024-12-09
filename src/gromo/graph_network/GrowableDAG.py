@@ -30,6 +30,30 @@ except ImportError:
     from gromo.utils.utils import DAG_to_pyvis, activation_fn, global_device
 
 
+def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
+    """Safe Linear forward function for empty input tensors
+    Resolves bug with shape transformation when using cuda
+
+    Parameters
+    ----------
+    input : torch.Tensor
+        input tensor
+
+    Returns
+    -------
+    torch.Tensor
+        F.linear forward function output
+    """
+    assert (
+        input.shape[1] == self.in_features
+    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
+    if self.in_features == 0:
+        return torch.zeros(
+            input.shape[0], self.out_features, device=global_device(), requires_grad=True
+        )
+    return nn.functional.linear(input, self.weight, self.bias)
+
+
 class GrowableDAG(nx.DiGraph, nn.Module):
     def __init__(
         self, DAG_parameters: dict = {}, device: str | None = None, **kwargs
@@ -52,6 +76,9 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         self.update_edges(edges, edge_attributes)
         self.update_connections(edges)
         self.id_last_node_added = np.max(len(node_attributes.keys()) - 2, 0)
+
+        # Enact safe forward for layers with zero in_features
+        nn.Linear.forward = safe_forward
 
     @property
     def nodes(self) -> nx.reportviews.NodeView:
@@ -458,7 +485,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
     def _find_possible_one_hop_connections(
         self,
         successors: Mapping[str, list[str]] | Mapping[str, set[str]],
-        new_node: str,
         size: int = 0,
     ) -> list[dict]:
         """Discover all possible non-existent one-hop links between existing nodes
@@ -467,8 +493,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         ----------
         successors : dict[str, list[str]]
             dictionary with all successors fo nodes
-        new_node : str
-            new node name
         size : int, optional
             size of new node to add, by default 0
 
@@ -526,10 +550,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         direct_edges = self._find_possible_direct_connections(possible_direct_successors)
 
         # Add new nodes
-        new_node = str(self.id_last_node_added + 1)
-        one_hop_edges = self._find_possible_one_hop_connections(
-            possible_successors, new_node
-        )
+        one_hop_edges = self._find_possible_one_hop_connections(possible_successors)
 
         # # Extend existing nodes
         # nodes_set.remove(self.root)
