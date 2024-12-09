@@ -19,6 +19,10 @@ Here is a list of statistics that can be useful:
 - `M prev`: the tensor :math:`M_{-2}` to compute the new weights
 - `cross covariance`: the cross covariance :math:`P` to compute the new weights
 
+
+Intermediate quantities
+------------------------
+
 To compute those statistics we need to access some intermediate quantities:
 
 - :math:`a`: the pre-activation of the layer
@@ -35,6 +39,20 @@ We store those quantities in the `GroMo` module directly. Depending on the situa
     :alt: Where are quantities stored ?
 
 When we link only `GrowingModule` modules together, the quantities are stored in the `GrowingModule` module. When we link `GrowingModule` with `AdditionGrowingModule` the quantities are stored in the `AdditionGrowingModule`.  This is due to the fact that we use the `AdditionGrowingModule` when we connect multiple `GrowingModule` together and we do not want to store the same quantities multiple times. Hence we store them in the `AdditionGrowingModule` and we can access them from the `GrowingModule`. Note that we perform the activation after the addition in the `AdditionGrowingModule` so that we can access the pre-activity of the previous layer as the input of the next layer.
+
+
+Statistical quantities
+------------------------
+
+The computation of all statistic has the same structure.
+
+1. Firstly the statistic is created as an instance of `TensorStatistics`.
+2. Then we use our network to compute intermediate quantities. During this forward pass we store the intermediate quantities as explained above and we set the statistics as not updated. This is sed to ensure that we do not update a statistic multiple times with the same data.
+3. We call the method `update` of the statistic to update it with the intermediate quantities. This includes updating the number of samples seen to compute the current statistic.
+4. We can then access the statistic by calling it (i.e. using `__call__`).
+
+The previously mentioned statistics (`S local`, `M`, `S prev`, `M prev`, `cross covariance`) are transparently accessible in the `GrowingModule`. However they are not necessary stored in the `GrowingModule`. In the case of a `GrowingModule`,  (`M`, `M prev`, `cross covariance`) are computed in the `GrowingModule`. `S local` is computed either in the previous module if it is an `AdditionGrowingModule` or in the `GrowingModule` if it is a `GrowingModule` (this is due to the fact that all next modules of an addition module require the same `S local`). The computation of `S prev` is left to the previous module in any case (this is due to the fact that in the case of fully-connected layers (`nn.Linear`) the `S prev` is exactly the `S local` of the previous module).
+
 
 =====================
 Growing a layer
