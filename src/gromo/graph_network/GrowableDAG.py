@@ -314,15 +314,22 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                 )
             self.nodes[node].update(attributes)
             if self.nodes[node]["type"] == "L":
+                in_features = self.nodes[node]["size"]
+                if attributes.get("use_batch_norm", False):
+                    batch_norm = nn.BatchNorm1d(
+                        in_features, affine=False, device=self.device
+                    )
+                else:
+                    batch_norm = nn.Identity()
                 self.__set_node_module(
                     node,
                     LinearAdditionGrowingModule(
                         allow_growing=True,
-                        in_features=self.nodes[node]["size"],
+                        in_features=in_features,
                         post_addition_function=activation_fn(
                             self.nodes[node].get("activation")
                         ),
-                        batch_norm=attributes.get("use_batch_norm", False),
+                        post_addition_normalization=batch_norm,
                         device=self.device,
                         name=f"{node}",
                     ),
