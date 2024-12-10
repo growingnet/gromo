@@ -24,12 +24,12 @@ try:
     from linear_growing_module import LinearAdditionGrowingModule  # type: ignore
     from utils.logger import Logger  # type: ignore
     from utils.profiling import CustomProfile, profile_function  # type: ignore
-    from utils.utils import (  # type: ignore;
+    from utils.utils import (  # type: ignore
         DAG_to_pyvis,
-        batch_gradient_descent,
         f1_micro,
         global_device,
         line_search,
+        mini_batch_gradient_descent,
     )
 except ModuleNotFoundError:
     from gromo.graph_network.GrowableDAG import GrowableDAG
@@ -38,35 +38,11 @@ except ModuleNotFoundError:
     from gromo.utils.profiling import CustomProfile, profile_function
     from gromo.utils.utils import (
         DAG_to_pyvis,
-        batch_gradient_descent,
         f1_micro,
         global_device,
         line_search,
+        mini_batch_gradient_descent,
     )
-
-
-def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
-    """Safe Linear forward function for empty input tensors
-    Resolves bug with shape transformation when using cuda
-
-    Parameters
-    ----------
-    input : torch.Tensor
-        input tensor
-
-    Returns
-    -------
-    torch.Tensor
-        F.linear forward function output
-    """
-    assert (
-        input.shape[1] == self.in_features
-    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
-    if self.in_features == 0:
-        return torch.zeros(
-            input.shape[0], self.out_features, device=global_device(), requires_grad=True
-        )
-    return nn.functional.linear(input, self.weight, self.bias)
 
 
 class GraphGrowingNetwork(torch.nn.Module):
@@ -113,6 +89,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.use_bias = use_bias
+        self.use_batch_norm = use_batch_norm
         self.neurons = neurons
         self.test_batch_size = test_batch_size
         self.device = device if device else global_device()
@@ -122,8 +99,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.loss_fn = nn.CrossEntropyLoss()
 
         self.logger = Logger(exp_name, enabled=with_logger)
-        if with_logger:
-            self.logger.setup_tracking()
+        self.logger.setup_tracking()
 
         # sys.stdout = LogFile('temp/memory_profile_log')
 
@@ -134,24 +110,20 @@ class GraphGrowingNetwork(torch.nn.Module):
 
     def init_empty_graph(self) -> None:
         """Create empty DAG with start and end nodes"""
-        # start_module = LinearAdditionGrowingModule(in_features=self.in_features, name="start")
-        # end_module = LinearAdditionGrowingModule(in_features=self.out_features, name="end")
 
         start = "start"
         end = "end"
         edges = [(start, end)]
         node_attributes = {
-            # TODO: change to actual modules rather than strings
             start: {
                 "type": "L",  # shows what follows
                 "size": self.in_features,
                 # "activation": "id",
-                # "module": LinearAdditionGrowingModule(in_features=self.in_features, name="start")
             },
             end: {
                 "type": "L",
                 "size": self.out_features,
-                # "use_batch_norm": self.use_batch_norm,
+                "use_batch_norm": self.use_batch_norm,
             },
         }
         edge_attributes = {"type": "L", "use_bias": self.use_bias}
@@ -332,8 +304,9 @@ class GraphGrowingNetwork(torch.nn.Module):
             features and labels of train, development and validation datasets
         """
         split_length = int(len(train_dataset) / 3)
+        residual_len = len(train_dataset) - split_length * 2
         train_dataset, dev_dataset, val_dataset = random_split(
-            train_dataset, (split_length,) * 3, generator
+            train_dataset, (residual_len, split_length, split_length), generator
         )
 
         train_loader = DataLoader(
@@ -457,18 +430,19 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # # TODO FUTURE : try with extended forward, you have to set extended layers on all modules, avoid copying the model
         # new_activity = self.block_forward(alpha, omega, B.T, sigma).T # (batch_size, total_out_features)
-        optimizer = torch.optim.AdamW([alpha, omega, bias], lr=1e-3, weight_decay=0)
-
-        loss_history, _ = batch_gradient_descent(
-            forward_fn=forward_fn,
+        loss_history, _ = mini_batch_gradient_descent(
+            model=forward_fn,
+            parameters=[alpha, omega, bias],
             cost_fn=self.bottleneck_loss,
-            target=bottleneck,
-            optimizer=optimizer,
-            fast=True,
+            X=B,
+            Y=bottleneck,
+            batch_size=256,
+            lrate=1e-3,
             max_epochs=100,
+            fast=True,
             verbose=verbose,
-            loss_name="expected bottleneck",
-            title=f"[Step {self.global_step}] Adding new block",
+            # loss_name="expected bottleneck",
+            # title=f"[Step {self.global_step}] Adding new block",
         )
 
         return loss_history
@@ -537,9 +511,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         tuple[float, float, float, float, list]
             train loss, development loss, train accuracy, development accuracy, bottleneck loss history
         """
-
-        # Enact safe forward for layers with zero in features
-        nn.Linear.forward = safe_forward
 
         node_module = self.dag.get_node_module(node)
         prev_node_modules = self.dag.get_node_modules(prev_nodes)
@@ -748,21 +719,21 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # # Testing
         # weight = torch.nn.init.orthogonal_(weight)
+        forward_fn = lambda activity: nn.functional.linear(activity, weight, bias)
 
-        optimizer = torch.optim.AdamW([weight, bias], lr=1e-3, weight_decay=0)
-
-        forward_fn = lambda: nn.functional.linear(activity, weight, bias)
-
-        loss_history, _ = batch_gradient_descent(
-            forward_fn=forward_fn,
+        loss_history, _ = mini_batch_gradient_descent(
+            model=forward_fn,
+            parameters=[weight, bias],
             cost_fn=self.bottleneck_loss,
-            target=bottleneck,
-            optimizer=optimizer,
-            fast=True,
+            X=activity,
+            Y=bottleneck,
+            batch_size=256,
+            lrate=1e-3,
             max_epochs=100,
+            fast=True,
             verbose=verbose,
-            loss_name="expected bottleneck",
-            title=f"[Step {self.global_step}] Adding direct edge ({prev_node}, {next_node})",
+            # loss_name="expected bottleneck",
+            # title=f"[Step {self.global_step}] Adding direct edge ({prev_node}, {next_node})",
         )
 
         # Record layer extensions
@@ -935,20 +906,17 @@ class GraphGrowingNetwork(torch.nn.Module):
             )
             self.global_epoch += 1
 
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=0)
-        epochs = 500
-
-        loss_history, acc_history = batch_gradient_descent(
-            forward_fn=forward_fn,
+        loss_history, acc_history = mini_batch_gradient_descent(
+            model=self,
             cost_fn=self.loss_fn,
-            target=y,
-            optimizer=optimizer,
+            X=x,
+            Y=y,
+            lrate=lrate,
+            batch_size=256,
             max_epochs=epochs,
             fast=False,
             eval_fn=eval_fn,
             verbose=verbose,
-            loss_name="overall loss",
-            title=f"[Step {self.global_step}] Intermediate training",
         )
 
         # Log intermediate training
@@ -985,6 +953,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         generator: torch.Generator,
         amplitude_factor: bool = True,
         inter_train: bool = True,
+        bic_criterion: bool = False,
         parallel: bool = True,
         verbose: bool = True,
     ) -> None:
@@ -1004,6 +973,8 @@ class GraphGrowingNetwork(torch.nn.Module):
             apply amplitude factor to the new neurons, by default True
         inter_train : bool, optional
             train the network after growth, by default True
+        bic_criterion : bool, optional
+            use BIC to select the network expansion, by default False
         parallel : bool, optional
             take into account parallel layers, by default True
         verbose : bool, optional
@@ -1238,6 +1209,8 @@ class GraphGrowingNetwork(torch.nn.Module):
             gen["acc_train"] = acc_train
             gen["acc_dev"] = acc_dev
             gen["acc_val"] = acc_val
+            gen["nb_params"] = model_copy.dag.count_parameters_all()
+            gen["BIC"] = model_copy.BIC(loss_val, n=len(X_val))
 
             # TEMP: save DAG
             gen["dag"] = model_copy.dag
@@ -1247,11 +1220,10 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # Find option that generates minimum loss
         self.choose_growth_best_action(
-            generations, verbose=verbose
-        )  # TODO: apply best option
+            generations, use_bic=bic_criterion, verbose=verbose
+        )
 
         # Intermediate training
-        # TODO with validation set?
         if inter_train:
             hist_loss_dev, hist_acc_dev, _ = self.inter_training(
                 torch.cat([X_train, X_dev], dim=0),
@@ -1288,7 +1260,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         #     node_module.delete_update()
 
     def choose_growth_best_action(
-        self, options: list[dict], regularization: bool = False, verbose: bool = False
+        self, options: list[dict], use_bic: bool = False, verbose: bool = False
     ) -> None:
         """Choose the growth action with the minimum validation loss greedily
         Log average metrics of the current growth step
@@ -1298,8 +1270,8 @@ class GraphGrowingNetwork(torch.nn.Module):
         ----------
         options : list[dict]
             dictionary with all possible graphs and their statistics
-        regularization : bool, optional
-            take into account the regularization term, by default False
+        use_bic : bool, optional
+            use BIC to select the network expansion, by default False
         verbose : bool, optional
             print info, by default False
         """
@@ -1321,7 +1293,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # Greedy choice based on validation loss
         selection = {}
-        if regularization:
+        if use_bic:
             for index, item in enumerate(options):
                 selection[index] = item["BIC"]
         else:
@@ -1465,6 +1437,25 @@ class GraphGrowingNetwork(torch.nn.Module):
         """
         return self.dag.parameters()
 
+    def BIC(self, loss: float, n: int) -> float:
+        """Bayesian Information Criterion
+        BIC = k*log(n) - 2log(L), where k is the number of parameters
+
+        Parameters
+        ----------
+        loss : float
+            loss of the model
+        n : int
+            number of samples used for training
+
+        Returns
+        -------
+        float
+            BIC score
+        """
+        k = self.dag.count_parameters_all()
+        return k * np.log2(n) - 2 * np.log2(loss)
+
     def evaluate(
         self,
         x: torch.Tensor,
@@ -1517,7 +1508,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         if with_f1score:
             if self.out_features > 1:
-                f1score = f1_micro(y, final_pred)
+                f1score = f1_micro(y.cpu(), final_pred.cpu())
             else:
                 f1score = -1
             return accuracy, loss.item(), f1score

@@ -52,6 +52,10 @@ class TestGrowingModule(TestCase):
         self.model.extended_input_layer = None
 
         # ========== Test with out extension ==========
+        # extended input without extension crashes
+        with self.assertWarns(UserWarning):
+            self.model.extended_forward(self.x, self.x_ext)
+
         self.model.extended_output_layer = self.layer_out_extension
         y, y_sup = self.model.extended_forward(self.x)
         self.assertTrue(torch.equal(y, y_th))
