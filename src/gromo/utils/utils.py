@@ -465,9 +465,9 @@ def calculate_true_positives(
     tuple[float, float, float]
         true positives, false positives, false negatives
     """
-    true_positives = np.sum((actual == label) & (predicted == label))
-    false_positives = np.sum((actual != label) & (predicted == label))
-    false_negatives = np.sum((predicted != label) & (actual == label))
+    true_positives = torch.sum((actual == label) & (predicted == label)).item()
+    false_positives = torch.sum((actual != label) & (predicted == label)).item()
+    false_negatives = torch.sum((predicted != label) & (actual == label)).item()
 
     return true_positives, false_positives, false_negatives
 

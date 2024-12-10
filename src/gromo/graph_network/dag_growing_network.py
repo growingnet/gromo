@@ -1508,7 +1508,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         if with_f1score:
             if self.out_features > 1:
-                f1score = f1_micro(y, final_pred)
+                f1score = f1_micro(y.cpu(), final_pred.cpu())
             else:
                 f1score = -1
             return accuracy, loss.item(), f1score
