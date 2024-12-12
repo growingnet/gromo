@@ -76,5 +76,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          destination_dir: docs/
+          destination_dir: .
           publish_dir: ./docs/build/html
