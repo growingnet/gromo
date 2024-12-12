@@ -303,7 +303,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         tuple
             features and labels of train, development and validation datasets
         """
-        split_length = int(len(train_dataset) / 3)
+        split_length = len(train_dataset) // 3
         residual_len = len(train_dataset) - split_length * 2
         train_dataset, dev_dataset, val_dataset = random_split(
             train_dataset, (residual_len, split_length, split_length), generator
