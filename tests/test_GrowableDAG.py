@@ -413,7 +413,8 @@ class TestGrowableDAG(unittest.TestCase):
         out = x_a.add(x_b[0])
         out = self.dag.get_node_module("end")(out)
 
-        actual_out = self.dag.extended_forward(x)
+        with self.assertWarns(UserWarning):
+            actual_out = self.dag.extended_forward(x)
         assert torch.all(out == actual_out)
 
     def test_safe_forward(self) -> None:

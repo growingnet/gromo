@@ -108,18 +108,19 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         node = "1"
         prev_nodes = ["start"]
         next_nodes = ["end"]
-        self.net.expand_node(
-            node,
-            prev_nodes,
-            next_nodes,
-            self.bottleneck,
-            self.input_B,
-            self.x,
-            self.y,
-            self.x_test,
-            self.y_test,
-            verbose=False,
-        )
+        with self.assertWarns(UserWarning):
+            self.net.expand_node(
+                node,
+                prev_nodes,
+                next_nodes,
+                self.bottleneck,
+                self.input_B,
+                self.x,
+                self.y,
+                self.x_test,
+                self.y_test,
+                verbose=False,
+            )
 
         assert self.net.dag.nodes[node]["size"] == self.net.neurons * 2
         assert self.net.dag.get_edge_module("start", node).in_features == self.in_features
