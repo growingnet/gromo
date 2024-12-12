@@ -236,7 +236,7 @@ def mini_batch_gradient_descent(
     for epoch in range(max_epochs):
         correct, total, epoch_loss = 0, 0, 0
         for x_batch, y_batch in dataloader:
-            optimizer.zero_grad(set_to_none=True)
+            optimizer.zero_grad()
 
             output = model(x_batch)
             loss = cost_fn(output, y_batch)

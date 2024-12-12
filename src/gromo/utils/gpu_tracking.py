@@ -16,12 +16,18 @@ class GpuTracker:
         indices of gpus to track, by default [0]
     interval : int, optional
         time interval between measuring, by default 15
+    country_iso_code : str, optional
+        the country of the cluster in iso code to estimate carbon emissions
     logger : Logger | None, optional
         associated logger to track metrics, by default None
     """
 
     def __init__(
-        self, gpu_index: list[int] = [0], interval: int = 15, logger: Logger | None = None
+        self,
+        gpu_index: list[int] = [0],
+        interval: int = 15,
+        country_iso_code: str = "FRA",
+        logger: Logger | None = None,
     ) -> None:
         self.gpu_index = gpu_index
         self.interval = interval
@@ -32,7 +38,7 @@ class GpuTracker:
             gpu_ids=gpu_index,
             measure_power_secs=interval,
             allow_multiple_runs=True,
-            country_iso_code="FRA",
+            country_iso_code=country_iso_code,
             save_to_file=False,
             logging_logger=None,
             log_level="error",
