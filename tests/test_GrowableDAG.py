@@ -142,10 +142,25 @@ class TestGrowableDAG(unittest.TestCase):
         self.assertIsInstance(
             self.dag.get_node_module(new_node), LinearAdditionGrowingModule
         )
+        self.assertIsInstance(
+            self.dag.get_node_module(new_node).post_addition_normalization,
+            torch.nn.Identity,
+        )
         assert self.dag.get_node_module(new_node)._allow_growing
         assert self.dag.get_node_module(new_node).in_features == self.hidden_size
         assert len(self.dag.get_node_module(new_node).previous_modules) == 0
         assert len(self.dag.get_node_module(new_node).next_modules) == 0
+
+        node_attributes[new_node]["use_batch_norm"] = True
+        self.dag.update_nodes(nodes=[new_node], node_attributes=node_attributes)
+        self.assertIsInstance(
+            self.dag.get_node_module(new_node).post_addition_normalization,
+            torch.nn.BatchNorm1d,
+        )
+        assert (
+            self.dag.get_node_module(new_node).post_addition_normalization.num_features
+            == self.hidden_size
+        )
 
     def test_update_edges(self) -> None:
         self.dag.add_edge("start", "end")
@@ -417,6 +432,44 @@ class TestGrowableDAG(unittest.TestCase):
         assert torch.all(
             linear(x) == torch.nn.functional.linear(x, linear.weight, linear.bias)
         )
+
+    def test_parameters(self) -> None:
+        assert len(list(self.dag.parameters())) == len(self.dag.edges) * 2
+
+        self.dag.add_direct_edge("start", "end")
+        assert len(list(self.dag.parameters())) == len(self.dag.edges) * 2
+
+        self.dag.add_node_with_two_edges(
+            "start", "1", "end", node_attributes=self.single_node_attributes
+        )
+        assert len(list(self.dag.parameters())) == len(self.dag.edges) * 2
+
+    def test_count_parameters_all(self) -> None:
+        assert self.dag.count_parameters_all() == 0
+
+        self.dag.add_direct_edge("start", "end")
+        numel = self.in_features * self.out_features + self.out_features
+        assert self.dag.count_parameters_all() == numel
+
+        self.dag.add_node_with_two_edges(
+            "start", "1", "end", node_attributes=self.single_node_attributes
+        )
+        numel += self.in_features * self.hidden_size + self.hidden_size
+        numel += self.hidden_size * self.out_features + self.out_features
+        assert self.dag.count_parameters_all() == numel
+
+    def test_count_parameters(self) -> None:
+        self.dag.add_direct_edge("start", "end")
+        numel = self.in_features * self.out_features + self.out_features
+        assert self.dag.count_parameters([("start", "end")]) == numel
+
+        self.dag.add_node_with_two_edges(
+            "start", "1", "end", node_attributes=self.single_node_attributes
+        )
+        numel = self.in_features * self.hidden_size + self.hidden_size
+        assert self.dag.count_parameters([("start", "1")]) == numel
+        numel += self.hidden_size * self.out_features + self.out_features
+        assert self.dag.count_parameters([("start", "1"), ("1", "end")]) == numel
 
 
 if __name__ == "__main__":
