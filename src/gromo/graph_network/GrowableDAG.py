@@ -328,7 +328,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                         in_features=in_features,
                         post_addition_function=torch.nn.Sequential(
                             batch_norm,
-                            activation_fn(self.nodes[node].get("activation"),
+                            activation_fn(self.nodes[node].get("activation")),
                         ),
                         device=self.device,
                         name=f"{node}",

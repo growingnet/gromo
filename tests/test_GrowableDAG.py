@@ -143,7 +143,7 @@ class TestGrowableDAG(unittest.TestCase):
             self.dag.get_node_module(new_node), LinearAdditionGrowingModule
         )
         self.assertIsInstance(
-            self.dag.get_node_module(new_node).post_addition_normalization,
+            self.dag.get_node_module(new_node).post_addition_function[0],
             torch.nn.Identity,
         )
         assert self.dag.get_node_module(new_node)._allow_growing
@@ -154,11 +154,11 @@ class TestGrowableDAG(unittest.TestCase):
         node_attributes[new_node]["use_batch_norm"] = True
         self.dag.update_nodes(nodes=[new_node], node_attributes=node_attributes)
         self.assertIsInstance(
-            self.dag.get_node_module(new_node).post_addition_normalization,
+            self.dag.get_node_module(new_node).post_addition_function[0],
             torch.nn.BatchNorm1d,
         )
         assert (
-            self.dag.get_node_module(new_node).post_addition_normalization.num_features
+            self.dag.get_node_module(new_node).post_addition_function[0].num_features
             == self.hidden_size
         )
 
