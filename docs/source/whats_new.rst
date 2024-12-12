@@ -18,7 +18,6 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-- Option for batch normalization in AdditionGrowingModule (:gh:`16` by `Stella Douka`_)
 - Added GPU tracking (:gh:`16` by `Stella Douka`_)
 - Added Bayesian Information Criterion for selecting network expansion (:gh:`16` by `Stella Douka`_)
 - Unified documentation style (:gh:`14` by `Stella Douka`_)
