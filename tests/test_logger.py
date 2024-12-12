@@ -34,10 +34,12 @@ class TestLogger(unittest.TestCase):
         logger.end_run()
 
     def test_activation(self) -> None:
-        logger = Logger("Test", enabled=True)
         if importlib.util.find_spec("mlflow") is None:
+            with self.assertWarns(ImportWarning):
+                logger = Logger("Test", enabled=True)
             assert not logger.enabled
         else:
+            logger = Logger("Test", enabled=True)
             assert logger.enabled
 
 
