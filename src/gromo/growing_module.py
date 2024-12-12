@@ -17,7 +17,6 @@ class AdditionGrowingModule(torch.nn.Module):
     def __init__(
         self,
         post_addition_function: torch.nn.Module = torch.nn.Identity(),
-        post_addition_normalization: torch.nn.Module = torch.nn.Identity(),
         previous_modules: list["AdditionGrowingModule | GrowingModule"] = None,
         next_modules: list["AdditionGrowingModule | GrowingModule"] = None,
         allow_growing: bool = False,
@@ -41,9 +40,6 @@ class AdditionGrowingModule(torch.nn.Module):
         self.post_addition_function: torch.nn.Module = post_addition_function
         if self.post_addition_function:
             self.post_addition_function = self.post_addition_function.to(self.device)
-        self.post_addition_normalization: torch.nn.Module = post_addition_normalization
-        if self.post_addition_normalization:
-            self.post_addition_normalization = self.post_addition_normalization.to(device)
         self._allow_growing = allow_growing
 
         self.store_input = 0
@@ -178,12 +174,8 @@ class AdditionGrowingModule(torch.nn.Module):
             self.input = x
             self.input.retain_grad()
 
-        if x is not None:
-            if self.post_addition_normalization:
-                x = self.post_addition_normalization(x)
-
-            if self.post_addition_function:
-                y = self.post_addition_function(x)
+        if (self.post_addition_function) and (x is not None):
+            y = self.post_addition_function(x)
         else:
             y = x
 

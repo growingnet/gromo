@@ -12,7 +12,6 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
     def __init__(
         self,
         post_addition_function: torch.nn.Module = torch.nn.Identity(),
-        post_addition_normalization: torch.nn.Module = torch.nn.Identity(),
         previous_modules=None,
         next_modules=None,
         allow_growing: bool = False,
@@ -28,7 +27,6 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         # TODO: check if we can automatically get the input shape
         super(LinearAdditionGrowingModule, self).__init__(
             post_addition_function=post_addition_function,
-            post_addition_normalization=post_addition_normalization,
             previous_modules=previous_modules,
             next_modules=next_modules,
             allow_growing=allow_growing,

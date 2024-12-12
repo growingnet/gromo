@@ -326,10 +326,10 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                     LinearAdditionGrowingModule(
                         allow_growing=True,
                         in_features=in_features,
-                        post_addition_function=activation_fn(
-                            self.nodes[node].get("activation")
+                        post_addition_function=torch.nn.Sequential(
+                            batch_norm,
+                            activation_fn(self.nodes[node].get("activation"),
                         ),
-                        post_addition_normalization=batch_norm,
                         device=self.device,
                         name=f"{node}",
                     ),
