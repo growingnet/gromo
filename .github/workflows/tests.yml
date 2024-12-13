@@ -43,17 +43,13 @@ jobs:
           coverage xml
           coverage report -m
 
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
           files: ./coverage.xml
           flags: unittests
           name: codecov-ci-gromo
           verbose: true
-          slug: growingnet/gromo
-          token: ${{ secrets.CODECOV2_TOKEN }}
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV2_TOKEN }}
 
       #  alternative if codecov/codecov-action fails
       # - shell: bash
