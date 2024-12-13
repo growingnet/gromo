@@ -1194,7 +1194,6 @@ class GrowingModule(torch.nn.Module):
         """
         self.optimal_delta_layer = None
         self.extended_input_layer = None
-        self.extended_output_layer = None
         self.scaling_factor = 0.0  # type: ignore
         # this type problem is due to the use of the setter to change the scaling factor
         self.parameter_update_decrease = None
