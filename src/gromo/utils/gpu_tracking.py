@@ -1,8 +1,8 @@
+import warnings
 from types import TracebackType
 from typing import Optional, Self, Type
 
 import numpy as np
-from codecarbon import OfflineEmissionsTracker
 
 from gromo.utils.logger import Logger
 
@@ -44,22 +44,26 @@ class GpuTracker:
         self.gpu_index = gpu_index
         self.interval = interval
         self._logger = logger
-        # self.tracking = False
         # self.thread = None
-        self._tracker = OfflineEmissionsTracker(
-            gpu_ids=gpu_index,
-            measure_power_secs=interval,
-            allow_multiple_runs=True,
-            country_iso_code=country_iso_code,
-            save_to_file=False,
-            logging_logger=None,
-            log_level="error",
-        )
-        self.gpu_metrics = {}
+
+        self.__import_module()
+
+        if self.tracking:
+            self._tracker = codecarbon.OfflineEmissionsTracker(
+                gpu_ids=gpu_index,
+                measure_power_secs=interval,
+                allow_multiple_runs=True,
+                country_iso_code=country_iso_code,
+                save_to_file=False,
+                logging_logger=None,
+                log_level="error",
+            )
+            self.gpu_metrics = {}
 
     def __enter__(self) -> Self:
-        self._tracker.start()
-        return self
+        if self.tracking:
+            self._tracker.start()
+            return self
 
     def __exit__(
         self,
@@ -68,16 +72,27 @@ class GpuTracker:
         exc_tb: Optional[TracebackType],
     ) -> None:
         """Stop tracking power usage when exiting the context."""
-        self._tracker.stop()
-        self.gpu_metrics = self._tracker.final_emissions_data.__dict__
-        self.gpu_metrics["total_power"] = np.sum(
-            [hardware.total_power().kW * 1000 for hardware in self._tracker._hardware]
-        )
-        if self._logger is not None:
-            for key, value in self.gpu_metrics.items():
-                if key in ["timestamp", "project_name", "run_id", "experiment_id"]:
-                    continue
-                if not isinstance(value, (int, float)):
-                    self._logger.log_parameter(key, str(value))
-                else:
-                    self._logger.save_metric(name=f"codecarbon/{key}", value=value)
+        if self.tracking:
+            self._tracker.stop()
+            self.gpu_metrics = self._tracker.final_emissions_data.__dict__
+            self.gpu_metrics["total_power"] = np.sum(
+                [hardware.total_power().kW * 1000 for hardware in self._tracker._hardware]
+            )
+            if self._logger is not None:
+                for key, value in self.gpu_metrics.items():
+                    if key in ["timestamp", "project_name", "run_id", "experiment_id"]:
+                        continue
+                    if not isinstance(value, (int, float)):
+                        self._logger.log_parameter(key, str(value))
+                    else:
+                        self._logger.save_metric(name=f"codecarbon/{key}", value=value)
+
+    def __import_module(self) -> None:
+        try:
+            global codecarbon
+            import codecarbon
+
+            self.tracking = True
+        except ImportError as err:
+            warnings.warn(f"{err}. Energy tracking will be skipped.", ImportWarning)
+            self.tracking = False

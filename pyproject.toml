@@ -44,6 +44,7 @@ doc = [
     "sphinx-favicon",
     "tqdm",
 ]
+energy = ["codecarbon"]
 
 [build-system]
 requires = ["hatchling"]
