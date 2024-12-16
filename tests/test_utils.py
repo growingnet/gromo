@@ -9,41 +9,41 @@ from gromo.utils.utils import *
 class TestUtils(unittest.TestCase):
     def test_set_device(self) -> None:
         if torch.cuda.is_available():
-            assert global_device() == torch.device("cuda")
+            self.assertEqual(global_device(), torch.device("cuda"))
         else:
-            assert global_device() == torch.device("cpu")
+            self.assertEqual(global_device(), torch.device("cpu"))
         set_device("cuda")
-        assert global_device() == torch.device("cuda")
+        self.assertEqual(global_device(), torch.device("cuda"))
         set_device("cpu")
-        assert global_device() == torch.device("cpu")
+        self.assertEqual(global_device(), torch.device("cpu"))
         set_device(torch.device("cuda"))
-        assert global_device() == torch.device("cuda")
+        self.assertEqual(global_device(), torch.device("cuda"))
         set_device(torch.device("cpu"))
-        assert global_device() == torch.device("cpu")
+        self.assertEqual(global_device(), torch.device("cpu"))
 
     def test_torch_zeros(self) -> None:
         size = (random.randint(1, 10), random.randint(1, 10))
         tensor = torch_zeros(size)
         tensor_device = torch.device("cuda" if tensor.is_cuda else "cpu")
-        assert tensor_device == global_device()
-        assert tensor.shape == size
-        assert torch.all(tensor == 0)
+        self.assertEqual(tensor_device, global_device())
+        self.assertEqual(tensor.shape, size)
+        self.assertTrue(torch.all(tensor == 0))
 
     def test_torch_ones(self) -> None:
         size = (random.randint(1, 10), random.randint(1, 10))
         tensor = torch_ones(size)
         tensor_device = torch.device("cuda" if tensor.is_cuda else "cpu")
-        assert tensor_device == global_device()
-        assert tensor.shape == size
-        assert torch.all(tensor == 1)
+        self.assertEqual(tensor_device, global_device())
+        self.assertEqual(tensor.shape, size)
+        self.assertTrue(torch.all(tensor == 1))
 
     def test_activation_fn(self) -> None:
-        assert isinstance(activation_fn(None), nn.Identity)
-        assert isinstance(activation_fn("Id"), nn.Identity)
-        assert isinstance(activation_fn("Test"), nn.Identity)
-        assert isinstance(activation_fn("Softmax"), nn.Softmax)
-        assert isinstance(activation_fn("SELU"), nn.SELU)
-        assert isinstance(activation_fn("RELU"), nn.ReLU)
+        self.assertIsInstance(activation_fn(None), nn.Identity)
+        self.assertIsInstance(activation_fn("Id"), nn.Identity)
+        self.assertIsInstance(activation_fn("Test"), nn.Identity)
+        self.assertIsInstance(activation_fn("Softmax"), nn.Softmax)
+        self.assertIsInstance(activation_fn("SELU"), nn.SELU)
+        self.assertIsInstance(activation_fn("RELU"), nn.ReLU)
 
     def test_mini_batch_gradient_descent(self) -> None:
         callable_forward = lambda x: x**2 + 1

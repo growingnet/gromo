@@ -51,19 +51,19 @@ class TestGraphGrowingNetwork(unittest.TestCase):
 
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
-        assert len(self.net.dag.nodes) == 2
-        assert len(self.net.dag.edges) == 0
-        assert "start" in self.net.dag.nodes
-        assert "end" in self.net.dag.nodes
-        assert self.net.dag.in_degree("start") == 0
-        assert self.net.dag.out_degree("start") == 0
-        assert self.net.dag.in_degree("end") == 0
-        assert self.net.dag.out_degree("end") == 0
-        assert self.net.dag.nodes["start"]["size"] == self.in_features
-        assert self.net.dag.nodes["end"]["size"] == self.out_features
-        assert self.net.dag.nodes["start"]["type"] == "L"
-        assert self.net.dag.nodes["end"]["type"] == "L"
-        assert self.net.dag.nodes["end"]["use_batch_norm"] is False
+        self.assertEqual(len(self.net.dag.nodes), 2)
+        self.assertEqual(len(self.net.dag.edges), 0)
+        self.assertIn("start", self.net.dag.nodes)
+        self.assertIn("end", self.net.dag.nodes)
+        self.assertEqual(self.net.dag.in_degree("start"), 0)
+        self.assertEqual(self.net.dag.out_degree("start"), 0)
+        self.assertEqual(self.net.dag.in_degree("end"), 0)
+        self.assertEqual(self.net.dag.out_degree("end"), 0)
+        self.assertEqual(self.net.dag.nodes["start"]["size"], self.in_features)
+        self.assertEqual(self.net.dag.nodes["end"]["size"], self.out_features)
+        self.assertEqual(self.net.dag.nodes["start"]["type"], "L")
+        self.assertEqual(self.net.dag.nodes["end"]["type"], "L")
+        self.assertFalse(self.net.dag.nodes["end"]["use_batch_norm"])
 
     def test_growth_history_step(self) -> None:
         self.net.growth_history_step(
@@ -72,14 +72,18 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         )
 
         for edge in self.net.dag.edges:
-            assert str(edge) in self.net.growth_history[self.net.global_step]
-        assert self.net.growth_history[self.net.global_step][str(("start", "1"))] == 2
-        assert self.net.growth_history[self.net.global_step][str(("1", "end"))] == 2
-        assert self.net.growth_history[self.net.global_step]["1"] == 0
+            self.assertIn(str(edge), self.net.growth_history[self.net.global_step])
+        self.assertEqual(
+            self.net.growth_history[self.net.global_step][str(("start", "1"))], 2
+        )
+        self.assertEqual(
+            self.net.growth_history[self.net.global_step][str(("1", "end"))], 2
+        )
+        self.assertEqual(self.net.growth_history[self.net.global_step]["1"], 0)
 
         self.net.growth_history_step(nodes_added=["1", "2"])
-        assert self.net.growth_history[self.net.global_step]["1"] == 2
-        assert "2" not in self.net.growth_history[self.net.global_step]
+        self.assertEqual(self.net.growth_history[self.net.global_step]["1"], 2)
+        self.assertNotIn("2", self.net.growth_history[self.net.global_step])
 
     def test_setup_train_datasets(self) -> None:
         dataset = torch.utils.data.TensorDataset(self.x, self.y)
@@ -91,18 +95,18 @@ class TestGraphGrowingNetwork(unittest.TestCase):
             dataset, torch.Generator()
         )
 
-        assert X_train.shape == (train_len, self.in_features)
-        assert Y_train.shape == (train_len,)
-        assert X_train.device.type == global_device_type
-        assert Y_train.device.type == global_device_type
-        assert X_dev.shape == (dev_len, self.in_features)
-        assert Y_dev.shape == (dev_len,)
-        assert X_dev.device.type == global_device_type
-        assert Y_dev.device.type == global_device_type
-        assert X_val.shape == (dev_len, self.in_features)
-        assert Y_val.shape == (dev_len,)
-        assert X_val.device.type == global_device_type
-        assert Y_val.device.type == global_device_type
+        self.assertEqual(X_train.shape, (train_len, self.in_features))
+        self.assertEqual(Y_train.shape, (train_len,))
+        self.assertEqual(X_train.device.type, global_device_type)
+        self.assertEqual(Y_train.device.type, global_device_type)
+        self.assertEqual(X_dev.shape, (dev_len, self.in_features))
+        self.assertEqual(Y_dev.shape, (dev_len,))
+        self.assertEqual(X_dev.device.type, global_device_type)
+        self.assertEqual(Y_dev.device.type, global_device_type)
+        self.assertEqual(X_val.shape, (dev_len, self.in_features))
+        self.assertEqual(Y_val.shape, (dev_len,))
+        self.assertEqual(X_val.device.type, global_device_type)
+        self.assertEqual(Y_val.device.type, global_device_type)
 
     def test_expand_node(self) -> None:
         node = "1"
@@ -122,16 +126,19 @@ class TestGraphGrowingNetwork(unittest.TestCase):
                 verbose=False,
             )
 
-        assert self.net.dag.nodes[node]["size"] == self.net.neurons * 2
-        assert self.net.dag.get_edge_module("start", node).in_features == self.in_features
-        assert (
-            self.net.dag.get_edge_module("start", node).out_features
-            == self.net.neurons * 2
+        self.assertEqual(self.net.dag.nodes[node]["size"], self.net.neurons * 2)
+        self.assertEqual(
+            self.net.dag.get_edge_module("start", node).in_features, self.in_features
         )
-        assert (
-            self.net.dag.get_edge_module(node, "end").in_features == self.net.neurons * 2
+        self.assertEqual(
+            self.net.dag.get_edge_module("start", node).out_features, self.net.neurons * 2
         )
-        assert self.net.dag.get_edge_module(node, "end").out_features == self.out_features
+        self.assertEqual(
+            self.net.dag.get_edge_module(node, "end").in_features, self.net.neurons * 2
+        )
+        self.assertEqual(
+            self.net.dag.get_edge_module(node, "end").out_features, self.out_features
+        )
 
         # self.net.expand_node(
         #     node,
@@ -168,23 +175,23 @@ class TestGraphGrowingNetwork(unittest.TestCase):
             verbose=False,
         )
 
-        assert len(self.net.dag.edges) == 3
-        assert (prev_node, next_node) in self.net.dag.edges
-        assert self.net.dag.nodes[prev_node]["size"] == self.in_features
-        assert self.net.dag.nodes[next_node]["size"] == self.out_features
-        assert self.net.dag.out_degree(prev_node) == 2
-        assert self.net.dag.in_degree(next_node) == 2
-        assert (
-            self.net.dag.get_edge_module(prev_node, next_node).in_features
-            == self.in_features
+        self.assertEqual(len(self.net.dag.edges), 3)
+        self.assertIn((prev_node, next_node), self.net.dag.edges)
+        self.assertEqual(self.net.dag.nodes[prev_node]["size"], self.in_features)
+        self.assertEqual(self.net.dag.nodes[next_node]["size"], self.out_features)
+        self.assertEqual(self.net.dag.out_degree(prev_node), 2)
+        self.assertEqual(self.net.dag.in_degree(next_node), 2)
+        self.assertEqual(
+            self.net.dag.get_edge_module(prev_node, next_node).in_features,
+            self.in_features,
         )
-        assert (
-            self.net.dag.get_edge_module(prev_node, next_node).out_features
-            == self.out_features
+        self.assertEqual(
+            self.net.dag.get_edge_module(prev_node, next_node).out_features,
+            self.out_features,
         )
 
         # activity = torch.matmul(self.x, edge_module.weight.T) + edge_module.bias
-        assert torch.all(edge_module.weight != prev_weight)
+        self.assertTrue(torch.all(edge_module.weight != prev_weight))
 
     def test_find_amplitude_factor(self) -> None:
         pass
@@ -221,14 +228,14 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         # print(f"{extended_pred=}")
 
         # factor = self.net.find_input_amplitude_factor(self.x, self.y, node_module)
-        # assert factor != 0.0
-        # assert factor != 1.0
+        # self.assertNotEqual(factor, 0.0)
+        # self.assertNotEqual(factor, 1.0)
 
         # factor = self.net.find_input_amplitude_factor(self.x, pred, node_module)
-        # assert factor == 0.0
+        # self.assertEqual(factor, 0.0)
 
         # # factor = self.net.find_input_amplitude_factor(self.x, extended_pred, node_module)
-        # # assert factor == 1.0
+        # # self.assertEqual(factor, 1.0)
 
     def test_inter_training(self) -> None:
         pass
@@ -263,10 +270,10 @@ class TestGraphGrowingNetwork(unittest.TestCase):
                 min_index_bic = i
 
         self.net.choose_growth_best_action(options, use_bic=False)
-        assert self.net.growth_history == min_index
+        self.assertEqual(self.net.growth_history, min_index)
 
         self.net.choose_growth_best_action(options, use_bic=True)
-        assert self.net.growth_history == min_index_bic
+        self.assertEqual(self.net.growth_history, min_index_bic)
 
 
 if __name__ == "__main__":
