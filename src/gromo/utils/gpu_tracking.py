@@ -20,6 +20,18 @@ class GpuTracker:
         the country of the cluster in iso code to estimate carbon emissions
     logger : Logger | None, optional
         associated logger to track metrics, by default None
+
+
+    Example usage: Tracking power usage continuously for a code block
+    .. code-block:: python
+        with GpuTracker(gpu_index=[0], interval=1) as tracker:
+            # Simulate long-running code (e.g., training or other tasks)
+            for i in range(5):
+                print(f"Running task step {i + 1}...")
+                time.sleep(1)  # Simulate work
+
+        print(tracker.gpu_metrics)
+
     """
 
     def __init__(
@@ -69,18 +81,3 @@ class GpuTracker:
                     self._logger.log_parameter(key, str(value))
                 else:
                     self._logger.save_metric(name=f"codecarbon/{key}", value=value)
-
-    # @property
-    # def gpu_power(self):
-    #     return self.gpu_metrics["gpu_power"]
-
-
-# # Example usage: Tracking power usage continuously for a code block
-# if __name__ == "__main__":
-#     with GpuTracker(gpu_index=[0], interval=1) as tracker:
-#         # Simulate long-running code (e.g., training or other tasks)
-#         for i in range(5):
-#             print(f"Running task step {i + 1}...")
-#             time.sleep(1)  # Simulate work
-
-#     print(tracker.gpu_metrics)
