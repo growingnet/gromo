@@ -22,15 +22,16 @@ class GpuTracker:
         associated logger to track metrics, by default None
 
     Attributes
-    -----------------
-    tracking: bool
+    ----------
+    tracking : bool
         Define if tracker is activated
 
-    _tracker: Tracker
+    _tracker : Tracker
         Tracker used to monitor GPU
 
-    gpu_metrics: dict
+    gpu_metrics : dict
         Metrics returned by logger
+
     Example usage: Tracking power usage continuously for a code block
     .. code-block:: python
         with GpuTracker(gpu_index=[0], interval=1) as tracker:

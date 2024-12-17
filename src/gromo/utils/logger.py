@@ -18,6 +18,11 @@ class Logger:
         name of logging server module, by default "mlflow"
     enabled : bool, optional
         enable logging, by default True
+
+    Attributes
+    ----------
+    metrics : dict
+        metrics temporarily saved in the logger
     """
 
     def __init__(
