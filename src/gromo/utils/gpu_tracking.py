@@ -21,7 +21,16 @@ class GpuTracker:
     logger : Logger | None, optional
         associated logger to track metrics, by default None
 
+    Attributes
+    -----------------
+    tracking: bool
+        Define if tracker is activated
 
+    _tracker: Tracker
+        Tracker used to monitor GPU
+
+    gpu_metrics: dict
+        Metrics returned by logger
     Example usage: Tracking power usage continuously for a code block
     .. code-block:: python
         with GpuTracker(gpu_index=[0], interval=1) as tracker:
@@ -45,8 +54,7 @@ class GpuTracker:
         self.interval = interval
         self._logger = logger
         # self.thread = None
-
-        self.__import_module()
+        self.tracking = self.__import_module()
 
         if self.tracking:
             self._tracker = codecarbon.OfflineEmissionsTracker(
@@ -87,12 +95,14 @@ class GpuTracker:
                     else:
                         self._logger.save_metric(name=f"codecarbon/{key}", value=value)
 
-    def __import_module(self) -> None:
+    def __import_module(self) -> bool:
         try:
             global codecarbon
             import codecarbon
 
-            self.tracking = True
+            tracking = True
         except ImportError as err:
             warnings.warn(f"{err}. Energy tracking will be skipped.", ImportWarning)
-            self.tracking = False
+            tracking = False
+
+        return tracking
