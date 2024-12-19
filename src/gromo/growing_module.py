@@ -459,6 +459,13 @@ class GrowingModule(torch.nn.Module):
             name=f"C({name})",
         )
 
+        self.tensor_s_growth = TensorStatistic(
+            None,
+            update_function=self.compute_s_growth_update,
+            device=self.device,
+            name=f"S_growth({name})",
+        )
+
     # Information functions
     @property
     def weight(self):
@@ -598,6 +605,7 @@ class GrowingModule(torch.nn.Module):
         self.tensor_m.updated = False
         self.tensor_m_prev.updated = False
         self.cross_covariance.updated = False
+        self.tensor_s_growth.updated = False
 
         if self._internal_store_input:
             self._input = x.detach()
@@ -817,6 +825,19 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             update of the tensor C
+        int
+            number of samples used to compute the update
+        """
+        raise NotImplementedError
+
+    def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor S_growth.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor S_growth
         int
             number of samples used to compute the update
         """
@@ -1158,6 +1179,7 @@ class GrowingModule(torch.nn.Module):
         self.store_pre_activity = True
         self.tensor_s.init()
         self.tensor_m.init()
+        self.tensor_s_growth.init()
         if self.previous_module is None:
             return
         elif isinstance(self.previous_module, GrowingModule):
@@ -1179,6 +1201,7 @@ class GrowingModule(torch.nn.Module):
         self.tensor_m.reset()
         self.tensor_m_prev.reset()
         self.cross_covariance.reset()
+        self.tensor_s_growth.reset()
 
     def delete_update(
         self,
@@ -1280,6 +1303,7 @@ class GrowingModule(torch.nn.Module):
         """
         self.tensor_s.update()
         self.tensor_m.update()
+        self.tensor_s_growth.update()
         if self.previous_module is None:
             return
         elif isinstance(self.previous_module, GrowingModule):

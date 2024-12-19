@@ -559,6 +559,20 @@ class LinearGrowingModule(GrowingModule):
             raise TypeError("The next module must be a LinearGrowingModule.")
 
     @property
+    def tensor_s_growth(self):
+        """
+        Supercharge tensor_s_growth to redirect to the normal tensor_s as it is the same for Linear layers.
+        """
+        return self.tensor_s
+
+    @tensor_s_growth.setter
+    def tensor_s_growth(self, value) -> None:
+        """
+        Allow to set the tensor_s_growth but has no effect.
+        """
+        return
+
+    @property
     def tensor_n(self) -> torch.Tensor:
         """
         Compute the tensor N for the layer with the current M_-2, P and optimal delta.
@@ -854,6 +868,9 @@ class LinearGrowingModule(GrowingModule):
             if True update the optimal delta layer attribute
         dtype: torch.dtype
             dtype for S and M during the computation
+        force_pseudo_inverse: bool
+            if True, use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible
 
         Returns
         -------
@@ -958,7 +975,7 @@ class LinearGrowingModule(GrowingModule):
             f"No previous module for {self.name}."
             "Therefore neuron addition is not possible."
         )
-        matrix_s = self.previous_module.tensor_s()
+        matrix_s = self.previous_module.tensor_s_growth()
 
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)
