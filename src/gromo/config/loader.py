@@ -87,8 +87,7 @@ def _find_pyproject_toml(path_project_root: Path) -> Optional[str]:
 
 def _find_project_config(path_project_root: Path) -> dict:
     path_config_file = path_project_root / "gromo.config"
-    # parser = configparser.RawConfigParser()
-    # return parser.read(path_config_file)
+
     if path_config_file.is_file():
         return _load_toml(path_config_file)
     return {}
