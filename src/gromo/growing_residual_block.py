@@ -195,6 +195,7 @@ class GrowingResidualBlock(torch.nn.Module):
         """
         Delete the update of the block.
         """
+        # self.first_layer.delete_update()
         self.second_layer.delete_update(include_previous=True)
 
     def compute_optimal_updates(
@@ -339,8 +340,8 @@ if __name__ == "__main__":
         print(f'Epoch {epoch}, Training Loss: {training_loss}')
 
     # Training loss after training
-    training_loss_after = evaluate(block, dataset)
-    print(f'Training Loss after training: {training_loss_after}')
+    loss = evaluate(block, dataset)
+    print(f'Training Loss after training: {loss}')
 
     # Gathering growing statistics
     statistics_loss = compute_statistics(block, dataset)
@@ -349,7 +350,6 @@ if __name__ == "__main__":
     # Compute the optimal update
     keep_neurons = 1
     block.compute_optimal_updates(maximum_added_neurons=keep_neurons)
-
     print(block.eigenvalues)
 
     # Training loss with the change
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     loss_with_extension = evaluate_with_extension(block, dataset, scaling_factor)
     print(f'Training Loss with the change: {loss_with_extension}')
     print(f'First order improvement: {block.first_order_improvement / (batch_size * num_batch)}')
-    print(f'Zero-th order improvement: {training_loss_after - loss_with_extension}')
+    print(f'Zero-th order improvement: {loss - loss_with_extension}')
 
     # Apply the change
     print('Apply the change')
@@ -369,9 +369,9 @@ if __name__ == "__main__":
     block.reset_computation()
 
     # Training loss after the change
-    training_loss_after_change = evaluate(block, dataset)
-    print(f'Training Loss after the change: {training_loss_after_change}')
-    print(f'Zero-th order improvement: {training_loss_after - training_loss_after_change}')
+    loss_after_change = evaluate(block, dataset)
+    print(f'Training Loss after the change: {loss_after_change}')
+    print(f'Zero-th order improvement: {loss - loss_after_change}')
 
     print(block)
 
@@ -383,10 +383,10 @@ if __name__ == "__main__":
     # Assert the two values are "close enough" within the tolerance
     assert torch.isclose(
         loss_with_extension,
-        training_loss_after_change,
+        loss_after_change,
         atol=tolerance
     ), (
         f"Loss with extension ({loss_with_extension}) "
-        f"and training loss after change ({training_loss_after_change}) "
-        f"are not close enough. (Absolute difference: {torch.abs(loss_with_extension - training_loss_after_change)})"
+        f"and training loss after change ({loss_after_change}) "
+        f"are not close enough. (Absolute difference: {torch.abs(loss_with_extension - loss_after_change)})"
     )
