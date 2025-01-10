@@ -19,6 +19,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Reduce unit tests computational load, add parametrized unit tests (:gh:`46` by `Sylvain Chevallier`_)
+- Add the possibly to separate S for natural gradient and S for new weights (:gh:`33` by `Théo Rudkiewicz`_)
 - Added GPU tracking (:gh:`16` by `Stella Douka`_)
 - Added Bayesian Information Criterion for selecting network expansion (:gh:`16` by `Stella Douka`_)
 - Unified documentation style (:gh:`14` by `Stella Douka`_)

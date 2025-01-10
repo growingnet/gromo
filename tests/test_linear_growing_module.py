@@ -632,10 +632,8 @@ class TestLinearGrowingModule(TorchTestCase):
             with self.subTest(bias=bias):
                 demo_layers = self.demo_layers[bias]
                 demo_layers[0].store_input = True
-                # For the future
-                # demo_layers[1].tensor_s_growth.init()
-                demo_layers[0].tensor_s.init()
                 demo_layers[1].init_computation()
+                demo_layers[1].tensor_s_growth.init()
 
                 y = demo_layers[0](self.input_x)
                 y = demo_layers[1](y)
@@ -643,9 +641,7 @@ class TestLinearGrowingModule(TorchTestCase):
                 loss.backward()
 
                 demo_layers[1].update_computation()
-                # For the future
-                # demo_layers[1].tensor_s_growth.update()
-                demo_layers[0].tensor_s.update()
+                demo_layers[1].tensor_s_growth.update()
 
                 demo_layers[1].compute_optimal_delta()
                 alpha, alpha_b, omega, eigenvalues = demo_layers[
@@ -684,6 +680,34 @@ class TestLinearGrowingModule(TorchTestCase):
                 self.assertEqual(demo_layers[1].eigenvalues_extension.shape[0], 2)
                 self.assertEqual(demo_layers[1].extended_input_layer.in_features, 2)
                 self.assertEqual(demo_layers[0].extended_output_layer.out_features, 2)
+
+    def test_tensor_s_growth(self):
+        for bias in (True, False):
+            with self.subTest(bias=bias):
+                demo_layers = self.demo_layers[bias]
+                demo_layers[0].store_input = True
+                demo_layers[1].tensor_s_growth.init()
+
+                y = demo_layers[0](self.input_x)
+                y = demo_layers[1](y)
+                loss = torch.norm(y)
+                loss.backward()
+
+                demo_layers[1].tensor_s_growth.update()
+
+                self.assertEqual(
+                    demo_layers[1].tensor_s_growth.samples,
+                    self.input_x.size(0),
+                )
+                s = demo_layers[0].in_features + demo_layers[0].use_bias
+                self.assertShapeEqual(demo_layers[1].tensor_s_growth(), (s, s))
+
+    def test_tensor_s_growth_errors(self):
+        with self.assertRaises(AttributeError):
+            self.demo_layers[True][1].tensor_s_growth = 1
+
+        with self.assertRaises(ValueError):
+            _ = self.demo_layers[True][0].tensor_s_growth
 
 
 if __name__ == "__main__":

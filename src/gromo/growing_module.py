@@ -361,21 +361,57 @@ class GrowingModule(torch.nn.Module):
     def __init__(
         self,
         layer: torch.nn.Module,
-        tensor_s_shape: tuple[int, int],
-        tensor_m_shape: tuple[int, int],
+        tensor_s_shape: tuple[int, int] | None = None,
+        tensor_m_shape: tuple[int, int] | None = None,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
         allow_growing: bool = True,
         previous_module: torch.nn.Module | None = None,
         next_module: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str | None = None,
+        s_growth_is_needed: bool = True,
     ) -> None:
-        assert len(tensor_s_shape) == 2, "The shape of the tensor S must be 2D."
-        assert tensor_s_shape[0] == tensor_s_shape[1], "The tensor S must be square."
-        assert tensor_s_shape[0] == tensor_m_shape[0], (
-            f"The input matrices S and M must have compatible shapes."
-            f"(got {tensor_s_shape=} and {tensor_m_shape=})"
-        )
+        """
+        Initialize a GrowingModule.
+
+        Parameters
+        ----------
+        layer: torch.nn.Module
+            layer of the module
+        tensor_s_shape: tuple[int, int] | None
+            shape of the tensor S
+        tensor_m_shape: tuple[int, int] | None
+            shape of the tensor M
+        post_layer_function: torch.nn.Module
+            function to apply after the layer
+        allow_growing: bool
+            if True, the module can grow (require a previous GrowingModule)
+        previous_module: torch.nn.Module | None
+            previous module
+        next_module: torch.nn.Module | None
+            next module
+        device: torch.device | None
+            device to use
+        name: str | None
+            name of the module
+        s_growth_is_needed: bool
+            if True, the tensor S growth is needed, otherwise it is not computed
+            (this used for example in the case of linear layers where S = S growth)
+        """
+        if tensor_s_shape is None:
+            warnings.warn(
+                "The tensor S shape is not provided."
+                "It will automatically be determined but we encourage to provide it.",
+                UserWarning,
+            )
+        else:
+            assert len(tensor_s_shape) == 2, "The shape of the tensor S must be 2D."
+            assert tensor_s_shape[0] == tensor_s_shape[1], "The tensor S must be square."
+            if tensor_m_shape is not None:
+                assert tensor_s_shape[0] == tensor_m_shape[0], (
+                    f"The input matrices S and M must have compatible shapes."
+                    f"(got {tensor_s_shape=} and {tensor_m_shape=})"
+                )
 
         super(GrowingModule, self).__init__()
         self._name = name
@@ -458,6 +494,15 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"C({name})",
         )
+
+        self.s_growth_is_needed = s_growth_is_needed
+        if s_growth_is_needed:
+            self.tensor_s_growth = TensorStatistic(
+                None,
+                update_function=self.compute_s_growth_update,
+                device=self.device,
+                name=f"S_growth({name})",
+            )
 
     # Information functions
     @property
@@ -598,6 +643,8 @@ class GrowingModule(torch.nn.Module):
         self.tensor_m.updated = False
         self.tensor_m_prev.updated = False
         self.cross_covariance.updated = False
+        if self.s_growth_is_needed:
+            self.tensor_s_growth.updated = False
 
         if self._internal_store_input:
             self._input = x.detach()
@@ -817,6 +864,19 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             update of the tensor C
+        int
+            number of samples used to compute the update
+        """
+        raise NotImplementedError
+
+    def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor S_growth.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor S_growth
         int
             number of samples used to compute the update
         """
