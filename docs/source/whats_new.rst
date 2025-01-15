@@ -31,6 +31,7 @@ Bugs
 ~~~~
 
 - Fix the sub-selection of added neurons in the sequential case (:gh:`41` by `Théo Rudkiewicz`_)
+- Correct codecov upload (:gh:`49` by `Sylvain Chevallier`_)
 
 API changes
 ~~~~~~~~~~~
