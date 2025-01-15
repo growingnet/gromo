@@ -5,6 +5,8 @@ import torch
 
 from gromo.utils.utils import *
 
+from .unittest_tools import unittest_parametrize
+
 
 class TestUtils(unittest.TestCase):
     def test_set_device(self) -> None:
@@ -95,3 +97,26 @@ class TestUtils(unittest.TestCase):
             eval_fn=eval_fn,
             verbose=False,
         )
+
+    @unittest_parametrize([{"verbose": True}, {"verbose": False}])
+    def test_batch_gradient_descent(self, verbose) -> None:
+        callable_forward = lambda x: x**2 + 1
+        cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)
+        y = torch.rand((5, 1), device=global_device())
+        optimizer = torch.optim.Adam()
+        lrate = 1e-3
+        epochs = 20
+        batch_size = 8
+        with self.assertRaises(AttributeError):
+            batch_gradient_descent(
+                callable_forward, cost_fn, y, optimizer, epochs, verbose=verbose
+            )
+            batch_gradient_descent(
+                callable_forward,
+                cost_fn,
+                y,
+                optimizer,
+                epochs,
+                fast=False,
+                verbose=verbose,
+            )
