@@ -50,6 +50,9 @@ jobs:
           flags: unittests
           name: codecov-ci-gromo
           verbose: true
+          token: ${{ secrets.CODECOV2_TOKEN }}
+        # env:
+        #   CODECOV_TOKEN: ${{ secrets.CODECOV2_TOKEN }}
 
       #  alternative if codecov/codecov-action fails
       # - shell: bash
