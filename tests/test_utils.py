@@ -102,8 +102,9 @@ class TestUtils(unittest.TestCase):
     def test_batch_gradient_descent(self, verbose) -> None:
         callable_forward = lambda x: x**2 + 1
         cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)
+        x = torch.rand((5, 2), requires_grad=True, device=global_device())
         y = torch.rand((5, 1), device=global_device())
-        optimizer = torch.optim.Adam()
+        optimizer = torch.optim.Adam([x])
         lrate = 1e-3
         epochs = 20
         batch_size = 8
