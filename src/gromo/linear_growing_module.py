@@ -325,6 +325,7 @@ class LinearGrowingModule(GrowingModule):
             tensor_m_shape=(in_features + use_bias, out_features),
             device=device,
             name=name,
+            s_growth_is_needed=False,
         )
         self.use_bias = use_bias
         self.in_features = in_features
@@ -559,6 +560,37 @@ class LinearGrowingModule(GrowingModule):
             raise TypeError("The next module must be a LinearGrowingModule.")
 
     @property
+    def tensor_s_growth(self):
+        """
+        Supercharge tensor_s_growth to redirect to the normal tensor_s as it is the same for Linear layers.
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus S is not defined."
+            )
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            return self.previous_module.tensor_s
+        elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+            raise NotImplementedError(
+                f"S growth is not implemented for module preceded by an LinearAdditionGrowingModule."
+                " (error in {self.name})"
+            )
+        else:
+            raise NotImplementedError(
+                f"S growth is not implemented yet for {type(self.previous_module)} as previous module."
+            )
+
+    @tensor_s_growth.setter
+    def tensor_s_growth(self, value) -> None:
+        """
+        Allow to set the tensor_s_growth but has no effect.
+        """
+        raise AttributeError(
+            f"You tried to set tensor_s_growth of a LinearGrowingModule (name={self.name})."
+            "This is not allowed as s growth is the same as tensor_s."
+        )
+
+    @property
     def tensor_n(self) -> torch.Tensor:
         """
         Compute the tensor N for the layer with the current M_-2, P and optimal delta.
@@ -784,13 +816,35 @@ class LinearGrowingModule(GrowingModule):
             name=self.tensor_m.name,
         )
 
+    def _sub_select_added_output_dimension(self, keep_neurons: int) -> None:
+        """
+        Select the first `keep_neurons` neurons of the optimal added output dimension.
+
+        Parameters
+        ----------
+        keep_neurons: int
+            number of neurons to keep
+        """
+        assert (
+            self.extended_output_layer is not None
+        ), f"The layer should have an extended output layer to sub-select the output dimension."
+        self.extended_output_layer = self.layer_of_tensor(
+            self.extended_output_layer.weight[:keep_neurons],
+            bias=(
+                self.extended_output_layer.bias[:keep_neurons]
+                if self.extended_output_layer.bias is not None
+                else None
+            ),
+        )
+
     def sub_select_optimal_added_parameters(
         self,
         keep_neurons: int,
         sub_select_previous: bool = True,
     ) -> None:
         """
-        Select the first keep_neurons neurons of the optimal added parameters.
+        Select the first keep_neurons neurons of the optimal added parameters
+        linked to this layer.
 
         Parameters
         ----------
@@ -804,7 +858,8 @@ class LinearGrowingModule(GrowingModule):
         ), "The layer should have an extended input xor output layer."
         if self.extended_input_layer is not None:
             self.extended_input_layer = self.layer_of_tensor(
-                self.extended_input_layer.weight[:, :keep_neurons]
+                self.extended_input_layer.weight[:, :keep_neurons],
+                bias=self.extended_input_layer.bias,
             )
             assert self.eigenvalues_extension is not None, (
                 f"The eigenvalues of the extension should be computed before "
@@ -812,18 +867,9 @@ class LinearGrowingModule(GrowingModule):
             )
             self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
 
-        if self.extended_output_layer is not None:
-            self.extended_output_layer = self.layer_of_tensor(
-                self.extended_output_layer.weight[:keep_neurons],
-                bias=(
-                    self.extended_output_layer.bias[:keep_neurons]
-                    if self.extended_output_layer.bias is not None
-                    else None
-                ),
-            )
         if sub_select_previous:
             if isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module.sub_select_optimal_added_parameters(keep_neurons)
+                self.previous_module._sub_select_added_output_dimension(keep_neurons)
             elif isinstance(self.previous_module, LinearAdditionGrowingModule):
                 raise NotImplementedError
             else:
@@ -854,6 +900,9 @@ class LinearGrowingModule(GrowingModule):
             if True update the optimal delta layer attribute
         dtype: torch.dtype
             dtype for S and M during the computation
+        force_pseudo_inverse: bool
+            if True, use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible
 
         Returns
         -------
@@ -958,7 +1007,7 @@ class LinearGrowingModule(GrowingModule):
             f"No previous module for {self.name}."
             "Therefore neuron addition is not possible."
         )
-        matrix_s = self.previous_module.tensor_s()
+        matrix_s = self.tensor_s_growth()
 
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)

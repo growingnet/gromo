@@ -174,7 +174,7 @@ class AdditionGrowingModule(torch.nn.Module):
             self.input = x
             self.input.retain_grad()
 
-        if (self.post_addition_function) and (x is not None):
+        if self.post_addition_function and (x is not None):
             y = self.post_addition_function(x)
         else:
             y = x
@@ -202,11 +202,11 @@ class AdditionGrowingModule(torch.nn.Module):
             projected gradient of the goal with respect to the activity of the next layer
             dLoss/dA - dW B[-1]
         """
-        V_proj = self.pre_activity.grad.clone().detach()
+        v_proj = self.pre_activity.grad.clone().detach()
         for module in self.previous_modules:
-            V_proj -= module.optimal_delta_layer(module.input)
+            v_proj -= module.optimal_delta_layer(module.input)
 
-        return V_proj
+        return v_proj
 
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
         """
@@ -278,7 +278,6 @@ class AdditionGrowingModule(torch.nn.Module):
         """
         self.optimal_delta_layer = None
         self.extended_input_layer = None
-        self.scaling_factor = 0.0
         self.parameter_update_decrease = None
         self.eigenvalues_extension = None
         self.activity = None
@@ -356,26 +355,90 @@ class AdditionGrowingModule(torch.nn.Module):
         """
         return np.sum([module.out_features for module in self.next_modules])
 
+    def update_scaling_factor(self, scaling_factor: torch.Tensor | float) -> None:
+        """
+        Update the scaling factor of all next modules and
+        the _next_module_scaling_factor of the previous modules.
+        Does only work if previous and next modules are GrowingModule.
+
+        Parameters
+        ----------
+        scaling_factor: torch.Tensor | float
+            scaling factor to apply to the optimal delta
+        """
+        if isinstance(scaling_factor, torch.Tensor):
+            scaling_factor = scaling_factor.item()
+        for module in self.previous_modules:
+            if isinstance(module, GrowingModule):
+                module._scaling_factor_next_module.data[0] = scaling_factor
+            else:
+                raise TypeError(
+                    f"Previous module must be a GrowingModule, got {type(module)}"
+                )
+        for module in self.next_modules:
+            if isinstance(module, GrowingModule):
+                module.__dict__["scaling_factor"].data[0] = scaling_factor
+            else:
+                raise TypeError(
+                    f"Next module must be a GrowingModule, got {type(module)}"
+                )
+
 
 class GrowingModule(torch.nn.Module):
     def __init__(
         self,
         layer: torch.nn.Module,
-        tensor_s_shape: tuple[int, int],
-        tensor_m_shape: tuple[int, int],
+        tensor_s_shape: tuple[int, int] | None = None,
+        tensor_m_shape: tuple[int, int] | None = None,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
         allow_growing: bool = True,
         previous_module: torch.nn.Module | None = None,
         next_module: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str | None = None,
+        s_growth_is_needed: bool = True,
     ) -> None:
-        assert len(tensor_s_shape) == 2, "The shape of the tensor S must be 2D."
-        assert tensor_s_shape[0] == tensor_s_shape[1], "The tensor S must be square."
-        assert tensor_s_shape[0] == tensor_m_shape[0], (
-            f"The input matrices S and M must have compatible shapes."
-            f"(got {tensor_s_shape=} and {tensor_m_shape=})"
-        )
+        """
+        Initialize a GrowingModule.
+
+        Parameters
+        ----------
+        layer: torch.nn.Module
+            layer of the module
+        tensor_s_shape: tuple[int, int] | None
+            shape of the tensor S
+        tensor_m_shape: tuple[int, int] | None
+            shape of the tensor M
+        post_layer_function: torch.nn.Module
+            function to apply after the layer
+        allow_growing: bool
+            if True, the module can grow (require a previous GrowingModule)
+        previous_module: torch.nn.Module | None
+            previous module
+        next_module: torch.nn.Module | None
+            next module
+        device: torch.device | None
+            device to use
+        name: str | None
+            name of the module
+        s_growth_is_needed: bool
+            if True, the tensor S growth is needed, otherwise it is not computed
+            (this used for example in the case of linear layers where S = S growth)
+        """
+        if tensor_s_shape is None:
+            warnings.warn(
+                "The tensor S shape is not provided."
+                "It will automatically be determined but we encourage to provide it.",
+                UserWarning,
+            )
+        else:
+            assert len(tensor_s_shape) == 2, "The shape of the tensor S must be 2D."
+            assert tensor_s_shape[0] == tensor_s_shape[1], "The tensor S must be square."
+            if tensor_m_shape is not None:
+                assert tensor_s_shape[0] == tensor_m_shape[0], (
+                    f"The input matrices S and M must have compatible shapes."
+                    f"(got {tensor_s_shape=} and {tensor_m_shape=})"
+                )
 
         super(GrowingModule, self).__init__()
         self._name = name
@@ -430,6 +493,9 @@ class GrowingModule(torch.nn.Module):
         self.optimal_delta_layer: torch.nn.Module | None = None
         self.scaling_factor: torch.Tensor = torch.zeros(1, device=self.device)
         self.scaling_factor.requires_grad = True
+        # to avoid having to link to the next module we get a copy of the scaling factor
+        # of the next module to use it in the extended_forward
+        self._scaling_factor_next_module = torch.zeros(1, device=self.device)
 
         self.extended_input_layer: torch.nn.Module | None = None
         self.extended_output_layer: torch.nn.Module | None = None
@@ -458,6 +524,15 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"C({name})",
         )
+
+        self.s_growth_is_needed = s_growth_is_needed
+        if s_growth_is_needed:
+            self.tensor_s_growth = TensorStatistic(
+                None,
+                update_function=self.compute_s_growth_update,
+                device=self.device,
+                name=f"S_growth({name})",
+            )
 
     # Information functions
     @property
@@ -568,6 +643,19 @@ class GrowingModule(torch.nn.Module):
                 ), "The scaling factor must be a scalar."
                 self.__dict__[key].data[0] = value
                 # FIXME: should we not recreate the tensor? (problem with the gradient)
+            if self.previous_module is None:
+                pass
+            elif isinstance(self.previous_module, GrowingModule):
+                self.previous_module._scaling_factor_next_module.data[0] = (
+                    self.scaling_factor.item()
+                )
+            elif isinstance(self.previous_module, AdditionGrowingModule):
+                # self.previous_module.update_scaling_factor(self.scaling_factor)
+                pass
+            else:
+                raise TypeError(
+                    f"Previous module must be a GrowingModule or AdditionGrowingModule, got {type(self.previous_module)}"
+                )
         elif key == "weight":
             self.layer.weight = value
         elif key == "bias":
@@ -598,6 +686,8 @@ class GrowingModule(torch.nn.Module):
         self.tensor_m.updated = False
         self.tensor_m_prev.updated = False
         self.cross_covariance.updated = False
+        if self.s_growth_is_needed:
+            self.tensor_s_growth.updated = False
 
         if self._internal_store_input:
             self._input = x.detach()
@@ -614,7 +704,8 @@ class GrowingModule(torch.nn.Module):
         self, x: torch.Tensor, x_ext: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
-        Forward pass of the module with layer extension and layer update.
+        Forward pass of the module with layer extension and layer update scaled
+        according to the scaling factor.
         WARNING: does not store the input and pre-activity tensors.
         WARNING: the scaling factor is squared for the optimal delta and
         linear for the extension. (Instead of linear for the optimal delta and
@@ -656,7 +747,9 @@ class GrowingModule(torch.nn.Module):
                 )
 
         if self.extended_output_layer:
-            supplementary_pre_activity = sqrt_factor * self.extended_output_layer(x)
+            supplementary_pre_activity = (
+                self._scaling_factor_next_module * self.extended_output_layer(x)
+            )
             supplementary_activity = self.post_layer_function(supplementary_pre_activity)
         else:
             supplementary_activity = None
@@ -822,6 +915,19 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor S_growth.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor S_growth
+        int
+            number of samples used to compute the update
+        """
+        raise NotImplementedError
+
     def compute_n_update(self):
         """
         Compute the update of the tensor N. Should be added to the type of layer.
@@ -923,13 +1029,25 @@ class GrowingModule(torch.nn.Module):
         if delta_biases is not None:
             self.layer.bias.data += delta_biases
 
+    def _sub_select_added_output_dimension(self, keep_neurons: int) -> None:
+        """
+        Select the first `keep_neurons` neurons of the optimal added output dimension.
+
+        Parameters
+        ----------
+        keep_neurons: int
+            number of neurons to keep
+        """
+        raise NotImplementedError
+
     def sub_select_optimal_added_parameters(
         self,
         keep_neurons: int,
         sub_select_previous: bool = True,
     ) -> None:
         """
-        Select the first keep_neurons neurons of the optimal added parameters.
+        Select the first keep_neurons neurons of the optimal added parameters
+        linked to this layer.
 
         Parameters
         ----------
@@ -940,14 +1058,54 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def _apply_output_changes(
+        self, scaling_factor: float | torch.Tensor | None = None
+    ) -> None:
+        """
+        Extend the layer output with the current layer output extension,
+        with the scaling factor of the next module if no scaling factor is provided.
+
+        Parameters
+        ----------
+        scaling_factor: float | torch.Tensor
+            scaling factor to apply to the optimal delta
+        """
+        if scaling_factor is None:
+            scaling_factor = self._scaling_factor_next_module
+        else:
+            if isinstance(scaling_factor, (int, float, np.number)):
+                scaling_factor = torch.tensor(scaling_factor, device=self.device)
+            if not (
+                abs(scaling_factor.item() - self._scaling_factor_next_module.item())
+                < 1e-4
+            ):
+                warnings.warn(
+                    f"Scaling factor {scaling_factor} is different from the one "
+                    f"used during the extended_forward {self._scaling_factor_next_module}."
+                )
+        self.layer_out_extension(
+            weight=scaling_factor * self.extended_output_layer.weight,
+            bias=(
+                scaling_factor * self.extended_output_layer.bias
+                if self.extended_output_layer.bias is not None
+                else None
+            ),
+        )
+
     def apply_change(
         self,
         scaling_factor: float | torch.Tensor | None = None,
         apply_previous: bool = True,
+        apply_delta: bool = True,
+        apply_extension: bool = True,
     ) -> None:
         """
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
+        This means that the layer input is extended with the current layer output
+        extension and the previous layer output is extended with the previous layer
+        output extension both scaled by the current scaling factor.
+        This also means that the layer output is not extended.
 
         Parameters
         ----------
@@ -955,7 +1113,11 @@ class GrowingModule(torch.nn.Module):
             scaling factor to apply to the optimal delta,
              if None use the current scaling factor
         apply_previous: bool
-            if True apply the change to the previous layer
+            if True apply the change to the previous layer, by default True
+        apply_delta: bool
+            if True apply the optimal delta to the layer, by default True
+        apply_extension: bool
+            if True apply the extension to the layer, by default True
         """
         # print(f"==================== Applying change to {self.name} ====================")
         if scaling_factor is not None:
@@ -963,7 +1125,7 @@ class GrowingModule(torch.nn.Module):
             # this type problem is due to the use of the setter to change the scaling factor
         linear_factor = self.scaling_factor**2 * torch.sign(self.scaling_factor)
         sqrt_factor = self.scaling_factor
-        if self.optimal_delta_layer is not None:
+        if apply_delta and self.optimal_delta_layer is not None:
             self.parameter_step(
                 delta_weights=-linear_factor * self.optimal_delta_layer.weight.data,
                 delta_biases=(
@@ -972,45 +1134,35 @@ class GrowingModule(torch.nn.Module):
                     else None
                 ),
             )
-        if self.extended_input_layer:
-            # if abs(sqrt_factor * self.extended_input_layer.weight).max() < 1e-15:
-            #     print(f"Warning: the input extension of {self.name} is null.")
-            #     print(f"{self.extended_input_layer.weight=}")
-            #     print(f"{sqrt_factor=}")
-            assert self.extended_input_layer.bias is None or torch.allclose(
-                self.extended_input_layer.bias,
-                torch.zeros_like(self.extended_input_layer.bias),
-            ), "The bias of the input extension must be null."
-            self.layer_in_extension(weight=sqrt_factor * self.extended_input_layer.weight)
-        if self.extended_output_layer:
-            if abs(sqrt_factor * self.extended_output_layer.weight).max() < 1e-15:
-                print(f"Warning: the output extension of {self.name} is null.")
-                print(f"{self.extended_output_layer.weight=}")
-                print(f"{self.extended_output_layer.bias=}")
-                print(f"{sqrt_factor=}")
-            self.layer_out_extension(
-                weight=sqrt_factor * self.extended_output_layer.weight,
-                bias=(
-                    sqrt_factor * self.extended_output_layer.bias
-                    if self.extended_output_layer.bias is not None
-                    else None
-                ),
-            )
-        if apply_previous and self.previous_module is not None:
-            if isinstance(self.previous_module, GrowingModule):
-                self.previous_module.apply_change(
-                    apply_previous=False, scaling_factor=self.scaling_factor
+        if apply_extension:
+            if self.extended_input_layer:
+                assert self.extended_input_layer.bias is None or torch.allclose(
+                    self.extended_input_layer.bias,
+                    torch.zeros_like(self.extended_input_layer.bias),
+                ), "The bias of the input extension must be null."
+                if self.scaling_factor == 0:
+                    warnings.warn(
+                        "The scaling factor is null. The input extension will have no effect."
+                    )
+                self.layer_in_extension(
+                    weight=sqrt_factor * self.extended_input_layer.weight
                 )
-            elif isinstance(self.previous_module, AdditionGrowingModule):
-                raise NotImplementedError  # TODO
-            else:
-                raise NotImplementedError
-        # print("====================================")
-        # Update the size of the previous and next modules
-        if isinstance(self.previous_module, AdditionGrowingModule):
-            self.previous_module.update_size()
-        if isinstance(self.next_module, AdditionGrowingModule):
-            self.next_module.update_size()
+
+            if apply_previous and self.previous_module is not None:
+                if isinstance(self.previous_module, GrowingModule):
+                    self.previous_module._apply_output_changes(
+                        scaling_factor=self.scaling_factor
+                    )
+                elif isinstance(self.previous_module, AdditionGrowingModule):
+                    raise NotImplementedError  # TODO
+                else:
+                    raise NotImplementedError
+
+            # Update the size of the previous and next modules
+            if isinstance(self.previous_module, AdditionGrowingModule):
+                self.previous_module.update_size()
+            if isinstance(self.next_module, AdditionGrowingModule):
+                self.next_module.update_size()
 
     # Optimal update computation
     def compute_optimal_delta(
@@ -1169,6 +1321,22 @@ class GrowingModule(torch.nn.Module):
         else:
             raise NotImplementedError
 
+    def update_computation(self) -> None:
+        """
+        Update the computation of the optimal added parameters.
+        """
+        self.tensor_s.update()
+        self.tensor_m.update()
+        if self.previous_module is None:
+            return
+        elif isinstance(self.previous_module, GrowingModule):
+            self.tensor_m_prev.update()
+            self.cross_covariance.update()
+        elif isinstance(self.previous_module, AdditionGrowingModule):
+            raise NotImplementedError  # TODO
+        else:
+            raise NotImplementedError
+
     def reset_computation(self) -> None:
         """
         Reset the computation of the optimal added parameters.
@@ -1273,22 +1441,6 @@ class GrowingModule(torch.nn.Module):
                     "module is needed.",
                     UserWarning,
                 )
-
-    def update_computation(self) -> None:
-        """
-        Update the computation of the optimal added parameters.
-        """
-        self.tensor_s.update()
-        self.tensor_m.update()
-        if self.previous_module is None:
-            return
-        elif isinstance(self.previous_module, GrowingModule):
-            self.tensor_m_prev.update()
-            self.cross_covariance.update()
-        elif isinstance(self.previous_module, AdditionGrowingModule):
-            raise NotImplementedError  # TODO
-        else:
-            raise NotImplementedError
 
 
 if __name__ == "__main__":

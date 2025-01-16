@@ -318,20 +318,28 @@ def batch_gradient_descent(
 
     Parameters
     ----------
-    output : torch.Tensor
-        current output
-    target : torch.Tensor
-        target tensor
+    forward_fn : Callable
+        Forward function
     cost_fn : Callable
         _description_
-    lrate : float, optional
-        _description_, by default 0.01
+    target : torch.Tensor
+        target tensor
+    optimizer : torch.optim.Optimizer
+        optimizer
     max_epochs : int, optional
-        _description_, by default 100
+        max number of epochs, by default 100
     tol : float, optional
-        _description_, by default 1e-5
+        tolerance, by default 1e-5
+    fast : bool, optional
+        fast implementation without evaluation, by default True
+    eval_fn : Callable | None, optional
+        evaluation function, by default None
     verbose : bool, optional
         _description_, by default True
+    loss_name : str, optional
+        name of the loss, by default "loss"
+    title : str, optional
+        title of the plot, by default ""
 
     Returns
     -------

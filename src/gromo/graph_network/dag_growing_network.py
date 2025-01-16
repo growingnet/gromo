@@ -575,7 +575,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         for i_edge, prev_edge_module in enumerate(node_module.previous_modules):
             # Output extension for alpha weights
             in_features = prev_edge_module.in_features
-            prev_edge_module.scaling_factor = 1
+            prev_edge_module._scaling_factor_next_module[0] = 1
             prev_edge_module.extended_output_layer = prev_edge_module.layer_of_tensor(
                 weight=alpha[:, i : i + in_features],
                 bias=bias[:, i_edge],  # TODO: fix for multiple input layers
@@ -601,7 +601,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
             def simulate_factors(factor):
                 for prev_edge_module in node_module.previous_modules:
-                    prev_edge_module.scaling_factor = factor
+                    prev_edge_module._scaling_factor_next_module[0] = factor
                 for next_node_module in next_node_modules:
                     for parallel_edge_module in next_node_module.previous_modules:
                         parallel_edge_module.scaling_factor = factor
@@ -619,8 +619,10 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # Apply final changes
         for prev_edge_module in node_module.previous_modules:
-            prev_edge_module.scaling_factor = factor
-            prev_edge_module.apply_change(apply_previous=False)
+            # we do not need to change the _scaling_factor_next_module as it is
+            # given as a parameter of _apply_output_changes
+            # prev_edge_module._scaling_factor_next_module = factor
+            prev_edge_module._apply_output_changes(factor)
             # Delete activities
             prev_edge_module.delete_update(include_previous=False)
 
@@ -815,7 +817,7 @@ class GraphGrowingNetwork(torch.nn.Module):
                 # weight = gamma_factor * update[0]
                 # bias = gamma_factor * update[1]
                 # edge.parameter_step(weight, bias)
-                edge.scaling_factor = gamma_factor
+                edge._scaling_factor_next_module[0] = gamma_factor
 
             with torch.no_grad():
                 # pred = self(x)

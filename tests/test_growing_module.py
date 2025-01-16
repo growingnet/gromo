@@ -40,7 +40,7 @@ class TestGrowingModule(TestCase):
         # ========== Test with in extension ==========
         # extended input with in extension
         self.model.extended_input_layer = self.layer_in_extension
-        self.model.scaling_factor = 1
+        self.model.scaling_factor = 1.0
         y, y_sup = self.model.extended_forward(self.x, self.x_ext)
         self.assertIsNone(y_sup)
         self.assertTrue(torch.allclose(y, y_th + self.layer_in_extension(self.x_ext)))
@@ -57,6 +57,7 @@ class TestGrowingModule(TestCase):
             self.model.extended_forward(self.x, self.x_ext)
 
         self.model.extended_output_layer = self.layer_out_extension
+        self.model._scaling_factor_next_module = 1.0
         y, y_sup = self.model.extended_forward(self.x)
         self.assertTrue(torch.equal(y, y_th))
         self.assertTrue(torch.equal(y_sup, self.layer_out_extension(self.x)))
