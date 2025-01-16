@@ -72,6 +72,8 @@ def theoretical_s_1(n, c):
 class TestLinearGrowingModule(TorchTestCase):
     def setUp(self):
         self.n = 11
+        # This assert is checking that the test is correct and not that the code is correct
+        # that why it is not a self.assert*
         assert self.n % 2 == 1
         self.c = 5
 
