@@ -18,6 +18,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Replaced the `assert` statements with `self.assert*` methods in the unit tests (:gh:`50` by `Théo Rudkiewicz`_)
 - Reduce unit tests computational load, add parametrized unit tests (:gh:`46` by `Sylvain Chevallier`_)
 - Add the possibly to separate S for natural gradient and S for new weights (:gh:`33` by `Théo Rudkiewicz`_)
 - Added GPU tracking (:gh:`16` by `Stella Douka`_)
