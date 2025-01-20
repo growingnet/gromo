@@ -72,6 +72,8 @@ def theoretical_s_1(n, c):
 class TestLinearGrowingModule(TorchTestCase):
     def setUp(self):
         self.n = 11
+        # This assert is checking that the test is correct and not that the code is correct
+        # that why it is not a self.assert*
         assert self.n % 2 == 1
         self.c = 5
 
@@ -242,68 +244,69 @@ class TestLinearGrowingModule(TorchTestCase):
     def test_str(self):
         self.assertIsInstance(str(LinearGrowingModule(5, 5)), str)
 
-    def test_extended_forward_out(self):
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_extended_forward_out(self, bias):
         torch.manual_seed(0)
-        for bias in {True, False}:
-            l0 = torch.nn.Linear(5, 1, bias=bias, device=global_device())
-            l_ext = torch.nn.Linear(5, 2, bias=bias, device=global_device())
-            l_delta = torch.nn.Linear(5, 1, bias=bias, device=global_device())
-            layer = LinearGrowingModule(
-                5, 1, use_bias=bias, name="layer1", device=global_device()
-            )
-            layer.weight.data.copy_(l0.weight.data)
-            layer.optimal_delta_layer = l_delta
+        # fixed layers
+        l0 = torch.nn.Linear(5, 1, bias=bias, device=global_device())
+        l_ext = torch.nn.Linear(5, 2, bias=bias, device=global_device())
+        l_delta = torch.nn.Linear(5, 1, bias=bias, device=global_device())
 
-            if bias:
-                layer.bias.data.copy_(l0.bias.data)
-            layer.extended_output_layer = l_ext
+        # changed layer
+        layer = LinearGrowingModule(
+            5, 1, use_bias=bias, name="layer1", device=global_device()
+        )
+        layer.weight.data.copy_(l0.weight.data)
+        if bias:
+            layer.bias.data.copy_(l0.bias.data)
+        layer.optimal_delta_layer = l_delta
+        layer.extended_output_layer = l_ext
 
-            for gamma, gamma_next in zip((0.0, 1.0, 5.0), (0.0, 1.5, 5.5)):
-                layer.scaling_factor = gamma
-                layer._scaling_factor_next_module[0] = gamma_next
-                x = torch.randn((10, 5), device=global_device())
-                self.assertAllClose(layer(x), l0(x))
-
-                y1, y2 = layer.extended_forward(x)
-
-                self.assertAllClose(y1, l0(x) - gamma**2 * l_delta(x))
-                self.assertAllClose(y2, gamma_next * l_ext(x))
-
+        for gamma, gamma_next in ((0.0, 0.0), (1.0, 1.5), (5.0, 5.5)):
             layer.scaling_factor = gamma
             layer._scaling_factor_next_module[0] = gamma_next
-            layer.apply_change(apply_previous=False)
             x = torch.randn((10, 5), device=global_device())
-            y = layer(x)
-            self.assertAllClose(y, l0(x) - gamma**2 * l_delta(x))
+            self.assertAllClose(layer(x), l0(x))
 
-            layer._apply_output_changes()
-            y = layer(x)
-            y1 = y[:, :1]
-            y2 = y[:, 1:]
-            self.assertAllClose(y1, l0(x) - gamma**2 * l_delta(x))
-            self.assertAllClose(
-                y2,
-                gamma_next * l_ext(x),
-                atol=1e-7,
-                message=f"Error in applying change: {(y2 - gamma * l_ext(x)).abs().max():.2e}",
-            )
+            y_ext_1, y_ext_2 = layer.extended_forward(x)
+
+            self.assertAllClose(y_ext_1, l0(x) - gamma**2 * l_delta(x))
+            self.assertAllClose(y_ext_2, gamma_next * l_ext(x))
+
+        layer.apply_change(apply_previous=False)
+        y = layer(x)
+        self.assertAllClose(y, l0(x) - gamma**2 * l_delta(x))
+
+        layer._apply_output_changes()
+        y_changed = layer(x)
+        y_changed_1 = y_changed[:, :1]
+        y_changed_2 = y_changed[:, 1:]
+        self.assertAllClose(y_changed_1, l0(x) - gamma**2 * l_delta(x))
+        self.assertAllClose(
+            y_changed_2,
+            gamma_next * l_ext(x),
+            atol=1e-7,
+            message=f"Error in applying change",
+        )
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_extended_forward_in(self, bias):
         torch.manual_seed(0)
+        # fixed layers
         l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
         l_ext = torch.nn.Linear(5, 1, bias=bias, device=global_device())
         if bias:
             l_ext.bias.data.fill_(0)
         l_delta = torch.nn.Linear(3, 1, bias=bias, device=global_device())
+
+        # changed layer
         layer = LinearGrowingModule(
             3, 1, use_bias=bias, name="layer1", device=global_device()
         )
         layer.weight.data.copy_(l0.weight.data)
-        layer.optimal_delta_layer = l_delta
-
         if bias:
             layer.bias.data.copy_(l0.bias.data)
+        layer.optimal_delta_layer = l_delta
         layer.extended_input_layer = l_ext
 
         for gamma in (0.0, 1.0, 5.0):
@@ -311,31 +314,24 @@ class TestLinearGrowingModule(TorchTestCase):
             layer.scaling_factor = gamma
             x = torch.randn((10, 3), device=global_device())
             x_ext = torch.randn((10, 5), device=global_device())
-            assert torch.allclose(layer(x), l0(x))
+            self.assertAllClose(layer(x), l0(x))
 
             y, none = layer.extended_forward(x, x_ext)
             self.assertIsNone(none)
 
-            assert torch.allclose(y, l0(x) - gamma**2 * l_delta(x) + gamma * l_ext(x_ext))
+            self.assertAllClose(y, l0(x) - gamma**2 * l_delta(x) + gamma * l_ext(x_ext))
 
             torch.norm(y).backward()
 
             self.assertIsNotNone(layer.scaling_factor.grad)
 
-        layer.scaling_factor = gamma
         layer.apply_change(apply_previous=False)
-        x_cat = torch.randn((10, 8), device=global_device())
-
+        x_cat = torch.concatenate((x, x_ext), dim=1)
         y = layer(x_cat)
-        x = x_cat[:, :3]
-        x_ext = x_cat[:, 3:]
         self.assertAllClose(
             y,
             l0(x) - gamma**2 * l_delta(x) + gamma * l_ext(x_ext),
-            message=(
-                f"Error in applying change: "
-                f"{(y - l0(x) - gamma**2 * l_delta(x) + gamma * l_ext(x_ext)).abs().max():.2e}"
-            ),
+            message=(f"Error in applying change"),
         )
 
     def test_number_of_parameters(self):
