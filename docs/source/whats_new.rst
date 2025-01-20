@@ -18,6 +18,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add support for Conv2d layers in the sequential case (:gh:`34` by `Théo Rudkiewicz`_)
 - Replaced the `assert` statements with `self.assert*` methods in the unit tests (:gh:`50` by `Théo Rudkiewicz`_)
 - Reduce unit tests computational load, add parametrized unit tests (:gh:`46` by `Sylvain Chevallier`_)
 - Add the possibly to separate S for natural gradient and S for new weights (:gh:`33` by `Théo Rudkiewicz`_)
