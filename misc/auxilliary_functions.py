@@ -270,9 +270,10 @@ def compute_statistics(
     assert (
         loss_function.reduction == "sum"
     ), "The loss function should not be averaged over the batch"
-    assert (
-        aux_loss_function.reduction == "sum"
-    ), "The loss function should not be averaged over the batch"
+    if aux_loss_function is not None:
+        assert (
+            aux_loss_function.reduction == "sum"
+        ), "The loss function should not be averaged over the batch"
 
     growing_model.init_computation()
     n_batch = 0
