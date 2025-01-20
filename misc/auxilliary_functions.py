@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from tqdm.notebook import tqdm
 
+from gromo.growing_mlp import GrowingMLP
 from gromo.utils.utils import global_device
 
 
@@ -237,7 +238,7 @@ def train(
 
 
 def compute_statistics(
-    growing_model: "GrowingMLP",
+    growing_model: GrowingMLP,
     dataloader: torch.utils.data.DataLoader,
     loss_function: nn.Module = AxisMSELoss(),
     aux_loss_function: nn.Module | None = Accuracy(k=1),
