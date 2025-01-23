@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from tqdm.notebook import tqdm
 
+from gromo.growing_mlp import GrowingMLP
 from gromo.utils.utils import global_device
 
 
@@ -237,7 +238,7 @@ def train(
 
 
 def compute_statistics(
-    growing_model: "GrowingMLP",
+    growing_model: GrowingMLP,
     dataloader: torch.utils.data.DataLoader,
     loss_function: nn.Module = AxisMSELoss(),
     aux_loss_function: nn.Module | None = Accuracy(k=1),
@@ -270,9 +271,10 @@ def compute_statistics(
     assert (
         loss_function.reduction == "sum"
     ), "The loss function should not be averaged over the batch"
-    assert (
-        aux_loss_function.reduction == "sum"
-    ), "The loss function should not be averaged over the batch"
+    if aux_loss_function is not None:
+        assert (
+            aux_loss_function.reduction == "sum"
+        ), "The loss function should not be averaged over the batch"
 
     growing_model.init_computation()
     n_batch = 0
