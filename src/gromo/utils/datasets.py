@@ -87,7 +87,7 @@ def get_dataset(
         root=dataset_path,
         train=True,
         download=True,
-        transform=None,
+        transform=transforms.Compose(augmentation_transforms + datasets_transform),
     )
 
     test_data = dataset(
@@ -135,9 +135,6 @@ def get_dataset(
         torch.manual_seed(seed)
     train_data, val_data = torch.utils.data.random_split(
         train_val_data, [train_size, val_size]
-    )
-    train_data.dataset.transform = transforms.Compose(
-        datasets_transform + augmentation_transforms
     )
 
     return train_data, val_data, test_data
