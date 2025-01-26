@@ -18,6 +18,8 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add support for Conv2d layers in the sequential case (:gh:`34` by `Théo Rudkiewicz`_)
+- Replaced the `assert` statements with `self.assert*` methods in the unit tests (:gh:`50` by `Théo Rudkiewicz`_)
 - Reduce unit tests computational load, add parametrized unit tests (:gh:`46` by `Sylvain Chevallier`_)
 - Add the possibly to separate S for natural gradient and S for new weights (:gh:`33` by `Théo Rudkiewicz`_)
 - Added GPU tracking (:gh:`16` by `Stella Douka`_)
@@ -34,11 +36,15 @@ Bugs
 - Fix the change application when updating the previous layer (:gh:`48` by `Théo Rudkiewicz`_)
 - Fix the sub-selection of added neurons in the sequential case (:gh:`41` by `Théo Rudkiewicz`_)
 - Correct codecov upload (:gh:`49` by `Sylvain Chevallier`_)
+- Fix the data augmentation bug in get_dataset (:gh:`58` by `Stéphane Rivaud`_)
 
 API changes
 ~~~~~~~~~~~
+
+- None
 
 
 .. _Sylvain Chevallier: https://github.com/sylvchev
 .. _Stella Douka: https://github.com/stelladk
 .. _Théo Rudkiewicz: https://github.com/TheoRudkiewicz
+.. _Stéphane Rivaud: https://github.com/streethagore
