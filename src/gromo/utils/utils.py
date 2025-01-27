@@ -1,4 +1,4 @@
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 import matplotlib.cm as mpl_cm
 import matplotlib.colors as mpl_colors
@@ -84,6 +84,35 @@ def torch_ones(*size: tuple[int, int], **kwargs) -> torch.Tensor:
         return torch.ones(size=size, device=__global_device, **kwargs)  # type: ignore
     except TypeError:
         return torch.ones(*size, device=__global_device, **kwargs)
+
+
+def set_from_conf(self, name: str, default: Any = None, setter: bool = True) -> Any:
+    """Standardize private argument setting from config file
+
+    Parameters
+    ----------
+    name : str
+        name of variable
+    default : Any, optional
+        default value in case config does not provide one, by default None
+    setter : bool, optional
+        set the retrieved value as argument in the object, by default True
+
+    Returns
+    -------
+    Any
+        value set to variable
+    """
+    # Check that config file has been found and read
+    assert hasattr(self, "_config_data")
+    assert isinstance(self._config_data, dict)
+
+    value = self._config_data.get(name, default)
+
+    if setter:
+        setattr(self, f"{name}", value)
+
+    return value
 
 
 def activation_fn(fn_name: str) -> nn.Module:
