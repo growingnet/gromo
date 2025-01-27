@@ -55,14 +55,14 @@ def get_dataset(
         "mnist": [
             transforms.ToTensor(),
             transforms.Normalize(mnist_mean, mnist_std),
-            transforms.Lambda(lambda x: x.view(-1)),
+            # transforms.Lambda(lambda x: x.view(-1)),
         ],
         "cifar10": [
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=(0.4914, 0.4822, 0.4465), std=(0.2470, 0.2435, 0.2616)
             ),
-            transforms.Lambda(lambda x: x.view(-1)),
+            # transforms.Lambda(lambda x: x.view(-1)),
         ],
     }
     augmentation_transforms = []
@@ -87,7 +87,7 @@ def get_dataset(
         root=dataset_path,
         train=True,
         download=True,
-        transform=None,
+        transform=transforms.Compose(augmentation_transforms + datasets_transform),
     )
 
     test_data = dataset(
@@ -136,9 +136,5 @@ def get_dataset(
     train_data, val_data = torch.utils.data.random_split(
         train_val_data, [train_size, val_size]
     )
-    train_data.dataset.transform = transforms.Compose(
-        datasets_transform + augmentation_transforms
-    )
-    val_data.dataset.transform = transforms.Compose(datasets_transform)
 
     return train_data, val_data, test_data

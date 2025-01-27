@@ -39,7 +39,7 @@ def create_parser() -> argparse.ArgumentParser:
     general_group.add_argument(
         "--log-dir",
         type=str,
-        default="misc/logs",
+        default="logs",
         help="directory to save logs (default: logs)",
     )
     general_group.add_argument(
@@ -51,7 +51,7 @@ def create_parser() -> argparse.ArgumentParser:
     general_group.add_argument(
         "--log-file-name",
         type=str,
-        default=None,
+        default="log",
         help="name of the log file (default: log)",
     )
     general_group.add_argument(
@@ -346,7 +346,7 @@ def main(args: argparse.Namespace):
                 data_augmentation=args.data_augmentation,
                 seed=args.seed,
             )
-            input_shape = train_dataset[0][0].shape[0]
+            input_shape = train_dataset[0][0].shape
 
             pin_memory = device != torch.device("cpu")
             num_workers = 4 if pin_memory else 0

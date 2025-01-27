@@ -36,11 +36,16 @@ Bugs
 - Fix the change application when updating the previous layer (:gh:`48` by `Théo Rudkiewicz`_)
 - Fix the sub-selection of added neurons in the sequential case (:gh:`41` by `Théo Rudkiewicz`_)
 - Correct codecov upload (:gh:`49` by `Sylvain Chevallier`_)
+- Fix the data augmentation bug in get_dataset (:gh:`58` by `Stéphane Rivaud`_)
+- Fix dataset input_shape: remove the flattening in data augmentation (:gh:`56` by `Stéphane Rivaud`_)
 
 API changes
 ~~~~~~~~~~~
+
+- None
 
 
 .. _Sylvain Chevallier: https://github.com/sylvchev
 .. _Stella Douka: https://github.com/stelladk
 .. _Théo Rudkiewicz: https://github.com/TheoRudkiewicz
+.. _Stéphane Rivaud: https://github.com/streethagore

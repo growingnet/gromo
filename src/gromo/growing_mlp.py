@@ -25,13 +25,16 @@ class GrowingMLP(nn.Module):
             raise NotImplementedError("Device selection is not implemented yet")
         self.device = global_device()
         self.input_shape = input_shape
+        self.num_features = torch.tensor(input_shape).prod().int().item()
         self.output_shape = output_shape
 
+        # flatten input
+        self.flatten = nn.Flatten(start_dim=1)
         # self.layers: list[GrowingModule] = []
         self.layers = nn.ModuleList()
         self.layers.append(
             LinearGrowingModule(
-                input_shape,
+                self.num_features,
                 hidden_shape,
                 post_layer_function=activation,
                 use_bias=bias,
@@ -121,11 +124,13 @@ class GrowingMLP(nn.Module):
                 layer.bias.data = layer.bias.data * current_normalisation
 
     def forward(self, x):
+        x = self.flatten(x)
         for layer in self.layers:
             x = layer(x)
         return x
 
     def extended_forward(self, x):
+        x = self.flatten(x)
         x_ext = None
         for layer in self.layers:
             x, x_ext = layer.extended_forward(x, x_ext)
