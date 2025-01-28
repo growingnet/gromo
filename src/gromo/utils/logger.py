@@ -247,7 +247,7 @@ class Logger:
 
     def __setup_mlflow_tracking(
         self, experiment_name: str, port: int = 27027, online: bool = False
-    ) -> None:
+    ) -> str:
         """Set up mlflow online tracking
 
         Parameters
@@ -258,12 +258,18 @@ class Logger:
             port number, by default 27027
         online : bool, optional
             connect with mlflow server online instead of locally, by default False
+
+        Returns
+        -------
+        str
+            tracking uri
         """
         uri = f"http://127.0.0.1:{port}"
         if online:
             mlflow.set_tracking_uri(uri=uri)
         mlflow.set_experiment(experiment_name)
-        print(f"Mlflow tracking at {mlflow.get_tracking_uri()}")
+        # print(f"Mlflow tracking at {mlflow.get_tracking_uri()}")
+        return mlflow.get_artifact_uri()
 
     def __end_mlflow_run(self) -> None:
         mlflow.end_run()
