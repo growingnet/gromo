@@ -50,7 +50,7 @@ class GpuTracker:
         self,
         gpu_index: list[int] = [0],
         interval: int = 15,
-        country_iso_code: str = "FRA",
+        country_iso_code: str = None,
         logger: Logger | None = None,
     ) -> None:
         self._config_data, _ = load_config()
@@ -67,8 +67,10 @@ class GpuTracker:
                 gpu_ids=gpu_index,
                 measure_power_secs=interval,
                 allow_multiple_runs=True,
-                country_iso_code=set_from_conf(
-                    self, "country_iso_code", country_iso_code, setter=False
+                country_iso_code=(
+                    country_iso_code
+                    if country_iso_code is not None
+                    else set_from_conf(self, "country_iso_code", "FRA", setter=False)
                 ),
                 save_to_file=False,
                 logging_logger=None,
