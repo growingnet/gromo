@@ -947,6 +947,149 @@ class GraphGrowingNetwork(torch.nn.Module):
         return loss_history, acc_history, f1score_history
 
     @profile_function
+    def execute_expansions(
+        self,
+        generations: list[dict],
+        bottleneck: dict,
+        input_B: dict,
+        X_train: torch.Tensor,
+        Y_train: torch.Tensor,
+        X_dev: torch.Tensor,
+        Y_dev: torch.Tensor,
+        X_val: torch.Tensor,
+        Y_val: torch.Tensor,
+        amplitude_factor: bool,
+        verbose: bool = False,
+    ) -> None:
+        """Execute all DAG expansions and save statistics
+
+        Parameters
+        ----------
+        generations : list[dict]
+            list of dictionaries with growth information
+        bottleneck : dict
+            dictionary of calculated expressivity bottleneck at each pre-activity
+        input_B : dict
+            dictionary of post-activity input of each node
+        X_train : torch.Tensor
+            train features
+        Y_train : torch.Tensor
+            train labels
+        X_dev : torch.Tensor
+            development features
+        Y_dev : torch.Tensor
+            development labels
+        X_val : torch.Tensor
+            validation features
+        Y_val : torch.Tensor
+            validation labels
+        amplitude_factor : bool
+            use amplitude factor on new neurons
+        verbose : bool, optional
+            print info, by default False
+        """
+        # Execute all graph growth options
+        for gen in generations:
+            # Create a new edge
+            if gen.get("type") == "edge":
+                attributes = gen.get("attributes", {})
+                prev_node = attributes.get("previous_node")
+                next_node = attributes.get("next_node")
+
+                if verbose:
+                    print(f"Adding direct edge from {prev_node} to {next_node}")
+
+                model_copy = copy.deepcopy(self)
+                model_copy.to(self.device)
+                model_copy.dag.add_direct_edge(
+                    prev_node, next_node, attributes.get("edge_attributes", {})
+                )
+
+                model_copy.growth_history_step(neurons_added=[(prev_node, next_node)])
+
+                # Update weight of next_node's incoming edge
+                loss_train, loss_dev, acc_train, acc_dev, _ = (
+                    model_copy.update_edge_weights(
+                        prev_node=prev_node,
+                        next_node=next_node,
+                        bottlenecks=bottleneck,
+                        activities=input_B,
+                        x=X_train,
+                        y=Y_train,
+                        x1=X_dev,
+                        y1=Y_dev,
+                        amplitude_factor=amplitude_factor,
+                        verbose=verbose,
+                    )
+                )
+
+                # TODO: save updates weight tensors
+                # gen[] =
+
+            # Create/Expand node
+            elif gen.get("type") == "node":
+                attributes = gen.get("attributes", {})
+                new_node = attributes.get("new_node")
+                prev_nodes = attributes.get("previous_node")
+                next_nodes = attributes.get("next_node")
+                new_edges = attributes.get("new_edges")
+
+                # copy.deepcopy(self.dag)
+                model_copy = copy.deepcopy(self)
+                model_copy.to(self.device)
+
+                if new_node not in model_copy.dag.nodes:
+                    model_copy.dag.add_node_with_two_edges(
+                        prev_nodes,
+                        new_node,
+                        next_nodes,
+                        attributes.get("node_attributes"),
+                        attributes.get("edge_attributes", {}),
+                    )
+                    prev_nodes = [prev_nodes]
+                    next_nodes = [next_nodes]
+
+                model_copy.growth_history_step(
+                    nodes_added=new_node, neurons_added=new_edges
+                )
+
+                # Update weights of new edges
+                loss_train, loss_dev, acc_train, acc_dev, _ = model_copy.expand_node(
+                    node=new_node,
+                    prev_nodes=prev_nodes,
+                    next_nodes=next_nodes,
+                    bottlenecks=bottleneck,
+                    activities=input_B,
+                    x=X_train,
+                    y=Y_train,
+                    x1=X_dev,
+                    y1=Y_dev,
+                    amplitude_factor=amplitude_factor,
+                    verbose=verbose,
+                )
+
+                # TODO: save update weight tensors
+                # gen[] =
+
+            # Evaluate
+            acc_val, loss_val = model_copy.evaluate(X_val, Y_val, verbose=False)
+
+            gen["loss_train"] = loss_train
+            gen["loss_dev"] = loss_dev
+            gen["loss_val"] = loss_val
+            gen["acc_train"] = acc_train
+            gen["acc_dev"] = acc_dev
+            gen["acc_val"] = acc_val
+            gen["nb_params"] = model_copy.dag.count_parameters_all()
+            gen["BIC"] = model_copy.BIC(loss_val, n=len(X_val))
+
+            # TEMP: save DAG
+            gen["dag"] = model_copy.dag
+            gen["growth_history"] = model_copy.growth_history
+
+        del model_copy
+
+    @profile_function
     # @memprofile
     def grow_step(
         self,
@@ -1120,105 +1263,19 @@ class GraphGrowingNetwork(torch.nn.Module):
         # do we save the node name?
 
         # Execute all graph growth options
-        for gen in generations:
-            # Create a new edge
-            if gen.get("type") == "edge":
-                attributes = gen.get("attributes", {})
-                prev_node = attributes.get("previous_node")
-                next_node = attributes.get("next_node")
-
-                if verbose:
-                    print(f"Adding direct edge from {prev_node} to {next_node}")
-
-                model_copy = copy.deepcopy(self)
-                model_copy.to(self.device)
-                model_copy.dag.add_direct_edge(
-                    prev_node, next_node, attributes.get("edge_attributes", {})
-                )
-
-                model_copy.growth_history_step(neurons_added=[(prev_node, next_node)])
-
-                # Update weight of next_node's incoming edge
-                loss_train, loss_dev, acc_train, acc_dev, _ = (
-                    model_copy.update_edge_weights(
-                        prev_node=prev_node,
-                        next_node=next_node,
-                        bottlenecks=bottleneck,
-                        activities=input_B,
-                        x=X_train,
-                        y=Y_train,
-                        x1=X_dev,
-                        y1=Y_dev,
-                        amplitude_factor=amplitude_factor,
-                        verbose=verbose,
-                    )
-                )
-
-                # TODO: save updates weight tensors
-                # gen[] =
-
-            # Create/Expand node
-            elif gen.get("type") == "node":
-                attributes = gen.get("attributes", {})
-                new_node = attributes.get("new_node")
-                prev_nodes = attributes.get("previous_node")
-                next_nodes = attributes.get("next_node")
-                new_edges = attributes.get("new_edges")
-
-                # copy.deepcopy(self.dag)
-                model_copy = copy.deepcopy(self)
-                model_copy.to(self.device)
-
-                if new_node not in model_copy.dag.nodes:
-                    model_copy.dag.add_node_with_two_edges(
-                        prev_nodes,
-                        new_node,
-                        next_nodes,
-                        attributes.get("node_attributes"),
-                        attributes.get("edge_attributes", {}),
-                    )
-                    prev_nodes = [prev_nodes]
-                    next_nodes = [next_nodes]
-
-                model_copy.growth_history_step(
-                    nodes_added=new_node, neurons_added=new_edges
-                )
-
-                # Update weights of new edges
-                loss_train, loss_dev, acc_train, acc_dev, _ = model_copy.expand_node(
-                    node=new_node,
-                    prev_nodes=prev_nodes,
-                    next_nodes=next_nodes,
-                    bottlenecks=bottleneck,
-                    activities=input_B,
-                    x=X_train,
-                    y=Y_train,
-                    x1=X_dev,
-                    y1=Y_dev,
-                    amplitude_factor=amplitude_factor,
-                    verbose=verbose,
-                )
-
-                # TODO: save update weight tensors
-                # gen[] =
-
-            # Evaluate
-            acc_val, loss_val = model_copy.evaluate(X_val, Y_val, verbose=False)
-
-            gen["loss_train"] = loss_train
-            gen["loss_dev"] = loss_dev
-            gen["loss_val"] = loss_val
-            gen["acc_train"] = acc_train
-            gen["acc_dev"] = acc_dev
-            gen["acc_val"] = acc_val
-            gen["nb_params"] = model_copy.dag.count_parameters_all()
-            gen["BIC"] = model_copy.BIC(loss_val, n=len(X_val))
-
-            # TEMP: save DAG
-            gen["dag"] = model_copy.dag
-            gen["growth_history"] = model_copy.growth_history
-
-        del model_copy
+        self.execute_expansions(
+            generations,
+            bottleneck,
+            input_B,
+            X_train,
+            Y_train,
+            X_dev,
+            Y_dev,
+            X_val,
+            Y_val,
+            amplitude_factor=amplitude_factor,
+            verbose=verbose,
+        )
 
         # Find option that generates minimum loss
         self.choose_growth_best_action(
