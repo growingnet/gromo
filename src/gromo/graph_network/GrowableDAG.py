@@ -61,6 +61,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         # super(GrowableDAG, self).__init__(**kwargs)
         nx.DiGraph.__init__(self, **kwargs)
         nn.Module.__init__(self, **kwargs)
+        self.flatten = nn.Flatten(start_dim=1)
         self.device: torch.device = torch.device(device) if device else global_device()
 
         edges = DAG_parameters.get("edges", [])
@@ -660,6 +661,8 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         ----------
         x : torch.Tensor
             input tensor
+        verbose : bool, optional
+            print info, by default False
 
         Returns
         -------
@@ -668,6 +671,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         """
         if verbose:
             print("\nForward DAG...")
+        x = self.flatten(x)
         output = {self.root: x}
         for node in nx.topological_sort(self):
             if verbose:
@@ -695,9 +699,23 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         return output[self.end]
 
     def extended_forward(self, x: torch.Tensor, verbose: bool = False) -> torch.Tensor:
+        """Extended forward function for DAG model
 
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+        verbose : bool, optional
+            print info, by default False
+
+        Returns
+        -------
+        torch.Tensor
+            output of model
+        """
         if verbose:
             print("\nExtended Forward DAG...")
+        x = self.flatten(x)
         output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {
             self.root: (x, torch.empty(x.shape[0], 0))
         }
@@ -713,7 +731,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                 activity_ext = (
                     activity_ext
                     if activity_ext is not None
-                    else torch.empty(x.shape[0], 0)
+                    else torch.empty(x.shape[0], module.out_features, device=self.device)
                 )
 
                 assert activity.shape[1] == self.nodes[node]["size"]
