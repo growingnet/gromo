@@ -921,6 +921,9 @@ class GraphGrowingNetwork(torch.nn.Module):
             verbose=verbose,
         )
 
+        self.loss_dev = loss_history[-1]
+        self.acc_dev = acc_history[-1]
+
         # Log intermediate training
         for i in range(len(loss_history)):
             self.logger.log_metric(
@@ -966,7 +969,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         Parameters
         ----------
         generations : list[dict]
-            list of dictionaries with growth information
+            list of dictionaries with growth actions information
         bottleneck : dict
             dictionary of calculated expressivity bottleneck at each pre-activity
         input_B : dict
@@ -1089,63 +1092,34 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         del model_copy
 
-    @profile_function
-    # @memprofile
-    def grow_step(
-        self,
-        train_dataset: Dataset,
-        test_dataset: Dataset,
-        generator: torch.Generator,
-        amplitude_factor: bool = True,
-        inter_train: bool = True,
-        bic_criterion: bool = False,
-        parallel: bool = True,
-        verbose: bool = True,
-    ) -> None:
-        """Increase the size of the DAG network as one step
-        Perform all possible growth actions and choose greedily the one that minimizes the validation loss
-        Log important metrics
+    def calculate_bottleneck(
+        self, generations: list[dict], X_train: torch.Tensor, Y_train: torch.Tensor
+    ) -> tuple[dict, dict]:
+        """Calculate expressivity bottleneck on important nodes
+        Assign hooks where necessary and update tensors with a single forward-backward
+        Keep track of bottleneck and post-activities
 
         Parameters
         ----------
-        train_dataset : Dataset
-            training dataset object
-        test_dataset : Dataset
-            test dataset object
-        generator : torch.Generator
-            random generator for dataset shuffling
-        amplitude_factor : bool, optional
-            apply amplitude factor to the new neurons, by default True
-        inter_train : bool, optional
-            train the network after growth, by default True
-        bic_criterion : bool, optional
-            use BIC to select the network expansion, by default False
-        parallel : bool, optional
-            take into account parallel layers, by default True
-        verbose : bool, optional
-            print info, by default True
+        generations : list[dict]
+            list of dictionaries with growth actions information
+        X_train : torch.Tensor
+            train features
+        Y_train : torch.Tensor
+            train labels
+
+        Returns
+        -------
+        tuple[dict, dict]
+            bottleneck of nodes, input of nodes
         """
-
-        self.global_step += 1
-
-        # Find new ways to grow the DAG
-        generations = self.define_next_generations()
-        if verbose:
-            print(f"{generations=}")
-
+        # Handle empty graph case
         constant_module = False
         if self.dag.is_empty():
             # Create constant module if the graph is empty
             constant_module = True
             edge_attributes = {"type": "L", "use_bias": self.use_bias, "constant": True}
             self.dag.add_direct_edge("start", "end", edge_attributes)
-
-        # Split train dataset into 3 parts
-        X_train, Y_train, X_dev, Y_dev, X_val, Y_val = self.setup_train_datasets(
-            train_dataset=train_dataset, generator=generator
-        )
-        # super_train_loader = DataLoader(train_dataset, self.test_batch_size, shuffle=True)
-        test_loader = DataLoader(test_dataset, self.test_batch_size)
 
         # Find nodes of interest
         prev_node_modules = set()
@@ -1258,9 +1232,104 @@ class GraphGrowingNetwork(torch.nn.Module):
             # Remove constant module if needed
             self.dag.remove_direct_edge("start", "end")
 
-        # We have bottleneck, activities, optimal updates
-        # do we need the name for each activity? probably
-        # do we save the node name?
+        return bottleneck, input_B
+
+    def restrict_action_space(
+        self, generations: list[dict], chosen_position: str
+    ) -> list[dict]:
+        """Reduce action space to contribute only to specific node position
+
+        Parameters
+        ----------
+        generations : list[dict]
+            list of dictionaries with growth actions information
+        chosen_position : str
+            node position to restrict to
+
+        Returns
+        -------
+        list[dict]
+            reduced list of dictionaries with growth actions information
+        """
+        new_generations = []
+        for gen in generations:
+            new_node = gen["attributes"].get("new_node", -1)
+            next_node = gen["attributes"].get("next_node", -1)
+            if new_node == chosen_position:
+                # Case: expand current node
+                new_generations.append(gen)
+            if isinstance(next_node, list) and chosen_position in next_node:
+                # Case: expand immediate previous node
+                new_generations.append(gen)
+            elif next_node == chosen_position:
+                # Case: add new previous node
+                new_generations.append(gen)
+        return new_generations
+
+    @profile_function
+    # @memprofile
+    def grow_step(
+        self,
+        train_dataset: Dataset,
+        test_dataset: Dataset,
+        generator: torch.Generator,
+        amplitude_factor: bool = True,
+        inter_train: bool = True,
+        restrict_actions: bool = True,
+        bic_criterion: bool = False,
+        parallel: bool = True,
+        verbose: bool = True,
+    ) -> None:
+        """Increase the size of the DAG network as one step
+        Perform all possible growth actions and choose greedily the one that minimizes the validation loss
+        Log important metrics
+
+        Parameters
+        ----------
+        train_dataset : Dataset
+            training dataset object
+        test_dataset : Dataset
+            test dataset object
+        generator : torch.Generator
+            random generator for dataset shuffling
+        amplitude_factor : bool, optional
+            apply amplitude factor to the new neurons, by default True
+        inter_train : bool, optional
+            train the network after growth, by default True
+        restrict_actions : bool, optional
+            restrict action space to accelerate growth, by default True
+        bic_criterion : bool, optional
+            use BIC to select the network expansion, by default False
+        parallel : bool, optional
+            take into account parallel layers, by default True
+        verbose : bool, optional
+            print info, by default True
+        """
+
+        self.global_step += 1
+
+        # Find new ways to grow the DAG
+        generations = self.define_next_generations()
+        if verbose:
+            print(f"{generations=}")
+
+        # Split train dataset into 3 parts
+        X_train, Y_train, X_dev, Y_dev, X_val, Y_val = self.setup_train_datasets(
+            train_dataset=train_dataset, generator=generator
+        )
+        test_loader = DataLoader(test_dataset, self.test_batch_size)
+
+        # Retrieve expressivity bottleneck and inputs on important nodes
+        bottleneck, input_B = self.calculate_bottleneck(generations, X_train, Y_train)
+
+        if restrict_actions:
+            bott_norms = {key: torch.linalg.norm(val) for key, val in bottleneck.items()}
+            important_node = max(bott_norms.items(), key=operator.itemgetter(1))[0]
+            if verbose:
+                print(
+                    f"Restricting action space to node {important_node} with norm {bott_norms[important_node]}"
+                )
+            generations = self.restrict_action_space(generations, important_node)
 
         # Execute all graph growth options
         self.execute_expansions(
@@ -1291,8 +1360,6 @@ class GraphGrowingNetwork(torch.nn.Module):
                 Y_val,
                 verbose=verbose,
             )
-            self.loss_dev = hist_loss_dev[-1]
-            self.acc_dev = hist_acc_dev[-1]
 
             ########## TEMPORARY SOLUTION ##########
             self.hist_loss_dev.extend(hist_loss_dev)
@@ -1388,7 +1455,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         Returns
         -------
         list[dict]
-            list of dictionaries with growth information
+            list of dictionaries with growth actions information
         """
         # TODO: check if they allow growing
         direct_edges, one_hop_edges = self.dag.find_possible_extensions()
