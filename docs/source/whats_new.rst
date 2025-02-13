@@ -18,6 +18,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Option to restrict action space (:gh:`60` by `Stella Douka`_)
 - Add support for Conv2d layers in the sequential case (:gh:`34` by `Théo Rudkiewicz`_)
 - Replaced the `assert` statements with `self.assert*` methods in the unit tests (:gh:`50` by `Théo Rudkiewicz`_)
 - Reduce unit tests computational load, add parametrized unit tests (:gh:`46` by `Sylvain Chevallier`_)
