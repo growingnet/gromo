@@ -4,6 +4,7 @@ import unittest
 import torch
 
 from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
+from gromo.graph_network.GrowableDAG import GrowableDAG
 from gromo.utils.utils import global_device
 
 
@@ -140,20 +141,6 @@ class TestGraphGrowingNetwork(unittest.TestCase):
             self.net.dag.get_edge_module(node, "end").out_features, self.out_features
         )
 
-        # self.net.expand_node(
-        #     node,
-        #     prev_nodes,
-        #     next_nodes,
-        #     self.bottleneck,
-        #     self.input_B,
-        #     self.x,
-        #     self.y,
-        #     self.x_test,
-        #     self.y_test,
-        #     amplitude_factor=False,
-        #     verbose=False,
-        # )
-
     def test_update_edge_weights(self) -> None:
         prev_node = "start"
         next_node = "end"
@@ -239,6 +226,58 @@ class TestGraphGrowingNetwork(unittest.TestCase):
 
     def test_inter_training(self) -> None:
         pass
+
+    def test_execute_expansions(self) -> None:
+        generations = self.net.define_next_generations()
+
+        self.net.execute_expansions(
+            generations,
+            self.bottleneck,
+            self.input_B,
+            self.x,
+            self.y,
+            self.x,
+            self.y,
+            self.x_test,
+            self.y_test,
+            amplitude_factor=False,
+        )
+
+        for gen in generations:
+            self.assertIsNotNone(gen.get("loss_train"))
+            self.assertIsNotNone(gen.get("loss_dev"))
+            self.assertIsNotNone(gen.get("loss_val"))
+            self.assertIsNotNone(gen.get("acc_train"))
+            self.assertIsNotNone(gen.get("acc_dev"))
+            self.assertIsNotNone(gen.get("acc_val"))
+
+            self.assertEqual(gen.get("loss_train"), gen.get("loss_dev"))
+            self.assertEqual(gen.get("acc_train"), gen.get("acc_dev"))
+
+            self.assertIsNotNone(gen.get("nb_params"))
+            self.assertIsNotNone(gen.get("BIC"))
+
+            self.assertIsNotNone(gen.get("dag"))
+            self.assertIsInstance(gen.get("dag"), GrowableDAG)
+            self.assertIsNotNone(gen.get("growth_history"))
+            self.assertIsInstance(gen.get("growth_history"), dict)
+
+    def test_calculate_bottleneck(self) -> None:
+        generations = self.net.define_next_generations()
+
+        bottleneck, inputB = self.net.calculate_bottleneck(generations, self.x, self.y)
+
+        self.assertIsNotNone(bottleneck.get("end"))
+        self.assertEqual(bottleneck["end"].shape, (self.batch_size, self.out_features))
+
+        self.assertIsNotNone(bottleneck.get("1"))
+        self.assertEqual(bottleneck["1"].shape, (self.batch_size, self.net.neurons))
+
+        self.assertIsNotNone(inputB.get("start"))
+        self.assertEqual(inputB["start"].shape, (self.batch_size, self.in_features))
+
+        self.assertIsNotNone(inputB.get("1"))
+        self.assertEqual(inputB["1"].shape, (self.batch_size, self.net.neurons))
 
     def test_grow_step(self) -> None:
         pass
