@@ -227,7 +227,10 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
             )
 
     def compute_optimal_delta(
-        self, update: bool = True, return_deltas: bool = False
+        self,
+        update: bool = True,
+        return_deltas: bool = False,
+        force_pseudo_inverse: bool = False,
     ) -> list[tuple[torch.Tensor, torch.Tensor]] | None:
         """
         Compute the optimal delta for each previous layer using current S and M tensors.
@@ -242,6 +245,9 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
             if True update the optimal delta layer attribute
         return_deltas: bool
             if True return the deltas
+        force_pseudo_inverse: bool
+            if True, use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible
 
         Returns
         -------
@@ -264,10 +270,19 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         assert (
             self.previous_tensor_m().shape[1] == self.in_features
         ), f"The tensor M should have the same number of output features as the layer."
-        try:  # TODO: change for solve and lstsq
-            delta = torch.linalg.solve(tensor_s, previous_tensor_m).t()
-        except torch.linalg.LinAlgError:
-            delta = torch.linalg.lstsq(tensor_s, previous_tensor_m).solution.t()
+        if not force_pseudo_inverse:
+            try:
+                delta = torch.linalg.solve(tensor_s, previous_tensor_m).t()
+            except torch.linalg.LinAlgError:
+                force_pseudo_inverse = True
+                # delta = torch.linalg.lstsq(tensor_s, previous_tensor_m).solution.t()
+                # do not use lstsq because it does not work with the GPU
+                warn(
+                    f"Using the pseudo-inverse for the computation of the optimal delta "
+                    f"for {self.name}."
+                )
+        if force_pseudo_inverse:
+            delta = (torch.linalg.pinv(tensor_s) @ previous_tensor_m).t()
 
         deltas = []
         current_index = 0
