@@ -1092,6 +1092,7 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         del model_copy
 
+    @profile_function
     def calculate_bottleneck(
         self, generations: list[dict], X_train: torch.Tensor, Y_train: torch.Tensor
     ) -> tuple[dict, dict]:

@@ -122,9 +122,11 @@ class TestConv2dGrowingModule(TorchTestCase):
         x_ext = x[:, 2:]
         y_th = self.demo(x_main) + in_extension(x_ext)
         y = local_demo(x)
-        self.assertTrue(
-            torch.allclose(y, y_th, atol=1e-6),
-            f"Error: ({torch.abs(y - y_th).max().item():.2e})",
+        self.assertAllClose(
+            y,
+            y_th,
+            atol=1e-6,
+            message=f"Error: ({torch.abs(y - y_th).max().item():.2e})",
         )
 
     def test_layer_out_extension_without_bias(self):
