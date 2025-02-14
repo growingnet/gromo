@@ -18,12 +18,12 @@ class GrowingMLPBlock(nn.Module):
     """
 
     def __init__(
-            self,
-            num_features: int,
-            hidden_features: int = 0,
-            dropout: float = 0.0,
-            name: str | None = None,
-            kwargs_layer: dict | None = None,
+        self,
+        num_features: int,
+        hidden_features: int = 0,
+        dropout: float = 0.0,
+        name: str | None = None,
+        kwargs_layer: dict | None = None,
     ) -> None:
         """
         Initialise the block.
@@ -70,7 +70,12 @@ class GrowingMLPBlock(nn.Module):
         # self.activation_derivative = 1
 
     def __setattr__(self, key, value):
-        if key in ["scaling_factor", "eigenvalues_extension", "parameter_update_decrease", "first_order_improvement"]:
+        if key in [
+            "scaling_factor",
+            "eigenvalues_extension",
+            "parameter_update_decrease",
+            "first_order_improvement",
+        ]:
             self.second_layer.__setattr__(key, value)
         else:
             nn.Module.__setattr__(self, key, value)
@@ -124,7 +129,7 @@ class GrowingMLPBlock(nn.Module):
         y, _ = self.second_layer.extended_forward(y, y_ext)
 
         assert (
-                _ is None
+            _ is None
         ), f"The output of layer 2 {self.second_layer.name} should not be extended."
         del y_ext
 
@@ -185,12 +190,12 @@ class GrowingMLPBlock(nn.Module):
         self.second_layer.delete_update(include_previous=True)
 
     def compute_optimal_update(
-            self,
-            part: str = "all",
-            numerical_threshold: float = 1e-15,
-            statistical_threshold: float = 1e-3,
-            maximum_added_neurons: int | None = None,
-            dtype: torch.dtype = torch.float32,
+        self,
+        part: str = "all",
+        numerical_threshold: float = 1e-15,
+        statistical_threshold: float = 1e-3,
+        maximum_added_neurons: int | None = None,
+        dtype: torch.dtype = torch.float32,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -224,14 +229,12 @@ class GrowingMLPBlock(nn.Module):
             self.second_layer.optimal_delta_layer = None
             self.second_layer.parameter_update_decrease = 0
         elif part == "all":
-            _, _ = (
-                self.second_layer.compute_optimal_updates(
-                    numerical_threshold=numerical_threshold,
-                    statistical_threshold=statistical_threshold,
-                    maximum_added_neurons=maximum_added_neurons,
-                    update_previous=True,
-                    dtype=dtype,
-                )
+            _, _ = self.second_layer.compute_optimal_updates(
+                numerical_threshold=numerical_threshold,
+                statistical_threshold=statistical_threshold,
+                maximum_added_neurons=maximum_added_neurons,
+                update_previous=True,
+                dtype=dtype,
             )
 
     def apply_change(self) -> None:
@@ -242,8 +245,8 @@ class GrowingMLPBlock(nn.Module):
         self.second_layer.apply_change(apply_previous=True)
 
     def sub_select_optimal_added_parameters(
-            self,
-            keep_neurons: int,
+        self,
+        keep_neurons: int,
     ) -> None:
         """
         Select the first keep_neurons neurons of the optimal added parameters.
@@ -254,7 +257,9 @@ class GrowingMLPBlock(nn.Module):
             number of neurons to keep
         """
         self.eigenvalues = self.eigenvalues[:keep_neurons]
-        self.second_layer.sub_select_optimal_added_parameters(keep_neurons, sub_select_previous=True)
+        self.second_layer.sub_select_optimal_added_parameters(
+            keep_neurons, sub_select_previous=True
+        )
 
     def number_of_parameters(self):
         num_param = self.first_layer.number_of_parameters()
@@ -297,7 +302,11 @@ class GrowingMLPBlock(nn.Module):
         layer_information["parameter_improvement"] = self.parameter_update_decrease
         layer_information["eigenvalues_extension"] = self.eigenvalues_extension
         layer_information["scaling_factor"] = self.scaling_factor
-        layer_information["added_neurons"] = 0 if self.eigenvalues_extension is None else self.eigenvalues_extension.size(0)
+        layer_information["added_neurons"] = (
+            0
+            if self.eigenvalues_extension is None
+            else self.eigenvalues_extension.size(0)
+        )
         return layer_information
 
 
@@ -317,7 +326,7 @@ __growing_attributes__ = [
     "scaling_factor",
     "eigenvalues_extension",
     "parameter_update_decrease",
-    "first_order_improvement"
+    "first_order_improvement",
 ]
 
 
@@ -376,7 +385,9 @@ class GrowingTokenMixer(nn.Module):
         return out
 
     def number_of_parameters(self):
-        return self.mlp.number_of_parameters() + sum(p.numel() for p in self.norm.parameters())
+        return self.mlp.number_of_parameters() + sum(
+            p.numel() for p in self.norm.parameters()
+        )
 
 
 class GrowingChannelMixer(nn.Module):
@@ -424,11 +435,21 @@ class GrowingChannelMixer(nn.Module):
         return out
 
     def number_of_parameters(self):
-        return self.mlp.number_of_parameters() + sum(p.numel() for p in self.norm.parameters())
+        return self.mlp.number_of_parameters() + sum(
+            p.numel() for p in self.norm.parameters()
+        )
 
 
 class GrowingMixerLayer(nn.Module):
-    def __init__(self, num_patches, num_features, hidden_dim_token, hidden_dim_channel, dropout, name="Mixer Layer"):
+    def __init__(
+        self,
+        num_patches,
+        num_features,
+        hidden_dim_token,
+        hidden_dim_channel,
+        dropout,
+        name="Mixer Layer",
+    ):
         super(GrowingMixerLayer, self).__init__()
         self.token_mixer = GrowingTokenMixer(
             num_patches, num_features, hidden_dim_token, dropout
@@ -491,12 +512,12 @@ class GrowingMixerLayer(nn.Module):
         self.channel_mixer.delete_update()
 
     def compute_optimal_update(
-            self,
-            part: str = "all",
-            numerical_threshold: float = 1e-15,
-            statistical_threshold: float = 1e-3,
-            maximum_added_neurons: int | None = None,
-            dtype: torch.dtype = torch.float32,
+        self,
+        part: str = "all",
+        numerical_threshold: float = 1e-15,
+        statistical_threshold: float = 1e-3,
+        maximum_added_neurons: int | None = None,
+        dtype: torch.dtype = torch.float32,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -554,33 +575,41 @@ class GrowingMixerLayer(nn.Module):
 def check_sizes(image_size, patch_size):
     sqrt_num_patches, remainder = divmod(image_size, patch_size)
     assert remainder == 0, "`image_size` must be divisibe by `patch_size`"
-    num_patches = sqrt_num_patches ** 2
+    num_patches = sqrt_num_patches**2
     return num_patches
 
 
 class GrowingMLPMixer(nn.Module):
     def __init__(
-            self,
-            input_shape=(3, 32, 32),
-            patch_size=4,
-            num_features=128,
-            hidden_dim_token=64,
-            hidden_dim_channel=512,
-            num_layers=8,
-            num_classes=10,
-            dropout=0.0,
+        self,
+        input_shape=(3, 32, 32),
+        patch_size=4,
+        num_features=128,
+        hidden_dim_token=64,
+        hidden_dim_channel=512,
+        num_layers=8,
+        num_classes=10,
+        dropout=0.0,
     ):
         in_channels, image_size, _ = input_shape
         num_patches = check_sizes(image_size, patch_size)
         super(GrowingMLPMixer, self).__init__()
         # per-patch fully-connected is equivalent to strided conv2d
         self.patcher = nn.Conv2d(
-            in_channels, num_features, kernel_size=patch_size, stride=patch_size, device=global_device(),
+            in_channels,
+            num_features,
+            kernel_size=patch_size,
+            stride=patch_size,
+            device=global_device(),
         )
         self.mixers: nn.ModuleList[GrowingMixerLayer] = nn.ModuleList(
             [
                 GrowingMixerLayer(
-                    num_patches, num_features, hidden_dim_token, hidden_dim_channel, dropout
+                    num_patches,
+                    num_features,
+                    hidden_dim_token,
+                    hidden_dim_channel,
+                    dropout,
                 )
                 for _ in range(num_layers)
             ]
@@ -659,12 +688,12 @@ class GrowingMLPMixer(nn.Module):
         self.currently_updated_block = None
 
     def compute_optimal_update(
-            self,
-            part: str = "all",
-            numerical_threshold: float = 1e-15,
-            statistical_threshold: float = 1e-3,
-            maximum_added_neurons: int | None = None,
-            dtype: torch.dtype = torch.float32,
+        self,
+        part: str = "all",
+        numerical_threshold: float = 1e-15,
+        statistical_threshold: float = 1e-3,
+        maximum_added_neurons: int | None = None,
+        dtype: torch.dtype = torch.float32,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -713,18 +742,26 @@ class GrowingMLPMixer(nn.Module):
         return self.currently_updated_block.update_information()
 
     def select_best_update(self):
-        token_mixers_first_order_improvement = torch.tensor([
-            mixer.token_mixer.first_order_improvement for mixer in self.mixers
-        ])
-        channel_mixers_first_order_improvement = torch.tensor([
-            mixer.channel_mixer.first_order_improvement for mixer in self.mixers
-        ])
+        token_mixers_first_order_improvement = torch.tensor(
+            [mixer.token_mixer.first_order_improvement for mixer in self.mixers]
+        )
+        channel_mixers_first_order_improvement = torch.tensor(
+            [mixer.channel_mixer.first_order_improvement for mixer in self.mixers]
+        )
         best_token_mixer_index = torch.argmax(token_mixers_first_order_improvement)
         best_channel_mixer_index = torch.argmax(channel_mixers_first_order_improvement)
 
-        best_token_mixer_improvement = token_mixers_first_order_improvement[best_token_mixer_index]
-        best_channel_mixer_improvement = channel_mixers_first_order_improvement[best_channel_mixer_index]
-        token_or_channels = "token" if best_token_mixer_improvement > best_channel_mixer_improvement else "channel"
+        best_token_mixer_improvement = token_mixers_first_order_improvement[
+            best_token_mixer_index
+        ]
+        best_channel_mixer_improvement = channel_mixers_first_order_improvement[
+            best_channel_mixer_index
+        ]
+        token_or_channels = (
+            "token"
+            if best_token_mixer_improvement > best_channel_mixer_improvement
+            else "channel"
+        )
 
         for i, mixer in enumerate(self.mixers):
             if token_or_channels == "token":
@@ -753,6 +790,7 @@ class GrowingMLPMixer(nn.Module):
             first order improvement
         """
         return self.currently_updated_block.first_order_improvement
+
 
 if __name__ == "__main__":
     import torch
