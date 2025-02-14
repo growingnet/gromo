@@ -91,17 +91,3 @@ exclude_also = [
     # Defensive assertion code
     "raise NotImplementedError",
 ]
-
-[tool.gromo]
-env = "development"
-device = "cuda"
-preferred_linalg_library = "magma"
-
-[tool.gromo.development]
-logging = true
-carbon_evaluation = true
-country_iso_code = "FRA"
-
-[tool.gromo.production]
-logging = false
-carbon_evaluation = false
