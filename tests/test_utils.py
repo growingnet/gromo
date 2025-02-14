@@ -39,6 +39,16 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(tensor.shape, size)
         self.assertTrue(torch.all(tensor == 1))
 
+    def test_set_from_conf(self) -> None:
+        obj = type("", (), {})()
+        setattr(obj, "_config_data", {"var": 1})
+        set_from_conf(obj, "variable", 0)
+        self.assertTrue(hasattr(obj, "variable"))
+        self.assertEqual(obj.variable, 0)
+        var = set_from_conf(obj, "var", 0, setter=False)
+        self.assertFalse(hasattr(obj, "var"))
+        self.assertEqual(var, 1)
+
     def test_activation_fn(self) -> None:
         self.assertIsInstance(activation_fn(None), nn.Identity)
         self.assertIsInstance(activation_fn("Id"), nn.Identity)
@@ -97,3 +107,7 @@ class TestUtils(unittest.TestCase):
             eval_fn=eval_fn,
             verbose=False,
         )
+
+
+if __name__ == "__main__":
+    unittest.main()

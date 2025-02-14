@@ -384,8 +384,8 @@ class LinearGrowingModule(GrowingModule):
         if self.use_bias:
             # TODO (optimize this): we could directly store the extended input
             return torch.cat(
-                (self.input, torch.ones(self.input.shape[0], 1, device=self.device)),
-                dim=1,
+                (self.input, torch.ones(*self.input.shape[:-1], 1, device=self.device)),
+                dim=-1,
             )
         else:
             return self.input
@@ -434,8 +434,12 @@ class LinearGrowingModule(GrowingModule):
             self.input is not None
         ), f"The input must be stored to compute the update of S. (error in {self.name})"
         return (
-            torch.einsum("ij,ik->jk", self.input_extended, self.input_extended),
-            self.input.shape[0],
+            torch.einsum(
+                "ij,ik->jk",
+                torch.flatten(self.input_extended, 0, -2),
+                torch.flatten(self.input_extended, 0, -2),
+            ),
+            torch.tensor(self.input.shape[:-1]).prod().int().item(),
         )
 
     def compute_m_update(
@@ -462,8 +466,12 @@ class LinearGrowingModule(GrowingModule):
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
         return (
-            torch.einsum("ij,ik->jk", self.input_extended, desired_activation),
-            self.input.shape[0],
+            torch.einsum(
+                "ij,ik->jk",
+                torch.flatten(self.input_extended, 0, -2),
+                torch.flatten(desired_activation, 0, -2),
+            ),
+            torch.tensor(self.input.shape[:-1]).prod().int().item(),
         )
 
     def compute_m_prev_update(
@@ -493,9 +501,11 @@ class LinearGrowingModule(GrowingModule):
         elif isinstance(self.previous_module, LinearGrowingModule):
             return (
                 torch.einsum(
-                    "ij,ik->jk", self.previous_module.input_extended, desired_activation
+                    "ij,ik->jk",
+                    torch.flatten(self.previous_module.input_extended, 0, -2),
+                    torch.flatten(desired_activation, 0, -2),
                 ),
-                self.input.shape[0],
+                torch.tensor(self.input.shape[:-1]).prod().int().item(),
             )
         elif isinstance(self.previous_module, LinearAdditionGrowingModule):
             if self.previous_module.number_of_successors > 1:
@@ -532,9 +542,11 @@ class LinearGrowingModule(GrowingModule):
         elif isinstance(self.previous_module, LinearGrowingModule):
             return (
                 torch.einsum(
-                    "ij,ik->jk", self.previous_module.input_extended, self.input_extended
+                    "ij,ik->jk",
+                    torch.flatten(self.previous_module.input_extended, 0, -2),
+                    torch.flatten(self.input_extended, 0, -2),
                 ),
-                self.input.shape[0],
+                torch.tensor(self.input.shape[:-1]).prod().int().item(),
             )
         elif isinstance(self.previous_module, LinearAdditionGrowingModule):
             return (
@@ -567,9 +579,11 @@ class LinearGrowingModule(GrowingModule):
         if isinstance(self.next_module, LinearGrowingModule):
             return (
                 torch.einsum(
-                    "ij,ik->jk", self.input, self.next_module.projected_desired_update()
+                    "ij,ik->jk",
+                    torch.flatten(self.input, 0, -2),
+                    torch.flatten(self.next_module.projected_desired_update(), 0, -2),
                 ),
-                self.input.shape[0],
+                torch.tensor(self.input.shape[:-1]).prod().int().item(),
             )
         else:
             raise TypeError("The next module must be a LinearGrowingModule.")

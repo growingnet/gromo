@@ -29,6 +29,7 @@ Enhancements
 - Updated Unit Tests (:gh:`14` by `Stella Douka`_)
 - Option to disable logging (:gh:`14` by `Stella Douka`_)
 - Add CI (:gh:`2` by `Sylvain Chevallier`_)
+- Modify LinearGrowingModule to operate on the last dimension of an input tensor with arbitrary shape (:gh:`54` by `Stéphane Rivaud`_)
 
 Bugs
 ~~~~
@@ -43,7 +44,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
-- None
+- Added support for configuration files that override default class arguments (:gh:`38` by `Stella Douka`_)
 
 
 .. _Sylvain Chevallier: https://github.com/sylvchev

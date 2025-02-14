@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader, Dataset, random_split
 # from memory_profiler import LogFile
 
 try:
+    from config.loader import load_config  # type: ignore
     from graph_network.GrowableDAG import GrowableDAG  # type: ignore
     from linear_growing_module import LinearAdditionGrowingModule  # type: ignore
     from utils.logger import Logger  # type: ignore
@@ -30,8 +31,10 @@ try:
         global_device,
         line_search,
         mini_batch_gradient_descent,
+        set_from_conf,
     )
 except ModuleNotFoundError:
+    from gromo.config.loader import load_config
     from gromo.graph_network.GrowableDAG import GrowableDAG
     from gromo.linear_growing_module import LinearAdditionGrowingModule
     from gromo.utils.logger import Logger
@@ -42,6 +45,7 @@ except ModuleNotFoundError:
         global_device,
         line_search,
         mini_batch_gradient_descent,
+        set_from_conf,
     )
 
 
@@ -83,21 +87,29 @@ class GraphGrowingNetwork(torch.nn.Module):
         device: str | None = None,
         exp_name: str = "Debug",
         with_profiler: bool = False,
-        with_logger: bool = True,
+        with_logger: bool = None,
     ) -> None:
         super(GraphGrowingNetwork, self).__init__()
+        self._config_data, _ = load_config()
         self.in_features = in_features
         self.out_features = out_features
         self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
         self.neurons = neurons
         self.test_batch_size = test_batch_size
-        self.device = device if device else global_device()
+        self.device = (
+            device
+            if device is not None
+            else set_from_conf(self, "device", global_device(), setter=False)
+        )
         self.with_profiler = with_profiler
         self.global_step = 0
         self.global_epoch = 0
         self.loss_fn = nn.CrossEntropyLoss()
 
+        if with_logger is None:
+            with_logger = set_from_conf(self, "logging", True, setter=False)
+        assert with_logger is not None
         self.logger = Logger(exp_name, enabled=with_logger)
         self.logger.setup_tracking()
 
