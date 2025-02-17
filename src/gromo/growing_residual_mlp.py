@@ -19,11 +19,10 @@ class GrowingResidualMLP(torch.nn.Module):
         self,
         input_shape: torch.Size | tuple[int, ...],
         num_features: int,
-        hidden_features: int,
-        out_features: int,
         num_blocks: int,
-        activation: torch.nn.Module,
-        layer_type: str = "linear",
+        hidden_features: int,
+        num_classes: int,
+        activation: torch.nn.Module = torch.nn.ReLU(),
     ) -> None:
 
         super(GrowingResidualMLP, self).__init__()
@@ -31,10 +30,9 @@ class GrowingResidualMLP(torch.nn.Module):
         self.in_features = torch.tensor(input_shape).prod().int().item()
         self.num_features = num_features
         self.hidden_features = hidden_features
-        self.out_features = out_features
+        self.num_classes = num_classes
         self.num_blocks = num_blocks
         self.activation = activation
-        self.layer_type = layer_type
 
         # embedding
         # print(f"Embedding: {self.in_features} -> {self.num_features}")
@@ -49,7 +47,6 @@ class GrowingResidualMLP(torch.nn.Module):
                 GrowingResidualBlock(
                     num_features,
                     hidden_features,
-                    layer_type=layer_type,
                     activation=activation,
                     name=f"block {i}",
                 )
@@ -58,7 +55,7 @@ class GrowingResidualMLP(torch.nn.Module):
         )
 
         # final projection
-        self.projection = nn.Linear(num_features, out_features, device=global_device())
+        self.projection = nn.Linear(num_features, num_classes, device=global_device())
 
         # current updated block
         self.currently_updated_block: GrowingResidualBlock | None = None
@@ -221,7 +218,6 @@ class GrowingResidualBlock(torch.nn.Module):
         self,
         num_features: int,
         hidden_features: int = 0,
-        layer_type: str = "linear",
         activation: torch.nn.Module | None = None,
         name: str = "block",
         kwargs_layer: dict | None = None,
@@ -244,7 +240,6 @@ class GrowingResidualBlock(torch.nn.Module):
         kwargs_layer: dict | None
             dictionary of arguments for the layers (e.g. bias, ...)
         """
-        assert layer_type in all_layer_types, f"Layer type {layer_type} not supported."
         if kwargs_layer is None:
             kwargs_layer = {}
 
@@ -255,14 +250,14 @@ class GrowingResidualBlock(torch.nn.Module):
             num_features, elementwise_affine=False, device=global_device()
         )
         self.activation: torch.nn.Module = activation
-        self.first_layer = all_layer_types[layer_type]["layer"](
+        self.first_layer = LinearGrowingModule(
             num_features,
             hidden_features,
             post_layer_function=activation,
             name=f"first_layer",
             **kwargs_layer,
         )
-        self.second_layer = all_layer_types[layer_type]["layer"](
+        self.second_layer = LinearGrowingModule(
             hidden_features,
             num_features,
             post_layer_function=torch.nn.Identity(),
