@@ -1,6 +1,5 @@
 import torch.nn
 from torch import nn
-from torch.nn import functional as F
 
 from gromo.linear_growing_module import LinearGrowingModule
 from gromo.utils.utils import global_device
@@ -587,7 +586,7 @@ class GrowingMLPMixer(nn.Module):
         num_features=128,
         hidden_dim_token=64,
         hidden_dim_channel=512,
-        num_layers=8,
+        num_blocks=8,
         num_classes=10,
         dropout=0.0,
     ):
@@ -611,7 +610,7 @@ class GrowingMLPMixer(nn.Module):
                     hidden_dim_channel,
                     dropout,
                 )
-                for _ in range(num_layers)
+                for _ in range(num_blocks)
             ]
         )
         self.classifier = nn.Linear(num_features, num_classes, device=global_device())
@@ -816,7 +815,7 @@ if __name__ == "__main__":
         num_features=num_features,
         hidden_dim_token=hidden_token_features,
         hidden_dim_channel=hidden_channel_features,
-        num_layers=num_blocks,
+        num_blocks=num_blocks,
         num_classes=num_classes,
     )
 
@@ -824,7 +823,7 @@ if __name__ == "__main__":
     print(model)
 
     # define the input tensor
-    x = torch.rand((1, *input_shape))
+    x = torch.rand((2, *input_shape))
     print(f"Input shape: {x.shape}")
     # forward pass
     y = model(x)

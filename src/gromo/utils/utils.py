@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from pyvis.network import Network
-from torch.types import _int
+# from torch.types import _int
 
 
 __global_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
