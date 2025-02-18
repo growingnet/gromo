@@ -77,6 +77,7 @@ class TestLogger(unittest.TestCase):
             self.assertIsInstance(config, dict)
             self.assertEqual(config, {})
             self.assertEqual(method, self.config_name)
+            os.chdir(self.root)
 
 
 if __name__ == "__main__":
