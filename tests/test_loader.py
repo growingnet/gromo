@@ -2,6 +2,7 @@ import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from gromo.config import loader
 
@@ -70,14 +71,12 @@ class TestLogger(unittest.TestCase):
         self.assertIsNotNone(config)
         self.assertIsInstance(config, dict)
 
-        with TemporaryDirectory() as cwd:
-            os.chdir(cwd)
+        with patch("os.getcwd", return_value="/mocked/path"):
             config, method = loader.load_config()
             self.assertIsNotNone(config)
             self.assertIsInstance(config, dict)
             self.assertEqual(config, {})
             self.assertEqual(method, self.config_name)
-            os.chdir(self.root)
 
 
 if __name__ == "__main__":
