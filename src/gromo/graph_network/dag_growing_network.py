@@ -1,32 +1,18 @@
 import copy
-import json
 import operator
-
-# import sys
-import os
 from typing import Iterator
 
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader, Dataset
 
-# from memory_profiler import profile as memprofile
-from torch.utils.data import DataLoader, Dataset, random_split
-
-
-# from fvcore.nn import ActivationCountAnalysis, FlopCountAnalysis
-
-
-# from memory_profiler import LogFile
 
 try:
     from config.loader import load_config  # type: ignore
     from graph_network.GrowableDAG import GrowableDAG  # type: ignore
     from linear_growing_module import LinearAdditionGrowingModule  # type: ignore
-    from utils.logger import Logger  # type: ignore
-    from utils.profiling import CustomProfile, profile_function  # type: ignore
     from utils.utils import (  # type: ignore
-        DAG_to_pyvis,
         f1_micro,
         global_device,
         line_search,
@@ -37,10 +23,7 @@ except ModuleNotFoundError:
     from gromo.config.loader import load_config
     from gromo.graph_network.GrowableDAG import GrowableDAG
     from gromo.linear_growing_module import LinearAdditionGrowingModule
-    from gromo.utils.logger import Logger
-    from gromo.utils.profiling import CustomProfile, profile_function
     from gromo.utils.utils import (
-        DAG_to_pyvis,
         f1_micro,
         global_device,
         line_search,
@@ -64,16 +47,8 @@ class GraphGrowingNetwork(torch.nn.Module):
         use batch normalization on the last layer, by default False
     neurons : int, optional
         default number of neurons to add at each step, by default 20
-    test_batch_size : int, optional
-        batch size to use on the test set, by default 256
     device : str | None, optional
         default device, by default None
-    exp_name : str, optional
-        experiment name for logger, by default "Debug"
-    with_profiler : bool, optional
-        execute with profiling, by default False
-    with_logger : bool, optional
-        log results during execution, by default True
     """
 
     def __init__(
@@ -83,42 +58,27 @@ class GraphGrowingNetwork(torch.nn.Module):
         use_bias: bool = True,
         use_batch_norm: bool = False,
         neurons: int = 20,
-        test_batch_size: int = 256,
         device: str | None = None,
-        exp_name: str = "Debug",
-        with_profiler: bool = False,
-        with_logger: bool = None,
     ) -> None:
         super(GraphGrowingNetwork, self).__init__()
         self._config_data, _ = load_config()
+
         self.in_features = in_features
         self.out_features = out_features
         self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
         self.neurons = neurons
-        self.test_batch_size = test_batch_size
         self.device = (
             device
             if device is not None
             else set_from_conf(self, "device", global_device(), setter=False)
         )
-        self.with_profiler = with_profiler
+
         self.global_step = 0
         self.global_epoch = 0
         self.loss_fn = nn.CrossEntropyLoss()
 
-        if with_logger is None:
-            with_logger = set_from_conf(self, "logging", True, setter=False)
-        assert with_logger is not None
-        self.logger = Logger(exp_name, enabled=with_logger)
-        self.logger.setup_tracking()
-
-        # sys.stdout = LogFile('temp/memory_profile_log')
-
         self.reset_network()
-
-        self.hist_loss_dev = []
-        self.hist_acc_dev = []
 
     def init_empty_graph(self) -> None:
         """Create empty DAG with start and end nodes"""
@@ -155,7 +115,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.init_empty_graph()
         self.global_step = 0
         self.global_epoch = 0
-        self.logger.clear()
         self.growth_history = {}
         self.growth_history_step()
 
@@ -193,160 +152,6 @@ class GraphGrowingNetwork(torch.nn.Module):
             step[str(node)] = keep_max(new_value, str(node))
 
         self.growth_history[self.global_step].update(step)
-
-    def log_growth_info(self, x: torch.Tensor) -> None:
-        """Log important metrics at the end of each step
-
-        Parameters
-        ----------
-        x : torch.Tensor
-            input features batch to infer model signature
-        """
-        self.logger.log_metric(
-            "growth train loss", self.growth_loss_train, self.global_epoch
-        )
-        self.logger.log_metric("growth dev loss", self.growth_loss_dev, self.global_epoch)
-        self.logger.log_metric("dev loss", self.loss_dev, self.global_epoch)
-        self.logger.log_metric("growth val loss", self.growth_loss_val, self.global_epoch)
-        self.logger.log_metric("val loss", self.loss_val, self.global_epoch)
-        self.logger.log_metric("test loss", self.loss_test, self.global_epoch)
-        self.logger.log_metric(
-            "growth train accuracy", self.growth_acc_train, self.global_epoch
-        )
-        self.logger.log_metric(
-            "growth dev accuracy", self.growth_acc_dev, self.global_epoch
-        )
-        self.logger.log_metric("dev accuracy", self.acc_dev, self.global_epoch)
-        self.logger.log_metric(
-            "growth val accuracy", self.growth_acc_val, self.global_epoch
-        )
-        self.logger.log_metric("val accuracy", self.acc_val, self.global_epoch)
-        self.logger.log_metric("test accuracy", self.acc_test, self.global_epoch)
-
-        # model_copy = copy.deepcopy(self)
-        # model_copy.to(self.device)
-        # for param in model_copy.parameters():
-        #     param.requires_grad = False
-        # flops = FlopCountAnalysis(model_copy, x)
-        # self.logger.log_metric("complexity/flops", flops.total(), self.global_epoch)
-        # activations = ActivationCountAnalysis(model_copy, x)
-        # self.logger.log_metric(
-        #     "complexity/activations", activations.total(), self.global_epoch
-        # )
-        # del model_copy
-
-        self.logger.log_metric(
-            "complexity/nb of parameters",
-            self.dag.count_parameters_all(),
-            self.global_epoch,
-        )
-        # nb of parameters per edge
-        for edge in self.dag.edges:
-            params = self.dag.count_parameters([edge])
-            self.logger.log_metric(
-                f"complexity/nb of parameters at/layer {edge[0]}_{edge[1]}",
-                params,
-                self.global_epoch,
-            )
-        # in-degree and out-degree per node
-        for node in self.dag.nodes:
-            self.logger.log_metric(
-                f"complexity/in-degree/node {node}",
-                self.dag.in_degree(node),
-                self.global_epoch,
-            )
-            self.logger.log_metric(
-                f"complexity/out-degree/node {node}",
-                self.dag.out_degree(node),
-                self.global_epoch,
-            )
-            self.logger.log_metric(
-                f"complexity/size/node {node}",
-                self.dag.nodes[node]["size"],
-                self.global_epoch,
-            )
-
-        with torch.no_grad():
-            # Save model
-            try:
-                # TODO: save dag instead
-                self.logger.log_pytorch_model(
-                    self.dag, f"GrowableDAG step {self.global_step}", x
-                )
-            except Exception as error:
-                print(f"[DAGNN Model] {error}")
-
-        # Save growth history file
-        dirname = "temp"
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-        try:
-            with open(f"{dirname}/gh.json", "w") as f:
-                json.dump(self.growth_history, f)
-                f.flush()
-                self.logger.log_artifact(f"{dirname}/gh.json")
-        except Exception as error:
-            print(f"[Growth History] {error}")
-
-        # Save interactive graph
-        try:
-            graph = DAG_to_pyvis(self.dag)
-            pyvis_path = f"{dirname}/graph_.html"
-            graph.save_graph(pyvis_path)
-            self.logger.log_artifact(pyvis_path)
-        except Exception as error:
-            print(f"[Interactive DAG] {error}")
-
-    @profile_function
-    def setup_train_datasets(
-        self, train_dataset: Dataset, generator: torch.Generator
-    ) -> tuple:
-        """Split train dataset in three parts for train, development and validation
-
-        Parameters
-        ----------
-        train_dataset : Dataset
-            whole train dataset
-        generator : torch.Generator
-            random generator for dataset shuffling
-
-        Returns
-        -------
-        tuple
-            features and labels of train, development and validation datasets
-        """
-        split_length = len(train_dataset) // 3
-        residual_len = len(train_dataset) - split_length * 2
-        train_dataset, dev_dataset, val_dataset = random_split(
-            train_dataset, (residual_len, split_length, split_length), generator
-        )
-
-        train_loader = DataLoader(
-            train_dataset, len(train_dataset), shuffle=True, generator=generator
-        )
-        dev_loader = DataLoader(
-            dev_dataset, len(dev_dataset), shuffle=True, generator=generator
-        )
-        val_loader = DataLoader(
-            val_dataset, len(val_dataset), shuffle=True, generator=generator
-        )
-        # print("Length of the train_loader:", len(train_loader))
-        # print("Length of the dev_loader:", len(dev_loader))
-        # print("Length of the val_loader:", len(val_loader))
-
-        # # This way does not call the transforms!
-        # X_train, Y_train = trainset.dataset.data[trainset.indices].to(self.device), trainset.dataset.targets[trainset.indices].to(self.device)
-        # X_dev, Y_dev = devset.dataset.data[devset.indices].to(self.device), devset.dataset.targets[devset.indices].to(self.device)
-        # X_val, Y_val = valset.dataset.data[valset.indices].to(self.device), valset.dataset.targets[valset.indices].to(self.device)
-
-        X_train, Y_train = next(iter(train_loader))
-        X_train, Y_train = X_train.to(self.device), Y_train.to(self.device)
-        X_dev, Y_dev = next(iter(dev_loader))
-        X_dev, Y_dev = X_dev.to(self.device), Y_dev.to(self.device)
-        X_val, Y_val = next(iter(val_loader))
-        X_val, Y_val = X_val.to(self.device), Y_val.to(self.device)
-
-        return X_train, Y_train, X_dev, Y_dev, X_val, Y_val
 
     def block_forward(
         self,
@@ -468,10 +273,8 @@ class GraphGrowingNetwork(torch.nn.Module):
         # Joint optimization of new and existing weights with respect to the expressivity bottleneck
         # Calculates f = ||A + dW*B - dLoss/dA||^2
         # TODO
-        pass
+        raise NotImplementedError("Joint optimization of weights is not implemented yet!")
 
-    @profile_function
-    # @memprofile
     def expand_node(
         self,
         node: str,
@@ -555,18 +358,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         omega = omega.detach().clone().requires_grad_()
         bias = bias.detach().clone().requires_grad_()
 
-        # ####### SANITY CHECK #######
-        # # Concatenated pre-activity of parallel layers
-        # existing_activity = torch.cat(list(A.values()), dim=0) # (batch_size, total_out_features)
-        # # New activity of new nodes
-        # new_activity = self.block_forward(alpha, omega, bias, concatenated_input_x.T, node_module.post_addition_function).T # TODO: try with extended forward, you have to set extended layers on all modules # (batch_size, total_out_features)
-
-        # option1 = new_activity - bottleneck
-        # option2 = new_activity + existing_activity - desired_update
-        # assert(torch.all(option1 == option2))
-        # ############################
-
-        # TODO: Gradient descent on bottleneck
+        # Gradient descent on bottleneck
         # [bi-level]  loss = edge_weight - bottleneck
         # [joint opt] loss = edge_weight + possible updates - desired_update
         loss_history = self.bi_level_bottleneck_optimization(
@@ -651,10 +443,6 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         # Update size
         self.dag.nodes[node]["size"] += self.neurons
-
-        # # Update growth history
-        # self.growth_history_step(neurons_updated=np.array([edge for edge in delta_W_star]))
-
         # Evaluation
         acc_train, loss_train = self.evaluate(x, y, verbose=False)
         acc_dev, loss_dev = self.evaluate(x1, y1, verbose=False)
@@ -663,8 +451,6 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         return loss_train, loss_dev, acc_train, acc_dev, loss_history
 
-    @profile_function
-    # @memprofile
     def update_edge_weights(
         self,
         prev_node: str,
@@ -746,8 +532,6 @@ class GraphGrowingNetwork(torch.nn.Module):
             max_epochs=100,
             fast=True,
             verbose=verbose,
-            # loss_name="expected bottleneck",
-            # title=f"[Step {self.global_step}] Adding direct edge ({prev_node}, {next_node})",
         )
 
         # Record layer extensions
@@ -794,8 +578,6 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         return loss_train, loss_dev, acc_train, acc_dev, loss_history
 
-    @profile_function
-    # @memprofile
     def find_input_amplitude_factor(
         self,
         x: torch.Tensor,
@@ -847,121 +629,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         gamma_factor, _ = line_search(simulate_loss, verbose=verbose)
         return gamma_factor
 
-    @profile_function
-    def inter_training(
-        self,
-        x: torch.Tensor,
-        y: torch.Tensor,
-        x1: torch.Tensor,
-        y1: torch.Tensor,
-        epochs: int = 500,
-        lrate: float = 1e-3,
-        return_eval: bool = False,
-        verbose: bool = True,
-    ) -> (
-        tuple[list[float], list[float], list[float]]
-        | tuple[
-            list[float], list[float], list[float], list[float], list[float], list[float]
-        ]
-    ):
-        """Perform training on the model
-        Batch gradient descent with AdamW with lrate of 1e-3 and no weight decay
-        Log train and validation metrics with logger
-
-        Parameters
-        ----------
-        x : torch.Tensor
-            train input features batch
-        y : torch.Tensor
-            train true labels batch
-        x1 : torch.Tensor
-            validation input features batch
-        y1 : torch.Tensor
-            validation true labels batch
-        epochs : int, optional
-            maximum number of epochs, by default 500
-        lrate : float, optional
-            learning rate, by default 1e-3
-        return_eval : bool, optional
-            return evaluation metrics on the validation set, by default False
-        verbose : bool, optional
-            print info, by default True
-
-        Returns
-        -------
-        tuple[list[float], list[float], list[float]] | tuple[list[float], list[float], list[float], list[float], list[float], list[float]]:
-            train loss history, train accuracy history, train f1-score history
-        """
-
-        f1score_history = []
-        loss_val_history, acc_val_history, f1score_val_history = [], [], []
-
-        def forward_fn() -> torch.Tensor:
-            return self(x)
-
-        def eval_fn() -> None:
-            val_acc, val_loss, val_f1score = self.evaluate(
-                x1, y1, with_f1score=True, verbose=False
-            )
-            _, _, dev_f1score = self.evaluate(x, y, with_f1score=True, verbose=False)
-            f1score_history.append(dev_f1score)
-            loss_val_history.append(val_loss)
-            acc_val_history.append(val_acc)
-            f1score_val_history.append(val_f1score)
-            self.logger.log_metric(
-                "Intermediate training/val loss",
-                val_loss,
-                self.global_epoch,
-            )
-            self.logger.log_metric(
-                "Intermediate training/val accuracy",
-                val_acc,
-                self.global_epoch,
-            )
-            self.global_epoch += 1
-
-        loss_history, acc_history = mini_batch_gradient_descent(
-            model=self,
-            cost_fn=self.loss_fn,
-            X=x,
-            Y=y,
-            lrate=lrate,
-            batch_size=256,
-            max_epochs=epochs,
-            fast=False,
-            eval_fn=eval_fn,
-            verbose=verbose,
-        )
-
-        self.loss_dev = loss_history[-1]
-        self.acc_dev = acc_history[-1]
-
-        # Log intermediate training
-        for i in range(len(loss_history)):
-            self.logger.log_metric(
-                "Intermediate training/dev loss",
-                loss_history[i],
-                self.global_epoch - epochs + i,
-            )
-            self.logger.log_metric(
-                "Intermediate training/dev accuracy",
-                acc_history[i],
-                self.global_epoch - epochs + i,
-            )
-
-        if return_eval:
-            return (
-                loss_history,
-                acc_history,
-                f1score_history,
-                loss_val_history,
-                acc_val_history,
-                f1score_val_history,
-            )
-
-        return loss_history, acc_history, f1score_history
-
-    @profile_function
     def execute_expansions(
         self,
         generations: list[dict],
@@ -1089,6 +756,7 @@ class GraphGrowingNetwork(torch.nn.Module):
             # Evaluate
             acc_val, loss_val = model_copy.evaluate(X_val, Y_val, verbose=False)
 
+            # TODO: return all info instead of saving
             gen["loss_train"] = loss_train
             gen["loss_dev"] = loss_dev
             gen["loss_val"] = loss_val
@@ -1104,7 +772,6 @@ class GraphGrowingNetwork(torch.nn.Module):
 
         del model_copy
 
-    @profile_function
     def calculate_bottleneck(
         self, generations: list[dict], X_train: torch.Tensor, Y_train: torch.Tensor
     ) -> tuple[dict, dict]:
@@ -1181,33 +848,8 @@ class GraphGrowingNetwork(torch.nn.Module):
                 node_module.projected_v_goal().clone().detach()
             )  # (batch_size, out_features)
 
-            # Log possible optimal updates
-            assert deltas is not None
-            assert node_module.pre_activity is not None
-            assert node_module.pre_activity.grad is not None
-            for i, edge_module in enumerate(node_module.previous_modules):
-                self.logger.log_metric_with_stats(
-                    f"growth/possible update/edge {edge_module._name}/weight",
-                    deltas[i][0],
-                    self.global_step,
-                )
-                if edge_module.use_bias:
-                    self.logger.log_metric_with_stats(
-                        f"growth/possible update/edge {edge_module._name}/bias",
-                        deltas[i][1],
-                        self.global_step,
-                    )
             del deltas
-            self.logger.log_metric_with_stats(
-                f"growth/desired update/node {node_module._name}",
-                node_module.pre_activity.grad,
-                self.global_step,
-            )
-            self.logger.log_metric_with_stats(
-                f"growth/bottleneck/node {node_module._name}",
-                bottleneck[node_module._name],
-                self.global_step,
-            )
+            # TODO: separate to functions that add the hooks and remove them
 
             if constant_module:
                 assert torch.all(
@@ -1226,11 +868,6 @@ class GraphGrowingNetwork(torch.nn.Module):
             # Reset tensors and remove hooks
             node_module.store_activity = False
             # node_module.delete_update()
-
-        # bottleneck = (
-        #     torch.cat((bottleneck.values()), dim=0).detach().clone()
-        # )  # (batch_size, total_out_features)
-        # concatenated_input_B = torch.cat(list(input_B.values()), dim=0)#.clone().detach()
 
         # Reset all hooks
         for next_node_module in next_node_modules:
@@ -1279,125 +916,6 @@ class GraphGrowingNetwork(torch.nn.Module):
                 new_generations.append(gen)
         return new_generations
 
-    @profile_function
-    # @memprofile
-    def grow_step(
-        self,
-        train_dataset: Dataset,
-        test_dataset: Dataset,
-        generator: torch.Generator,
-        amplitude_factor: bool = True,
-        inter_train: bool = True,
-        restrict_actions: bool = True,
-        bic_criterion: bool = False,
-        parallel: bool = True,
-        verbose: bool = True,
-    ) -> None:
-        """Increase the size of the DAG network as one step
-        Perform all possible growth actions and choose greedily the one that minimizes the validation loss
-        Log important metrics
-
-        Parameters
-        ----------
-        train_dataset : Dataset
-            training dataset object
-        test_dataset : Dataset
-            test dataset object
-        generator : torch.Generator
-            random generator for dataset shuffling
-        amplitude_factor : bool, optional
-            apply amplitude factor to the new neurons, by default True
-        inter_train : bool, optional
-            train the network after growth, by default True
-        restrict_actions : bool, optional
-            restrict action space to accelerate growth, by default True
-        bic_criterion : bool, optional
-            use BIC to select the network expansion, by default False
-        parallel : bool, optional
-            take into account parallel layers, by default True
-        verbose : bool, optional
-            print info, by default True
-        """
-
-        self.global_step += 1
-
-        # Find new ways to grow the DAG
-        generations = self.define_next_generations()
-        if verbose:
-            print(f"{generations=}")
-
-        # Split train dataset into 3 parts
-        X_train, Y_train, X_dev, Y_dev, X_val, Y_val = self.setup_train_datasets(
-            train_dataset=train_dataset, generator=generator
-        )
-        test_loader = DataLoader(test_dataset, self.test_batch_size)
-
-        # Retrieve expressivity bottleneck and inputs on important nodes
-        bottleneck, input_B = self.calculate_bottleneck(generations, X_train, Y_train)
-
-        if restrict_actions:
-            bott_norms = {key: torch.linalg.norm(val) for key, val in bottleneck.items()}
-            important_node = max(bott_norms.items(), key=operator.itemgetter(1))[0]
-            if verbose:
-                print(
-                    f"Restricting action space to node {important_node} with norm {bott_norms[important_node]}"
-                )
-            generations = self.restrict_action_space(generations, important_node)
-
-        # Execute all graph growth options
-        self.execute_expansions(
-            generations,
-            bottleneck,
-            input_B,
-            X_train,
-            Y_train,
-            X_dev,
-            Y_dev,
-            X_val,
-            Y_val,
-            amplitude_factor=amplitude_factor,
-            verbose=verbose,
-        )
-
-        # Find option that generates minimum loss
-        self.choose_growth_best_action(
-            generations, use_bic=bic_criterion, verbose=verbose
-        )
-
-        # Intermediate training
-        if inter_train:
-            hist_loss_dev, hist_acc_dev, _ = self.inter_training(
-                torch.cat([X_train, X_dev], dim=0),
-                torch.cat([Y_train, Y_dev], dim=0),
-                X_val,
-                Y_val,
-                verbose=verbose,
-            )
-
-            ########## TEMPORARY SOLUTION ##########
-            self.hist_loss_dev.extend(hist_loss_dev)
-            self.hist_acc_dev.extend(hist_acc_dev)
-            #######################################
-
-        # Evaluation
-        self.acc_val, self.loss_val = self.evaluate(X_val, Y_val, verbose=False)
-        self.acc_test, self.loss_test = self.evaluate_dataset(test_loader)
-
-        # TODO: log metrics
-        self.log_growth_info(X_train)
-
-        # TODO: check that we reset all hooks and delete all updates
-        # # Reset all hooks
-        # for next_node_module in next_node_modules:
-        #     for parallel_module in next_node_module.previous_modules:
-        #         parallel_module.reset_computation()
-        #         # Delete activities
-        #         parallel_module.delete_update(include_previous=False)
-        #     # Delete activities
-        #     next_node_module.delete_update()
-        # for node_module in new_node_modules:
-        #     node_module.delete_update()
-
     def choose_growth_best_action(
         self, options: list[dict], use_bic: bool = False, verbose: bool = False
     ) -> None:
@@ -1414,22 +932,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         verbose : bool, optional
             print info, by default False
         """
-
-        # TODO: reinit metrics
-        # DF["train loss reduction"] = self.loss_train - DF["loss_train"]
-        # DF["dev loss reduction"] = self.loss_dev - DF["loss_dev"]
-        # DF["val loss reduction"] = self.loss_val - DF["loss_val"]
-        # self.log_metric_stats(
-        #     "growth actions/average train loss reduction",
-        #     DF["train loss reduction"].mean(),
-        # )
-        # self.log_metric_stats(
-        #     "growth actions/average dev loss reduction", DF["dev loss reduction"].mean()
-        # )
-        # self.log_metric_stats(
-        #     "growth actions/average val loss reduction", DF["val loss reduction"].mean()
-        # )
-
         # Greedy choice based on validation loss
         selection = {}
         if use_bic:
@@ -1448,9 +950,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         best_option = options[best_ind]
         del options
 
-        # for metric, value in best_option.stats.items():
-        #     self.log_metric_stats(metric, value)
-        # best_option.stats.clear()
         self.dag = copy.copy(best_option["dag"])
         self.growth_history = best_option["growth_history"]
         self.growth_loss_train = best_option["loss_train"]
@@ -1461,7 +960,6 @@ class GraphGrowingNetwork(torch.nn.Module):
         self.growth_acc_val = best_option["acc_val"]
         del best_option
 
-    @profile_function
     def define_next_generations(self) -> list[dict]:
         """Find all possible growth extensions for the current graph
 
