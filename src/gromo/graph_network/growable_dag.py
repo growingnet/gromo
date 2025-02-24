@@ -15,19 +15,14 @@ try:
         LinearAdditionGrowingModule,
         LinearGrowingModule,
     )
-    from pyvis.network import Network as Pyvisnet
-    from utils.profiling import profile_function  # type: ignore
-    from utils.utils import DAG_to_pyvis, activation_fn, global_device  # type: ignore
+    from utils.utils import activation_fn, global_device  # type: ignore
 except ImportError:
-    from pyvis.network import Network as Pyvisnet
-
     from gromo.constant_module import ConstantModule
     from gromo.linear_growing_module import (
         LinearAdditionGrowingModule,
         LinearGrowingModule,
     )
-    from gromo.utils.profiling import profile_function
-    from gromo.utils.utils import DAG_to_pyvis, activation_fn, global_device
+    from gromo.utils.utils import activation_fn, global_device
 
 
 def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -417,7 +412,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
     def is_empty(self) -> bool:
         return nx.is_empty(self)
 
-    @profile_function
     def _get_ancestors(self, root: str, pre_root: int = 0) -> None:
         """Discover all eventual ancestors of nodes
 
@@ -439,7 +433,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
             q = deque([(pre_root, root)])
             self.__recursiveBFS(q, nodes_visited={}, update=True)
 
-    @profile_function
     def _indirect_connection_exists(self, prev_node: str, next_node: str) -> bool:
         """Check if two nodes are connected with one-hop links
 
@@ -460,7 +453,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         intermediate_nodes = successors.intersection(predecessors)
         return len(intermediate_nodes) > 0
 
-    @profile_function
     def _find_possible_direct_connections(
         self, direct_successors: Mapping[str, list[str]] | Mapping[str, set[str]]
     ) -> list[dict]:
@@ -489,7 +481,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
         return direct_edges
 
-    @profile_function
     def _find_possible_one_hop_connections(
         self,
         successors: Mapping[str, list[str]] | Mapping[str, set[str]],
@@ -533,7 +524,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
         return one_hop_edges
 
-    @profile_function
     def find_possible_extensions(self) -> tuple[list[dict], list[dict]]:
         """Discover all possible direct and one-hop connections of the graph
 
@@ -567,7 +557,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
         return direct_edges, one_hop_edges
 
-    @profile_function
     def __recursiveBFS(self, q: deque, nodes_visited: dict, update: bool) -> None:
         """Breadth First Search recursive function to find ancestors
 
@@ -642,18 +631,17 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         nx.draw_networkx_labels(G, pos)
         plt.show()
 
-    def animate(self) -> Pyvisnet:
-        """Create animated version of DAG with pyvis Network
+    # def animate(self) -> Pyvisnet:
+    #     """Create animated version of DAG with pyvis Network
 
-        Returns
-        -------
-        Pyvisnet
-            pyvis network
-        """
+    #     Returns
+    #     -------
+    #     Pyvisnet
+    #         pyvis network
+    #     """
 
-        return DAG_to_pyvis(self)
+    #     return DAG_to_pyvis(self)
 
-    @profile_function
     def forward(self, x: torch.Tensor, verbose: bool = False) -> torch.Tensor:
         """Forward function for DAG model
 

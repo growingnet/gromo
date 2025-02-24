@@ -21,7 +21,7 @@ try:
     )
 except ModuleNotFoundError:
     from gromo.config.loader import load_config
-    from gromo.graph_network.GrowableDAG import GrowableDAG
+    from gromo.graph_network.growable_dag import GrowableDAG
     from gromo.linear_growing_module import LinearAdditionGrowingModule
     from gromo.utils.utils import (
         f1_micro,
@@ -32,7 +32,7 @@ except ModuleNotFoundError:
     )
 
 
-class GraphGrowingNetwork(torch.nn.Module):
+class GrowingGraphNetwork(torch.nn.Module):
     """Growable DAG Network
 
     Parameters
@@ -60,7 +60,7 @@ class GraphGrowingNetwork(torch.nn.Module):
         neurons: int = 20,
         device: str | None = None,
     ) -> None:
-        super(GraphGrowingNetwork, self).__init__()
+        super(GrowingGraphNetwork, self).__init__()
         self._config_data, _ = load_config()
 
         self.in_features = in_features

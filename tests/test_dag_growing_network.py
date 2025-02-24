@@ -3,20 +3,19 @@ import unittest
 
 import torch
 
-from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
-from gromo.graph_network.GrowableDAG import GrowableDAG
+from gromo.graph_network.growable_dag import GrowableDAG
+from gromo.graph_network.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
 
 
-class TestGraphGrowingNetwork(unittest.TestCase):
+class TestGrowingGraphNetwork(unittest.TestCase):
     def setUp(self) -> None:
         self.in_features = 5
         self.out_features = 2
         self.batch_size = 8
-        self.net = GraphGrowingNetwork(
+        self.net = GrowingGraphNetwork(
             in_features=self.in_features,
             out_features=self.out_features,
-            with_logger=False,
         )
         self.net.dag.add_node_with_two_edges(
             "start", "1", "end", node_attributes={"type": "L", "size": self.net.neurons}

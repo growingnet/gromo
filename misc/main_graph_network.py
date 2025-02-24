@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
-from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
+from gromo.graph_network.growing_graph_network import GraphGrowingNetwork
 from gromo.utils.gpu_tracking import GpuTracker
 
 
