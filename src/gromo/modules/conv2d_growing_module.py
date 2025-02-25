@@ -2,10 +2,13 @@ from warnings import warn
 
 import torch
 
-from gromo.growing_module import AdditionGrowingModule, GrowingModule
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
-from gromo.tensor_statistic import TensorStatistic
-from gromo.tools import (
+from gromo.modules.growing_module import AdditionGrowingModule, GrowingModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
+from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tools import (
     compute_mask_tensor_t,
     compute_optimal_added_parameters,
     compute_output_shape_conv,

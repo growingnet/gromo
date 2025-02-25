@@ -1,10 +1,6 @@
 import torch
 
-
-try:
-    from linear_growing_module import LinearGrowingModule
-except ModuleNotFoundError:
-    from gromo.linear_growing_module import LinearGrowingModule
+from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
 class ConstantModule(LinearGrowingModule):

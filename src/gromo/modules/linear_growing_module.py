@@ -2,9 +2,9 @@ from warnings import warn
 
 import torch
 
-from gromo.growing_module import AdditionGrowingModule, GrowingModule
-from gromo.tensor_statistic import TensorStatistic
-from gromo.tools import compute_optimal_added_parameters
+from gromo.modules.growing_module import AdditionGrowingModule, GrowingModule
+from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tools import compute_optimal_added_parameters
 from gromo.utils.utils import global_device
 
 

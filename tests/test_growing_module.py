@@ -2,7 +2,7 @@ from unittest import TestCase, main
 
 import torch
 
-from gromo.growing_module import GrowingModule
+from gromo.modules.growing_module import GrowingModule
 from gromo.utils.utils import global_device
 
 

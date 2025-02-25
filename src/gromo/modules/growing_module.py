@@ -4,7 +4,7 @@ from typing import Iterator
 import numpy as np
 import torch
 
-from gromo.tensor_statistic import TensorStatistic
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
 
 
