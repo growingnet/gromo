@@ -387,11 +387,13 @@
 <li><p>Option to disable logging (<a class="reference external" href="https://github.com/growingnet/gromo/issues/14">#14</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Add CI (<a class="reference external" href="https://github.com/growingnet/gromo/issues/2">#2</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Modify LinearGrowingModule to operate on the last dimension of an input tensor with arbitrary shape (<a class="reference external" href="https://github.com/growingnet/gromo/issues/54">#54</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
+<li><p>Integrate an MLP Mixer (<a class="reference external" href="https://github.com/growingnet/gromo/issues/70">#70</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 </ul>
 </section>
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Revert global state changes, solve test issues (<a class="reference external" href="https://github.com/growingnet/gromo/issues/70">#70</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Use a different scaling factor for input and output extensions. In addition, <code class="docutils literal notranslate"><span class="pre">apply_change</span></code> and <code class="docutils literal notranslate"><span class="pre">extended_forward</span></code> have now compatible behavior in terms of scaling factor. (<a class="reference external" href="https://github.com/growingnet/gromo/issues/48">#48</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Fix the change application when updating the previous layer (<a class="reference external" href="https://github.com/growingnet/gromo/issues/48">#48</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Fix the sub-selection of added neurons in the sequential case (<a class="reference external" href="https://github.com/growingnet/gromo/issues/41">#41</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
