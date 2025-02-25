@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 from gromo.config.loader import load_config
-from gromo.containers.growable_dag import GrowableDAG
+from gromo.containers.growing_dag import GrowingDAG
 from gromo.modules.linear_growing_module import LinearAdditionGrowingModule
 from gromo.utils.utils import (
     f1_micro,
@@ -20,7 +20,7 @@ from gromo.utils.utils import (
 
 
 class GrowingGraphNetwork(torch.nn.Module):
-    """Growable DAG Network
+    """Growing DAG Network
 
     Parameters
     ----------
@@ -93,7 +93,7 @@ class GrowingGraphNetwork(torch.nn.Module):
         DAG_parameters["edge_attributes"] = edge_attributes
         DAG_parameters["device"] = self.device
 
-        self.dag = GrowableDAG(DAG_parameters)
+        self.dag = GrowingDAG(DAG_parameters)
         if (start, end) in self.dag.edges:
             self.dag.remove_edge(start, end)
 

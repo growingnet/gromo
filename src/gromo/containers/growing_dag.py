@@ -40,11 +40,10 @@ def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
     return nn.functional.linear(input, self.weight, self.bias)
 
 
-class GrowableDAG(nx.DiGraph, nn.Module):
+class GrowingDAG(nx.DiGraph, nn.Module):
     def __init__(
         self, DAG_parameters: dict = {}, device: str | None = None, **kwargs
     ) -> None:
-        # super(GrowableDAG, self).__init__(**kwargs)
         nx.DiGraph.__init__(self, **kwargs)
         nn.Module.__init__(self, **kwargs)
         self.flatten = nn.Flatten(start_dim=1)

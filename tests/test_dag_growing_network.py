@@ -3,7 +3,7 @@ import unittest
 
 import torch
 
-from gromo.containers.growable_dag import GrowableDAG
+from gromo.containers.growing_dag import GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
 
@@ -257,7 +257,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             self.assertIsNotNone(gen.get("BIC"))
 
             self.assertIsNotNone(gen.get("dag"))
-            self.assertIsInstance(gen.get("dag"), GrowableDAG)
+            self.assertIsInstance(gen.get("dag"), GrowingDAG)
             self.assertIsNotNone(gen.get("growth_history"))
             self.assertIsInstance(gen.get("growth_history"), dict)
 

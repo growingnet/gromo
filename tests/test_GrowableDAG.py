@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from gromo.containers.growable_dag import GrowableDAG
+from gromo.containers.growing_dag import GrowingDAG
 from gromo.modules.constant_module import ConstantModule
 from gromo.modules.linear_growing_module import (
     LinearAdditionGrowingModule,
@@ -14,7 +14,7 @@ from gromo.utils.utils import global_device
 # torch.set_default_tensor_type(torch.DoubleTensor)
 
 
-class TestGrowableDAG(unittest.TestCase):
+class TestGrowingDAG(unittest.TestCase):
     def setUp(self) -> None:
         self.in_features = 10
         self.hidden_size = 5
@@ -32,7 +32,7 @@ class TestGrowableDAG(unittest.TestCase):
         DAG_parameters["edges"] = [("start", "end")]
         DAG_parameters["node_attributes"] = node_attributes
         DAG_parameters["edge_attributes"] = {"type": "L", "use_bias": True}
-        self.dag = GrowableDAG(DAG_parameters)
+        self.dag = GrowingDAG(DAG_parameters)
         self.dag.remove_edge("start", "end")
 
     def tearDown(self) -> None:
