@@ -45,7 +45,7 @@ def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
         F.linear forward function output
     """
     assert (
-        input.shape[1] == self.in_features
+        input.shape[-1] == self.in_features
     ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
     if self.in_features == 0:
         return torch.zeros(
@@ -78,8 +78,8 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         self.update_connections(edges)
         self.id_last_node_added = np.max(len(node_attributes.keys()) - 2, 0)
 
-        # Enact safe forward for layers with zero in_features
-        nn.Linear.forward = safe_forward
+        # Enact safe forward for layers with zero in_features, reverted see PR #70
+        # nn.Linear.forward = safe_forward
 
     @property
     def nodes(self) -> nx.reportviews.NodeView:
@@ -681,7 +681,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                 if verbose:
                     print("\t-->", module.name, module)
                 module_input = output[previous_node]
-                activity = module(module_input)
+                activity = safe_forward(module, module_input)
 
                 assert activity.shape[1] == self.nodes[node]["size"]
 

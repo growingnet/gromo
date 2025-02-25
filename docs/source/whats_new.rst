@@ -31,10 +31,12 @@ Enhancements
 - Add CI (:gh:`2` by `Sylvain Chevallier`_)
 - Modify LinearGrowingModule to operate on the last dimension of an input tensor with arbitrary shape (:gh:`54` by `Stéphane Rivaud`_)
 - Integrate a Residual MLP (:gh:`69` by `Stéphane Rivaud`_)
+- Integrate an MLP Mixer (:gh:`70` by `Stéphane Rivaud`_)
 
 Bugs
 ~~~~
 
+- Revert global state changes, solve test issues (:gh:`70` by `Stella Douka`_)
 - Use a different scaling factor for input and output extensions. In addition, ``apply_change`` and ``extended_forward`` have now compatible behavior in terms of scaling factor. (:gh:`48` by `Théo Rudkiewicz`_)
 - Fix the change application when updating the previous layer (:gh:`48` by `Théo Rudkiewicz`_)
 - Fix the sub-selection of added neurons in the sequential case (:gh:`41` by `Théo Rudkiewicz`_)
