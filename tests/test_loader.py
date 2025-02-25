@@ -71,7 +71,7 @@ class TestLogger(unittest.TestCase):
         self.assertIsNotNone(config)
         self.assertIsInstance(config, dict)
 
-        with patch("os.getcwd", return_value="/mocked/path"):
+        with patch("os.getcwd", return_value="/mocked/path"):  # avoid bug of PR #70
             config, method = loader.load_config()
             self.assertIsNotNone(config)
             self.assertIsInstance(config, dict)
