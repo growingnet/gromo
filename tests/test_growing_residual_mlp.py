@@ -2,7 +2,7 @@ from unittest import TestCase, main
 
 import torch
 
-from gromo.growing_residual_mlp import GrowingResidualMLP
+from gromo.containers.growing_residual_mlp import GrowingResidualMLP
 from gromo.utils.utils import global_device
 
 

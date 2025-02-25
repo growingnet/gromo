@@ -2,7 +2,7 @@ from unittest import TestCase, main
 
 import torch
 
-from gromo.growing_mlp_mixer import GrowingMLPMixer
+from gromo.containers.growing_mlp_mixer import GrowingMLPMixer
 from gromo.utils.utils import global_device
 
 
