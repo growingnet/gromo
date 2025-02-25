@@ -8,60 +8,83 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from gromo.containers.growing_container import GrowingContainer, safe_forward
 from gromo.modules.constant_module import ConstantModule
 from gromo.modules.linear_growing_module import (
     LinearAdditionGrowingModule,
     LinearGrowingModule,
 )
-from gromo.utils.utils import activation_fn, global_device
+from gromo.utils.utils import activation_fn
 
 
-def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
-    """Safe Linear forward function for empty input tensors
-    Resolves bug with shape transformation when using cuda
-
-    Parameters
-    ----------
-    input : torch.Tensor
-        input tensor
-
-    Returns
-    -------
-    torch.Tensor
-        F.linear forward function output
-    """
-    assert (
-        input.shape[-1] == self.in_features
-    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
-    if self.in_features == 0:
-        return torch.zeros(
-            input.shape[0], self.out_features, device=global_device(), requires_grad=True
-        )
-    return nn.functional.linear(input, self.weight, self.bias)
-
-
-class GrowingDAG(nx.DiGraph, nn.Module):
+class GrowingDAG(nx.DiGraph, GrowingContainer):
     def __init__(
-        self, DAG_parameters: dict = {}, device: str | None = None, **kwargs
+        self,
+        in_features: int,
+        out_features: int,
+        neurons: int,
+        use_bias: bool,
+        use_batch_norm: bool,
+        layer_type: str,
+        activation: str = "selu",
+        root: str = "start",
+        end: str = "end",
+        DAG_parameters: dict = None,
+        seed: int | None = None,
+        device: torch.device | str | None = None,
+        **kwargs,
     ) -> None:
         nx.DiGraph.__init__(self, **kwargs)
-        nn.Module.__init__(self, **kwargs)
+        GrowingContainer.__init__(
+            self,
+            in_features=in_features,
+            out_features=out_features,
+            use_bias=use_bias,
+            layer_type=layer_type,
+            activation=activation,
+            seed=seed,
+            device=device,
+        )
+        self.neurons = neurons
+        self.use_batch_norm = use_batch_norm
+        self.root = root
+        self.end = end
         self.flatten = nn.Flatten(start_dim=1)
-        self.device: torch.device = torch.device(device) if device else global_device()
+
+        if DAG_parameters is None:
+            DAG_parameters = self.init_dag_parameters()
 
         edges = DAG_parameters.get("edges", [])
         edge_attributes = DAG_parameters.get("edge_attributes", {})
         node_attributes = DAG_parameters.get("node_attributes", {})
-        self.root = DAG_parameters.get("start", "start")
-        self.end = DAG_parameters.get("end", "end")
         self.ancestors = {}
 
         self.add_edges_from(edges)
-        # nx.set_node_attributes(self, node_attributes)
         self.update_nodes(self.nodes, node_attributes)
         self.update_edges(edges, edge_attributes)
         self.update_connections(edges)
         self.id_last_node_added = np.max(len(node_attributes.keys()) - 2, 0)
+
+    def init_dag_parameters(self) -> dict:
+        edges = [(self.root, self.end)]
+        node_attributes = {
+            self.root: {
+                "type": self.layer_type,  # shows what follows
+                "size": self.in_features,
+            },
+            self.end: {
+                "type": self.layer_type,
+                "size": self.out_features,
+                "use_batch_norm": self.use_batch_norm,
+            },
+        }
+        edge_attributes = {"type": self.layer_type, "use_bias": self.use_bias}
+
+        DAG_parameters = {}
+        DAG_parameters["edges"] = edges
+        DAG_parameters["node_attributes"] = node_attributes
+        DAG_parameters["edge_attributes"] = edge_attributes
+        return DAG_parameters
 
     @property
     def nodes(self) -> nx.reportviews.NodeView:
@@ -296,9 +319,9 @@ class GrowingDAG(nx.DiGraph, nn.Module):
                     'The size of the node should be specified at initialization. Example: key "size" in node_attributes[new_node]'
                 )
             self.nodes[node].update(attributes)
-            if self.nodes[node]["type"] == "L":
+            if self.nodes[node]["type"] == "linear":
                 in_features = self.nodes[node]["size"]
-                if attributes.get("use_batch_norm", False):
+                if attributes.get("use_batch_norm", self.use_batch_norm):
                     batch_norm = nn.BatchNorm1d(
                         in_features, affine=False, device=self.device
                     )
@@ -344,8 +367,8 @@ class GrowingDAG(nx.DiGraph, nn.Module):
                 self[prev_node][next_node]["type"] = "constant"
             # If both nodes are linear
             elif (
-                self.nodes[prev_node]["type"] == "L"
-                and self.nodes[next_node]["type"] == "L"
+                self.nodes[prev_node]["type"] == "linear"
+                and self.nodes[next_node]["type"] == "linear"
             ):
                 self.__set_edge_module(
                     prev_node,
@@ -353,12 +376,12 @@ class GrowingDAG(nx.DiGraph, nn.Module):
                     LinearGrowingModule(
                         in_features=self.nodes[prev_node]["size"],
                         out_features=self.nodes[next_node]["size"],
-                        use_bias=edge_attributes.get("use_bias", True),
+                        use_bias=edge_attributes.get("use_bias", self.use_bias),
                         device=self.device,
                         name=f"l{prev_node}_{next_node}",
                     ),
                 )
-                self[prev_node][next_node]["type"] = "L"
+                self[prev_node][next_node]["type"] = "linear"
                 # TODO: set bias to zeros
 
     def update_connections(self, edges: list) -> None:
@@ -459,8 +482,8 @@ class GrowingDAG(nx.DiGraph, nn.Module):
         for prev_node, successors in direct_successors.items():
             for next_node in successors:
                 # TODO: create getter for types
-                if (self.nodes[prev_node]["type"] == "L") and (
-                    self.nodes[next_node]["type"] == "L"
+                if (self.nodes[prev_node]["type"] == "linear") and (
+                    self.nodes[next_node]["type"] == "linear"
                 ):
                     direct_edges.append(
                         {"previous_node": prev_node, "next_node": next_node}
@@ -492,8 +515,8 @@ class GrowingDAG(nx.DiGraph, nn.Module):
         new_node = str(self.id_last_node_added + 1)
         for prev_node, succ in successors.items():
             for next_node in succ:
-                if (self.nodes[prev_node]["type"] == "L") and (
-                    self.nodes[next_node]["type"] == "L"
+                if (self.nodes[prev_node]["type"] == "linear") and (
+                    self.nodes[next_node]["type"] == "linear"
                 ):
                     if not self._indirect_connection_exists(prev_node, next_node):
                         one_hop_edges.append(
@@ -502,9 +525,9 @@ class GrowingDAG(nx.DiGraph, nn.Module):
                                 "new_node": new_node,
                                 "next_node": next_node,
                                 "node_attributes": {
-                                    "type": "L",
+                                    "type": self.layer_type,
                                     "size": size,
-                                    "activation": "selu",
+                                    "activation": self.activation,
                                 },
                             }
                         )
@@ -586,18 +609,18 @@ class GrowingDAG(nx.DiGraph, nn.Module):
             pos = nx.shell_layout(G)
 
         for edge in G.edges:
-            if G.edges[edge]["type"] == "C":
+            if G.edges[edge]["type"] == "convolution":
                 G.edges[edge]["style"] = "dashed"
-            if G.edges[edge]["type"] == "L":
+            if G.edges[edge]["type"] == "linear":
                 G.edges[edge]["style"] = "solid"
 
             nx.draw_networkx_edges(G, pos, [edge], style=G.edges[edge]["style"])
 
         for node in G.nodes:
-            if G.nodes[node]["type"] == "L":
+            if G.nodes[node]["type"] == "linear":
                 G.nodes[node]["color"] = "#42cafd"
                 G.nodes[node]["shape"] = "o"
-            elif G.nodes[node]["type"] == "C":
+            elif G.nodes[node]["type"] == "convolution":
                 G.nodes[node]["color"] = "#edd83d"
                 G.nodes[node]["shape"] = "s"
 

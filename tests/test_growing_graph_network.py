@@ -18,7 +18,10 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             out_features=self.out_features,
         )
         self.net.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes={"type": "L", "size": self.net.neurons}
+            "start",
+            "1",
+            "end",
+            node_attributes={"type": "linear", "size": self.net.neurons},
         )
         self.x = torch.rand(
             (self.batch_size, self.in_features),
@@ -63,8 +66,8 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.assertEqual(self.net.dag.out_degree("end"), 0)
         self.assertEqual(self.net.dag.nodes["start"]["size"], self.in_features)
         self.assertEqual(self.net.dag.nodes["end"]["size"], self.out_features)
-        self.assertEqual(self.net.dag.nodes["start"]["type"], "L")
-        self.assertEqual(self.net.dag.nodes["end"]["type"], "L")
+        self.assertEqual(self.net.dag.nodes["start"]["type"], "linear")
+        self.assertEqual(self.net.dag.nodes["end"]["type"], "linear")
         self.assertFalse(self.net.dag.nodes["end"]["use_batch_norm"])
 
     def test_growth_history_step(self) -> None:

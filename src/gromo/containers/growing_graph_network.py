@@ -5,21 +5,15 @@ from typing import Iterator
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
-from gromo.config.loader import load_config
+from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_dag import GrowingDAG
 from gromo.modules.linear_growing_module import LinearAdditionGrowingModule
-from gromo.utils.utils import (
-    f1_micro,
-    global_device,
-    line_search,
-    mini_batch_gradient_descent,
-    set_from_conf,
-)
+from gromo.utils.utils import f1_micro, line_search, mini_batch_gradient_descent
 
 
-class GrowingGraphNetwork(torch.nn.Module):
+class GrowingGraphNetwork(GrowingContainer):
     """Growing DAG Network
 
     Parameters
@@ -42,24 +36,23 @@ class GrowingGraphNetwork(torch.nn.Module):
         self,
         in_features: int = 5,
         out_features: int = 1,
+        neurons: int = 20,
         use_bias: bool = True,
         use_batch_norm: bool = False,
-        neurons: int = 20,
+        layer_type: str = "linear",
+        seed: int | None = None,
         device: str | None = None,
     ) -> None:
-        super(GrowingGraphNetwork, self).__init__()
-        self._config_data, _ = load_config()
-
-        self.in_features = in_features
-        self.out_features = out_features
-        self.use_bias = use_bias
+        super(GrowingGraphNetwork, self).__init__(
+            in_features=in_features,
+            out_features=out_features,
+            use_bias=use_bias,
+            layer_type=layer_type,
+            seed=seed,
+            device=device,
+        )
         self.use_batch_norm = use_batch_norm
         self.neurons = neurons
-        self.device = (
-            device
-            if device is not None
-            else set_from_conf(self, "device", global_device(), setter=False)
-        )
 
         self.global_step = 0
         self.global_epoch = 0
@@ -69,33 +62,18 @@ class GrowingGraphNetwork(torch.nn.Module):
 
     def init_empty_graph(self) -> None:
         """Create empty DAG with start and end nodes"""
+        self.dag = GrowingDAG(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            neurons=self.neurons,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            layer_type=self.layer_type,
+            device=self.device,
+        )
 
-        start = "start"
-        end = "end"
-        edges = [(start, end)]
-        node_attributes = {
-            start: {
-                "type": "L",  # shows what follows
-                "size": self.in_features,
-                # "activation": "id",
-            },
-            end: {
-                "type": "L",
-                "size": self.out_features,
-                "use_batch_norm": self.use_batch_norm,
-            },
-        }
-        edge_attributes = {"type": "L", "use_bias": self.use_bias}
-
-        DAG_parameters = {}
-        DAG_parameters["edges"] = edges
-        DAG_parameters["node_attributes"] = node_attributes
-        DAG_parameters["edge_attributes"] = edge_attributes
-        DAG_parameters["device"] = self.device
-
-        self.dag = GrowingDAG(DAG_parameters)
-        if (start, end) in self.dag.edges:
-            self.dag.remove_edge(start, end)
+        if (self.dag.root, self.dag.end) in self.dag.edges:
+            self.dag.remove_edge(self.dag.root, self.dag.end)
 
     def reset_network(self) -> None:
         """Reset graph to empty"""
@@ -262,6 +240,7 @@ class GrowingGraphNetwork(torch.nn.Module):
         # TODO
         raise NotImplementedError("Joint optimization of weights is not implemented yet!")
 
+    # TODO: move to GrowingDAG
     def expand_node(
         self,
         node: str,
@@ -365,7 +344,7 @@ class GrowingGraphNetwork(torch.nn.Module):
         i = 0
         for i_edge, prev_edge_module in enumerate(node_module.previous_modules):
             # Output extension for alpha weights
-            in_features = prev_edge_module.in_features
+            in_features = int(prev_edge_module.in_features)  # type: ignore
             prev_edge_module._scaling_factor_next_module[0] = 1
             prev_edge_module.extended_output_layer = prev_edge_module.layer_of_tensor(
                 weight=alpha[:, i : i + in_features],
@@ -375,7 +354,7 @@ class GrowingGraphNetwork(torch.nn.Module):
         i = 0
         for next_edge_module in node_module.next_modules:
             # Input extension for omega weights
-            out_features = next_edge_module.out_features
+            out_features = int(next_edge_module.out_features)  # type: ignore
             next_edge_module.scaling_factor = 1
             # next_edge_module.extended_input_layer = next_edge_module.layer_of_tensor(
             #     weight=omega[i : i + out_features, :]
@@ -438,6 +417,7 @@ class GrowingGraphNetwork(torch.nn.Module):
 
         return loss_train, loss_dev, acc_train, acc_dev, loss_history
 
+    # TODO: move to GrowingDAG
     def update_edge_weights(
         self,
         prev_node: str,
@@ -565,6 +545,7 @@ class GrowingGraphNetwork(torch.nn.Module):
 
         return loss_train, loss_dev, acc_train, acc_dev, loss_history
 
+    # TODO: move to GrowingDAG
     def find_input_amplitude_factor(
         self,
         x: torch.Tensor,
@@ -759,6 +740,7 @@ class GrowingGraphNetwork(torch.nn.Module):
 
         del model_copy
 
+    # TODO: move to GrowingDAG
     def calculate_bottleneck(
         self, generations: list[dict], X_train: torch.Tensor, Y_train: torch.Tensor
     ) -> tuple[dict, dict]:
@@ -785,8 +767,12 @@ class GrowingGraphNetwork(torch.nn.Module):
         if self.dag.is_empty():
             # Create constant module if the graph is empty
             constant_module = True
-            edge_attributes = {"type": "L", "use_bias": self.use_bias, "constant": True}
-            self.dag.add_direct_edge("start", "end", edge_attributes)
+            edge_attributes = {
+                "type": self.layer_type,
+                "use_bias": self.use_bias,
+                "constant": True,
+            }
+            self.dag.add_direct_edge(self.dag.root, self.dag.end, edge_attributes)
 
         # Find nodes of interest
         prev_node_modules = set()
@@ -947,6 +933,7 @@ class GrowingGraphNetwork(torch.nn.Module):
         self.growth_acc_val = best_option["acc_val"]
         del best_option
 
+    # TODO: move to GrowingDAG
     def define_next_generations(self) -> list[dict]:
         """Find all possible growth extensions for the current graph
 
@@ -1080,6 +1067,7 @@ class GrowingGraphNetwork(torch.nn.Module):
         k = self.dag.count_parameters_all()
         return k * np.log2(n) - 2 * np.log2(loss)
 
+    # TODO: move to GrowingDAG
     def evaluate(
         self,
         x: torch.Tensor,
@@ -1139,6 +1127,7 @@ class GrowingGraphNetwork(torch.nn.Module):
 
         return accuracy, loss.item()
 
+    # TODO: move to GrowingDAG
     def evaluate_dataset(self, dataloader: DataLoader) -> tuple[float, float]:
         """Evaluate network on dataset
 
