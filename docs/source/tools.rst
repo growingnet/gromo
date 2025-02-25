@@ -2,9 +2,9 @@
 Tools
 =====
 
-.. automodule:: gromo.tools
+.. automodule:: gromo.utils.tools
 
-.. currentmodule:: gromo.tools
+.. currentmodule:: gromo.utils.tools
 
 ----------------
 Matrix inversion
