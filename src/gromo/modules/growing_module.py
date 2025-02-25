@@ -4,8 +4,9 @@ from typing import Iterator
 import numpy as np
 import torch
 
-from gromo.tensor_statistic import TensorStatistic
-from gromo.utils.utils import global_device
+from gromo.config.loader import load_config
+from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.utils import get_correct_device
 
 
 class AdditionGrowingModule(torch.nn.Module):
@@ -32,10 +33,8 @@ class AdditionGrowingModule(torch.nn.Module):
             if name is None
             else f"{self.__class__.__name__}({name})"
         )
-
-        self.device = (
-            device if device else global_device()
-        )  # FIXME: this could be removed
+        self._config_data, _ = load_config()
+        self.device = get_correct_device(self, device)
 
         self.post_addition_function: torch.nn.Module = post_addition_function
         if self.post_addition_function:
@@ -288,8 +287,6 @@ class AdditionGrowingModule(torch.nn.Module):
         """
         Update the input and output size of the module
         """
-        prev_total_in_features = self.total_in_features
-        prev_in_features = self.in_features
         if len(self.previous_modules) > 0:
             new_size = self.previous_modules[0].out_features
             self.in_features = new_size
@@ -447,8 +444,8 @@ class GrowingModule(torch.nn.Module):
             if name is None
             else f"{self.__class__.__name__}({name})"
         )
-
-        self.device = device if device else global_device()
+        self._config_data, _ = load_config()
+        self.device = get_correct_device(self, device)
 
         self.layer: torch.nn.Module = layer.to(self.device)
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)

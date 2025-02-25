@@ -1,32 +1,32 @@
 import torch
 from torch import nn
 
-from gromo.growing_module import GrowingModule
-from gromo.linear_growing_module import LinearGrowingModule
-from gromo.utils.utils import global_device
+from gromo.containers.growing_container import GrowingContainer
+from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-class GrowingMLP(nn.Module):
+class GrowingMLP(GrowingContainer):
     def __init__(
         self,
-        input_shape: int,
-        output_shape: int,
+        in_features: int,
+        out_features: int,
         hidden_shape: int,
         number_hidden_layers: int,
-        activation=nn.SELU(),
-        bias=True,
+        activation: nn.Module = nn.SELU(),
+        use_bias: bool = True,
         seed: int | None = None,
-        device: torch.device = global_device(),
+        device: torch.device = None,
     ):
-        super(GrowingMLP, self).__init__()
-        if seed is not None:
-            torch.manual_seed(seed)
-        if device != global_device():
-            raise NotImplementedError("Device selection is not implemented yet")
-        self.device = global_device()
-        self.input_shape = input_shape
-        self.num_features = torch.tensor(input_shape).prod().int().item()
-        self.output_shape = output_shape
+        super(GrowingMLP, self).__init__(
+            in_features=in_features,
+            out_features=out_features,
+            use_bias=use_bias,
+            layer_type="linear",
+            activation=activation,
+            seed=seed,
+            device=device,
+        )
+        self.num_features = torch.tensor(self.in_features).prod().int().item()
 
         # flatten input
         self.flatten = nn.Flatten(start_dim=1)
@@ -37,7 +37,7 @@ class GrowingMLP(nn.Module):
                 self.num_features,
                 hidden_shape,
                 post_layer_function=activation,
-                use_bias=bias,
+                use_bias=self.use_bias,
                 name="Layer 0",
             )
         )
@@ -48,16 +48,16 @@ class GrowingMLP(nn.Module):
                     hidden_shape,
                     post_layer_function=activation,
                     previous_module=self.layers[-1],
-                    use_bias=bias,
+                    use_bias=self.use_bias,
                     name=f"Layer {i + 1}",
                 )
             )
         self.layers.append(
             LinearGrowingModule(
                 hidden_shape,
-                output_shape,
+                self.out_features,
                 previous_module=self.layers[-1],
-                use_bias=bias,
+                use_bias=self.use_bias,
                 name=f"Layer {number_hidden_layers}",
             )
         )
@@ -110,13 +110,13 @@ class GrowingMLP(nn.Module):
         return normalisation.repeat(values.shape) / values
 
     def normalise(self, verbose: bool = False):
-        max_values = torch.zeros(len(self.layers), device=global_device())
+        max_values = torch.zeros(len(self.layers), device=self.device)
         for i, layer in enumerate(self.layers):
             max_values[i] = layer.weight.abs().max()
         normalisation = self.normalisation_factor(max_values)
         if verbose:
             print(f"Normalisation: {list(enumerate(normalisation))}")
-        current_normalisation = torch.ones(1, device=global_device())
+        current_normalisation = torch.ones(1, device=self.device)
         for i, layer in enumerate(self.layers):
             layer.weight.data = layer.weight.data * normalisation[i]
             current_normalisation *= normalisation[i]

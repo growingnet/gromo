@@ -4,9 +4,12 @@ Module to define a two layer block similar to a BasicBlock in ResNet.
 
 import torch
 
-from gromo.growing_module import AdditionGrowingModule, GrowingModule
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
-from gromo.tensor_statistic import TensorStatistic
+from gromo.containers.growing_container import GrowingContainer
+from gromo.modules.growing_module import GrowingModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
 
 
 all_layer_types = {
@@ -14,7 +17,7 @@ all_layer_types = {
 }
 
 
-class GrowingBlock(torch.nn.Module):
+class GrowingBlock(GrowingContainer):
     """
     Represents a block of a growing network.
 
@@ -65,7 +68,13 @@ class GrowingBlock(torch.nn.Module):
             dictionary of arguments for the second layer, if None use kwargs_layer
         """
         assert layer_type in all_layer_types, f"Layer type {layer_type} not supported."
-        super(GrowingBlock, self).__init__()
+        super(GrowingBlock, self).__init__(
+            in_features=in_out_features,
+            out_features=in_out_features,
+            use_bias=True,
+            layer_type=layer_type,
+            activation=activation,
+        )
         self.name = name
         self.hidden_features = hidden_features
 
@@ -73,7 +82,7 @@ class GrowingBlock(torch.nn.Module):
             post_addition_function=pre_activation,
             previous_modules=None,
             next_modules=None,
-            in_features=in_out_features,
+            in_features=self.in_features,
             name=f"{name}(input)",
         )
 

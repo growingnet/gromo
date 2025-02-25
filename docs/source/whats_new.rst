@@ -18,6 +18,8 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Refactor and simplify repo structure (:gh:`72` by `Stella Douka`_)
+- Simplify global device handling (:gh:`72` by `Stella Douka`_)
 - Option to restrict action space (:gh:`60` by `Stella Douka`_)
 - Add support for Conv2d layers in the sequential case (:gh:`34` by `Théo Rudkiewicz`_)
 - Replaced the `assert` statements with `self.assert*` methods in the unit tests (:gh:`50` by `Théo Rudkiewicz`_)

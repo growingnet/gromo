@@ -2,9 +2,9 @@
 Growing module
 ==============
 
-.. automodule:: gromo.growing_module
+.. automodule:: gromo.modules.growing_module
 
-.. currentmodule:: gromo.growing_module
+.. currentmodule:: gromo.modules.growing_module
 
 --------------
 Growing module

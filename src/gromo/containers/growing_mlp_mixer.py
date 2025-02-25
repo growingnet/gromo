@@ -1,11 +1,11 @@
 import torch.nn
 from torch import nn
 
-from gromo.linear_growing_module import LinearGrowingModule
-from gromo.utils.utils import global_device
+from gromo.containers.growing_container import GrowingContainer
+from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-class GrowingMLPBlock(nn.Module):
+class GrowingMLPBlock(GrowingContainer):
     """
     Represents a block of a growing network.
 
@@ -29,7 +29,7 @@ class GrowingMLPBlock(nn.Module):
 
         Parameters
         ----------
-        in_out_features: int
+        num_features: int
             number of input and output features, in cas of convolutional layer, the number of channels
         hidden_features: int
             number of hidden features, if zero the block is the zero function
@@ -45,13 +45,19 @@ class GrowingMLPBlock(nn.Module):
         if kwargs_layer is None:
             kwargs_layer = {}
 
-        super(GrowingMLPBlock, self).__init__()
+        super(GrowingMLPBlock, self).__init__(
+            in_features=num_features,
+            out_features=num_features,
+            use_bias=True,
+            layer_type="linear",
+            activation=nn.GELU(),
+        )
         self.name = name
 
         self.first_layer = LinearGrowingModule(
             num_features,
             hidden_features,
-            post_layer_function=nn.GELU(),
+            post_layer_function=self.activation,  # type: ignore
             **kwargs_layer,
         )
         self.dropout = nn.Dropout(dropout)
@@ -329,10 +335,15 @@ __growing_attributes__ = [
 ]
 
 
-class GrowingTokenMixer(nn.Module):
+class GrowingTokenMixer(GrowingContainer):
     def __init__(self, num_patches, num_features, hidden_features, dropout, name=None):
-        super(GrowingTokenMixer, self).__init__()
-        self.norm = nn.LayerNorm(num_features, device=global_device())
+        super(GrowingTokenMixer, self).__init__(
+            in_features=num_features,
+            out_features=num_features,
+            use_bias=True,
+            layer_type="linear",
+        )
+        self.norm = nn.LayerNorm(num_features, device=self.device)
         self.mlp = GrowingMLPBlock(num_patches, hidden_features, dropout)
 
     def __getattr__(self, item):
@@ -389,10 +400,15 @@ class GrowingTokenMixer(nn.Module):
         )
 
 
-class GrowingChannelMixer(nn.Module):
+class GrowingChannelMixer(GrowingContainer):
     def __init__(self, num_features, hidden_features, dropout, name=None):
-        super(GrowingChannelMixer, self).__init__()
-        self.norm = nn.LayerNorm(num_features, device=global_device())
+        super(GrowingChannelMixer, self).__init__(
+            in_features=num_features,
+            out_features=num_features,
+            use_bias=True,
+            layer_type="linear",
+        )
+        self.norm = nn.LayerNorm(num_features, device=self.device)
         self.mlp = GrowingMLPBlock(num_features, hidden_features, dropout)
 
     def __getattr__(self, item):
@@ -578,7 +594,7 @@ def check_sizes(image_size, patch_size):
     return num_patches
 
 
-class GrowingMLPMixer(nn.Module):
+class GrowingMLPMixer(GrowingContainer):
     def __init__(
         self,
         input_shape=(3, 32, 32),
@@ -592,20 +608,25 @@ class GrowingMLPMixer(nn.Module):
     ):
         in_channels, image_size, _ = input_shape
         num_patches = check_sizes(image_size, patch_size)
-        super(GrowingMLPMixer, self).__init__()
+        super(GrowingMLPMixer, self).__init__(
+            in_features=num_features,
+            out_features=num_classes,
+            use_bias=True,
+            layer_type="linear",
+        )
         # per-patch fully-connected is equivalent to strided conv2d
         self.patcher = nn.Conv2d(
             in_channels,
-            num_features,
+            self.in_features,
             kernel_size=patch_size,
             stride=patch_size,
-            device=global_device(),
+            device=self.device,
         )
         self.mixers: nn.ModuleList[GrowingMixerLayer] = nn.ModuleList(
             [
                 GrowingMixerLayer(
                     num_patches,
-                    num_features,
+                    self.in_features,
                     hidden_dim_token,
                     hidden_dim_channel,
                     dropout,
@@ -613,7 +634,9 @@ class GrowingMLPMixer(nn.Module):
                 for _ in range(num_blocks)
             ]
         )
-        self.classifier = nn.Linear(num_features, num_classes, device=global_device())
+        self.classifier = nn.Linear(
+            self.in_features, self.out_features, device=self.device
+        )
         self.currently_updated_block = None
 
     def forward(self, x):

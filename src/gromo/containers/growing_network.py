@@ -1,60 +1,70 @@
 import torch
 
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
+from gromo.containers.growing_container import GrowingContainer
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
 from gromo.utils.utils import global_device
 
 
-class GrowingNetwork(torch.nn.Module):
+class GrowingNetwork(GrowingContainer):
     def __init__(
         self,
         in_features: int = 5,
         out_features: int = 1,
         use_bias: bool = True,
         hidden_features: int = 10,
-        device: torch.device = global_device(),
+        device: torch.device = None,
     ):
-        super(GrowingNetwork, self).__init__()
-        self.device = device
+        super(GrowingNetwork, self).__init__(
+            in_features=in_features,
+            out_features=out_features,
+            use_bias=use_bias,
+            layer_type="linear",
+            activation=torch.nn.ReLU(),
+            device=device,
+        )
         self.start_module = LinearAdditionGrowingModule(
-            in_features=in_features, name="start"
+            in_features=self.in_features, name="start"
         )
         self.l1 = LinearGrowingModule(
-            in_features=in_features,
+            in_features=self.in_features,
             out_features=hidden_features,
-            use_bias=use_bias,
-            post_layer_function=torch.nn.ReLU(),
+            use_bias=self.use_bias,
+            post_layer_function=self.activation,  # type: ignore
             name="l1",
         )
         self.l2 = LinearGrowingModule(
             in_features=hidden_features,
-            out_features=in_features,
+            out_features=self.in_features,
             name="l2",
-            use_bias=use_bias,
+            use_bias=self.use_bias,
         )
         self.res_module = LinearAdditionGrowingModule(
-            in_features=in_features, post_addition_function=torch.nn.ReLU(), name="res"
+            in_features=self.in_features, post_addition_function=self.activation, name="res"  # type: ignore
         )
         self.l3 = LinearGrowingModule(
-            in_features=in_features,
-            out_features=out_features,
+            in_features=self.in_features,
+            out_features=self.out_features,
             name="l3",
-            use_bias=use_bias,
+            use_bias=self.use_bias,
         )
         self.l4 = LinearGrowingModule(
-            in_features=in_features,
+            in_features=self.in_features,
             out_features=hidden_features,
-            post_layer_function=torch.nn.ReLU(),
+            post_layer_function=self.activation,  # type: ignore
             name="l4",
-            use_bias=use_bias,
+            use_bias=self.use_bias,
         )
         self.l5 = LinearGrowingModule(
             in_features=hidden_features,
-            out_features=out_features,
+            out_features=self.out_features,
             name="l5",
-            use_bias=use_bias,
+            use_bias=self.use_bias,
         )
         self.end_module = LinearAdditionGrowingModule(
-            in_features=out_features, name="end"
+            in_features=self.out_features, name="end"
         )
 
         self.start_module.set_next_modules([self.l1, self.res_module])

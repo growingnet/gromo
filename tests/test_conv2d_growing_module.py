@@ -3,8 +3,8 @@ from unittest import TestCase, main, skip
 
 import torch
 
-from gromo.conv2d_growing_module import Conv2dGrowingModule
-from gromo.tools import compute_output_shape_conv
+from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
+from gromo.utils.tools import compute_output_shape_conv
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase, indicator_batch
 

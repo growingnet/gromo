@@ -2,35 +2,36 @@ import unittest
 
 import torch
 
-from gromo.constant_module import ConstantModule
-from gromo.graph_network.GrowableDAG import GrowableDAG
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
+from gromo.containers.growing_dag import GrowingDAG
+from gromo.modules.constant_module import ConstantModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
 from gromo.utils.utils import global_device
 
 
 # torch.set_default_tensor_type(torch.DoubleTensor)
 
 
-class TestGrowableDAG(unittest.TestCase):
+class TestGrowingDAG(unittest.TestCase):
     def setUp(self) -> None:
         self.in_features = 10
         self.hidden_size = 5
         self.out_features = 2
-        self.single_node_attributes = {"type": "L", "size": self.hidden_size}
-        self.default_node_attributes = {"type": "L", "size": 0, "activation": "selu"}
-        node_attributes = {
-            "start": {
-                "type": "L",
-                "size": self.in_features,
-            },
-            "end": {"type": "L", "size": self.out_features},
-        }
-        DAG_parameters = {}
-        DAG_parameters["edges"] = [("start", "end")]
-        DAG_parameters["node_attributes"] = node_attributes
-        DAG_parameters["edge_attributes"] = {"type": "L", "use_bias": True}
-        self.dag = GrowableDAG(DAG_parameters)
-        self.dag.remove_edge("start", "end")
+        self.use_bias = True
+        self.use_batch_norm = False
+        self.single_node_attributes = {"type": "linear", "size": self.hidden_size}
+        self.default_node_attributes = {"type": "linear", "size": 0, "activation": "selu"}
+        self.dag = GrowingDAG(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            layer_type="linear",
+        )
+        self.dag.remove_edge(self.dag.root, self.dag.end)
 
     def tearDown(self) -> None:
         del self.dag
@@ -104,7 +105,7 @@ class TestGrowableDAG(unittest.TestCase):
         node_attributes = {}
         with self.assertRaises(KeyError):
             self.dag.add_node_with_two_edges(*params, node_attributes=node_attributes)
-        node_attributes["type"] = "L"
+        node_attributes["type"] = "linear"
         with self.assertRaises(KeyError):
             self.dag.add_node_with_two_edges(*params, node_attributes=node_attributes)
         node_attributes["size"] = self.hidden_size
@@ -143,7 +144,7 @@ class TestGrowableDAG(unittest.TestCase):
         node_attributes = {new_node: {}}
         with self.assertRaises(KeyError):
             self.dag.update_nodes(nodes=[new_node], node_attributes=node_attributes)
-        node_attributes[new_node]["type"] = "L"
+        node_attributes[new_node]["type"] = "linear"
         with self.assertRaises(KeyError):
             self.dag.update_nodes(nodes=[new_node], node_attributes=node_attributes)
         node_attributes[new_node]["size"] = self.hidden_size

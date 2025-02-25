@@ -1,13 +1,9 @@
 from typing import Any, Callable, Iterable
 
-import matplotlib.cm as mpl_cm
-import matplotlib.colors as mpl_colors
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-from pyvis.network import Network
-from torch.types import _int
 
 
 __global_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,10 +18,7 @@ def set_device(device: str | torch.device) -> None:
         device choice
     """
     global __global_device
-    if isinstance(device, str):
-        __global_device = torch.device(device)
-    else:
-        __global_device = device
+    __global_device = torch.device(device)
 
 
 def reset_device() -> None:
@@ -44,6 +37,30 @@ def global_device() -> torch.device:
     """
     global __global_device
     return __global_device
+
+
+def get_correct_device(self, device: torch.device | str | None) -> torch.device:
+    """Get and set the correct device as global
+    Precedence works as follows:
+        argument > config file > global_device
+
+    Parameters
+    ----------
+    device : torch.device | str | None
+        chosen device argument, leave empty to use config file
+
+    Returns
+    -------
+    torch.device
+        selected correct device
+    """
+    device = torch.device(
+        device
+        if device is not None
+        else set_from_conf(self, "device", global_device(), setter=False)
+    )
+    set_device(device)
+    return device
 
 
 def torch_zeros(*size: tuple[int, int], **kwargs) -> torch.Tensor:
@@ -425,62 +442,6 @@ def batch_gradient_descent(
             plt.show()
 
     return loss_history, acc_history
-
-
-def DAG_to_pyvis(dag):
-    """Create pyvis graph based on GrowableDAG
-
-    Parameters
-    ----------
-    dag : GrowableDAG
-        growable dag object
-
-    Returns
-    -------
-    _type_
-        pyvis object
-    """
-    # nt = Network('500px', '500px', directed=True, notebook=True, cdn_resources='remote')
-    nt = Network(directed=True)
-
-    default_offset_x = 150.0
-    default_offset_y = 0.0
-
-    for node in dag.nodes:
-        size = dag.nodes[node]["size"]
-        attrs = {
-            "x": None,
-            "y": None,
-            "physics": True,
-            "label": node,
-            "title": str(size),
-            "color": size_to_color(size),
-            "size": np.sqrt(size),
-            "mass": 4,
-        }
-        if node == "start":
-            attrs.update(
-                {"x": -default_offset_x, "y": -default_offset_y, "physics": False}
-            )
-        elif node == "end":
-            attrs.update({"x": default_offset_x, "y": default_offset_y, "physics": False})
-        nt.add_node(node, **attrs)
-    for edge in dag.edges:
-        prev_node, next_node = edge
-        module = dag.get_edge_module(prev_node, next_node)
-        nt.add_edge(
-            prev_node, next_node, title=module.name, label=str(module.weight.shape)
-        )
-
-    # nt.toggle_physics(False)
-    return nt
-
-
-def size_to_color(size):
-    cmap = mpl_cm.Reds
-    norm = mpl_colors.Normalize(vmin=0, vmax=784)
-    rgba = cmap(norm(size))
-    return mpl_colors.rgb2hex(rgba)
 
 
 def calculate_true_positives(

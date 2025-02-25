@@ -5,8 +5,11 @@ Module to define a two layer block similar to a BasicBlock in ResNet.
 import torch
 import torch.nn as nn
 
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
-from gromo.utils.utils import global_device
+from gromo.containers.growing_container import GrowingContainer
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
 
 
 all_layer_types = {
@@ -14,7 +17,7 @@ all_layer_types = {
 }
 
 
-class GrowingResidualMLP(torch.nn.Module):
+class GrowingResidualMLP(GrowingContainer):
     def __init__(
         self,
         input_shape: torch.Size | tuple[int, ...],
@@ -25,20 +28,23 @@ class GrowingResidualMLP(torch.nn.Module):
         activation: torch.nn.Module = torch.nn.ReLU(),
     ) -> None:
 
-        super(GrowingResidualMLP, self).__init__()
-        self.input_shape = input_shape
-        self.in_features = torch.tensor(input_shape).prod().int().item()
+        in_features = torch.tensor(input_shape).prod().int().item()
+        super(GrowingResidualMLP, self).__init__(
+            in_features=int(in_features),
+            out_features=num_classes,
+            use_bias=True,
+            layer_type="linear",
+            activation=activation,
+        )
         self.num_features = num_features
         self.hidden_features = hidden_features
-        self.num_classes = num_classes
         self.num_blocks = num_blocks
-        self.activation = activation
 
         # embedding
         # print(f"Embedding: {self.in_features} -> {self.num_features}")
         self.embedding = nn.Sequential(
             nn.Flatten(start_dim=1),
-            nn.Linear(self.in_features, num_features, device=global_device()),
+            nn.Linear(self.in_features, num_features, device=self.device),
         )
 
         # blocks
@@ -47,7 +53,7 @@ class GrowingResidualMLP(torch.nn.Module):
                 GrowingResidualBlock(
                     num_features,
                     hidden_features,
-                    activation=activation,
+                    activation=self.activation,
                     name=f"block {i}",
                 )
                 for i in range(num_blocks)
@@ -55,7 +61,7 @@ class GrowingResidualMLP(torch.nn.Module):
         )
 
         # final projection
-        self.projection = nn.Linear(num_features, num_classes, device=global_device())
+        self.projection = nn.Linear(num_features, self.out_features, device=self.device)
 
         # current updated block
         self.currently_updated_block: GrowingResidualBlock | None = None
@@ -203,7 +209,7 @@ class GrowingResidualMLP(torch.nn.Module):
         return information
 
 
-class GrowingResidualBlock(torch.nn.Module):
+class GrowingResidualBlock(GrowingContainer):
     """
     Represents a block of a growing network.
 
@@ -243,17 +249,23 @@ class GrowingResidualBlock(torch.nn.Module):
         if kwargs_layer is None:
             kwargs_layer = {}
 
-        super(GrowingResidualBlock, self).__init__()
+        super(GrowingResidualBlock, self).__init__(
+            in_features=num_features,
+            out_features=num_features,
+            use_bias=True,
+            layer_type="linear",
+            activation=activation,
+        )
         self.name = name
 
         self.norm = nn.LayerNorm(
-            num_features, elementwise_affine=False, device=global_device()
+            num_features, elementwise_affine=False, device=self.device
         )
         self.activation: torch.nn.Module = activation
         self.first_layer = LinearGrowingModule(
             num_features,
             hidden_features,
-            post_layer_function=activation,
+            post_layer_function=self.activation,
             name=f"first_layer",
             **kwargs_layer,
         )

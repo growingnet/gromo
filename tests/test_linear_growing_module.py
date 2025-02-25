@@ -3,8 +3,11 @@ from unittest import TestCase, main
 
 import torch
 
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
-from gromo.tensor_statistic import TensorStatistic
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
