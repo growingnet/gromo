@@ -2,7 +2,7 @@ from unittest import TestCase, main
 
 import torch
 
-from gromo.tools import (
+from gromo.utils.tools import (
     compute_mask_tensor_t,
     compute_output_shape_conv,
     sqrt_inverse_matrix_semi_positive,

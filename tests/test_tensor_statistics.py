@@ -2,7 +2,7 @@ from unittest import TestCase, main
 
 import torch
 
-from gromo.tensor_statistic import TensorStatistic
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import reset_device, set_device
 
 
