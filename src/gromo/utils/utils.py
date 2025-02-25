@@ -18,10 +18,7 @@ def set_device(device: str | torch.device) -> None:
         device choice
     """
     global __global_device
-    if isinstance(device, str):
-        __global_device = torch.device(device)
-    else:
-        __global_device = device
+    __global_device = torch.device(device)
 
 
 def reset_device() -> None:
@@ -40,6 +37,30 @@ def global_device() -> torch.device:
     """
     global __global_device
     return __global_device
+
+
+def get_correct_device(self, device: torch.device | str | None) -> torch.device:
+    """Get and set the correct device as global
+    Precedence works as follows:
+        argument > config file > global_device
+
+    Parameters
+    ----------
+    device : torch.device | str | None
+        chosen device argument, leave empty to use config file
+
+    Returns
+    -------
+    torch.device
+        selected correct device
+    """
+    device = torch.device(
+        device
+        if device is not None
+        else set_from_conf(self, "device", global_device(), setter=False)
+    )
+    set_device(device)
+    return device
 
 
 def torch_zeros(*size: tuple[int, int], **kwargs) -> torch.Tensor:
