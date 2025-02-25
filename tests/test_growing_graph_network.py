@@ -3,8 +3,8 @@ import unittest
 
 import torch
 
-from gromo.graph_network.growable_dag import GrowableDAG
-from gromo.graph_network.growing_graph_network import GrowingGraphNetwork
+from gromo.containers.growable_dag import GrowableDAG
+from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
 
 

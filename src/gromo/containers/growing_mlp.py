@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from gromo.growing_module import GrowingModule
-from gromo.linear_growing_module import LinearGrowingModule
+from gromo.modules.growing_module import GrowingModule
+from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.utils import global_device
 
 

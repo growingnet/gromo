@@ -1,6 +1,9 @@
 import torch
 
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
 from gromo.utils.utils import global_device
 
 

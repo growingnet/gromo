@@ -8,21 +8,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-
-try:
-    from constant_module import ConstantModule  # type: ignore
-    from linear_growing_module import (  # type: ignore
-        LinearAdditionGrowingModule,
-        LinearGrowingModule,
-    )
-    from utils.utils import activation_fn, global_device  # type: ignore
-except ImportError:
-    from gromo.constant_module import ConstantModule
-    from gromo.linear_growing_module import (
-        LinearAdditionGrowingModule,
-        LinearGrowingModule,
-    )
-    from gromo.utils.utils import activation_fn, global_device
+from gromo.modules.constant_module import ConstantModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
+from gromo.utils.utils import activation_fn, global_device
 
 
 def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -40,7 +31,7 @@ def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
         F.linear forward function output
     """
     assert (
-        input.shape[1] == self.in_features
+        input.shape[-1] == self.in_features
     ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
     if self.in_features == 0:
         return torch.zeros(
@@ -72,9 +63,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         self.update_edges(edges, edge_attributes)
         self.update_connections(edges)
         self.id_last_node_added = np.max(len(node_attributes.keys()) - 2, 0)
-
-        # Enact safe forward for layers with zero in_features
-        nn.Linear.forward = safe_forward
 
     @property
     def nodes(self) -> nx.reportviews.NodeView:
@@ -669,7 +657,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                 if verbose:
                     print("\t-->", module.name, module)
                 module_input = output[previous_node]
-                activity = module(module_input)
+                activity = safe_forward(module, module_input)
 
                 assert activity.shape[1] == self.nodes[node]["size"]
 

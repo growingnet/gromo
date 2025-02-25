@@ -5,9 +5,9 @@ import torch
 tl.set_backend("pytorch")
 
 try:
-    from src.gromo.tools import compute_optimal_added_parameters
+    from gromo.utils.tools import compute_optimal_added_parameters
 except ImportError:
-    from gromo.tools import compute_optimal_added_parameters
+    from gromo.utils.tools import compute_optimal_added_parameters
 
 
 def value(

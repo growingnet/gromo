@@ -7,29 +7,16 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
-
-try:
-    from config.loader import load_config  # type: ignore
-    from graph_network.GrowableDAG import GrowableDAG  # type: ignore
-    from linear_growing_module import LinearAdditionGrowingModule  # type: ignore
-    from utils.utils import (  # type: ignore
-        f1_micro,
-        global_device,
-        line_search,
-        mini_batch_gradient_descent,
-        set_from_conf,
-    )
-except ModuleNotFoundError:
-    from gromo.config.loader import load_config
-    from gromo.graph_network.growable_dag import GrowableDAG
-    from gromo.linear_growing_module import LinearAdditionGrowingModule
-    from gromo.utils.utils import (
-        f1_micro,
-        global_device,
-        line_search,
-        mini_batch_gradient_descent,
-        set_from_conf,
-    )
+from gromo.config.loader import load_config
+from gromo.containers.growable_dag import GrowableDAG
+from gromo.modules.linear_growing_module import LinearAdditionGrowingModule
+from gromo.utils.utils import (
+    f1_micro,
+    global_device,
+    line_search,
+    mini_batch_gradient_descent,
+    set_from_conf,
+)
 
 
 class GrowingGraphNetwork(torch.nn.Module):

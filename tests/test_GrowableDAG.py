@@ -2,9 +2,12 @@ import unittest
 
 import torch
 
-from gromo.constant_module import ConstantModule
-from gromo.graph_network.growable_dag import GrowableDAG
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
+from gromo.containers.growable_dag import GrowableDAG
+from gromo.modules.constant_module import ConstantModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
 from gromo.utils.utils import global_device
 
 

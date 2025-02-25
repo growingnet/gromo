@@ -4,9 +4,12 @@ Module to define a two layer block similar to a BasicBlock in ResNet.
 
 import torch
 
-from gromo.growing_module import AdditionGrowingModule, GrowingModule
-from gromo.linear_growing_module import LinearAdditionGrowingModule, LinearGrowingModule
-from gromo.tensor_statistic import TensorStatistic
+from gromo.modules.growing_module import AdditionGrowingModule, GrowingModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
+from gromo.utils.tensor_statistic import TensorStatistic
 
 
 all_layer_types = {
