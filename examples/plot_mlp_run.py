@@ -20,8 +20,12 @@ import torch
 import torch.nn as nn
 from helpers.auxilliary_functions import *
 
-from gromo.growing_block import GrowingBlock, LinearGrowingBlock, LinearGrowingModule
-from gromo.growing_mlp import GrowingMLP
+from gromo.containers.growing_block import (
+    GrowingBlock,
+    LinearGrowingBlock,
+    LinearGrowingModule,
+)
+from gromo.containers.growing_mlp import GrowingMLP
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
