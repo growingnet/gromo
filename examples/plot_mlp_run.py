@@ -260,7 +260,7 @@ nb_sample = 100
 ###############################################################################
 # Display the model
 
-model = GrowingMLP(1, 1, 10, 2, activation=nn.SELU(), bias=True)
+model = GrowingMLP(1, 1, 10, 2, activation=nn.SELU(), use_bias=True)
 model
 
 info()
