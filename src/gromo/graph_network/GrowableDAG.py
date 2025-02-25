@@ -78,7 +78,7 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         self.update_connections(edges)
         self.id_last_node_added = np.max(len(node_attributes.keys()) - 2, 0)
 
-        # Enact safe forward for layers with zero in_features, reverted see PR #70 
+        # Enact safe forward for layers with zero in_features, reverted see PR #70
         # nn.Linear.forward = safe_forward
 
     @property
