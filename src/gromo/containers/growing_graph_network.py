@@ -362,22 +362,10 @@ class GrowingGraphNetwork(GrowingContainer):
             i += out_features
 
         if amplitude_factor:
-
-            def simulate_factors(factor):
-                for prev_edge_module in node_module.previous_modules:
-                    prev_edge_module._scaling_factor_next_module[0] = factor
-                for next_node_module in next_node_modules:
-                    for parallel_edge_module in next_node_module.previous_modules:
-                        parallel_edge_module.scaling_factor = factor
-
-                with torch.no_grad():
-                    pred = self.extended_forward(x1)
-                    loss = self.loss_fn(pred, y1).item()
-
-                return loss
-
             # Find amplitude factor that minimizes the overall loss
-            factor, min_loss = line_search(simulate_factors)
+            factor = self.find_amplitude_factor(
+                x=x, y=y, node_module=node_module, next_node_modules=next_node_modules
+            )
         else:
             factor = 1
 
@@ -494,24 +482,26 @@ class GrowingGraphNetwork(GrowingContainer):
         # Find amplitude factor with line search
         # TODO: fix squared value, or check why
         if amplitude_factor:
-            gamma = self.find_input_amplitude_factor(
-                x1, y1, next_node_module, verbose
+            factor = self.find_amplitude_factor(
+                x=x,
+                y=y,
+                node_module=next_node_module,
             )  # MEMORY ISSUE
         else:
-            gamma = 1.0
+            factor = 1.0
 
         # Apply new edge weights
         # new_edge = self.dag.get_edge_module(prev_node, next_node)
         # print(delta_W_star[new_edge.name][0].shape)
         # print(new_edge.layer.weight[:5, 0])
         # # ATTENTION: Only applies the optimal change
-        # new_edge.scaling_factor = gamma # is multiplied squared
+        # new_edge.scaling_factor = factor # is multiplied squared
         # new_edge.apply_change()
         # print(new_edge.layer.weight[:5, 0])
 
         # TODO: Apply existing weight updates to the rest of the edges, or all at once
         for edge in next_node_module.previous_modules:
-            edge.scaling_factor = gamma
+            edge.scaling_factor = factor
             edge.apply_change(apply_previous=False)
             edge.reset_computation()
             edge.delete_update(include_previous=False)
@@ -527,14 +517,14 @@ class GrowingGraphNetwork(GrowingContainer):
         return loss_history
 
     # TODO: move to GrowingDAG
-    def find_input_amplitude_factor(
+    def find_amplitude_factor(
         self,
         x: torch.Tensor,
         y: torch.Tensor,
-        next_module: LinearAdditionGrowingModule,
-        verbose: bool = True,
+        node_module: LinearAdditionGrowingModule,
+        next_node_modules: list[LinearAdditionGrowingModule] = None,
     ) -> float:
-        """Find amplitude factor with line search for a single layer edge with extended updates
+        """Find amplitude factor with line search
 
         Parameters
         ----------
@@ -542,10 +532,10 @@ class GrowingGraphNetwork(GrowingContainer):
             input features batch
         y : torch.Tensor
             true labels batch
-        next_module : LinearAdditionGrowingModule
-            node module at the end of the edge
-        verbose : bool, optional
-            print info, by default True
+        node_module : LinearAdditionGrowingModule
+            node module to be extended or node module at the end of the edge in case of single edge
+        next_node_modules : list[LinearAdditionGrowingModule], optional
+            next node modules of module to be extended, leave empty in case of single edge, by default None
 
         Returns
         -------
@@ -553,30 +543,22 @@ class GrowingGraphNetwork(GrowingContainer):
             amplitude factor that minimizes overall loss
         """
 
-        def simulate_loss(gamma_factor, module=next_module):
-            # TODO: Change with extended_forward
-            for edge in module.previous_modules:
-                # update = delta_W_star[edge.name]
-                # weight = gamma_factor * update[0]
-                # bias = gamma_factor * update[1]
-                # edge.parameter_step(weight, bias)
-                edge._scaling_factor_next_module[0] = gamma_factor
+        def simulate_loss(factor):
+            for prev_edge_module in node_module.previous_modules:
+                prev_edge_module._scaling_factor_next_module[0] = factor
+            if next_node_modules is not None:
+                for next_node_module in next_node_modules:
+                    for parallel_edge_module in next_node_module.previous_modules:
+                        parallel_edge_module.scaling_factor = factor
 
             with torch.no_grad():
-                # pred = self(x)
                 pred = self.extended_forward(x)
                 loss = self.loss_fn(pred, y).item()
 
-            # for edge in module.previous_modules:
-            #     update = delta_W_star[edge.name]
-            #     weight = -gamma_factor * update[0]
-            #     bias = -gamma_factor * update[1]
-            #     edge.parameter_step(weight, bias)
-
             return loss
 
-        gamma_factor, _ = line_search(simulate_loss, verbose=verbose)
-        return gamma_factor
+        factor, _ = line_search(simulate_loss)
+        return factor
 
     def execute_expansions(
         self,
