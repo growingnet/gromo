@@ -1,10 +1,7 @@
-import copy
 from collections import deque
 from typing import Iterator, Mapping
 
-import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -63,7 +60,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.update_nodes(self.nodes, node_attributes)
         self.update_edges(edges, edge_attributes)
         self.update_connections(edges)
-        self.id_last_node_added = np.max(len(node_attributes.keys()) - 2, 0)
+        self.id_last_node_added = max(len(node_attributes.keys()) - 2, 0)
 
     def init_dag_parameters(self) -> dict:
         edges = [(self.root, self.end)]
@@ -595,62 +592,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 q.append(edge)
 
         self.__recursiveBFS(q, nodes_visited, update)
-
-    def draw(self) -> None:
-        """
-        Draw graph on plot
-        """
-        plt.figure()
-        G = copy.deepcopy(self)
-
-        try:
-            pos = nx.planar_layout(G)
-        except:
-            pos = nx.shell_layout(G)
-
-        for edge in G.edges:
-            if G.edges[edge]["type"] == "convolution":
-                G.edges[edge]["style"] = "dashed"
-            if G.edges[edge]["type"] == "linear":
-                G.edges[edge]["style"] = "solid"
-
-            nx.draw_networkx_edges(G, pos, [edge], style=G.edges[edge]["style"])
-
-        for node in G.nodes:
-            if G.nodes[node]["type"] == "linear":
-                G.nodes[node]["color"] = "#42cafd"
-                G.nodes[node]["shape"] = "o"
-            elif G.nodes[node]["type"] == "convolution":
-                G.nodes[node]["color"] = "#edd83d"
-                G.nodes[node]["shape"] = "s"
-
-            if node == self.root:
-                G.nodes[node]["color"] = "#09bc8a"
-            elif node == self.end:
-                G.nodes[node]["color"] = "#f55536"
-
-            nx.draw_networkx_nodes(
-                G,
-                pos,
-                nodelist=[node],
-                node_shape=G.nodes[node]["shape"],
-                node_color=G.nodes[node]["color"],
-            )
-
-        # nx.draw_networkx_edges(G, pos)
-        nx.draw_networkx_labels(G, pos)
-        plt.show()
-
-    # def animate(self) -> Pyvisnet:
-    #     """Create animated version of DAG with pyvis Network
-
-    #     Returns
-    #     -------
-    #     Pyvisnet
-    #         pyvis network
-    #     """
-
-    #     return DAG_to_pyvis(self)
 
     def forward(self, x: torch.Tensor, verbose: bool = False) -> torch.Tensor:
         """Forward function for DAG model
