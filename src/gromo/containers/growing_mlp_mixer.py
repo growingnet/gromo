@@ -455,7 +455,7 @@ class GrowingChannelMixer(GrowingContainer):
         )
 
 
-class GrowingMixerLayer(nn.Module):
+class GrowingMixerLayer(GrowingContainer):
     def __init__(
         self,
         num_patches,
@@ -465,7 +465,12 @@ class GrowingMixerLayer(nn.Module):
         dropout,
         name="Mixer Layer",
     ):
-        super(GrowingMixerLayer, self).__init__()
+        super(GrowingMixerLayer, self).__init__(
+            in_features=num_features,
+            out_features=num_features,
+            use_bias=True,
+            layer_type="linear",
+        )
         self.token_mixer = GrowingTokenMixer(
             num_patches, num_features, hidden_dim_token, dropout
         )
