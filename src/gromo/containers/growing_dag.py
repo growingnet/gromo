@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Iterator, Mapping
+from typing import Callable, Iterator, Mapping
 
 import networkx as nx
 import torch
@@ -419,6 +419,129 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def is_empty(self) -> bool:
         return nx.is_empty(self)
 
+    def calculate_bottleneck(
+        self,
+        generations: list[dict],
+        X: torch.Tensor,
+        Y: torch.Tensor,
+        loss_fn: Callable = nn.CrossEntropyLoss(),
+    ) -> tuple[dict, dict]:
+        """Calculate expressivity bottleneck on important nodes
+        Assign hooks where necessary and update tensors with a single forward-backward
+        Keep track of bottleneck and post-activities
+
+        Parameters
+        ----------
+        generations : list[dict]
+            list of dictionaries with growth actions information
+        X : torch.Tensor
+            train features
+        Y : torch.Tensor
+            train labels
+        loss_fn : Callable, optional
+            loss function for bottleneck calculation, by default torch.nn.CrossEntropyLoss
+
+        Returns
+        -------
+        tuple[dict, dict]
+            bottleneck of nodes, input of nodes
+        """
+        # Handle empty graph case
+        constant_module = False
+        if self.is_empty():
+            # Create constant module if the graph is empty
+            constant_module = True
+            edge_attributes = {
+                "type": self.layer_type,
+                "use_bias": self.use_bias,
+                "constant": True,
+            }
+            self.add_direct_edge(self.root, self.end, edge_attributes)
+
+        # Find nodes of interest
+        prev_node_modules = set()
+        next_node_modules = set()
+        for gen in generations:
+            attributes = gen.get("attributes", {})
+
+            prev_node = attributes.get("previous_node")
+            next_node = attributes.get("next_node")
+            if not isinstance(prev_node, list):
+                prev_node = [prev_node]
+            if not isinstance(next_node, list):
+                next_node = [next_node]
+
+            prev_node_modules.update(prev_node)
+            next_node_modules.update(next_node)
+
+        # Add hooks on node modules of interest
+        prev_node_modules = self.get_node_modules(prev_node_modules)
+        next_node_modules = self.get_node_modules(next_node_modules)
+        for node_module in prev_node_modules:
+            node_module.store_activity = True
+        for node_module in next_node_modules:
+            node_module.init_computation()
+
+        # Forward - Backward step
+        pred = self(X)
+        loss = loss_fn(pred, Y)
+        loss.backward()
+
+        input_B = {}
+        bottleneck = {}
+
+        # Update tensors
+        for node_module in next_node_modules:
+            assert node_module.previous_tensor_s is not None
+            assert node_module.previous_tensor_m is not None
+            node_module.previous_tensor_s.update()
+            node_module.previous_tensor_m.update()
+
+            # Compute optimal possible updates
+            deltas = node_module.compute_optimal_delta(update=True, return_deltas=True)
+
+            # Compute expressivity bottleneck
+            bottleneck[node_module._name] = (
+                node_module.projected_v_goal().clone().detach()
+            )  # (batch_size, out_features)
+
+            del deltas
+            # TODO: separate to functions that add the hooks and remove them
+
+            if constant_module:
+                assert torch.all(
+                    bottleneck[node_module._name] == node_module.pre_activity.grad
+                ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
+
+            # Reset tensors and remove hooks
+            node_module.reset_computation()
+
+        # Retrieve input activities
+        for node_module in prev_node_modules:
+            assert node_module.activity is not None
+            # Save input activity of input layers
+            input_B[node_module._name] = node_module.activity.clone().detach()
+
+            # Reset tensors and remove hooks
+            node_module.store_activity = False
+            # node_module.delete_update()
+
+        # Reset all hooks
+        for next_node_module in next_node_modules:
+            for parallel_module in next_node_module.previous_modules:
+                parallel_module.reset_computation()
+                # DO NOT delete updates
+                # parallel_module.delete_update(include_previous=False)
+            # Delete activities
+            next_node_module.delete_update()
+
+        if constant_module:
+            # Remove constant module if needed
+            self.remove_direct_edge(self.root, self.end)
+            self.remove_direct_edge(self.root, self.end)
+
+        return bottleneck, input_B
+
     def _get_ancestors(self, root: str, pre_root: int = 0) -> None:
         """Discover all eventual ancestors of nodes
 
@@ -563,6 +686,80 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # existing_nodes = self._find_possible_node_extensions(list(nodes_set))
 
         return direct_edges, one_hop_edges
+
+    def define_next_generations(self) -> list[dict]:
+        """Find all possible growth extensions for the current graph
+
+        Returns
+        -------
+        list[dict]
+            list of dictionaries with growth actions information
+        """
+        # TODO: check if they allow growing
+        direct_edges, one_hop_edges = self.find_possible_extensions()
+
+        # gen_id = 0
+        generations = []
+
+        # All possible new direct edges
+        for attr in direct_edges:
+            previous_node = attr.get("previous_node")
+            next_node = attr.get("next_node")
+
+            edge_name = f"l{previous_node}_{next_node}"
+            gen = {
+                "type": "edge",
+                "attributes": attr,
+                "id": edge_name,
+                "evolved": False,
+            }
+            generations.append(gen)
+
+        # All possible one-hop connections
+        for attr in one_hop_edges:
+            previous_node = attr.get("previous_node")
+            new_node = attr.get("new_node")
+            next_node = attr.get("next_node")
+            new_edges = [
+                (previous_node, new_node),
+                (new_node, next_node),
+            ]
+            attr["new_edges"] = new_edges
+
+            gen = {
+                "type": "node",
+                "attributes": attr,
+                "id": new_node,
+                "evolved": False,
+            }
+            generations.append(gen)
+
+        # All existing nodes
+        for node in self.nodes:
+            if (node == self.root) or (node == self.end):
+                continue
+
+            previous_nodes = [n for n in self.predecessors(node)]
+            next_nodes = [n for n in self.successors(node)]
+
+            new_edges = [in_edge for in_edge in self.in_edges(node)]
+            new_edges.extend([out_edge for out_edge in self.out_edges(node)])
+
+            attr = {
+                "new_node": node,
+                "previous_node": previous_nodes,
+                "next_node": next_nodes,
+                "new_edges": new_edges,
+            }
+            gen = {
+                "type": "node",
+                "attributes": attr,
+                "id": node,
+                "evolved": False,
+            }
+            generations.append(gen)
+
+        return generations
 
     def __recursiveBFS(self, q: deque, nodes_visited: dict, update: bool) -> None:
         """Breadth First Search recursive function to find ancestors

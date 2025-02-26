@@ -52,7 +52,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             "1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
         }
 
-        self.generations = self.net.define_next_generations()
+        self.generations = self.net.dag.define_next_generations()
 
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
@@ -124,8 +124,6 @@ class TestGrowingGraphNetwork(unittest.TestCase):
                 next_nodes,
                 self.bottleneck,
                 self.input_B,
-                self.x,
-                self.y,
                 self.x_test,
                 self.y_test,
                 verbose=False,
@@ -158,8 +156,6 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             next_node,
             self.bottleneck,
             self.input_B,
-            self.x,
-            self.y,
             self.x_test,
             self.y_test,
             amplitude_factor=False,
@@ -265,7 +261,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             self.assertIsInstance(gen.get("growth_history"), dict)
 
     def test_calculate_bottleneck(self) -> None:
-        bottleneck, inputB = self.net.calculate_bottleneck(
+        bottleneck, inputB = self.net.dag.calculate_bottleneck(
             self.generations, self.x, self.y
         )
 
@@ -297,7 +293,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         pass
 
     def test_choose_growth_best_option(self) -> None:
-        options = self.net.define_next_generations()
+        options = self.net.dag.define_next_generations()
         with self.assertRaises(KeyError):
             self.net.choose_growth_best_action(options, use_bic=False)
         with self.assertRaises(KeyError):

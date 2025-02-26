@@ -250,12 +250,10 @@ class GrowingGraphNetwork(GrowingContainer):
         activities: dict,
         x: torch.Tensor,
         y: torch.Tensor,
-        x1: torch.Tensor,
-        y1: torch.Tensor,
         amplitude_factor: bool = True,
         parallel: bool = True,
         verbose: bool = True,
-    ) -> tuple[float, float, float, float, list]:
+    ) -> list:
         """Increase block dimension by expanding node with more neurons
         Increase output size of incoming layers and input size of outgoing layers
         Train new neurons to minimize the expressivity bottleneck
@@ -273,12 +271,8 @@ class GrowingGraphNetwork(GrowingContainer):
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
         x : torch.Tensor
-            train input features batch
-        y : torch.Tensor
-            train true labels of batch
-        x1 : torch.Tensor
             development input features batch
-        y1 : torch.Tensor
+        y : torch.Tensor
             development true labels batch
         amplitude_factor : bool, optional
             find and apply amplitude factor on the block and its parallel connections, by default True
@@ -289,8 +283,8 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Returns
         -------
-        tuple[float, float, float, float, list]
-            train loss, development loss, train accuracy, development accuracy, bottleneck loss history
+        list
+            bottleneck loss history
         """
 
         node_module = self.dag.get_node_module(node)
@@ -409,13 +403,10 @@ class GrowingGraphNetwork(GrowingContainer):
 
         # Update size
         self.dag.nodes[node]["size"] += self.neurons
-        # Evaluation
-        acc_train, loss_train = self.evaluate(x, y, verbose=False)
-        acc_dev, loss_dev = self.evaluate(x1, y1, verbose=False)
 
         # TODO FUTURE : Save updates to return
 
-        return loss_train, loss_dev, acc_train, acc_dev, loss_history
+        return loss_history
 
     # TODO: move to GrowingDAG
     def update_edge_weights(
@@ -426,11 +417,9 @@ class GrowingGraphNetwork(GrowingContainer):
         activities: dict,
         x: torch.Tensor,
         y: torch.Tensor,
-        x1: torch.Tensor,
-        y1: torch.Tensor,
         amplitude_factor: bool = True,
         verbose: bool = True,
-    ) -> tuple[float, float, float, float, list]:
+    ) -> list:
         """Update weights of a single layer edge
         Train layer to minimize the expressivity bottleneck
 
@@ -445,12 +434,8 @@ class GrowingGraphNetwork(GrowingContainer):
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
         x : torch.Tensor
-            train input features batch
-        y : torch.Tensor
-            train true labels batch
-        x1 : torch.Tensor
             development input features batch
-        y1 : torch.Tensor
+        y : torch.Tensor
             development true labels batch
         amplitude_factor : bool, optional
             find and apply amplitude factor on the block and its parallel connections, by default True
@@ -459,8 +444,8 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Returns
         -------
-        tuple[float, float, float, float, list]
-            train loss, development loss, train accuracy, development accuracy, bottleneck loss history
+        list
+            bottleneck loss history
         """
 
         new_edge_module = self.dag.get_edge_module(prev_node, next_node)
@@ -539,11 +524,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # there is no layer extension recorded
         # next_node_module.update_size()
 
-        # Evaluate on train and development sets
-        acc_train, loss_train = self.evaluate(x, y, verbose=False)
-        acc_dev, loss_dev = self.evaluate(x1, y1, verbose=False)
-
-        return loss_train, loss_dev, acc_train, acc_dev, loss_history
+        return loss_history
 
     # TODO: move to GrowingDAG
     def find_input_amplitude_factor(
@@ -658,19 +639,15 @@ class GrowingGraphNetwork(GrowingContainer):
                 model_copy.growth_history_step(neurons_added=[(prev_node, next_node)])
 
                 # Update weight of next_node's incoming edge
-                loss_train, loss_dev, acc_train, acc_dev, _ = (
-                    model_copy.update_edge_weights(
-                        prev_node=prev_node,
-                        next_node=next_node,
-                        bottlenecks=bottleneck,
-                        activities=input_B,
-                        x=X_train,
-                        y=Y_train,
-                        x1=X_dev,
-                        y1=Y_dev,
-                        amplitude_factor=amplitude_factor,
-                        verbose=verbose,
-                    )
+                model_copy.update_edge_weights(
+                    prev_node=prev_node,
+                    next_node=next_node,
+                    bottlenecks=bottleneck,
+                    activities=input_B,
+                    x=X_dev,
+                    y=Y_dev,
+                    amplitude_factor=amplitude_factor,
+                    verbose=verbose,
                 )
 
                 # TODO: save updates weight tensors
@@ -704,16 +681,14 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weights of new edges
-                loss_train, loss_dev, acc_train, acc_dev, _ = model_copy.expand_node(
+                model_copy.expand_node(
                     node=new_node,
                     prev_nodes=prev_nodes,
                     next_nodes=next_nodes,
                     bottlenecks=bottleneck,
                     activities=input_B,
-                    x=X_train,
-                    y=Y_train,
-                    x1=X_dev,
-                    y1=Y_dev,
+                    x=X_dev,
+                    y=Y_dev,
                     amplitude_factor=amplitude_factor,
                     verbose=verbose,
                 )
@@ -722,7 +697,9 @@ class GrowingGraphNetwork(GrowingContainer):
                 # gen[] =
 
             # Evaluate
-            acc_val, loss_val = model_copy.evaluate(X_val, Y_val, verbose=False)
+            acc_train, loss_train = model_copy.evaluate(X_train, Y_train)
+            acc_dev, loss_dev = model_copy.evaluate(X_dev, Y_dev)
+            acc_val, loss_val = model_copy.evaluate(X_val, Y_val)
 
             # TODO: return all info instead of saving
             gen["loss_train"] = loss_train
@@ -739,123 +716,6 @@ class GrowingGraphNetwork(GrowingContainer):
             gen["growth_history"] = model_copy.growth_history
 
         del model_copy
-
-    # TODO: move to GrowingDAG
-    def calculate_bottleneck(
-        self, generations: list[dict], X_train: torch.Tensor, Y_train: torch.Tensor
-    ) -> tuple[dict, dict]:
-        """Calculate expressivity bottleneck on important nodes
-        Assign hooks where necessary and update tensors with a single forward-backward
-        Keep track of bottleneck and post-activities
-
-        Parameters
-        ----------
-        generations : list[dict]
-            list of dictionaries with growth actions information
-        X_train : torch.Tensor
-            train features
-        Y_train : torch.Tensor
-            train labels
-
-        Returns
-        -------
-        tuple[dict, dict]
-            bottleneck of nodes, input of nodes
-        """
-        # Handle empty graph case
-        constant_module = False
-        if self.dag.is_empty():
-            # Create constant module if the graph is empty
-            constant_module = True
-            edge_attributes = {
-                "type": self.layer_type,
-                "use_bias": self.use_bias,
-                "constant": True,
-            }
-            self.dag.add_direct_edge(self.dag.root, self.dag.end, edge_attributes)
-
-        # Find nodes of interest
-        prev_node_modules = set()
-        next_node_modules = set()
-        for gen in generations:
-            attributes = gen.get("attributes", {})
-
-            prev_node = attributes.get("previous_node")
-            next_node = attributes.get("next_node")
-            if not isinstance(prev_node, list):
-                prev_node = [prev_node]
-            if not isinstance(next_node, list):
-                next_node = [next_node]
-
-            prev_node_modules.update(prev_node)
-            next_node_modules.update(next_node)
-
-        # Add hooks on node modules of interest
-        prev_node_modules = self.dag.get_node_modules(prev_node_modules)
-        next_node_modules = self.dag.get_node_modules(next_node_modules)
-        for node_module in prev_node_modules:
-            node_module.store_activity = True
-        for node_module in next_node_modules:
-            node_module.init_computation()
-
-        # Forward - Backward step
-        pred = self(X_train)
-        loss = self.loss_fn(pred, Y_train)
-        loss.backward()
-
-        input_B = {}
-        bottleneck = {}
-
-        # Update tensors
-        for node_module in next_node_modules:
-            assert node_module.previous_tensor_s is not None
-            assert node_module.previous_tensor_m is not None
-            node_module.previous_tensor_s.update()
-            node_module.previous_tensor_m.update()
-
-            # Compute optimal possible updates
-            deltas = node_module.compute_optimal_delta(update=True, return_deltas=True)
-
-            # Compute expressivity bottleneck
-            bottleneck[node_module._name] = (
-                node_module.projected_v_goal().clone().detach()
-            )  # (batch_size, out_features)
-
-            del deltas
-            # TODO: separate to functions that add the hooks and remove them
-
-            if constant_module:
-                assert torch.all(
-                    bottleneck[node_module._name] == node_module.pre_activity.grad
-                ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
-
-            # Reset tensors and remove hooks
-            node_module.reset_computation()
-
-        # Retrieve input activities
-        for node_module in prev_node_modules:
-            assert node_module.activity is not None
-            # Save input activity of input layers
-            input_B[node_module._name] = node_module.activity.clone().detach()
-
-            # Reset tensors and remove hooks
-            node_module.store_activity = False
-            # node_module.delete_update()
-
-        # Reset all hooks
-        for next_node_module in next_node_modules:
-            for parallel_module in next_node_module.previous_modules:
-                parallel_module.reset_computation()
-                # DO NOT delete updates
-                # parallel_module.delete_update(include_previous=False)
-            # Delete activities
-            next_node_module.delete_update()
-
-        if constant_module:
-            # Remove constant module if needed
-            self.dag.remove_direct_edge("start", "end")
-
-        return bottleneck, input_B
 
     def restrict_action_space(
         self, generations: list[dict], chosen_position: str
@@ -933,81 +793,6 @@ class GrowingGraphNetwork(GrowingContainer):
         self.growth_acc_val = best_option["acc_val"]
         del best_option
 
-    # TODO: move to GrowingDAG
-    def define_next_generations(self) -> list[dict]:
-        """Find all possible growth extensions for the current graph
-
-        Returns
-        -------
-        list[dict]
-            list of dictionaries with growth actions information
-        """
-        # TODO: check if they allow growing
-        direct_edges, one_hop_edges = self.dag.find_possible_extensions()
-
-        # gen_id = 0
-        generations = []
-
-        # All possible new direct edges
-        for attr in direct_edges:
-            previous_node = attr.get("previous_node")
-            next_node = attr.get("next_node")
-
-            edge_name = f"l{previous_node}_{next_node}"
-            gen = {
-                "type": "edge",
-                "attributes": attr,
-                "id": edge_name,
-                "evolved": False,
-            }
-            generations.append(gen)
-
-        # All possible one-hop connections
-        for attr in one_hop_edges:
-            previous_node = attr.get("previous_node")
-            new_node = attr.get("new_node")
-            next_node = attr.get("next_node")
-            new_edges = [
-                (previous_node, new_node),
-                (new_node, next_node),
-            ]
-            attr["new_edges"] = new_edges
-
-            gen = {
-                "type": "node",
-                "attributes": attr,
-                "id": new_node,
-                "evolved": False,
-            }
-            generations.append(gen)
-
-        # All existing nodes
-        for node in self.dag.nodes:
-            if (node == self.dag.root) or (node == self.dag.end):
-                continue
-
-            previous_nodes = [n for n in self.dag.predecessors(node)]
-            next_nodes = [n for n in self.dag.successors(node)]
-
-            new_edges = [in_edge for in_edge in self.dag.in_edges(node)]
-            new_edges.extend([out_edge for out_edge in self.dag.out_edges(node)])
-
-            attr = {
-                "new_node": node,
-                "previous_node": previous_nodes,
-                "next_node": next_nodes,
-                "new_edges": new_edges,
-            }
-            gen = {
-                "type": "node",
-                "attributes": attr,
-                "id": node,
-                "evolved": False,
-            }
-            generations.append(gen)
-
-        return generations
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function of DAG network
 
@@ -1073,7 +858,6 @@ class GrowingGraphNetwork(GrowingContainer):
         x: torch.Tensor,
         y: torch.Tensor,
         with_f1score: bool = False,
-        verbose: bool = True,
     ) -> tuple[float, float] | tuple[float, float, float]:
         """Evaluate network on batch
 
@@ -1087,8 +871,6 @@ class GrowingGraphNetwork(GrowingContainer):
             true labels tensor
         with_f1score : bool, optional
             calculate f1-score, by default False
-        verbose : bool, optional
-            print info, by default True
 
         Returns
         -------
@@ -1105,18 +887,6 @@ class GrowingGraphNetwork(GrowingContainer):
             accuracy = (correct / pred.shape[0]).item()
         else:
             accuracy = -1
-
-        # if verbose and self.out_features > 1:
-        # TODO: replace dependency
-        #     mca = classification.MulticlassAccuracy(
-        #         num_classes=self.out_features, average="micro"
-        #     ).to(self.device)
-        #     print(f"{mca(final_pred, y)=}")
-        #     confmat = classification.ConfusionMatrix(
-        #         task="multiclass", num_classes=self.out_features
-        #     ).to(self.device)
-        #     confmat(final_pred, y)
-        #     confmat.plot()
 
         if with_f1score:
             if self.out_features > 1:
