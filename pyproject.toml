@@ -23,9 +23,6 @@ dependencies = [
     "networkx",
     "torch",
     "numpy",
-    "matplotlib",
-    "pyvis",
-    "torchvision",
 ]
 [project.optional-dependencies]
 test = ["coverage"]
@@ -42,9 +39,9 @@ doc = [
     "sphinx_copybutton",
     "sphinxcontrib-bibtex",
     "sphinx-favicon",
+    "matplotlib",
     "tqdm",
 ]
-energy = ["codecarbon"]
 
 [build-system]
 requires = ["hatchling"]

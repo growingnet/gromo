@@ -1,6 +1,5 @@
 from typing import Any, Callable, Iterable
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -160,15 +159,13 @@ def activation_fn(fn_name: str) -> nn.Module:
         return nn.Identity()
 
 
-def line_search(cost_fn: Callable, verbose: bool = True) -> tuple[float, float]:
+def line_search(cost_fn: Callable) -> tuple[float, float]:
     """Line search for black-box convex function
 
     Parameters
     ----------
     cost_fn : Callable
         black-box convex function
-    verbose : bool, optional
-        create plot, by default True
 
     Returns
     -------
@@ -205,13 +202,14 @@ def line_search(cost_fn: Callable, verbose: bool = True) -> tuple[float, float]:
     factor = f_full[np.argmin(losses)]
     min_loss = np.min(losses)
 
-    if verbose:
-        plt.figure()
-        plt.plot(f_full, losses)
-        plt.xlabel(f"factor $\gamma$")  # type: ignore
-        plt.ylabel("loss")
-        plt.title(f"Minima at {factor=} with loss={min_loss}")
-        plt.show()
+    # TODO: access full loss history
+    # if verbose:
+    #     plt.figure()
+    #     plt.plot(f_full, losses)
+    #     plt.xlabel(f"factor $\gamma$")  # type: ignore
+    #     plt.ylabel("loss")
+    #     plt.title(f"Minima at {factor=} with loss={min_loss}")
+    #     plt.show()
 
     return factor, min_loss
 
@@ -318,32 +316,6 @@ def mini_batch_gradient_descent(
                     f"Epoch {epoch}: Train loss {loss_history[-1]} Train Accuracy {accuracy}"
                 )
 
-    if verbose:
-        plt.figure()
-        plt.plot(gradients)
-        plt.xlabel("epochs")
-        plt.ylabel("gradients average norm")
-        plt.show()
-
-        plt.figure()
-        plt.plot(full_loss)
-        plt.xlabel("epochs")
-        plt.ylabel("batch loss")
-        plt.show()
-
-        plt.figure()
-        plt.plot(loss_history)
-        plt.xlabel("epochs")
-        plt.ylabel("average epoch loss")
-        plt.show()
-
-        if not fast:
-            plt.figure()
-            plt.plot(acc_history)
-            plt.xlabel("epochs")
-            plt.ylabel("accuracy")
-            plt.show()
-
     return loss_history, acc_history
 
 
@@ -356,9 +328,6 @@ def batch_gradient_descent(
     tol: float = 1e-5,
     fast: bool = True,
     eval_fn: Callable | None = None,
-    verbose: bool = True,
-    loss_name: str = "loss",
-    title: str = "",
 ) -> tuple[list[float], list[float]]:
     """Batch gradient descent implementation
 
@@ -380,12 +349,6 @@ def batch_gradient_descent(
         fast implementation without evaluation, by default True
     eval_fn : Callable | None, optional
         evaluation function, by default None
-    verbose : bool, optional
-        _description_, by default True
-    loss_name : str, optional
-        name of the loss, by default "loss"
-    title : str, optional
-        title of the plot, by default ""
 
     Returns
     -------
@@ -422,24 +385,6 @@ def batch_gradient_descent(
             min_loss = loss.item()
         prev_loss = loss.item()
         # target.detach_()
-
-    if verbose:
-        plt.figure()
-        plt.plot(loss_history)
-        plt.xlabel("epochs")
-        plt.ylabel(f"{loss_name}")
-        plt.title(f"{title}")
-        plt.show()
-
-        if not fast:
-            labels = ["train"]
-            plt.figure()
-            plt.plot(acc_history, label=labels)
-            plt.xlabel("epochs")
-            plt.ylabel("accuracy")
-            plt.title(f"{title}")
-            plt.legend()
-            plt.show()
 
     return loss_history, acc_history
 

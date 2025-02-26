@@ -383,7 +383,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 return loss
 
             # Find amplitude factor that minimizes the overall loss
-            factor, min_loss = line_search(simulate_factors, verbose=verbose)
+            factor, min_loss = line_search(simulate_factors)
         else:
             factor = 1
 
