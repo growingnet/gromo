@@ -354,13 +354,13 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-gromo.tools">
-<span id="tools"></span><h1>Tools<a class="headerlink" href="#module-gromo.tools" title="Link to this heading">#</a></h1>
+  <section id="module-gromo.utils.tools">
+<span id="tools"></span><h1>Tools<a class="headerlink" href="#module-gromo.utils.tools" title="Link to this heading">#</a></h1>
 <section id="matrix-inversion">
 <h2>Matrix inversion<a class="headerlink" href="#matrix-inversion" title="Link to this heading">#</a></h2>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.tools.sqrt_inverse_matrix_semi_positive.html#gromo.tools.sqrt_inverse_matrix_semi_positive" title="gromo.tools.sqrt_inverse_matrix_semi_positive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">sqrt_inverse_matrix_semi_positive</span></code></a>(matrix[, ...])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.utils.tools.sqrt_inverse_matrix_semi_positive.html#gromo.utils.tools.sqrt_inverse_matrix_semi_positive" title="gromo.utils.tools.sqrt_inverse_matrix_semi_positive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">sqrt_inverse_matrix_semi_positive</span></code></a>(matrix[, ...])</p></td>
 <td><p>Compute the square root of the inverse of a semi-positive definite matrix.</p></td>
 </tr>
 </tbody>
@@ -371,13 +371,13 @@
 <h2>Helpers<a class="headerlink" href="#helpers" title="Link to this heading">#</a></h2>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.tools.compute_optimal_added_parameters.html#gromo.tools.compute_optimal_added_parameters" title="gromo.tools.compute_optimal_added_parameters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_optimal_added_parameters</span></code></a>(matrix_s, ...)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.utils.tools.compute_optimal_added_parameters.html#gromo.utils.tools.compute_optimal_added_parameters" title="gromo.utils.tools.compute_optimal_added_parameters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_optimal_added_parameters</span></code></a>(matrix_s, ...)</p></td>
 <td><p>Compute the optimal added parameters for a given layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/gromo.tools.compute_output_shape_conv.html#gromo.tools.compute_output_shape_conv" title="gromo.tools.compute_output_shape_conv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_output_shape_conv</span></code></a>(input_shape, conv)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/gromo.utils.tools.compute_output_shape_conv.html#gromo.utils.tools.compute_output_shape_conv" title="gromo.utils.tools.compute_output_shape_conv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_output_shape_conv</span></code></a>(input_shape, conv)</p></td>
 <td><p>Compute the output shape of a convolutional layer</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.tools.compute_mask_tensor_t.html#gromo.tools.compute_mask_tensor_t" title="gromo.tools.compute_mask_tensor_t"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_mask_tensor_t</span></code></a>(input_shape, conv)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.utils.tools.compute_mask_tensor_t.html#gromo.utils.tools.compute_mask_tensor_t" title="gromo.utils.tools.compute_mask_tensor_t"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_mask_tensor_t</span></code></a>(input_shape, conv)</p></td>
 <td><p>Compute the tensor T For: - input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H'[-1]W'[-1]) after the pooling - output tensor: B in (S, HW) - conv kernel tensor: W in (S, S[-1], Hd, Wd) T is the tensor in (HW, HdWd, H'[-1]W'[-1]) such that: B = W T B[-1]</p></td>
 </tr>
 </tbody>

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="gromo icon" sizes="300x168" href="../_static/gromo_small.png" type="image/png">
-    <title>gromo.tools.compute_optimal_added_parameters &#8212; GroMo 0.0.1-dev documentation</title>
+    <title>gromo.utils.tools.compute_optimal_added_parameters &#8212; GroMo 0.0.1-dev documentation</title>
   
   
   
@@ -66,11 +66,11 @@
                 gtag('js', new Date());
                 gtag('config', 'XXXX');
             </script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'generated/gromo.tools.compute_optimal_added_parameters';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'generated/gromo.utils.tools.compute_optimal_added_parameters';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="gromo.tools.compute_output_shape_conv" href="gromo.tools.compute_output_shape_conv.html" />
-    <link rel="prev" title="gromo.tools.sqrt_inverse_matrix_semi_positive" href="gromo.tools.sqrt_inverse_matrix_semi_positive.html" />
+    <link rel="next" title="gromo.utils.tools.compute_output_shape_conv" href="gromo.utils.tools.compute_output_shape_conv.html" />
+    <link rel="prev" title="gromo.utils.tools.sqrt_inverse_matrix_semi_positive" href="gromo.utils.tools.sqrt_inverse_matrix_semi_positive.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
@@ -349,7 +349,7 @@
     
     <li class="breadcrumb-item"><a href="../api.html" class="nav-link">API Reference</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">gromo.tools.compute_optimal_added_parameters</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">gromo.utils.tools.compute_optimal_added_parameters</span></li>
   </ul>
 </nav>
 </div>
@@ -366,11 +366,11 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="gromo-tools-compute-optimal-added-parameters">
-<h1>gromo.tools.compute_optimal_added_parameters<a class="headerlink" href="#gromo-tools-compute-optimal-added-parameters" title="Link to this heading">#</a></h1>
+  <section id="gromo-utils-tools-compute-optimal-added-parameters">
+<h1>gromo.utils.tools.compute_optimal_added_parameters<a class="headerlink" href="#gromo-utils-tools-compute-optimal-added-parameters" title="Link to this heading">#</a></h1>
 <dl class="py function">
-<dt class="sig sig-object py" id="gromo.tools.compute_optimal_added_parameters">
-<span class="sig-prename descclassname"><span class="pre">gromo.tools.</span></span><span class="sig-name descname"><span class="pre">compute_optimal_added_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">matrix_s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">matrix_n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numerical_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-15</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">statistical_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maximum_added_neurons</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/growingnet/gromo/blob/main/gromo/src/tools.py#L52-L137"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gromo.tools.compute_optimal_added_parameters" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="gromo.utils.tools.compute_optimal_added_parameters">
+<span class="sig-prename descclassname"><span class="pre">gromo.utils.tools.</span></span><span class="sig-name descname"><span class="pre">compute_optimal_added_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">matrix_s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">matrix_n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numerical_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-15</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">statistical_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maximum_added_neurons</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/growingnet/gromo/blob/main/gromo/src/utils/tools.py#L52-L137"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gromo.utils.tools.compute_optimal_added_parameters" title="Link to this definition">#</a></dt>
 <dd><p>Compute the optimal added parameters for a given layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -404,20 +404,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="gromo.tools.sqrt_inverse_matrix_semi_positive.html"
+       href="gromo.utils.tools.sqrt_inverse_matrix_semi_positive.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">gromo.tools.sqrt_inverse_matrix_semi_positive</p>
+        <p class="prev-next-title">gromo.utils.tools.sqrt_inverse_matrix_semi_positive</p>
       </div>
     </a>
     <a class="right-next"
-       href="gromo.tools.compute_output_shape_conv.html"
+       href="gromo.utils.tools.compute_output_shape_conv.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">gromo.tools.compute_output_shape_conv</p>
+        <p class="prev-next-title">gromo.utils.tools.compute_output_shape_conv</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -440,7 +440,7 @@
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#gromo.tools.compute_optimal_added_parameters"><code class="docutils literal notranslate"><span class="pre">compute_optimal_added_parameters()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#gromo.utils.tools.compute_optimal_added_parameters"><code class="docutils literal notranslate"><span class="pre">compute_optimal_added_parameters()</span></code></a></li>
 </ul>
   </nav></div>
 

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="gromo icon" sizes="300x168" href="../_static/gromo_small.png" type="image/png">
-    <title>gromo.tools.compute_mask_tensor_t &#8212; GroMo 0.0.1-dev documentation</title>
+    <title>gromo.utils.tools.sqrt_inverse_matrix_semi_positive &#8212; GroMo 0.0.1-dev documentation</title>
   
   
   
@@ -66,11 +66,11 @@
                 gtag('js', new Date());
                 gtag('config', 'XXXX');
             </script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'generated/gromo.tools.compute_mask_tensor_t';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'generated/gromo.utils.tools.sqrt_inverse_matrix_semi_positive';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="What’s new" href="../whats_new.html" />
-    <link rel="prev" title="gromo.tools.compute_output_shape_conv" href="gromo.tools.compute_output_shape_conv.html" />
+    <link rel="next" title="gromo.utils.tools.compute_optimal_added_parameters" href="gromo.utils.tools.compute_optimal_added_parameters.html" />
+    <link rel="prev" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" href="gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
@@ -349,7 +349,7 @@
     
     <li class="breadcrumb-item"><a href="../api.html" class="nav-link">API Reference</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">gromo.tools.compute_mask_tensor_t</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">gromo.utils.tools.sqrt_inverse_matrix_semi_positive</span></li>
   </ul>
 </nav>
 </div>
@@ -366,27 +366,24 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="gromo-tools-compute-mask-tensor-t">
-<h1>gromo.tools.compute_mask_tensor_t<a class="headerlink" href="#gromo-tools-compute-mask-tensor-t" title="Link to this heading">#</a></h1>
+  <section id="gromo-utils-tools-sqrt-inverse-matrix-semi-positive">
+<h1>gromo.utils.tools.sqrt_inverse_matrix_semi_positive<a class="headerlink" href="#gromo-utils-tools-sqrt-inverse-matrix-semi-positive" title="Link to this heading">#</a></h1>
 <dl class="py function">
-<dt class="sig sig-object py" id="gromo.tools.compute_mask_tensor_t">
-<span class="sig-prename descclassname"><span class="pre">gromo.tools.</span></span><span class="sig-name descname"><span class="pre">compute_mask_tensor_t</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_shape</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Conv2d</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference external" href="https://github.com/growingnet/gromo/blob/main/gromo/src/tools.py#L183-L231"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gromo.tools.compute_mask_tensor_t" title="Link to this definition">#</a></dt>
-<dd><p>Compute the tensor T
-For:
-- input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H’[-1]W’[-1]) after the pooling
-- output tensor: B in (S, HW)
-- conv kernel tensor: W in (S, S[-1], Hd, Wd)
-T is the tensor in (HW, HdWd, H’[-1]W’[-1]) such that:
-B = W T B[-1]</p>
+<dt class="sig sig-object py" id="gromo.utils.tools.sqrt_inverse_matrix_semi_positive">
+<span class="sig-prename descclassname"><span class="pre">gromo.utils.tools.</span></span><span class="sig-name descname"><span class="pre">sqrt_inverse_matrix_semi_positive</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">matrix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preferred_linalg_library</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'magma'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference external" href="https://github.com/growingnet/gromo/blob/main/gromo/src/utils/tools.py#L6-L49"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gromo.utils.tools.sqrt_inverse_matrix_semi_positive" title="Link to this definition">#</a></dt>
+<dd><p>Compute the square root of the inverse of a semi-positive definite matrix.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>input_shape</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><em>tuple</em></a>) – shape of the input tensor B[-1] of size (H[-1], W[-1])</p></li>
-<li><p><strong>conv</strong> (<em>torch.nn.Conv2d</em>) – convolutional layer applied to the input tensor B[-1]</p></li>
+<li><p><strong>matrix</strong> (<em>torch.Tensor</em>) – input matrix, square and semi-positive definite</p></li>
+<li><p><strong>threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – threshold to consider an eigenvalue as zero</p></li>
+<li><p><strong>preferred_linalg_library</strong> (<em>None</em><em> | </em><em>str in</em><em> (</em><em>&quot;magma&quot;</em><em>, </em><em>&quot;cusolver&quot;</em><em>)</em>) – linalg library to use, “cusolver” may failed
+for non positive definite matrix if CUDA &lt; 12.1 is used
+see: <a class="reference external" href="https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html">https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html</a></p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>tensor_t</strong> – tensor T in (HW, HdWd, H[-1]W[-1])</p>
+<dd class="field-even"><p>square root of the inverse of the input matrix</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>torch.Tensor</p>
@@ -407,20 +404,20 @@ B = W T B[-1]</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="gromo.tools.compute_output_shape_conv.html"
+       href="gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">gromo.tools.compute_output_shape_conv</p>
+        <p class="prev-next-title">gromo.modules.linear_growing_module.LinearAdditionGrowingModule</p>
       </div>
     </a>
     <a class="right-next"
-       href="../whats_new.html"
+       href="gromo.utils.tools.compute_optimal_added_parameters.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">What’s new</p>
+        <p class="prev-next-title">gromo.utils.tools.compute_optimal_added_parameters</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -443,7 +440,7 @@ B = W T B[-1]</p>
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#gromo.tools.compute_mask_tensor_t"><code class="docutils literal notranslate"><span class="pre">compute_mask_tensor_t()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#gromo.utils.tools.sqrt_inverse_matrix_semi_positive"><code class="docutils literal notranslate"><span class="pre">sqrt_inverse_matrix_semi_positive()</span></code></a></li>
 </ul>
   </nav></div>
 
