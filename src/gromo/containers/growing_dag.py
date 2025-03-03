@@ -1,3 +1,4 @@
+import copy
 from collections import deque
 from typing import Callable, Iterator, Mapping
 
@@ -11,7 +12,7 @@ from gromo.modules.linear_growing_module import (
     LinearAdditionGrowingModule,
     LinearGrowingModule,
 )
-from gromo.utils.utils import activation_fn
+from gromo.utils.utils import activation_fn, f1_micro
 
 
 class GrowingDAG(nx.DiGraph, GrowingContainer):
@@ -421,7 +422,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
     def calculate_bottleneck(
         self,
-        generations: list[dict],
+        generations: list["Expansion"],
         X: torch.Tensor,
         Y: torch.Tensor,
         loss_fn: Callable = nn.CrossEntropyLoss(),
@@ -432,8 +433,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        generations : list[dict]
-            list of dictionaries with growth actions information
+        generations : list[Expansion]
+            list with growth actions information
         X : torch.Tensor
             train features
         Y : torch.Tensor
@@ -461,18 +462,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # Find nodes of interest
         prev_node_modules = set()
         next_node_modules = set()
-        for gen in generations:
-            attributes = gen.get("attributes", {})
+        for expansion in generations:
+            prev_nodes = expansion.previous_nodes
+            next_nodes = expansion.next_nodes
+            if not isinstance(prev_nodes, list):
+                prev_nodes = [prev_nodes]
+            if not isinstance(next_nodes, list):
+                next_nodes = [next_nodes]
 
-            prev_node = attributes.get("previous_node")
-            next_node = attributes.get("next_node")
-            if not isinstance(prev_node, list):
-                prev_node = [prev_node]
-            if not isinstance(next_node, list):
-                next_node = [next_node]
-
-            prev_node_modules.update(prev_node)
-            next_node_modules.update(next_node)
+            prev_node_modules.update(prev_nodes)
+            next_node_modules.update(next_nodes)
 
         # Add hooks on node modules of interest
         prev_node_modules = self.get_node_modules(prev_node_modules)
@@ -687,13 +686,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         return direct_edges, one_hop_edges
 
-    def define_next_generations(self) -> list[dict]:
+    def define_next_generations(self) -> list["Expansion"]:
         """Find all possible growth extensions for the current graph
 
         Returns
         -------
-        list[dict]
-            list of dictionaries with growth actions information
+        list[Expansion]
+            list with growth actions information
         """
         # TODO: check if they allow growing
         direct_edges, one_hop_edges = self.find_possible_extensions()
@@ -706,58 +705,34 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             previous_node = attr.get("previous_node")
             next_node = attr.get("next_node")
 
-            edge_name = f"l{previous_node}_{next_node}"
-            gen = {
-                "type": "edge",
-                "attributes": attr,
-                "id": edge_name,
-                "evolved": False,
-            }
-            generations.append(gen)
+            expansion = Expansion(
+                self, "new edge", previous_node=previous_node, next_node=next_node
+            )
+            generations.append(expansion)
 
         # All possible one-hop connections
         for attr in one_hop_edges:
             previous_node = attr.get("previous_node")
             new_node = attr.get("new_node")
             next_node = attr.get("next_node")
-            new_edges = [
-                (previous_node, new_node),
-                (new_node, next_node),
-            ]
-            attr["new_edges"] = new_edges
+            node_attributes = attr.get("node_attributes", {})
 
-            gen = {
-                "type": "node",
-                "attributes": attr,
-                "id": new_node,
-                "evolved": False,
-            }
-            generations.append(gen)
+            expansion = Expansion(
+                self,
+                "new node",
+                expanding_node=new_node,
+                previous_node=previous_node,
+                next_node=next_node,
+                node_attributes=node_attributes,
+            )
+            generations.append(expansion)
 
         # All existing nodes
         for node in self.nodes:
             if (node == self.root) or (node == self.end):
                 continue
-
-            previous_nodes = [n for n in self.predecessors(node)]
-            next_nodes = [n for n in self.successors(node)]
-
-            new_edges = [in_edge for in_edge in self.in_edges(node)]
-            new_edges.extend([out_edge for out_edge in self.out_edges(node)])
-
-            attr = {
-                "new_node": node,
-                "previous_node": previous_nodes,
-                "next_node": next_nodes,
-                "new_edges": new_edges,
-            }
-            gen = {
-                "type": "node",
-                "attributes": attr,
-                "id": node,
-                "evolved": False,
-            }
-            generations.append(gen)
+            expansion = Expansion(self, "expanded node", expanding_node=node)
+            generations.append(expansion)
 
         return generations
 
@@ -934,3 +909,221 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             for edge in edges
             for param in self.get_edge_module(*edge).parameters()
         )
+
+    def evaluate(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        loss_fn: Callable,
+        with_f1score: bool = False,
+    ) -> tuple[float, float] | tuple[float, float, float]:
+        """Evaluate network on batch
+
+        Important: Assumes that the batch is already on the correct device
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input features tensor
+        y : torch.Tensor
+            true labels tensor
+        loss_fn : Callable
+            loss function for bottleneck calculation
+        with_f1score : bool, optional
+            calculate f1-score, by default False
+
+        Returns
+        -------
+        tuple[float, float] | tuple[float, float, float]
+            accuracy and loss, optionally f1-score
+        """
+        with torch.no_grad():
+            pred = self(x)
+            loss = loss_fn(pred, y)
+
+        if self.out_features > 1:
+            final_pred = pred.argmax(axis=1)
+            correct = (final_pred == y).int().sum()
+            accuracy = (correct / pred.shape[0]).item()
+        else:
+            accuracy = -1
+
+        if with_f1score:
+            if self.out_features > 1:
+                f1score = f1_micro(y.cpu(), final_pred.cpu())
+            else:
+                f1score = -1
+            return accuracy, loss.item(), f1score
+
+        return accuracy, loss.item()
+
+
+expansion_types = ["new edge", "new node", "expanded node"]
+
+
+class Expansion:
+    """Wrapper for expansions of a GrowingDAG
+
+    Parameters
+    ----------
+    dag : GrowingDAG
+        enclosed GrowingDAG object that is deep-copied
+    type : str
+        type of expansion, can be one of ["new edge", "new node", "expanded node"]
+    growth_history : dict, optional
+        expansion history of the enclosed GrowingDAG, by default {}
+    expanding_node : str, optional
+        node to be expanded, only relevant in expansion types "new node" and "expanded node", by default None
+    previous_node : str, optional
+        previous node for expansion, only relevant in expansion types "new edge" and "new node", by default None
+    next_node : str, optional
+        next node for expansion, only relevant in expansion types "new edge" and "new node", by default None
+    edge_attributes : dict, optional
+        attributes of new edges, by default {}
+    node_attributes : dict, optional
+        attributes of new nodes, by default {}
+    """
+
+    def __init__(
+        self,
+        dag: GrowingDAG,
+        type: str,
+        growth_history: dict = {},
+        expanding_node: str = None,
+        previous_node: str = None,
+        next_node: str = None,
+        edge_attributes: dict = {},
+        node_attributes: dict = {},
+    ) -> None:
+        if type not in expansion_types:
+            raise ValueError(
+                f"The expansion type should be one of {expansion_types}. Found {type}."
+            )
+        self.type = type
+        self.dag = copy.deepcopy(dag)
+        self.growth_history = growth_history
+        self.metrics = {}
+
+        self.expanding_node = expanding_node
+        self.previous_node = previous_node
+        self.next_node = next_node
+
+        self.edge_attributes = edge_attributes
+        self.node_attributes = node_attributes
+
+        if self.type == "new edge":
+            if self.previous_node is None or self.next_node is None:
+                raise ValueError(
+                    f"When creating a new edge the previous and next nodes arguments are required. Found {previous_node=} {next_node=}."
+                )
+            if self.expanding_node is not None:
+                self.expanding_node = None
+                raise UserWarning(
+                    f"When creating a new edge the expanding node argument is not required. Found {expanding_node=}."
+                )
+        elif self.type == "new node":
+            if (
+                self.expanding_node is None
+                or self.previous_node is None
+                or self.next_node is None
+            ):
+                raise ValueError(
+                    f"When creating a new node the expanding, previous, and next nodes arguments are required. Found {expanding_node=} {previous_node=} {next_node=}."
+                )
+        elif self.type == "expanded node":
+            if self.expanding_node is None:
+                raise ValueError(
+                    f"When expanding an existing node the expanding node argument is required. Found {expanding_node=}."
+                )
+            if self.previous_node is not None or self.next_node is not None:
+                self.previous_node = None
+                self.next_node = None
+                raise UserWarning(
+                    f"When expanding an existing node the previous and next nodes arguments are not required. Found {previous_node=} {next_node=}."
+                )
+
+    @property
+    def previous_nodes(self) -> list[str] | str:
+        if self.type == "new edge":
+            return self.previous_node  # type: ignore
+        elif self.type == "new node":
+            return [self.previous_node]  # type: ignore
+        else:  # Expand existing node
+            return [n for n in self.dag.predecessors(self.expanding_node)]
+
+    @property
+    def next_nodes(self) -> list[str] | str:
+        if self.type == "new edge":
+            return self.next_node  # type: ignore
+        elif self.type == "new node":
+            return [self.next_node]  # type: ignore
+        else:
+            return [n for n in self.dag.successors(self.expanding_node)]
+
+    @property
+    def new_edges(self) -> list[tuple] | tuple:
+        if self.type == "new edge":
+            return (self.previous_node, self.next_node)
+        elif self.type == "new node":
+            return [
+                (self.previous_node, self.expanding_node),
+                (self.expanding_node, self.next_node),
+            ]
+        else:
+            new_edges = [in_edge for in_edge in self.dag.in_edges(self.expanding_node)]
+            new_edges.extend(
+                [out_edge for out_edge in self.dag.out_edges(self.expanding_node)]
+            )
+            return new_edges
+
+    def expand(self) -> None:
+        """Create new edge or node on the enclosed GrowingDAG"""
+        if self.type == "new edge":
+            self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes)  # type: ignore
+        elif self.type == "new node":
+            self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes)  # type: ignore
+
+    def update_growth_history(
+        self,
+        current_step: int,
+        neurons_added: list = [],
+        neurons_updated: list = [],
+        nodes_added: list = [],
+    ) -> None:
+        """Record recent modifications on history dictionary
+
+        Parameters
+        ----------
+        step : int
+            current growth step
+        neurons_added : list, optional
+            list of edges that were added or increased in dimension, by default []
+        neurons_updated : list, optional
+            list of edges whose weights were updated, by default []
+        nodes_added : list, optional
+            list of nodes that were added, by default []
+        """
+        if current_step not in self.growth_history:
+            self.growth_history[current_step] = {}
+
+        keep_max = lambda new_value, key: max(
+            self.growth_history[current_step].get(key, 0), new_value
+        )
+
+        # TODO: automate
+        step_update = {}
+        for edge in self.dag.edges:
+            new_value = (
+                2 if edge in neurons_added else 1 if edge in neurons_updated else 0
+            )
+            step_update[str(edge)] = keep_max(new_value, str(edge))
+
+        for node in self.dag.nodes:
+            new_value = 2 if node in nodes_added else 0
+            step_update[str(node)] = keep_max(new_value, str(node))
+        self.growth_history[current_step].update(step_update)
+
+    def __del__(self) -> None:
+        del self.dag
+        del self.growth_history
+        del self.metrics
