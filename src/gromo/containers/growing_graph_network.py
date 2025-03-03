@@ -357,7 +357,7 @@ class GrowingGraphNetwork(GrowingContainer):
         if amplitude_factor:
             # Find amplitude factor that minimizes the overall loss
             factor = self.find_amplitude_factor(
-                expansion=expansion,
+                net=expansion.dag,
                 x=x,
                 y=y,
                 node_module=node_module,
@@ -478,7 +478,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # TODO: fix squared value, or check why
         if amplitude_factor:
             factor = self.find_amplitude_factor(
-                expansion=expansion,
+                net=expansion.dag,
                 x=x,
                 y=y,
                 node_module=next_node_module,
