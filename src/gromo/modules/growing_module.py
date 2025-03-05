@@ -1267,7 +1267,7 @@ class GrowingModule(torch.nn.Module):
         update_previous: bool
             whether to change the previous layer extended_output_layer
         zero_delta: bool
-            if True, set the optimal delta to zero
+            if True, compute the optimal added neurons without performing the natural gradient step.
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
 
