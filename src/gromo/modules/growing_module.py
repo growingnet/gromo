@@ -1282,6 +1282,7 @@ class GrowingModule(torch.nn.Module):
                 self.optimal_delta_layer.weight.data.zero_()
                 if self.optimal_delta_layer.bias is not None:
                     self.optimal_delta_layer.bias.data.zero_()
+            self.delta_raw.zero_()
 
         if self.previous_module is None:
             return  # FIXME: change the definition of the function
