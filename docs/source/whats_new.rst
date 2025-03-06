@@ -18,7 +18,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-- Refactor and simplify repo structure (:gh:`72` by `Stella Douka`_)
+- Refactor and simplify repo structure (:gh:`72` and :gh:`73` by `Stella Douka`_)
 - Simplify global device handling (:gh:`72` by `Stella Douka`_)
 - Option to restrict action space (:gh:`60` by `Stella Douka`_)
 - Add support for Conv2d layers in the sequential case (:gh:`34` by `Théo Rudkiewicz`_)
