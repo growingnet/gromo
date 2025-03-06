@@ -1,4 +1,4 @@
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Optional
 
 import numpy as np
 import torch
@@ -159,18 +159,23 @@ def activation_fn(fn_name: str) -> nn.Module:
         return nn.Identity()
 
 
-def line_search(cost_fn: Callable) -> tuple[float, float]:
+def line_search(
+    cost_fn: Callable, return_history: bool = False
+) -> tuple[float, float] | tuple[list, list]:
     """Line search for black-box convex function
 
     Parameters
     ----------
     cost_fn : Callable
         black-box convex function
+    return_history : bool, optional
+        return full loss history, by default False
 
     Returns
     -------
-    tuple[float, float]
+    tuple[float, float] | tuple[list, list]
         return minima and min value
+        if return_history is True return instead tested parameters and loss history
     """
     losses = []
     n_points = 100
@@ -202,16 +207,10 @@ def line_search(cost_fn: Callable) -> tuple[float, float]:
     factor = f_full[np.argmin(losses)]
     min_loss = np.min(losses)
 
-    # TODO: access full loss history
-    # if verbose:
-    #     plt.figure()
-    #     plt.plot(f_full, losses)
-    #     plt.xlabel(f"factor $\gamma$")  # type: ignore
-    #     plt.ylabel("loss")
-    #     plt.title(f"Minima at {factor=} with loss={min_loss}")
-    #     plt.show()
-
-    return factor, min_loss
+    if return_history:
+        return list(f_full), losses
+    else:
+        return factor, min_loss
 
 
 def mini_batch_gradient_descent(
