@@ -551,7 +551,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def execute_expansions(
         self,
-        generations: list[Expansion],
+        actions: list[Expansion],
         bottleneck: dict,
         input_B: dict,
         X_train: torch.Tensor,
@@ -567,7 +567,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Parameters
         ----------
-        generations : list[Expansion]
+        actions : list[Expansion]
             list with growth actions information
         bottleneck : dict
             dictionary of calculated expressivity bottleneck at each pre-activity
@@ -591,7 +591,7 @@ class GrowingGraphNetwork(GrowingContainer):
             print info, by default False
         """
         # Execute all graph growth options
-        for expansion in generations:
+        for expansion in actions:
             # Create a new edge
             if expansion.type == "new edge":
                 if verbose:
@@ -655,13 +655,13 @@ class GrowingGraphNetwork(GrowingContainer):
             expansion.metrics["BIC"] = self.BIC(expansion.dag, loss_val, n=len(X_val))
 
     def restrict_action_space(
-        self, generations: list[Expansion], chosen_position: str
+        self, actions: list[Expansion], chosen_position: str
     ) -> list[Expansion]:
         """Reduce action space to contribute only to specific node position
 
         Parameters
         ----------
-        generations : list[Expansion]
+        actions : list[Expansion]
             list with growth actions information
         chosen_position : str
             node position to restrict to
@@ -671,22 +671,22 @@ class GrowingGraphNetwork(GrowingContainer):
         list[Expansion]
             reduced list with growth actions information
         """
-        new_generations = []
-        for expansion in generations:
+        new_actions = []
+        for expansion in actions:
             new_node = expansion.expanding_node
             next_node = expansion.next_nodes
             if new_node == chosen_position:
                 # Case: expand current node
-                new_generations.append(expansion)
+                new_actions.append(expansion)
             elif isinstance(next_node, list) and chosen_position in next_node:
                 # Case: expand immediate previous node
-                new_generations.append(expansion)
+                new_actions.append(expansion)
             elif next_node == chosen_position:
                 # Case: add new previous node
-                new_generations.append(expansion)
+                new_actions.append(expansion)
             else:
                 del expansion
-        return new_generations
+        return new_actions
 
     def choose_growth_best_action(
         self, options: list[Expansion], use_bic: bool = False, verbose: bool = False

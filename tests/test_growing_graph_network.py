@@ -52,7 +52,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             "1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
         }
 
-        self.generations = self.net.dag.define_next_generations()
+        self.actions = self.net.dag.define_next_actions()
 
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
@@ -214,7 +214,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
     def test_execute_expansions(self) -> None:
         self.net.execute_expansions(
-            self.generations,
+            self.actions,
             self.bottleneck,
             self.input_B,
             self.x,
@@ -226,7 +226,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             amplitude_factor=False,
         )
 
-        for expansion in self.generations:
+        for expansion in self.actions:
             self.assertIsNotNone(expansion.metrics.get("loss_train"))
             self.assertIsNotNone(expansion.metrics.get("loss_dev"))
             self.assertIsNotNone(expansion.metrics.get("loss_val"))
@@ -251,7 +251,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
     def test_calculate_bottleneck(self) -> None:
         bottleneck, inputB = self.net.dag.calculate_bottleneck(
-            self.generations, self.x, self.y
+            self.actions, self.x, self.y
         )
 
         self.assertIsNotNone(bottleneck.get("end"))
@@ -267,22 +267,22 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.assertEqual(inputB["1"].shape, (self.batch_size, self.net.neurons))
 
     def test_restrict_action_space(self) -> None:
-        self.assertEqual(len(self.generations), 4)
+        self.assertEqual(len(self.actions), 4)
 
-        gens = self.net.restrict_action_space(self.generations, "end")
+        gens = self.net.restrict_action_space(self.actions, "end")
         self.assertEqual(len(gens), 3)
 
-        gens = self.net.restrict_action_space(self.generations, "1")
+        gens = self.net.restrict_action_space(self.actions, "1")
         self.assertEqual(len(gens), 2)
 
-        gens = self.net.restrict_action_space(self.generations, "start")
+        gens = self.net.restrict_action_space(self.actions, "start")
         self.assertEqual(len(gens), 0)
 
     def test_grow_step(self) -> None:
         pass
 
     def test_choose_growth_best_option(self) -> None:
-        options = self.net.dag.define_next_generations()
+        options = self.net.dag.define_next_actions()
         with self.assertRaises(KeyError):
             self.net.choose_growth_best_action(options, use_bic=False)
         with self.assertRaises(KeyError):

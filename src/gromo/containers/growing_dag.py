@@ -422,7 +422,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
     def calculate_bottleneck(
         self,
-        generations: list["Expansion"],
+        actions: list["Expansion"],
         X: torch.Tensor,
         Y: torch.Tensor,
         loss_fn: Callable = nn.CrossEntropyLoss(),
@@ -433,7 +433,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        generations : list[Expansion]
+        actions : list[Expansion]
             list with growth actions information
         X : torch.Tensor
             train features
@@ -462,7 +462,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # Find nodes of interest
         prev_node_modules = set()
         next_node_modules = set()
-        for expansion in generations:
+        for expansion in actions:
             prev_nodes = expansion.previous_nodes
             next_nodes = expansion.next_nodes
             if not isinstance(prev_nodes, list):
@@ -686,7 +686,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         return direct_edges, one_hop_edges
 
-    def define_next_generations(self) -> list["Expansion"]:
+    def define_next_actions(self) -> list["Expansion"]:
         """Find all possible growth extensions for the current graph
 
         Returns
@@ -698,7 +698,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         direct_edges, one_hop_edges = self.find_possible_extensions()
 
         # gen_id = 0
-        generations = []
+        actions = []
 
         # All possible new direct edges
         for attr in direct_edges:
@@ -708,7 +708,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             expansion = Expansion(
                 self, "new edge", previous_node=previous_node, next_node=next_node
             )
-            generations.append(expansion)
+            actions.append(expansion)
 
         # All possible one-hop connections
         for attr in one_hop_edges:
@@ -725,16 +725,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 next_node=next_node,
                 node_attributes=node_attributes,
             )
-            generations.append(expansion)
+            actions.append(expansion)
 
         # All existing nodes
         for node in self.nodes:
             if (node == self.root) or (node == self.end):
                 continue
             expansion = Expansion(self, "expanded node", expanding_node=node)
-            generations.append(expansion)
+            actions.append(expansion)
 
-        return generations
+        return actions
 
     def __recursiveBFS(self, q: deque, nodes_visited: dict, update: bool) -> None:
         """Breadth First Search recursive function to find ancestors
