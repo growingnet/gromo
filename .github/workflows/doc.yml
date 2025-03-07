@@ -37,8 +37,8 @@ jobs:
 
       - name: Debug
         run: |
-          ls docs/sources
-          ls docs/sources/images
+          ls docs/source
+          ls docs/source/images
 
       - name: Build docs
         run: |
