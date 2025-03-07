@@ -6,9 +6,11 @@ What's new
 ==========
 
 .. NOTE: there are 3 separate sections for changes, based on type:
+
 - "Enhancements" for new features
 - "Bugs" for bug fixes
 - "API changes" for backward-incompatible changes
+
 .. _current:
 
 

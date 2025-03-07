@@ -705,8 +705,8 @@ class LinearGrowingModule(GrowingModule):
             extension of the weight matrix of the layer if None,
             the layer is extended with zeros
             should be of shape:
-             - (out_features, in_features + added_in_features) if added_in_features > 0
-             - (out_features + added_out_features, in_features) if added_out_features > 0
+            - (out_features, in_features + added_in_features) if added_in_features > 0
+            - (out_features + added_out_features, in_features) if added_out_features > 0
         bias_extension: torch.Tensor of shape (out_features + added_out_features,)
             extension of the bias vector of the layer if None,
             the layer is extended with zeros

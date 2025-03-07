@@ -939,7 +939,7 @@ class GrowingModule(torch.nn.Module):
     @property
     def tensor_n(self) -> torch.Tensor:
         """
-        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
+        Compute the tensor N for the layer with the current M_{-2}, C and optimal delta.
 
         Returns
         -------
