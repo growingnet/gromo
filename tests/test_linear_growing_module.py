@@ -637,7 +637,7 @@ class TestLinearGrowingModule(TorchTestCase):
             check_invariants(layer_out, reference)
 
         # simple test update without natural gradient
-        layer_out.update_computation(zero_delta=True)
+        layer_out.compute_optimal_updates(zero_delta=True)
 
     def test_compute_optimal_added_parameters(self):
         for bias in (True, False):
