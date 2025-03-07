@@ -386,16 +386,11 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>matrix_extension</strong> (<em>torch.Tensor</em>) – <p>extension of the weight matrix of the layer if None,
+<li><p><strong>matrix_extension</strong> (<em>torch.Tensor</em>) – extension of the weight matrix of the layer if None,
 the layer is extended with zeros
-should be of shape:</p>
-<blockquote>
-<div><ul>
-<li><p>(out_features, in_features + added_in_features) if added_in_features &gt; 0</p></li>
-<li><p>(out_features + added_out_features, in_features) if added_out_features &gt; 0</p></li>
-</ul>
-</div></blockquote>
-</p></li>
+should be of shape:
+- (out_features, in_features + added_in_features) if added_in_features &gt; 0
+- (out_features + added_out_features, in_features) if added_out_features &gt; 0</p></li>
 <li><p><strong>bias_extension</strong> (<em>torch.Tensor</em><em> of </em><em>shape</em><em> (</em><em>out_features + added_out_features</em><em>,</em><em>)</em>) – extension of the bias vector of the layer if None,
 the layer is extended with zeros</p></li>
 <li><p><strong>added_in_features</strong> (<em>int &gt;= 0</em>) – number of input features added if None, the number of input
@@ -642,7 +637,7 @@ linked to this layer.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="gromo.modules.linear_growing_module.LinearGrowingModule.tensor_n">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">tensor_n</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#gromo.modules.linear_growing_module.LinearGrowingModule.tensor_n" title="Link to this definition">#</a></dt>
-<dd><p>Compute the tensor N for the layer with the current <a href="#id1"><span class="problematic" id="id2">M_</span></a>-2, P and optimal delta.</p>
+<dd><p>Compute the tensor N for the layer with the current M_{-2}, P and optimal delta.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>N</p>
@@ -661,7 +656,13 @@ linked to this layer.</p>
 
 </dd></dl>
 
-<div style='clear:both'></div></section>
+<section id="examples-using-gromo-modules-linear-growing-module-lineargrowingmodule">
+<h2>Examples using <code class="docutils literal notranslate"><span class="pre">gromo.modules.linear_growing_module.LinearGrowingModule</span></code><a class="headerlink" href="#examples-using-gromo-modules-linear-growing-module-lineargrowingmodule" title="Link to this heading">#</a></h2>
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="This example shows minimal linear growing layers."><img alt="" src="../_images/sphx_glr_plot_linear_module_thumb.png" />
+<p><a class="reference internal" href="../auto_examples/plot_linear_module.html#sphx-glr-auto-examples-plot-linear-module-py"><span class="std std-ref">Minimal Linear Growing Layers</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Minimal Linear Growing Layers</div>
+</div></div><div style='clear:both'></div></section>
+</section>
 
 
                 </article>
@@ -730,6 +731,7 @@ linked to this layer.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gromo.modules.linear_growing_module.LinearGrowingModule.tensor_s_growth"><code class="docutils literal notranslate"><span class="pre">LinearGrowingModule.tensor_s_growth</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#examples-using-gromo-modules-linear-growing-module-lineargrowingmodule">Examples using <code class="docutils literal notranslate"><span class="pre">gromo.modules.linear_growing_module.LinearGrowingModule</span></code></a></li>
 </ul>
   </nav></div>
 
