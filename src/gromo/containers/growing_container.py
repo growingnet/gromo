@@ -1,6 +1,7 @@
 import torch
 
 from gromo.config.loader import load_config
+from gromo.modules.growing_module import AdditionGrowingModule, GrowingModule
 from gromo.utils.utils import get_correct_device, global_device
 
 
@@ -28,40 +29,45 @@ def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
     return torch.nn.functional.linear(input, self.weight, self.bias)
 
 
-supported_layer_types = ["linear", "convolution"]
-
-
 class GrowingContainer(torch.nn.Module):
     def __init__(
         self,
         in_features: int,
         out_features: int,
-        use_bias: bool,
-        layer_type: str,
-        activation: torch.nn.Module | str | None = None,
-        seed: int | None = None,
         device: torch.device | str | None = None,
     ) -> None:
         super(GrowingContainer, self).__init__()
         self._config_data, _ = load_config()
         self.device = get_correct_device(self, device)
 
-        if layer_type not in supported_layer_types:
-            raise NotImplementedError(
-                f"The layer type is not supported. Expected one of {supported_layer_types}, got {layer_type}"
-            )
-        self.layer_type = layer_type
-
-        if seed is not None:
-            torch.manual_seed(seed)
-
         self.in_features = in_features
         self.out_features = out_features
-        self.use_bias = use_bias
-        self.activation = activation
+
+        self.growing_layers = torch.nn.ModuleList()
+
+    def set_growing_layers(self):
+        """
+        Reference all growable layers of the model in the growing_layers attribute. This method should be implemented
+        in the child class and called in the __init__ method.
+        """
+        raise NotImplementedError
+
+    def init_computation(self):
+        """Initialize statistics computations for growth procedure"""
+        for layer in self.growing_layers:
+            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+                layer.init_computation()
+
+    def reset_computation(self):
+        """Reset statistics computations for growth procedure"""
+        for layer in self.growing_layers:
+            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+                layer.reset_computation()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through the network"""
         raise NotImplementedError
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Extended forward pass through the network"""
         raise NotImplementedError

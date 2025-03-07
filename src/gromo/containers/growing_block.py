@@ -71,9 +71,6 @@ class GrowingBlock(GrowingContainer):
         super(GrowingBlock, self).__init__(
             in_features=in_out_features,
             out_features=in_out_features,
-            use_bias=True,
-            layer_type=layer_type,
-            activation=activation,
         )
         self.name = name
         self.hidden_features = hidden_features

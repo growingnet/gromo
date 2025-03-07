@@ -20,12 +20,10 @@ class GrowingMLP(GrowingContainer):
         super(GrowingMLP, self).__init__(
             in_features=in_features,
             out_features=out_features,
-            use_bias=use_bias,
-            layer_type="linear",
-            activation=activation,
-            seed=seed,
             device=device,
         )
+        if seed is not None:
+            torch.manual_seed(seed)
         self.num_features = torch.tensor(self.in_features).prod().int().item()
 
         # flatten input
@@ -37,7 +35,7 @@ class GrowingMLP(GrowingContainer):
                 self.num_features,
                 hidden_shape,
                 post_layer_function=activation,
-                use_bias=self.use_bias,
+                use_bias=use_bias,
                 name="Layer 0",
             )
         )
@@ -48,7 +46,7 @@ class GrowingMLP(GrowingContainer):
                     hidden_shape,
                     post_layer_function=activation,
                     previous_module=self.layers[-1],
-                    use_bias=self.use_bias,
+                    use_bias=use_bias,
                     name=f"Layer {i + 1}",
                 )
             )
@@ -57,7 +55,7 @@ class GrowingMLP(GrowingContainer):
                 hidden_shape,
                 self.out_features,
                 previous_module=self.layers[-1],
-                use_bias=self.use_bias,
+                use_bias=use_bias,
                 name=f"Layer {number_hidden_layers}",
             )
         )

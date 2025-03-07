@@ -32,9 +32,6 @@ class GrowingResidualMLP(GrowingContainer):
         super(GrowingResidualMLP, self).__init__(
             in_features=int(in_features),
             out_features=num_classes,
-            use_bias=True,
-            layer_type="linear",
-            activation=activation,
         )
         self.num_features = num_features
         self.hidden_features = hidden_features
@@ -53,7 +50,7 @@ class GrowingResidualMLP(GrowingContainer):
                 GrowingResidualBlock(
                     num_features,
                     hidden_features,
-                    activation=self.activation,
+                    activation=activation,
                     name=f"block {i}",
                 )
                 for i in range(num_blocks)
@@ -252,9 +249,6 @@ class GrowingResidualBlock(GrowingContainer):
         super(GrowingResidualBlock, self).__init__(
             in_features=num_features,
             out_features=num_features,
-            use_bias=True,
-            layer_type="linear",
-            activation=activation,
         )
         self.name = name
 
