@@ -19,7 +19,6 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         device: torch.device | None = None,
         name: str = None,
     ) -> None:
-        device = device if device is not None else global_device()
         self.use_bias = True
         self.total_in_features: int = -1
         self.in_features = in_features
@@ -83,7 +82,9 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         self.total_in_features = 0
         for module in self.previous_modules:
             if not isinstance(module, (LinearGrowingModule, LinearAdditionGrowingModule)):
-                raise TypeError("The previous modules must be LinearGrowingModule.")
+                raise TypeError(
+                    "The previous modules must be LinearGrowingModule."
+                )  # FIXME: not true anymore
             if module.out_features != self.in_features:
                 raise ValueError(
                     "The input features must match the output features of the previous modules."
@@ -327,7 +328,6 @@ class LinearGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        device = device if device is not None else global_device()
         super(LinearGrowingModule, self).__init__(
             layer=torch.nn.Linear(
                 in_features, out_features, bias=use_bias, device=device
