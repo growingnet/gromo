@@ -17,7 +17,209 @@ from gromo.utils.utils import global_device
 
 
 class Conv2dAdditionGrowingModule(AdditionGrowingModule):
-    pass
+
+    def __init__(
+        self,
+        in_channels: int,
+        kernel_size: int | tuple[int, int],
+        post_addition_function: torch.nn.Module = torch.nn.Identity(),
+        previous_modules: list[GrowingModule | AdditionGrowingModule] = None,
+        next_modules: list[GrowingModule | AdditionGrowingModule] = None,
+        allow_growing: bool = False,
+        device: torch.device | None = None,
+        name: str = None,
+    ) -> None:
+        self.use_bias = True
+        self.in_channels = in_channels
+        self.out_channels = in_channels
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size)
+        self.kernel_size = kernel_size
+        super(Conv2dAdditionGrowingModule, self).__init__(
+            post_addition_function=post_addition_function,
+            previous_modules=previous_modules,
+            next_modules=next_modules,
+            allow_growing=allow_growing,
+            tensor_s_shape=(
+                self.use_bias + in_channels * kernel_size[0] * kernel_size[1],
+                self.use_bias + in_channels * kernel_size[0] * kernel_size[1],
+            ),
+            device=device,
+            name=name,
+        )
+
+    @property
+    def in_features(self) -> int:
+        return (
+            self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
+        )
+
+    @property
+    def out_features(self) -> int:
+        return self.in_features
+
+    def set_next_modules(
+        self, next_modules: list[AdditionGrowingModule | GrowingModule]
+    ) -> None:
+        if self.tensor_s is not None and self.tensor_s.samples > 0:
+            warn(
+                f"You are setting the next modules of {self.name} with a non-empty tensor S."
+            )
+        self.next_modules = next_modules if next_modules else []
+        assert all(
+            modules.in_features == self.out_channels for modules in self.next_modules
+        ), f"The output features must match the input features of the next modules."
+
+    def set_previous_modules(
+        self, previous_modules: list[AdditionGrowingModule | GrowingModule]
+    ) -> None:
+        if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."
+            )
+        if self.previous_tensor_m is not None and self.previous_tensor_m.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor M."
+            )
+
+        self.previous_modules = previous_modules if previous_modules else []
+        self.total_in_features = 0
+        for module in self.previous_modules:
+            if not isinstance(module, (Conv2dGrowingModule, Conv2dAdditionGrowingModule)):
+                raise TypeError(
+                    "The previous modules must be Conv2dGrowingModule or Conv2dAdditionGrowingModule."
+                )
+            if module.out_features != self.in_features:
+                raise ValueError(
+                    "The input features must match the output features of the previous modules."
+                )
+            self.total_in_features += module.in_features
+            self.total_in_features += module.use_bias
+        if self.total_in_features > 0:
+            self.previous_tensor_s = TensorStatistic(
+                (
+                    self.total_in_features,
+                    self.total_in_features,
+                ),
+                device=self.device,
+                name=f"S[-1]({self.name})",
+                update_function=self.compute_previous_s_update,
+            )
+        else:
+            self.previous_tensor_s = None
+
+        if self.total_in_features > 0:
+            self.previous_tensor_m = TensorStatistic(
+                (self.total_in_features, self.in_features),
+                device=self.device,
+                name=f"M[-1]({self.name})",
+                update_function=self.compute_previous_m_update,
+            )
+        else:
+            self.previous_tensor_m = None
+
+    def construct_full_activity(self) -> torch.Tensor:
+        assert self.previous_modules, f"No previous modules for {self.name}."
+        full_activity = torch.ones(
+            (self.previous_modules[0].input.shape[0], self.total_in_features),
+            device=self.device,
+        )
+        current_index = 0
+        for (
+            module
+        ) in self.previous_modules:  # FIXME: what if a previous module is a addition
+            if module.use_bias:
+                full_activity[:, current_index : current_index + module.in_features] = (
+                    module.unfolded_extended_input
+                )
+                current_index += module.in_features + 1
+            else:
+                full_activity[:, current_index : current_index + module.in_features] = (
+                    module.unfolded_extended_input
+                )
+                current_index += module.in_features
+        return full_activity
+
+    def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+        full_activity = self.construct_full_activity()
+        return (
+            torch.einsum(
+                "iam, ibm -> ab",
+                full_activity,
+                full_activity,
+            ),
+            full_activity.shape[0],
+        )
+
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        return_deltas: bool = False,
+        force_pseudo_inverse: bool = False,
+    ) -> list[tuple[torch.Tensor, torch.Tensor]] | None:
+        assert (
+            self.previous_tensor_m is not None
+        ), f"No previous tensor M for {self.name}."
+        tensor_s = self.previous_tensor_s()
+        previous_tensor_m = self.previous_tensor_m()
+        assert tensor_s.shape[0] == self.total_in_features, (
+            f"The inverse of S should have the same number of features as the input "
+            f"of all previous modules."
+        )
+        assert self.previous_tensor_m().shape[0] == self.total_in_features, (
+            f"The tensor M should have the same number of features as the input of "
+            f"all previous modules."
+        )
+        assert (
+            self.previous_tensor_m().shape[1] == self.in_features
+        ), f"The tensor M should have the same number of output features as the layer."
+        if not force_pseudo_inverse:
+            try:
+                delta = torch.linalg.solve(tensor_s, previous_tensor_m).t()
+            except torch.linalg.LinAlgError:
+                force_pseudo_inverse = True
+                # delta = torch.linalg.lstsq(tensor_s, previous_tensor_m).solution.t()
+                # do not use lstsq because it does not work with the GPU
+                warn(
+                    f"Using the pseudo-inverse for the computation of the optimal delta "
+                    f"for {self.name}."
+                )
+        if force_pseudo_inverse:
+            delta = (torch.linalg.pinv(tensor_s) @ previous_tensor_m).t()
+
+        deltas = []
+        current_index = 0
+        for module in self.previous_modules:
+            if module.use_bias:
+                delta_w = delta[:, current_index : current_index + module.in_features]
+                delta_b = delta[:, current_index + module.in_features]
+                if update:
+                    module.optimal_delta_layer = torch.nn.Linear(
+                        module.in_features, module.out_features, bias=True
+                    )
+                    module.optimal_delta_layer.weight = torch.nn.Parameter(delta_w)
+                    module.optimal_delta_layer.bias = torch.nn.Parameter(delta_b)
+                if return_deltas:
+                    deltas.append((delta_w, delta_b))
+
+                current_index += module.in_features + 1
+            else:
+                delta_w = delta[:, current_index : current_index + module.in_features]
+                if update:
+                    module.optimal_delta_layer = torch.nn.Linear(
+                        module.in_features, module.out_features, bias=False
+                    )
+                    module.optimal_delta_layer.weight = torch.nn.Parameter(delta_w)
+                if return_deltas:
+                    deltas.append((delta_w, None))
+                current_index += module.in_features
+
+        delta_w = delta_w.reshape(
+            self.out_channels, self.in_channels, self.kernel_size[0], self.kernel_size[1]
+        )
+
+        if return_deltas:
+            return deltas
 
 
 class Conv2dGrowingModule(GrowingModule):
@@ -68,7 +270,6 @@ class Conv2dGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        device = device if device is not None else global_device()
         self.in_channels = in_channels
         self.out_channels = out_channels
         if isinstance(kernel_size, int):
@@ -105,6 +306,16 @@ class Conv2dGrowingModule(GrowingModule):
         self.input_size: tuple[int, int] = input_size
         self._mask_tensor_t: torch.Tensor | None = None
         self.use_bias = use_bias
+
+    @property
+    def in_features(self) -> int:
+        return self.in_channels * self.input_size[0] * self.input_size[1] + self.use_bias
+
+    @property
+    def out_features(self) -> int:
+        return (
+            self.out_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
+        )
 
     @property
     def mask_tensor_t(self) -> torch.Tensor:
