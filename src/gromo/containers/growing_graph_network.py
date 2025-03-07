@@ -40,18 +40,16 @@ class GrowingGraphNetwork(GrowingContainer):
         use_bias: bool = True,
         use_batch_norm: bool = False,
         layer_type: str = "linear",
-        seed: int | None = None,
         device: str | None = None,
     ) -> None:
         super(GrowingGraphNetwork, self).__init__(
             in_features=in_features,
             out_features=out_features,
-            use_bias=use_bias,
-            layer_type=layer_type,
-            seed=seed,
             device=device,
         )
+        self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
+        self.layer_type = layer_type
         self.neurons = neurons
 
         self.global_step = 0
@@ -68,7 +66,7 @@ class GrowingGraphNetwork(GrowingContainer):
             neurons=self.neurons,
             use_bias=self.use_bias,
             use_batch_norm=self.use_batch_norm,
-            layer_type=self.layer_type,
+            default_layer_type=self.layer_type,
             device=self.device,
         )
 

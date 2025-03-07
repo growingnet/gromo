@@ -16,6 +16,9 @@ from gromo.modules.linear_growing_module import (
 from gromo.utils.utils import activation_fn, f1_micro
 
 
+supported_layer_types = ["linear", "convolution"]
+
+
 class GrowingDAG(nx.DiGraph, GrowingContainer):
     def __init__(
         self,
@@ -24,12 +27,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         neurons: int,
         use_bias: bool,
         use_batch_norm: bool,
-        layer_type: str,
+        default_layer_type: str = "linear",
         activation: str = "selu",
         root: str = "start",
         end: str = "end",
         DAG_parameters: dict = None,
-        seed: int | None = None,
         device: torch.device | str | None = None,
         **kwargs,
     ) -> None:
@@ -38,17 +40,21 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             self,
             in_features=in_features,
             out_features=out_features,
-            use_bias=use_bias,
-            layer_type=layer_type,
-            activation=activation,
-            seed=seed,
             device=device,
         )
         self.neurons = neurons
+        self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
+        self.activation = activation
         self.root = root
         self.end = end
         self.flatten = nn.Flatten(start_dim=1)
+
+        if default_layer_type not in supported_layer_types:
+            raise NotImplementedError(
+                f"The default layer type is not supported. Expected one of {supported_layer_types}, got {default_layer_type}"
+            )
+        self.layer_type = default_layer_type
 
         if DAG_parameters is None:
             DAG_parameters = self.init_dag_parameters()
