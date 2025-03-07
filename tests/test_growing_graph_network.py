@@ -40,16 +40,16 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         )
 
         self.bottleneck = {
-            "end": torch.rand(
+            "Lend": torch.rand(
                 (self.batch_size, self.out_features), device=global_device()
             ),
-            "1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
+            "L1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
         }
         self.input_B = {
-            "start": torch.rand(
+            "Lstart": torch.rand(
                 (self.batch_size, self.in_features), device=global_device()
             ),
-            "1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
+            "L1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
         }
 
         self.actions = self.net.dag.define_next_actions()
@@ -254,17 +254,17 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             self.actions, self.x, self.y
         )
 
-        self.assertIsNotNone(bottleneck.get("end"))
-        self.assertEqual(bottleneck["end"].shape, (self.batch_size, self.out_features))
+        self.assertIsNotNone(bottleneck.get("Lend"))
+        self.assertEqual(bottleneck["Lend"].shape, (self.batch_size, self.out_features))
 
-        self.assertIsNotNone(bottleneck.get("1"))
-        self.assertEqual(bottleneck["1"].shape, (self.batch_size, self.net.neurons))
+        self.assertIsNotNone(bottleneck.get("L1"))
+        self.assertEqual(bottleneck["L1"].shape, (self.batch_size, self.net.neurons))
 
-        self.assertIsNotNone(inputB.get("start"))
-        self.assertEqual(inputB["start"].shape, (self.batch_size, self.in_features))
+        self.assertIsNotNone(inputB.get("Lstart"))
+        self.assertEqual(inputB["Lstart"].shape, (self.batch_size, self.in_features))
 
-        self.assertIsNotNone(inputB.get("1"))
-        self.assertEqual(inputB["1"].shape, (self.batch_size, self.net.neurons))
+        self.assertIsNotNone(inputB.get("L1"))
+        self.assertEqual(inputB["L1"].shape, (self.batch_size, self.net.neurons))
 
     def test_restrict_action_space(self) -> None:
         self.assertEqual(len(self.actions), 4)
