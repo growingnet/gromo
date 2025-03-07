@@ -329,6 +329,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             self.nodes[node].update(attributes)
 
             # Use batch norm
+            in_features = self.nodes[node]["size"]
             if attributes.get("use_batch_norm", self.use_batch_norm):
                 batch_norm = nn.BatchNorm1d(in_features, affine=False, device=self.device)
             else:
@@ -336,7 +337,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
             # Create linear or convolutional layer
             if self.nodes[node]["type"] == "linear":
-                in_features = self.nodes[node]["size"]
                 self.__set_node_module(
                     node,
                     LinearAdditionGrowingModule(
