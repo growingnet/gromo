@@ -6,7 +6,7 @@ import torch
 def sqrt_inverse_matrix_semi_positive(
     matrix: torch.Tensor,
     threshold: float = 1e-5,
-    preferred_linalg_library: None | str = "magma",
+    preferred_linalg_library: None | str = None,
 ) -> torch.Tensor:
     """
     Compute the square root of the inverse of a semi-positive definite matrix.
