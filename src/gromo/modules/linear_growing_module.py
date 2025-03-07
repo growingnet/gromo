@@ -622,7 +622,7 @@ class LinearGrowingModule(GrowingModule):
     @property
     def tensor_n(self) -> torch.Tensor:
         """
-        Compute the tensor N for the layer with the current M_-2, P and optimal delta.
+        Compute the tensor N for the layer with the current M_{-2}, P and optimal delta.
 
         Returns
         -------
