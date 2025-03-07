@@ -50,9 +50,12 @@ class Conv2dAdditionGrowingModule(AdditionGrowingModule):
 
     @property
     def in_features(self) -> int:
-        return (
-            self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
-        )
+        if len(self.previous_modules) <= 0:
+            warn(
+                f"Cannot derive the in_features of Conv2dAdditionGrowingModule without setting at least on previous module"
+            )
+            return -1
+        return self.previous_modules[0].out_features
 
     @property
     def out_features(self) -> int:
@@ -308,14 +311,40 @@ class Conv2dGrowingModule(GrowingModule):
         self.use_bias = use_bias
 
     @property
+    def padding(self) -> tuple[int, int]:
+        return self.layer.padding
+
+    @property
+    def stride(self) -> tuple[int, int]:
+        return self.layer.stride
+
+    @property
     def in_features(self) -> int:
         return self.in_channels * self.input_size[0] * self.input_size[1] + self.use_bias
 
     @property
-    def out_features(self) -> int:
+    def out_width(self) -> int:
         return (
-            self.out_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
+            int(
+                (self.input_size[0] - self.kernel_size[0] + 2 * self.padding[0])
+                / self.stride[0]
+            )
+            + 1
         )
+
+    @property
+    def out_height(self) -> int:
+        return (
+            int(
+                (self.input_size[1] - self.kernel_size[1] + 2 * self.padding[1])
+                / self.stride[1]
+            )
+            + 1
+        )
+
+    @property
+    def out_features(self) -> int:
+        return self.out_channels * self.out_width * self.out_height
 
     @property
     def mask_tensor_t(self) -> torch.Tensor:
