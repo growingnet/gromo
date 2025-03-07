@@ -58,13 +58,7 @@ loss.backward()
 for layer in net:
     layer.update_computation()
 
-    layer.compute_optimal_updates(
-        zero_delta=True,
-        numerical_threshold=numerical_threshold,
-        statistical_threshold=statistical_threshold,
-        maximum_added_neurons=maximum_added_neurons,
-        dtype=dtype,
-    )
+    layer.compute_optimal_updates()
 
 for layer in net:
     layer.reset_computation()
