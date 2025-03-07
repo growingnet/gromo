@@ -1,4 +1,5 @@
 import copy
+import warnings
 from collections import deque
 from typing import Callable, Iterator, Mapping
 
@@ -1018,8 +1019,9 @@ class Expansion:
                 )
             if self.expanding_node is not None:
                 self.expanding_node = None
-                raise UserWarning(
-                    f"When creating a new edge the expanding node argument is not required. Found {expanding_node=}."
+                warnings.warn(
+                    f"When creating a new edge the expanding node argument is not required. Found {expanding_node=}.",
+                    UserWarning,
                 )
         elif self.type == "new node":
             if (
@@ -1038,8 +1040,9 @@ class Expansion:
             if self.previous_node is not None or self.next_node is not None:
                 self.previous_node = None
                 self.next_node = None
-                raise UserWarning(
-                    f"When expanding an existing node the previous and next nodes arguments are not required. Found {previous_node=} {next_node=}."
+                warnings.warn(
+                    f"When expanding an existing node the previous and next nodes arguments are not required. Found {previous_node=} {next_node=}.",
+                    UserWarning,
                 )
 
     @property
@@ -1124,6 +1127,7 @@ class Expansion:
         self.growth_history[current_step].update(step_update)
 
     def __del__(self) -> None:
-        del self.dag
-        del self.growth_history
-        del self.metrics
+        if "dag" in self.__dict__:
+            del self.dag
+            del self.growth_history
+            del self.metrics
