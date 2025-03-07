@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from gromo.containers.growing_dag import GrowingDAG
+from gromo.containers.growing_dag import Expansion, GrowingDAG
 from gromo.modules.constant_module import ConstantModule
 from gromo.modules.linear_growing_module import (
     LinearAdditionGrowingModule,
@@ -512,6 +512,96 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertEqual(self.dag.count_parameters([("start", "1")]), numel)
         numel += self.hidden_size * self.out_features + self.out_features
         self.assertEqual(self.dag.count_parameters([("start", "1"), ("1", "end")]), numel)
+
+    def test_expansion_init(self) -> None:
+        with self.assertRaises(ValueError):
+            Expansion(
+                self.dag,
+                type="random",
+            )
+
+        with self.assertRaises(ValueError):
+            Expansion(
+                self.dag,
+                type="new edge",
+            )
+        with self.assertWarns(UserWarning):
+            Expansion(
+                self.dag,
+                type="new edge",
+                previous_node=self.dag.root,
+                next_node=self.dag.end,
+                expanding_node="test",
+            )
+        expansion = Expansion(
+            self.dag,
+            type="new edge",
+            previous_node=self.dag.root,
+            next_node=self.dag.end,
+        )
+        self.assertIsNot(self.dag, expansion.dag)
+
+        with self.assertRaises(ValueError):
+            Expansion(
+                self.dag,
+                type="new node",
+            )
+
+        with self.assertRaises(ValueError):
+            Expansion(
+                self.dag,
+                type="expanded node",
+            )
+        with self.assertWarns(UserWarning):
+            Expansion(
+                self.dag,
+                type="expanded node",
+                expanding_node="test",
+                previous_node=self.dag.root,
+            )
+
+    def test_expansion_new_edges(self) -> None:
+        expansion = Expansion(
+            self.dag,
+            type="new edge",
+            previous_node=self.dag.root,
+            next_node=self.dag.end,
+        )
+        self.assertEqual(expansion.new_edges, (self.dag.root, self.dag.end))
+
+        expansion = Expansion(
+            self.dag,
+            type="new node",
+            expanding_node="test",
+            previous_node=self.dag.root,
+            next_node=self.dag.end,
+        )
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                (self.dag.root, "test"),
+                ("test", self.dag.end),
+            ],
+        )
+
+        self.dag.add_node_with_two_edges(
+            self.dag.root,
+            "test",
+            self.dag.end,
+            node_attributes=self.single_node_attributes,
+        )
+        expansion = Expansion(
+            self.dag,
+            type="expanded node",
+            expanding_node="test",
+        )
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                (self.dag.root, "test"),
+                ("test", self.dag.end),
+            ],
+        )
 
 
 if __name__ == "__main__":
