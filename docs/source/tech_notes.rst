@@ -100,6 +100,7 @@ Glossary
 Bibliography
 =============
 
-.. [TMLR24] Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G.
-        (2024). Growing tiny networks: Spotting expressivity bottlenecks and
-        fixing them optimally. TMLR.
+.. [ESANN2025] Stella Douka, Manon Verbockhaven, Théo Rudkiewicz, Stéphane Rivaud,
+        François P. Landes, Sylvain Chevallier and Guillaume Charpiat.
+        Growth strategies for arbitrary DAG neural architectures. ESANN 2025 -
+        33th European Symposium on Artificial Neural Networks, 2025, Bruges, Belgium.

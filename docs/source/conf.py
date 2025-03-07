@@ -157,7 +157,7 @@ sphinx_gallery_conf = {
     "show_memory": False,
     "reference_url": dict(gromo=None),
     "filename_pattern": "(/plot_|/tutorial_)",
-    "default_thumb_file": "../images/gromo-small.png",
+    "default_thumb_file": "../docs/source/images/gromo-small.png",
     "within_subsection_order": FileNameSortKey,
 }
 

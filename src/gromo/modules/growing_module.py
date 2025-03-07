@@ -939,7 +939,7 @@ class GrowingModule(torch.nn.Module):
     @property
     def tensor_n(self) -> torch.Tensor:
         """
-        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
+        Compute the tensor N for the layer with the current M_{-2}, C and optimal delta.
 
         Returns
         -------
@@ -1267,7 +1267,7 @@ class GrowingModule(torch.nn.Module):
         update_previous: bool
             whether to change the previous layer extended_output_layer
         zero_delta: bool
-            if True, set the optimal delta to zero
+            if True, compute the optimal added neurons without performing the natural gradient step.
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
 
@@ -1282,6 +1282,7 @@ class GrowingModule(torch.nn.Module):
                 self.optimal_delta_layer.weight.data.zero_()
                 if self.optimal_delta_layer.bias is not None:
                     self.optimal_delta_layer.bias.data.zero_()
+            self.delta_raw.zero_()
 
         if self.previous_module is None:
             return  # FIXME: change the definition of the function

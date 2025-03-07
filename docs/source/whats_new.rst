@@ -6,9 +6,11 @@ What's new
 ==========
 
 .. NOTE: there are 3 separate sections for changes, based on type:
+
 - "Enhancements" for new features
 - "Bugs" for bug fixes
 - "API changes" for backward-incompatible changes
+
 .. _current:
 
 
@@ -45,6 +47,7 @@ Bugs
 - Correct codecov upload (:gh:`49` by `Sylvain Chevallier`_)
 - Fix the data augmentation bug in get_dataset (:gh:`58` by `Stéphane Rivaud`_)
 - Fix dataset input_shape: remove the flattening in data augmentation (:gh:`56` by `Stéphane Rivaud`_)
+- Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)
 
 API changes
 ~~~~~~~~~~~
