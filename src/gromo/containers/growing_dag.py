@@ -353,7 +353,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                             activation_fn(self.nodes[node].get("activation")),
                         ),
                         device=self.device,
-                        name=f"L{node}",
+                        name=f"{node}",
                     ),
                 )
             # elif self.nodes[node]["type"] == "convolution":
@@ -368,7 +368,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             #         activation_fn(self.nodes[node].get("activation")),
             #     ),
             #     device=self.device,
-            #     name=f"L{node}",
+            #     name=f"{node}",
             # )
             # Conv2dAdditionGrowingModule(
             #     allow_growing=True,
