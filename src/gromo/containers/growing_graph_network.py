@@ -370,7 +370,7 @@ class GrowingGraphNetwork(GrowingContainer):
         for prev_edge_module in node_module.previous_modules:
             # we do not need to change the _scaling_factor_next_module as it is
             # given as a parameter of _apply_output_changes
-            # prev_edge_module._scaling_factor_next_module = factor
+            # prev_edge_module._scaling_factor_next_module = factor # Warning
             prev_edge_module._apply_output_changes(factor)
             # Delete activities
             prev_edge_module.delete_update(include_previous=False)
@@ -617,7 +617,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
             # Create/Expand node
-            elif expansion.type == "new node":
+            elif (expansion.type == "new node") or (expansion.type == "expanded node"):
                 expansion.growth_history = copy.copy(self.growth_history)
                 expansion.expand()
                 expansion.update_growth_history(
