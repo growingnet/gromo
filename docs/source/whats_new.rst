@@ -40,6 +40,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Fix the data type management for growth related computations. (:gh:`79` by `Stéphane Rivaud`_)
 - Revert global state changes, solve test issues (:gh:`70` by `Stella Douka`_)
 - Use a different scaling factor for input and output extensions. In addition, ``apply_change`` and ``extended_forward`` have now compatible behavior in terms of scaling factor. (:gh:`48` by `Théo Rudkiewicz`_)
 - Fix the change application when updating the previous layer (:gh:`48` by `Théo Rudkiewicz`_)
