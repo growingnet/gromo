@@ -663,6 +663,7 @@ class Conv2dGrowingModule(GrowingModule):
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
 
+        saved_dtype = tensor_s.dtype
         if tensor_s.dtype != dtype:
             tensor_s = tensor_s.to(dtype=dtype)
         if tensor_m.dtype != dtype:
@@ -705,7 +706,7 @@ class Conv2dGrowingModule(GrowingModule):
                     f"delta to zero."
                 )
                 self.delta_raw = torch.zeros_like(self.delta_raw)
-        self.delta_raw = self.delta_raw.to(dtype=torch.float32)
+        self.delta_raw = self.delta_raw.to(dtype=saved_dtype)
 
         assert self.delta_raw.shape[0] == self.out_channels, (
             f"delta_raw should have shape ({self.out_features=},...)"
@@ -782,6 +783,7 @@ class Conv2dGrowingModule(GrowingModule):
         )
         matrix_s = self.tensor_s_growth()
 
+        saved_dtype = matrix_s.dtype
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)
         if matrix_s.dtype != dtype:
@@ -803,9 +805,9 @@ class Conv2dGrowingModule(GrowingModule):
             == self.out_channels * self.kernel_size[0] * self.kernel_size[1]
         ), f"omega should have the same number of output features as the layer."
 
-        alpha = alpha.to(dtype=torch.float32)
-        omega = omega.to(dtype=torch.float32)
-        self.eigenvalues_extension = self.eigenvalues_extension.to(dtype=torch.float32)
+        alpha = alpha.to(dtype=saved_dtype)
+        omega = omega.to(dtype=saved_dtype)
+        self.eigenvalues_extension = self.eigenvalues_extension.to(dtype=saved_dtype)
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]

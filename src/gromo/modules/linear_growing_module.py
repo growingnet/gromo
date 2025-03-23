@@ -941,6 +941,7 @@ class LinearGrowingModule(GrowingModule):
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
 
+        saved_dtype = tensor_s.dtype
         if tensor_s.dtype != dtype:
             tensor_s = tensor_s.to(dtype=dtype)
         if tensor_m.dtype != dtype:
@@ -983,7 +984,7 @@ class LinearGrowingModule(GrowingModule):
                     f"delta to zero."
                 )
                 self.delta_raw = torch.zeros_like(self.delta_raw)
-        self.delta_raw = self.delta_raw.to(dtype=torch.float32)
+        self.delta_raw = self.delta_raw.to(dtype=saved_dtype)
 
         if self.use_bias:
             delta_weight = self.delta_raw[:, :-1]
@@ -1038,6 +1039,7 @@ class LinearGrowingModule(GrowingModule):
         )
         matrix_s = self.tensor_s_growth()
 
+        saved_dtype = matrix_s.dtype
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)
         if matrix_s.dtype != dtype:
@@ -1060,9 +1062,9 @@ class LinearGrowingModule(GrowingModule):
         assert omega.shape == (self.out_features, k), (
             f"omega should have shape {(self.out_features, k)}, " f"but got {omega.shape}"
         )
-        alpha = alpha.to(dtype=torch.float32)
-        omega = omega.to(dtype=torch.float32)
-        self.eigenvalues_extension = self.eigenvalues_extension.to(dtype=torch.float32)
+        alpha = alpha.to(dtype=saved_dtype)
+        omega = omega.to(dtype=saved_dtype)
+        self.eigenvalues_extension = self.eigenvalues_extension.to(dtype=saved_dtype)
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]
