@@ -1131,3 +1131,12 @@ class Expansion:
             del self.dag
             del self.growth_history
             del self.metrics
+
+    def __repr__(self) -> str:
+        if self.type == "new edge":
+            return f"[Expansion]: New edge from {self.previous_node} to {self.next_node}"
+        elif self.type == "new node":
+            return f"[Expansion]: New node {self.expanding_node} from {self.previous_node} to {self.next_node}"
+        elif self.type == "expanded node":
+            return f"[Expansion]: Expanding node {self.expanding_node}"
+        return "[Expansion]: NotImplemented"
