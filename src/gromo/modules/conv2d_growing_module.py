@@ -862,8 +862,8 @@ class Conv2dGrowingModule(GrowingModule):
             if isinstance(
                 self.previous_module, LinearGrowingModule | Conv2dGrowingModule
             ):
-                self.previous_module.extended_output_layer = self.layer_of_tensor(
-                    alpha_weight, alpha_bias
+                self.previous_module.extended_output_layer = (
+                    self.previous_module.layer_of_tensor(alpha_weight, alpha_bias)
                 )
             elif isinstance(
                 self.previous_module,
