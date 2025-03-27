@@ -48,16 +48,13 @@ class GrowingMLPBlock(GrowingContainer):
         super(GrowingMLPBlock, self).__init__(
             in_features=num_features,
             out_features=num_features,
-            use_bias=True,
-            layer_type="linear",
-            activation=nn.GELU(),
         )
         self.name = name
 
         self.first_layer = LinearGrowingModule(
             num_features,
             hidden_features,
-            post_layer_function=self.activation,  # type: ignore
+            post_layer_function=nn.GELU(),
             **kwargs_layer,
         )
         self.dropout = nn.Dropout(dropout)
@@ -340,8 +337,6 @@ class GrowingTokenMixer(GrowingContainer):
         super(GrowingTokenMixer, self).__init__(
             in_features=num_features,
             out_features=num_features,
-            use_bias=True,
-            layer_type="linear",
         )
         self.norm = nn.LayerNorm(num_features, device=self.device)
         self.mlp = GrowingMLPBlock(num_patches, hidden_features, dropout)
@@ -405,8 +400,6 @@ class GrowingChannelMixer(GrowingContainer):
         super(GrowingChannelMixer, self).__init__(
             in_features=num_features,
             out_features=num_features,
-            use_bias=True,
-            layer_type="linear",
         )
         self.norm = nn.LayerNorm(num_features, device=self.device)
         self.mlp = GrowingMLPBlock(num_features, hidden_features, dropout)
@@ -468,8 +461,6 @@ class GrowingMixerLayer(GrowingContainer):
         super(GrowingMixerLayer, self).__init__(
             in_features=num_features,
             out_features=num_features,
-            use_bias=True,
-            layer_type="linear",
         )
         self.token_mixer = GrowingTokenMixer(
             num_patches, num_features, hidden_dim_token, dropout
@@ -616,8 +607,6 @@ class GrowingMLPMixer(GrowingContainer):
         super(GrowingMLPMixer, self).__init__(
             in_features=num_features,
             out_features=num_classes,
-            use_bias=True,
-            layer_type="linear",
         )
         # per-patch fully-connected is equivalent to strided conv2d
         self.patcher = nn.Conv2d(

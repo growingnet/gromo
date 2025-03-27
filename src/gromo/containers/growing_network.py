@@ -20,9 +20,6 @@ class GrowingNetwork(GrowingContainer):
         super(GrowingNetwork, self).__init__(
             in_features=in_features,
             out_features=out_features,
-            use_bias=use_bias,
-            layer_type="linear",
-            activation=torch.nn.ReLU(),
             device=device,
         )
         self.start_module = LinearAdditionGrowingModule(
@@ -31,37 +28,39 @@ class GrowingNetwork(GrowingContainer):
         self.l1 = LinearGrowingModule(
             in_features=self.in_features,
             out_features=hidden_features,
-            use_bias=self.use_bias,
-            post_layer_function=self.activation,  # type: ignore
+            use_bias=use_bias,
+            post_layer_function=torch.nn.ReLU(),
             name="l1",
         )
         self.l2 = LinearGrowingModule(
             in_features=hidden_features,
             out_features=self.in_features,
             name="l2",
-            use_bias=self.use_bias,
+            use_bias=use_bias,
         )
         self.res_module = LinearAdditionGrowingModule(
-            in_features=self.in_features, post_addition_function=self.activation, name="res"  # type: ignore
+            in_features=self.in_features,
+            post_addition_function=torch.nn.ReLU(),
+            name="res",
         )
         self.l3 = LinearGrowingModule(
             in_features=self.in_features,
             out_features=self.out_features,
             name="l3",
-            use_bias=self.use_bias,
+            use_bias=use_bias,
         )
         self.l4 = LinearGrowingModule(
             in_features=self.in_features,
             out_features=hidden_features,
-            post_layer_function=self.activation,  # type: ignore
+            post_layer_function=torch.nn.ReLU(),
             name="l4",
-            use_bias=self.use_bias,
+            use_bias=use_bias,
         )
         self.l5 = LinearGrowingModule(
             in_features=hidden_features,
             out_features=self.out_features,
             name="l5",
-            use_bias=self.use_bias,
+            use_bias=use_bias,
         )
         self.end_module = LinearAdditionGrowingModule(
             in_features=self.out_features, name="end"
