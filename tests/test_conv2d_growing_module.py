@@ -45,7 +45,7 @@ class TestConv2dGrowingModule(TorchTestCase):
             demo_out = Conv2dGrowingModule(
                 in_channels=5,
                 out_channels=7,
-                kernel_size=(3, 3),
+                kernel_size=(5, 5),
                 use_bias=bias,
                 previous_module=demo_in,
                 device=global_device(),
@@ -527,6 +527,20 @@ class TestConv2dGrowingModule(TorchTestCase):
 
                 demo_couple[1].update_computation()
                 demo_couple[1].tensor_s_growth.update()
+
+                s_shape_theory = demo_couple[0].in_channels * demo_couple[0].kernel_size[
+                    0
+                ] * demo_couple[0].kernel_size[1] + (1 if bias else 0)
+                self.assertShapeEqual(
+                    demo_couple[1].tensor_s_growth(), (s_shape_theory, s_shape_theory)
+                )
+
+                m_prev_shape_theory = (
+                    s_shape_theory,
+                    demo_couple[1].out_channels,
+                    demo_couple[1].kernel_size[0] * demo_couple[1].kernel_size[1],
+                )
+                self.assertShapeEqual(demo_couple[1].tensor_m_prev(), m_prev_shape_theory)
 
                 alpha, alpha_b, omega, eigenvalues = demo_couple[
                     1
