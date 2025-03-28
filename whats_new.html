@@ -369,8 +369,11 @@
 <section id="enhancements">
 <h3>Enhancements<a class="headerlink" href="#enhancements" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Adds a generic GrowingContainer to simplify model management along with unit testing. Propagates modifications to models. (<a class="reference external" href="https://github.com/growingnet/gromo/issues/77">#77</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 <li><p>Refactor and simplify repo structure (<a class="reference external" href="https://github.com/growingnet/gromo/issues/72">#72</a> and <a class="reference external" href="https://github.com/growingnet/gromo/issues/73">#73</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Simplify global device handling (<a class="reference external" href="https://github.com/growingnet/gromo/issues/72">#72</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
+<li><p>Integrate an MLP Mixer (<a class="reference external" href="https://github.com/growingnet/gromo/issues/70">#70</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
+<li><p>Integrate a Residual MLP (<a class="reference external" href="https://github.com/growingnet/gromo/issues/69">#69</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 <li><p>Option to restrict action space (<a class="reference external" href="https://github.com/growingnet/gromo/issues/60">#60</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Add support for Conv2d layers in the sequential case (<a class="reference external" href="https://github.com/growingnet/gromo/issues/34">#34</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Replaced the <cite>assert</cite> statements with <cite>self.assert*</cite> methods in the unit tests (<a class="reference external" href="https://github.com/growingnet/gromo/issues/50">#50</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
@@ -383,22 +386,20 @@
 <li><p>Option to disable logging (<a class="reference external" href="https://github.com/growingnet/gromo/issues/14">#14</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Add CI (<a class="reference external" href="https://github.com/growingnet/gromo/issues/2">#2</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Modify LinearGrowingModule to operate on the last dimension of an input tensor with arbitrary shape (<a class="reference external" href="https://github.com/growingnet/gromo/issues/54">#54</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
-<li><p>Integrate a Residual MLP (<a class="reference external" href="https://github.com/growingnet/gromo/issues/69">#69</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
-<li><p>Integrate an MLP Mixer (<a class="reference external" href="https://github.com/growingnet/gromo/issues/70">#70</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 </ul>
 </section>
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Fix the computation of optimal added neurons without natural gradient step (<a class="reference external" href="https://github.com/growingnet/gromo/issues/74">#74</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 <li><p>Fix the data type management for growth related computations. (<a class="reference external" href="https://github.com/growingnet/gromo/issues/79">#79</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 <li><p>Revert global state changes, solve test issues (<a class="reference external" href="https://github.com/growingnet/gromo/issues/70">#70</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
+<li><p>Fix the data augmentation bug in get_dataset (<a class="reference external" href="https://github.com/growingnet/gromo/issues/58">#58</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 <li><p>Use a different scaling factor for input and output extensions. In addition, <code class="docutils literal notranslate"><span class="pre">apply_change</span></code> and <code class="docutils literal notranslate"><span class="pre">extended_forward</span></code> have now compatible behavior in terms of scaling factor. (<a class="reference external" href="https://github.com/growingnet/gromo/issues/48">#48</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Fix the change application when updating the previous layer (<a class="reference external" href="https://github.com/growingnet/gromo/issues/48">#48</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Fix the sub-selection of added neurons in the sequential case (<a class="reference external" href="https://github.com/growingnet/gromo/issues/41">#41</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Correct codecov upload (<a class="reference external" href="https://github.com/growingnet/gromo/issues/49">#49</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
-<li><p>Fix the data augmentation bug in get_dataset (<a class="reference external" href="https://github.com/growingnet/gromo/issues/58">#58</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 <li><p>Fix dataset input_shape: remove the flattening in data augmentation (<a class="reference external" href="https://github.com/growingnet/gromo/issues/56">#56</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
-<li><p>Fix the computation of optimal added neurons without natural gradient step (<a class="reference external" href="https://github.com/growingnet/gromo/issues/74">#74</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
 </ul>
 </section>
 <section id="api-changes">
