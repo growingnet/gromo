@@ -54,6 +54,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)
 - Added support for configuration files that override default class arguments (:gh:`38` by `Stella Douka`_)
 
 
