@@ -18,8 +18,8 @@ import torch
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import (
-    LinearAdditionGrowingModule,
     LinearGrowingModule,
+    LinearMergeGrowingModule,
 )
 from gromo.utils.utils import global_device
 
@@ -42,7 +42,7 @@ class GrowingNetwork(GrowingContainer):
             out_features=out_features,
             device=device,
         )
-        self.start_module = LinearAdditionGrowingModule(
+        self.start_module = LinearMergeGrowingModule(
             in_features=self.in_features, name="start"
         )
         self.l1 = LinearGrowingModule(
@@ -58,9 +58,9 @@ class GrowingNetwork(GrowingContainer):
             name="l2",
             use_bias=use_bias,
         )
-        self.res_module = LinearAdditionGrowingModule(
+        self.res_module = LinearMergeGrowingModule(
             in_features=self.in_features,
-            post_addition_function=torch.nn.ReLU(),
+            post_merge_function=torch.nn.ReLU(),
             name="res",
         )
         self.l3 = LinearGrowingModule(
@@ -82,7 +82,7 @@ class GrowingNetwork(GrowingContainer):
             name="l5",
             use_bias=use_bias,
         )
-        self.end_module = LinearAdditionGrowingModule(
+        self.end_module = LinearMergeGrowingModule(
             in_features=self.out_features, name="end"
         )
 
@@ -163,7 +163,7 @@ class GrowingNetwork(GrowingContainer):
             if isinstance(layer, LinearGrowingModule):
                 layer.tensor_m.reset()
 
-            if isinstance(layer, LinearAdditionGrowingModule):
+            if isinstance(layer, LinearMergeGrowingModule):
                 if layer.previous_tensor_s is not None:
                     layer.previous_tensor_s.reset()
                 if layer.previous_tensor_m is not None:

@@ -1,7 +1,7 @@
 import torch
 
 from gromo.config.loader import load_config
-from gromo.modules.growing_module import AdditionGrowingModule, GrowingModule
+from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.utils import get_correct_device, global_device
 
 
@@ -64,25 +64,25 @@ class GrowingContainer(torch.nn.Module):
     def init_computation(self):
         """Initialize statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
                 layer.init_computation()
 
     def update_computation(self):
         """Update statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
                 layer.update_computation()
 
     def reset_computation(self):
         """Reset statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
                 layer.reset_computation()
 
     def compute_optimal_updates(self, *args, **kwargs):
         """Compute optimal updates for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
                 layer.compute_optimal_updates(*args, **kwargs)
 
     def select_best_update(self):

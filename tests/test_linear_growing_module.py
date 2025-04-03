@@ -4,8 +4,8 @@ from unittest import TestCase, main
 import torch
 
 from gromo.modules.linear_growing_module import (
-    LinearAdditionGrowingModule,
     LinearGrowingModule,
+    LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
@@ -108,7 +108,7 @@ class TestLinearGrowingModule(TorchTestCase):
     def test_compute_s(self):
         x1, x2, is_th_1, is_th_2, os_th_1, os_th_2 = theoretical_s_1(self.n, self.c)
 
-        output_module = LinearAdditionGrowingModule(in_features=self.c + 1, name="output")
+        output_module = LinearMergeGrowingModule(in_features=self.c + 1, name="output")
         layer = LinearGrowingModule(
             self.c, self.c + 1, use_bias=False, name="layer1", next_module=output_module
         )
@@ -143,7 +143,7 @@ class TestLinearGrowingModule(TorchTestCase):
             os_th_1.float().to(global_device()) / self.n,
         )
 
-        # input S computed from addition layer
+        # input S computed from merge layer
         self.assertAllClose(
             output_module.previous_tensor_s(),
             is_th_1.float().to(global_device()) / self.n,
@@ -722,45 +722,43 @@ class TestLinearGrowingModule(TorchTestCase):
             _ = self.demo_layers[True][0].tensor_s_growth
 
 
-class TestLinearAdditionGrowingModule(TorchTestCase):
+class TestLinearMergeGrowingModule(TorchTestCase):
     def setUp(self):
         torch.manual_seed(0)
         self.demo_modules = dict()
         for bias in (True, False):
-            demo_addition = LinearAdditionGrowingModule(
-                in_features=3, name="addition", device=global_device()
+            demo_merge = LinearMergeGrowingModule(
+                in_features=3, name="merge", device=global_device()
             )
-            demo_addition_prev = LinearGrowingModule(
+            demo_merge_prev = LinearGrowingModule(
                 5,
                 3,
                 use_bias=bias,
-                name="addition_prev",
+                name="merge_prev",
                 device=global_device(),
-                next_module=demo_addition,
+                next_module=demo_merge,
             )
-            demo_addition_next = LinearGrowingModule(
+            demo_merge_next = LinearGrowingModule(
                 3,
                 7,
                 use_bias=bias,
-                name="addition_next",
+                name="merge_next",
                 device=global_device(),
-                previous_module=demo_addition,
+                previous_module=demo_merge,
             )
-            demo_addition.set_previous_modules([demo_addition_prev])
-            demo_addition.set_next_modules([demo_addition_next])
+            demo_merge.set_previous_modules([demo_merge_prev])
+            demo_merge.set_next_modules([demo_merge_next])
             self.demo_modules[bias] = {
-                "add": demo_addition,
-                "prev": demo_addition_prev,
-                "next": demo_addition_next,
-                "seq": torch.nn.Sequential(
-                    demo_addition_prev, demo_addition, demo_addition_next
-                ),
+                "add": demo_merge,
+                "prev": demo_merge_prev,
+                "next": demo_merge_next,
+                "seq": torch.nn.Sequential(demo_merge_prev, demo_merge, demo_merge_next),
             }
         self.input_x = torch.randn((11, 5), device=global_device())
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_init(self, bias):
-        self.assertIsInstance(self.demo_modules[bias]["add"], LinearAdditionGrowingModule)
+        self.assertIsInstance(self.demo_modules[bias]["add"], LinearMergeGrowingModule)
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_input_storage(self, bias):

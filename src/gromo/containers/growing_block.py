@@ -7,13 +7,13 @@ import torch
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
-    LinearAdditionGrowingModule,
     LinearGrowingModule,
+    LinearMergeGrowingModule,
 )
 
 
 all_layer_types = {
-    "linear": {"layer": LinearGrowingModule, "addition": LinearAdditionGrowingModule},
+    "linear": {"layer": LinearGrowingModule, "merge": LinearMergeGrowingModule},
 }
 
 
@@ -75,8 +75,8 @@ class GrowingBlock(GrowingContainer):
         self.name = name
         self.hidden_features = hidden_features
 
-        self.input_block = all_layer_types[layer_type]["addition"](
-            post_addition_function=pre_activation,
+        self.input_block = all_layer_types[layer_type]["merge"](
+            post_merge_function=pre_activation,
             previous_modules=None,
             next_modules=None,
             in_features=self.in_features,

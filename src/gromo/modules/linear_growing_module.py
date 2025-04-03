@@ -2,16 +2,16 @@ from warnings import warn
 
 import torch
 
-from gromo.modules.growing_module import AdditionGrowingModule, GrowingModule
+from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_optimal_added_parameters
 from gromo.utils.utils import global_device
 
 
-class LinearAdditionGrowingModule(AdditionGrowingModule):
+class LinearMergeGrowingModule(MergeGrowingModule):
     def __init__(
         self,
-        post_addition_function: torch.nn.Module = torch.nn.Identity(),
+        post_merge_function: torch.nn.Module = torch.nn.Identity(),
         previous_modules=None,
         next_modules=None,
         allow_growing: bool = False,
@@ -25,8 +25,8 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         self.in_features = in_features
         self.out_features = in_features
         # TODO: check if we can automatically get the input shape
-        super(LinearAdditionGrowingModule, self).__init__(
-            post_addition_function=post_addition_function,
+        super(LinearMergeGrowingModule, self).__init__(
+            post_merge_function=post_merge_function,
             previous_modules=previous_modules,
             next_modules=next_modules,
             allow_growing=allow_growing,
@@ -39,7 +39,7 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         )
 
     def set_next_modules(
-        self, next_modules: list["AdditionGrowingModule | GrowingModule"]
+        self, next_modules: list["MergeGrowingModule | GrowingModule"]
     ) -> None:
         """
         Set the next modules of the current module.
@@ -60,7 +60,7 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         ), f"The output features must match the input features of the next modules."
 
     def set_previous_modules(
-        self, previous_modules: list["AdditionGrowingModule | GrowingModule"]
+        self, previous_modules: list["MergeGrowingModule | GrowingModule"]
     ) -> None:
         """
         Set the previous modules of the current module.
@@ -82,7 +82,7 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         self.previous_modules = previous_modules if previous_modules else []
         self.total_in_features = 0
         for module in self.previous_modules:
-            if not isinstance(module, (LinearGrowingModule, LinearAdditionGrowingModule)):
+            if not isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
                 raise TypeError("The previous modules must be LinearGrowingModule.")
             if module.out_features != self.in_features:
                 raise ValueError(
@@ -126,7 +126,7 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
             full activity tensor
         """
         # TODO: optimize the construction of the full activity tensor
-        # the addition module should directly store the full activity tensor
+        # the merge module should directly store the full activity tensor
         # and not access it in the previous modules
         assert self.previous_modules, f"No previous modules for {self.name}."
         full_activity = torch.ones(
@@ -136,7 +136,7 @@ class LinearAdditionGrowingModule(AdditionGrowingModule):
         current_index = 0
         for (
             module
-        ) in self.previous_modules:  # FIXME: what if a previous module is a addition
+        ) in self.previous_modules:  # FIXME: what if a previous module is a merge
             if module.use_bias:
                 full_activity[:, current_index : current_index + module.in_features] = (
                     module.input
@@ -321,8 +321,8 @@ class LinearGrowingModule(GrowingModule):
         out_features: int,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
-        previous_module: GrowingModule | AdditionGrowingModule | None = None,
-        next_module: GrowingModule | AdditionGrowingModule | None = None,
+        previous_module: GrowingModule | MergeGrowingModule | None = None,
+        next_module: GrowingModule | MergeGrowingModule | None = None,
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
@@ -361,8 +361,8 @@ class LinearGrowingModule(GrowingModule):
             return torch.func.grad(self.previous_module.post_layer_function)(
                 torch.tensor(1e-5)
             )
-        elif isinstance(self.previous_module, AdditionGrowingModule):
-            return torch.func.grad(self.previous_module.post_addition_function)(
+        elif isinstance(self.previous_module, MergeGrowingModule):
+            return torch.func.grad(self.previous_module.post_merge_function)(
                 torch.tensor([1e-5])
             )
         else:
@@ -507,7 +507,7 @@ class LinearGrowingModule(GrowingModule):
                 ),
                 torch.tensor(self.input.shape[:-1]).prod().int().item(),
             )
-        elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
             if self.previous_module.number_of_successors > 1:
                 warn("The previous module has multiple successors.")
             return (
@@ -548,7 +548,7 @@ class LinearGrowingModule(GrowingModule):
                 ),
                 torch.tensor(self.input.shape[:-1]).prod().int().item(),
             )
-        elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
             return (
                 torch.einsum(
                     "ij,ik->jk",
@@ -599,9 +599,9 @@ class LinearGrowingModule(GrowingModule):
             )
         elif isinstance(self.previous_module, LinearGrowingModule):
             return self.previous_module.tensor_s
-        elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
             raise NotImplementedError(
-                f"S growth is not implemented for module preceded by an LinearAdditionGrowingModule."
+                f"S growth is not implemented for module preceded by an LinearMergeGrowingModule."
                 " (error in {self.name})"
             )
         else:
@@ -899,7 +899,7 @@ class LinearGrowingModule(GrowingModule):
         if sub_select_previous:
             if isinstance(self.previous_module, LinearGrowingModule):
                 self.previous_module._sub_select_added_output_dimension(keep_neurons)
-            elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+            elif isinstance(self.previous_module, LinearMergeGrowingModule):
                 raise NotImplementedError
             else:
                 raise NotImplementedError(
@@ -1087,7 +1087,7 @@ class LinearGrowingModule(GrowingModule):
                 self.previous_module.extended_output_layer = self.layer_of_tensor(
                     alpha_weight, alpha_bias
                 )
-            elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+            elif isinstance(self.previous_module, LinearMergeGrowingModule):
                 raise NotImplementedError
             else:
                 raise NotImplementedError(

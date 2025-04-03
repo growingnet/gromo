@@ -5,8 +5,8 @@ import torch
 from gromo.containers.growing_dag import Expansion, GrowingDAG
 from gromo.modules.constant_module import ConstantModule
 from gromo.modules.linear_growing_module import (
-    LinearAdditionGrowingModule,
     LinearGrowingModule,
+    LinearMergeGrowingModule,
 )
 from gromo.utils.utils import global_device
 
@@ -151,10 +151,10 @@ class TestGrowingDAG(unittest.TestCase):
         self.dag.update_nodes(nodes=[new_node], node_attributes=node_attributes)
 
         self.assertIsInstance(
-            self.dag.get_node_module(new_node), LinearAdditionGrowingModule
+            self.dag.get_node_module(new_node), LinearMergeGrowingModule
         )
         self.assertIsInstance(
-            self.dag.get_node_module(new_node).post_addition_function[0],
+            self.dag.get_node_module(new_node).post_merge_function[0],
             torch.nn.Identity,
         )
         self.assertIsNotNone(self.dag.get_node_module(new_node)._allow_growing)
@@ -165,11 +165,11 @@ class TestGrowingDAG(unittest.TestCase):
         node_attributes[new_node]["use_batch_norm"] = True
         self.dag.update_nodes(nodes=[new_node], node_attributes=node_attributes)
         self.assertIsInstance(
-            self.dag.get_node_module(new_node).post_addition_function[0],
+            self.dag.get_node_module(new_node).post_merge_function[0],
             torch.nn.BatchNorm1d,
         )
         self.assertEqual(
-            self.dag.get_node_module(new_node).post_addition_function[0].num_features,
+            self.dag.get_node_module(new_node).post_merge_function[0].num_features,
             self.hidden_size,
         )
 

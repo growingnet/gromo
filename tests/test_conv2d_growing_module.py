@@ -511,7 +511,7 @@ class TestConv2dGrowingModule(TorchTestCase):
 
     def test_compute_optimal_added_parameters(self):
         """
-        Test sub_select_optimal_added_parameters in addition to compute_optimal_added_parameters
+        Test sub_select_optimal_added_parameters in merge to compute_optimal_added_parameters
         """
         for bias in (True, False):
             with self.subTest(bias=bias):
@@ -644,7 +644,7 @@ class TestConv2dGrowingModule(TorchTestCase):
                 self.assertLess(
                     new_loss,
                     loss,
-                    msg=f"Despite the addition of new neurons the loss "
+                    msg=f"Despite the merge of new neurons the loss "
                     f"has increased: {new_loss=} > {loss=}",
                 )
 

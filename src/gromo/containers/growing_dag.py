@@ -10,8 +10,8 @@ import torch.nn as nn
 from gromo.containers.growing_container import GrowingContainer, safe_forward
 from gromo.modules.constant_module import ConstantModule
 from gromo.modules.linear_growing_module import (
-    LinearAdditionGrowingModule,
     LinearGrowingModule,
+    LinearMergeGrowingModule,
 )
 from gromo.utils.utils import activation_fn, f1_micro
 
@@ -131,14 +131,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         self[prev_node][next_node]["module"] = module
 
-    def __set_node_module(self, node: str, module: LinearAdditionGrowingModule) -> None:
+    def __set_node_module(self, node: str, module: LinearMergeGrowingModule) -> None:
         """Setter function for module of node
 
         Parameters
         ----------
         node : str
             specified node name
-        module : LinearAdditionGrowingModule
+        module : LinearMergeGrowingModule
             growable module to set to node
         """
         self.nodes[node]["module"] = module
@@ -160,7 +160,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         return self[prev_node][next_node]["module"]
 
-    def get_node_module(self, node: str) -> LinearAdditionGrowingModule:
+    def get_node_module(self, node: str) -> LinearMergeGrowingModule:
         """Getter function for module of node
 
         Parameters
@@ -170,7 +170,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        LinearAdditionGrowingModule
+        LinearMergeGrowingModule
             module attached to node
         """
         return self.nodes[node]["module"]
@@ -190,7 +190,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         return [self.get_edge_module(*edge) for edge in edges]
 
-    def get_node_modules(self, nodes: list | set) -> list[LinearAdditionGrowingModule]:
+    def get_node_modules(self, nodes: list | set) -> list[LinearMergeGrowingModule]:
         """Getter function for modules attached to nodes
 
         Parameters
@@ -200,7 +200,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        list[LinearAdditionGrowingModule]
+        list[LinearMergeGrowingModule]
             list of modules for each specified node
         """
         return [self.get_node_module(node) for node in nodes]
@@ -296,7 +296,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def update_nodes(
         self, nodes: list | Mapping, node_attributes: dict[str, dict]
     ) -> None:
-        """Create new addition modules for nodes based on incoming and outgoing edges
+        """Create new merge modules for nodes based on incoming and outgoing edges
 
         Parameters
         ----------
@@ -334,10 +334,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     batch_norm = nn.Identity()
                 self.__set_node_module(
                     node,
-                    LinearAdditionGrowingModule(
+                    LinearMergeGrowingModule(
                         allow_growing=True,
                         in_features=in_features,
-                        post_addition_function=torch.nn.Sequential(
+                        post_merge_function=torch.nn.Sequential(
                             batch_norm,
                             activation_fn(self.nodes[node].get("activation")),
                         ),
@@ -808,10 +808,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 else:
                     output[node] = activity
             # Pass through node
-            addition_module = self.get_node_module(node)
+            merge_module = self.get_node_module(node)
             if verbose:
-                print("\t-->", addition_module)
-            output[node] = addition_module(output[node])
+                print("\t-->", merge_module)
+            output[node] = merge_module(output[node])
         if verbose:
             print()
         return output[self.end]
@@ -866,12 +866,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 else:
                     output[node] = (activity, activity_ext)
             # Pass through node
-            addition_module = self.get_node_module(node)
+            merge_module = self.get_node_module(node)
             if verbose:
-                print("\t-->", addition_module)
+                print("\t-->", merge_module)
             output[node] = (
-                addition_module(output[node][0]),
-                addition_module(output[node][1]),
+                merge_module(output[node][0]),
+                merge_module(output[node][1]),
             )  # TODO: simplify
         if verbose:
             print()
@@ -884,8 +884,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             module = self.get_edge_module(*edge)
             param.append(module.weight)
             param.append(module.bias)
-        # for node in self.nodes:
-        #     param.append(self.get_node_module(node).post_addition_function)
         return iter(param)
 
     def count_parameters_all(self) -> int:

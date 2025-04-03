@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_dag import Expansion, GrowingDAG
-from gromo.modules.linear_growing_module import LinearAdditionGrowingModule
+from gromo.modules.linear_growing_module import LinearMergeGrowingModule
 from gromo.utils.utils import f1_micro, line_search, mini_batch_gradient_descent
 
 
@@ -317,7 +317,7 @@ class GrowingGraphNetwork(GrowingContainer):
             omega,
             bias,
             input_x,
-            node_module.post_addition_function,
+            node_module.post_merge_function,
             bottleneck,
             verbose=verbose,
         )
@@ -494,7 +494,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # next_node_module.reset_computation()
         next_node_module.delete_update()
 
-        # Important to update size of next addition module!
+        # Important to update size of next merge module!
         # It cannot happen automatically because
         # there is no layer extension recorded
         # next_node_module.update_size()
@@ -506,8 +506,8 @@ class GrowingGraphNetwork(GrowingContainer):
         net: GrowingDAG,
         x: torch.Tensor,
         y: torch.Tensor,
-        node_module: LinearAdditionGrowingModule,
-        next_node_modules: list[LinearAdditionGrowingModule] = None,
+        node_module: LinearMergeGrowingModule,
+        next_node_modules: list[LinearMergeGrowingModule] = None,
     ) -> float:
         """Find amplitude factor with line search
 
@@ -519,9 +519,9 @@ class GrowingGraphNetwork(GrowingContainer):
             input features batch
         y : torch.Tensor
             true labels batch
-        node_module : LinearAdditionGrowingModule
+        node_module : LinearMergeGrowingModule
             node module to be extended or node module at the end of the edge in case of single edge
-        next_node_modules : list[LinearAdditionGrowingModule], optional
+        next_node_modules : list[LinearMergeGrowingModule], optional
             next node modules of module to be extended, leave empty in case of single edge, by default None
 
         Returns
