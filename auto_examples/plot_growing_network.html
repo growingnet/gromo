@@ -384,8 +384,8 @@ to download the full example code.</p>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">gromo.containers.growing_container</span><span class="w"> </span><span class="kn">import</span> <span class="n">GrowingContainer</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">gromo.modules.linear_growing_module</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearAdditionGrowingModule</span></a><span class="p">,</span>
     <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">,</span>
+    <span class="n">LinearMergeGrowingModule</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">gromo.utils.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">global_device</span>
 </pre></div>
@@ -405,7 +405,7 @@ to download the full example code.</p>
             <span class="n">out_features</span><span class="o">=</span><span class="n">out_features</span><span class="p">,</span>
             <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">start_module</span> <span class="o">=</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearAdditionGrowingModule</span></a><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_module</span> <span class="o">=</span> <span class="n">LinearMergeGrowingModule</span><span class="p">(</span>
             <span class="n">in_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">in_features</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;start&quot;</span>
         <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">l1</span> <span class="o">=</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">(</span>
@@ -421,9 +421,9 @@ to download the full example code.</p>
             <span class="n">name</span><span class="o">=</span><span class="s2">&quot;l2&quot;</span><span class="p">,</span>
             <span class="n">use_bias</span><span class="o">=</span><span class="n">use_bias</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">res_module</span> <span class="o">=</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearAdditionGrowingModule</span></a><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">res_module</span> <span class="o">=</span> <span class="n">LinearMergeGrowingModule</span><span class="p">(</span>
             <span class="n">in_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">in_features</span><span class="p">,</span>
-            <span class="n">post_addition_function</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">post_merge_function</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
             <span class="n">name</span><span class="o">=</span><span class="s2">&quot;res&quot;</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">l3</span> <span class="o">=</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">(</span>
@@ -445,7 +445,7 @@ to download the full example code.</p>
             <span class="n">name</span><span class="o">=</span><span class="s2">&quot;l5&quot;</span><span class="p">,</span>
             <span class="n">use_bias</span><span class="o">=</span><span class="n">use_bias</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">end_module</span> <span class="o">=</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearAdditionGrowingModule</span></a><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">end_module</span> <span class="o">=</span> <span class="n">LinearMergeGrowingModule</span><span class="p">(</span>
             <span class="n">in_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">out_features</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;end&quot;</span>
         <span class="p">)</span>
 
@@ -483,8 +483,8 @@ to download the full example code.</p>
             <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">GrowingNetwork</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">txt</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:&quot;</span><span class="p">]</span>
-            <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
-                <span class="n">txt</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
+                <span class="n">txt</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">layer</span><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">))</span>
             <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">txt</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
@@ -498,18 +498,18 @@ to download the full example code.</p>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">end_module</span><span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">x1</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">start_computing_s_m</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
-            <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">tensor_s</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
-                <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span><span class="o">.</span><span class="n">tensor_m</span><span class="o">.</span><span class="n">init</span></a><span class="p">()</span>
+        <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
+            <span class="n">layer</span><span class="o">.</span><span class="n">tensor_s</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">layer</span><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
+                <span class="n">layer</span><span class="o">.</span><span class="n">tensor_m</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
                 <a href="https://docs.python.org/3/library/functions.html#bool" title="builtins.bool" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span><span class="o">.</span><span class="n">store_input</span></a> <span class="o">=</span> <span class="kc">True</span>
                 <a href="https://docs.python.org/3/library/functions.html#bool" title="builtins.bool" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span><span class="o">.</span><span class="n">store_pre_activity</span></a> <span class="o">=</span> <span class="kc">True</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">update_s_m</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
-                <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span><span class="o">.</span><span class="n">tensor_m</span><span class="o">.</span><span class="n">update</span></a><span class="p">()</span>
-                <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">tensor_s</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">layer</span><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
+                <span class="n">layer</span><span class="o">.</span><span class="n">tensor_m</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+                <span class="n">layer</span><span class="o">.</span><span class="n">tensor_s</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">pass_s_m</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_x</span><span class="p">,</span> <span class="n">target_y</span><span class="p">,</span> <span class="n">loss</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">()):</span>
         <span class="n">input_x</span> <span class="o">=</span> <span class="n">input_x</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
@@ -521,16 +521,16 @@ to download the full example code.</p>
         <span class="bp">self</span><span class="o">.</span><span class="n">update_s_m</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">stop_computing_s_m</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
-            <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">tensor_s</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
-                <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span><span class="o">.</span><span class="n">tensor_m</span><span class="o">.</span><span class="n">reset</span></a><span class="p">()</span>
+        <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_growing_layers</span><span class="p">:</span>
+            <span class="n">layer</span><span class="o">.</span><span class="n">tensor_s</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">layer</span><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
+                <span class="n">layer</span><span class="o">.</span><span class="n">tensor_m</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
 
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearAdditionGrowingModule</span></a><span class="p">):</span>
-                <span class="k">if</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">previous_tensor_s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">previous_tensor_s</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
-                <span class="k">if</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">previous_tensor_m</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">previous_tensor_m</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">layer</span><span class="p">,</span> <span class="n">LinearMergeGrowingModule</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">layer</span><span class="o">.</span><span class="n">previous_tensor_s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">layer</span><span class="o">.</span><span class="n">previous_tensor_s</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">layer</span><span class="o">.</span><span class="n">previous_tensor_m</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">layer</span><span class="o">.</span><span class="n">previous_tensor_m</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
             <a href="https://docs.python.org/3/library/functions.html#bool" title="builtins.bool" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span><span class="o">.</span><span class="n">store_input</span></a> <span class="o">=</span> <span class="kc">False</span>
             <a href="https://docs.python.org/3/library/functions.html#bool" title="builtins.bool" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span><span class="o">.</span><span class="n">store_pre_activity</span></a> <span class="o">=</span> <span class="kc">False</span>
 
@@ -543,21 +543,21 @@ to download the full example code.</p>
     <span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">y</span><span class="p">)</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
 
     <span class="nb">print</span><span class="p">(</span><span class="n">net</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">net</span><span class="o">.</span><span class="n">l1</span><span class="o">.</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">net</span><span class="o">.</span><span class="n">l1</span><span class="o">.</span><span class="n">layer</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
 
     <span class="c1"># from torchinfo import summary</span>
     <span class="c1"># summary(net, input_size=(1, 5), device=device)</span>
 
-    <span class="nb">print</span><span class="p">(</span><span class="n">net</span><span class="o">.</span><span class="n">l1</span><span class="o">.</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">net</span><span class="o">.</span><span class="n">l1</span><span class="o">.</span><span class="n">layer</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
 
-    <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
-        <span class="nb">print</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">layer</span><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
 
     <span class="n">net</span><span class="o">.</span><span class="n">start_computing_s_m</span><span class="p">()</span>
 
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">80</span><span class="p">)</span>
-    <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
-        <span class="nb">print</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">layer</span><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
 
     <span class="n">net</span><span class="o">.</span><span class="n">end_module</span><span class="o">.</span><span class="n">previous_tensor_s</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
     <span class="n">net</span><span class="o">.</span><span class="n">end_module</span><span class="o">.</span><span class="n">previous_tensor_m</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
@@ -571,38 +571,38 @@ to download the full example code.</p>
         <span class="n">net</span><span class="o">.</span><span class="n">end_module</span><span class="o">.</span><span class="n">previous_tensor_s</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
         <span class="n">net</span><span class="o">.</span><span class="n">end_module</span><span class="o">.</span><span class="n">previous_tensor_m</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
 
-    <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
-        <span class="nb">print</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">layer</span><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
 
-    <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
-            <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule.compute_optimal_delta" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule.compute_optimal_delta" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-method"><span class="n">layer</span><span class="o">.</span><span class="n">compute_optimal_delta</span></a><span class="p">()</span>
+    <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">layer</span><span class="p">,</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a><span class="p">):</span>
+            <span class="n">layer</span><span class="o">.</span><span class="n">compute_optimal_delta</span><span class="p">()</span>
 
-    <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
-        <span class="nb">print</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">layer</span><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
 
     <span class="n">net</span><span class="o">.</span><span class="n">stop_computing_s_m</span><span class="p">()</span>
 
-    <span class="k">for</span> <a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
-        <span class="nb">print</span><span class="p">(</span><a href="../generated/gromo.modules.linear_growing_module.LinearAdditionGrowingModule.html#gromo.modules.linear_growing_module.LinearAdditionGrowingModule" title="gromo.modules.linear_growing_module.LinearAdditionGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer</span></a><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="n">net</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">layer</span><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>GrowingNetwork(
-  (start_module): LinearAdditionGrowingModule module with no previous modules and 2 next modules.
+  (start_module): LinearMergeGrowingModule module with no previous modules and 2 next modules.
   (l1): LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True)
   (l2): LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)
-  (res_module): LinearAdditionGrowingModule module with 2 previous modules and 2 next modules.
+  (res_module): LinearMergeGrowingModule module with 2 previous modules and 2 next modules.
   (l3): LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True)
   (l4): LinearGrowingModule(LinearGrowingModule(l4))(in_features=5, out_features=10, use_bias=True)
   (l5): LinearGrowingModule(LinearGrowingModule(l5))(in_features=10, out_features=1, use_bias=True)
-  (end_module): LinearAdditionGrowingModule module with 2 previous modules and no next modules.
+  (end_module): LinearMergeGrowingModule module with 2 previous modules and no next modules.
 )
 cpu
 cpu
-LinearAdditionGrowingModule module.
+LinearMergeGrowingModule module.
         Previous modules : []
-        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearAdditionGrowingModule module with 2 previous modules and 2 next modules.]
-        Post addition function : Identity()
+        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearMergeGrowingModule module with 2 previous modules and 2 next modules.]
+        Post merge function : Identity()
         Allow growing : False
         Store input : 0
         Store activity : 0
@@ -637,16 +637,16 @@ LinearGrowingModule(l2) module with 55 parameters.
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
-        Previous modules : [LinearAdditionGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
+LinearMergeGrowingModule module.
+        Previous modules : [LinearMergeGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
         Next modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l4))(in_features=5, out_features=10, use_bias=True)]
-        Post addition function : ReLU()
+        Post merge function : ReLU()
         Allow growing : False
         Store input : 0
         Store activity : 0
         Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 5) with 0 samples
+        Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
         Layer : Linear(in_features=5, out_features=1, bias=True)
         Post layer function : Identity()
@@ -689,21 +689,21 @@ LinearGrowingModule(l5) module with 11 parameters.
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
+LinearMergeGrowingModule module.
         Previous modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l5))(in_features=10, out_features=1, use_bias=True)]
         Next modules : []
-        Post addition function : Identity()
+        Post merge function : Identity()
         Allow growing : False
         Store input : 0
         Store activity : 0
         Tensor S : S(end) tensor of shape (2, 2) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 1) with 0 samples
+        Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 0 samples
 ================================================================================
-LinearAdditionGrowingModule module.
+LinearMergeGrowingModule module.
         Previous modules : []
-        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearAdditionGrowingModule module with 2 previous modules and 2 next modules.]
-        Post addition function : Identity()
+        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearMergeGrowingModule module with 2 previous modules and 2 next modules.]
+        Post merge function : Identity()
         Allow growing : False
         Store input : 0
         Store activity : 1
@@ -738,16 +738,16 @@ LinearGrowingModule(l2) module with 55 parameters.
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
-        Previous modules : [LinearAdditionGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
+LinearMergeGrowingModule module.
+        Previous modules : [LinearMergeGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
         Next modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l4))(in_features=5, out_features=10, use_bias=True)]
-        Post addition function : ReLU()
+        Post merge function : ReLU()
         Allow growing : False
         Store input : 1
         Store activity : 2
         Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 5) with 0 samples
+        Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
         Layer : Linear(in_features=5, out_features=1, bias=True)
         Post layer function : Identity()
@@ -790,20 +790,20 @@ LinearGrowingModule(l5) module with 11 parameters.
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
+LinearMergeGrowingModule module.
         Previous modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l5))(in_features=10, out_features=1, use_bias=True)]
         Next modules : []
-        Post addition function : Identity()
+        Post merge function : Identity()
         Allow growing : False
         Store input : 2
         Store activity : 0
         Tensor S : S(end) tensor of shape (2, 2) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 1) with 0 samples
-LinearAdditionGrowingModule module.
+        Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 0 samples
+LinearMergeGrowingModule module.
         Previous modules : []
-        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearAdditionGrowingModule module with 2 previous modules and 2 next modules.]
-        Post addition function : Identity()
+        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearMergeGrowingModule module with 2 previous modules and 2 next modules.]
+        Post merge function : Identity()
         Allow growing : False
         Store input : 0
         Store activity : 1
@@ -838,16 +838,16 @@ LinearGrowingModule(l2) module with 55 parameters.
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
-        Previous modules : [LinearAdditionGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
+LinearMergeGrowingModule module.
+        Previous modules : [LinearMergeGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
         Next modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l4))(in_features=5, out_features=10, use_bias=True)]
-        Post addition function : ReLU()
+        Post merge function : ReLU()
         Allow growing : False
         Store input : 1
         Store activity : 2
         Tensor S : S(res) tensor of shape (6, 6) with 40 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 5) with 0 samples
+        Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
         Layer : Linear(in_features=5, out_features=1, bias=True)
         Post layer function : Identity()
@@ -890,20 +890,22 @@ LinearGrowingModule(l5) module with 11 parameters.
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
+LinearMergeGrowingModule module.
         Previous modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l5))(in_features=10, out_features=1, use_bias=True)]
         Next modules : []
-        Post addition function : Identity()
+        Post merge function : Identity()
         Allow growing : False
         Store input : 2
         Store activity : 0
         Tensor S : S(end) tensor of shape (2, 2) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 17) with 40 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 1) with 40 samples
-LinearAdditionGrowingModule module.
+        Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 40 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 40 samples
+/home/runner/work/gromo/gromo/src/gromo/modules/linear_growing_module.py:957: UserWarning: Using the pseudo-inverse for the computation of the optimal delta for LinearGrowingModule(l5).
+  warn(
+LinearMergeGrowingModule module.
         Previous modules : []
-        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearAdditionGrowingModule module with 2 previous modules and 2 next modules.]
-        Post addition function : Identity()
+        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearMergeGrowingModule module with 2 previous modules and 2 next modules.]
+        Post merge function : Identity()
         Allow growing : False
         Store input : 0
         Store activity : 1
@@ -938,16 +940,16 @@ LinearGrowingModule(l2) module with 55 parameters.
         Optimal delta layer : Linear(in_features=10, out_features=5, bias=True)
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
-        Previous modules : [LinearAdditionGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
+LinearMergeGrowingModule module.
+        Previous modules : [LinearMergeGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
         Next modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l4))(in_features=5, out_features=10, use_bias=True)]
-        Post addition function : ReLU()
+        Post merge function : ReLU()
         Allow growing : False
         Store input : 1
         Store activity : 2
         Tensor S : S(res) tensor of shape (6, 6) with 40 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 5) with 0 samples
+        Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
         Layer : Linear(in_features=5, out_features=1, bias=True)
         Post layer function : Identity()
@@ -990,20 +992,20 @@ LinearGrowingModule(l5) module with 11 parameters.
         Optimal delta layer : Linear(in_features=10, out_features=1, bias=True)
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
+LinearMergeGrowingModule module.
         Previous modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l5))(in_features=10, out_features=1, use_bias=True)]
         Next modules : []
-        Post addition function : Identity()
+        Post merge function : Identity()
         Allow growing : False
         Store input : 2
         Store activity : 0
         Tensor S : S(end) tensor of shape (2, 2) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 17) with 40 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 1) with 40 samples
-LinearAdditionGrowingModule module.
+        Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 40 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 40 samples
+LinearMergeGrowingModule module.
         Previous modules : []
-        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearAdditionGrowingModule module with 2 previous modules and 2 next modules.]
-        Post addition function : Identity()
+        Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearMergeGrowingModule module with 2 previous modules and 2 next modules.]
+        Post merge function : Identity()
         Allow growing : False
         Store input : False
         Store activity : 0
@@ -1038,16 +1040,16 @@ LinearGrowingModule(l2) module with 55 parameters.
         Optimal delta layer : Linear(in_features=10, out_features=5, bias=True)
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
-        Previous modules : [LinearAdditionGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
+LinearMergeGrowingModule module.
+        Previous modules : [LinearMergeGrowingModule module with no previous modules and 2 next modules., LinearGrowingModule(LinearGrowingModule(l2))(in_features=10, out_features=5, use_bias=True)]
         Next modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l4))(in_features=5, out_features=10, use_bias=True)]
-        Post addition function : ReLU()
+        Post merge function : ReLU()
         Allow growing : False
         Store input : False
         Store activity : 0
         Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(res)) tensor of shape (17, 5) with 0 samples
+        Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
         Layer : Linear(in_features=5, out_features=1, bias=True)
         Post layer function : Identity()
@@ -1090,19 +1092,19 @@ LinearGrowingModule(l5) module with 11 parameters.
         Optimal delta layer : Linear(in_features=10, out_features=1, bias=True)
         Extended input layer : None
         Extended output layer : None
-LinearAdditionGrowingModule module.
+LinearMergeGrowingModule module.
         Previous modules : [LinearGrowingModule(LinearGrowingModule(l3))(in_features=5, out_features=1, use_bias=True), LinearGrowingModule(LinearGrowingModule(l5))(in_features=10, out_features=1, use_bias=True)]
         Next modules : []
-        Post addition function : Identity()
+        Post merge function : Identity()
         Allow growing : False
         Store input : False
         Store activity : 0
         Tensor S : S(end) tensor of shape (2, 2) with 0 samples
-        Previous tensor S : S[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 17) with 0 samples
-        Previous tensor M : M[-1](LinearAdditionGrowingModule(end)) tensor of shape (17, 1) with 0 samples
+        Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 0 samples
+        Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 0 samples
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.029 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.040 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-growing-network-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/1f144851d4d5f1d2199c074fae654a1b/plot_growing_network.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_growing_network.ipynb</span></code></a></p>
