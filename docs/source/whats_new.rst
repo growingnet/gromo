@@ -20,8 +20,11 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Adds a generic GrowingContainer to simplify model management along with unit testing. Propagates modifications to models. (:gh:`77` by `Stéphane Rivaud`_)
 - Refactor and simplify repo structure (:gh:`72` and :gh:`73` by `Stella Douka`_)
 - Simplify global device handling (:gh:`72` by `Stella Douka`_)
+- Integrate an MLP Mixer (:gh:`70` by `Stéphane Rivaud`_)
+- Integrate a Residual MLP (:gh:`69` by `Stéphane Rivaud`_)
 - Option to restrict action space (:gh:`60` by `Stella Douka`_)
 - Add support for Conv2d layers in the sequential case (:gh:`34` by `Théo Rudkiewicz`_)
 - Replaced the `assert` statements with `self.assert*` methods in the unit tests (:gh:`50` by `Théo Rudkiewicz`_)
@@ -34,8 +37,6 @@ Enhancements
 - Option to disable logging (:gh:`14` by `Stella Douka`_)
 - Add CI (:gh:`2` by `Sylvain Chevallier`_)
 - Modify LinearGrowingModule to operate on the last dimension of an input tensor with arbitrary shape (:gh:`54` by `Stéphane Rivaud`_)
-- Integrate a Residual MLP (:gh:`69` by `Stéphane Rivaud`_)
-- Integrate an MLP Mixer (:gh:`70` by `Stéphane Rivaud`_)
 
 Bugs
 ~~~~
@@ -44,17 +45,17 @@ Bugs
 - Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)
 - Fix the data type management for growth related computations. (:gh:`79` by `Stéphane Rivaud`_)
 - Revert global state changes, solve test issues (:gh:`70` by `Stella Douka`_)
+- Fix the data augmentation bug in get_dataset (:gh:`58` by `Stéphane Rivaud`_)
 - Use a different scaling factor for input and output extensions. In addition, ``apply_change`` and ``extended_forward`` have now compatible behavior in terms of scaling factor. (:gh:`48` by `Théo Rudkiewicz`_)
 - Fix the change application when updating the previous layer (:gh:`48` by `Théo Rudkiewicz`_)
 - Fix the sub-selection of added neurons in the sequential case (:gh:`41` by `Théo Rudkiewicz`_)
 - Correct codecov upload (:gh:`49` by `Sylvain Chevallier`_)
-- Fix the data augmentation bug in get_dataset (:gh:`58` by `Stéphane Rivaud`_)
 - Fix dataset input_shape: remove the flattening in data augmentation (:gh:`56` by `Stéphane Rivaud`_)
-- Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)
 
 API changes
 ~~~~~~~~~~~
 
+- Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)
 - Added support for configuration files that override default class arguments (:gh:`38` by `Stella Douka`_)
 
 

@@ -27,12 +27,12 @@ repos:
         language_version: python3
         args: [ --line-length=90, --target-version=py311, --target-version=py312 ]
 
-  -   repo: https://github.com/asottile/blacken-docs
-      rev: 1.19.1
-      hooks:
-      -   id: blacken-docs
-          additional_dependencies: [black==23.3.0]
-          exclude: ^.github/
+  - repo: https://github.com/asottile/blacken-docs
+    rev: 1.19.1
+    hooks:
+      - id: blacken-docs
+        additional_dependencies: [ black==23.3.0 ]
+        exclude: ^.github/
 
   - repo: https://github.com/PyCQA/isort
     rev: 5.13.2
@@ -65,11 +65,11 @@ repos:
         exclude_types: [ csv, json, svg ]
         exclude: ^tests/|generated/
 
-  # - repo: local
-  #   hooks:
-  #     - id: run-unit-tests-coverage
-  #       name: Run Unit Tests with Coverage
-  #       entry: bash bash/test_coverage.sh
-  #       language: system
-  #       always_run: true
-  #       pass_filenames: false
+#  - repo: local
+#    hooks:
+#      - id: run-unit-tests-coverage
+#        name: Run Unit Tests with Coverage
+#        entry: bash bash/test_coverage.sh
+#        language: system
+#        always_run: true
+#        pass_filenames: false

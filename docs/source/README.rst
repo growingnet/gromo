@@ -1,9 +1,9 @@
 .. currentmodule:: gromo
 
-.. image:: _static/gromo.png
+.. image:: images/logo_bg_white_small.png
     :width: 500px
     :align: center
-    :height: 280px
+    :height: 395px
     :alt: Gromo logo
 
 -----

@@ -157,7 +157,7 @@ sphinx_gallery_conf = {
     "show_memory": False,
     "reference_url": dict(gromo=None),
     "filename_pattern": "(/plot_|/tutorial_)",
-    "default_thumb_file": "../docs/source/images/gromo-small.png",
+    "default_thumb_file": "../docs/source/images/logo_bg_white_small.png",
     "within_subsection_order": FileNameSortKey,
 }
 
@@ -236,7 +236,7 @@ html_theme_options = {
 }
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-html_logo = "images/gromo.png"
+html_logo = "images/logo_bg_white_small.png"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

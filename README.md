@@ -1,5 +1,5 @@
 <p align=center>
-  <img alt="banner" src="/docs/source/images/gromo.png/">
+  <img alt="banner" src="docs/source/images/logo_bg_black.png" height=500px>
 </p>
 
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)

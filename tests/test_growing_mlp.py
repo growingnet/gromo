@@ -3,34 +3,30 @@ import unittest
 import torch
 import torch.nn as nn
 
-from gromo.containers.growing_residual_mlp import GrowingResidualMLP
+from gromo.containers.growing_mlp import GrowingMLP
 from tests.test_growing_container import create_synthetic_data, gather_statistics
 
 
-class TestGrowingResidualMLP(unittest.TestCase):
+class TestGrowingMLP(unittest.TestCase):
     def setUp(self):
         # Create synthetic data
-        self.in_features = (3, 32, 32)
-        self.out_features = 10
+        self.in_features = 2
+        self.out_features = 1
         self.num_samples = 20
         self.batch_size = 4
         self.dataloader = create_synthetic_data(
-            self.num_samples, self.in_features, (self.out_features,), self.batch_size
+            self.num_samples, (self.in_features,), (self.out_features,), self.batch_size
         )
 
         # Create a simple MLP model
-        self.num_features = 16
-        self.hidden_features = 8
-        self.num_blocks = 2
-
-        self.model = GrowingResidualMLP(
+        self.hidden_size = 4
+        self.number_hidden_layers = 2
+        self.model = GrowingMLP(
             in_features=self.in_features,
             out_features=self.out_features,
-            num_features=self.num_features,
-            hidden_features=self.hidden_features,
-            num_blocks=self.num_blocks,
+            hidden_size=self.hidden_size,
+            number_hidden_layers=self.number_hidden_layers,
             activation=nn.ReLU(),
-            device=torch.device("cpu"),
         )
 
         # Create a loss
@@ -40,33 +36,15 @@ class TestGrowingResidualMLP(unittest.TestCase):
         gather_statistics(self.dataloader, self.model, self.loss)
         self.model.compute_optimal_updates()
 
-    def test_init(self):
-        l1 = GrowingResidualMLP(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            num_features=self.num_features,
-            hidden_features=self.hidden_features,
-            num_blocks=self.num_blocks,
-            activation=nn.ReLU(),
-            device=torch.device("cpu"),
-        )
-
-        self.assertIsInstance(l1, GrowingResidualMLP)
-        self.assertIsInstance(l1, torch.nn.Module)
-
     def test_forward(self):
-        x = torch.randn(1, *self.in_features)
+        x = torch.randn(1, self.in_features)
         y = self.model.forward(x)
         self.assertEqual(y.shape, (1, self.out_features))
 
     def test_extended_forward(self):
-        x = torch.randn(1, *self.in_features)
+        x = torch.randn(1, self.in_features)
         y = self.model.extended_forward(x)
         self.assertEqual(y.shape, (1, self.out_features))
-
-    def test_set_growing_layers(self):
-        self.model.set_growing_layers()
-        self.assertEqual(len(self.model._growing_layers), self.num_blocks)
 
     def test_tensor_statistics(self):
         tensor = torch.randn(10)
@@ -86,10 +64,18 @@ class TestGrowingResidualMLP(unittest.TestCase):
         self.assertIsInstance(info, dict)
         self.assertGreater(len(info), 0)
 
-    def test_select_update(self):
-        layer_index = 0
-        selected_index = self.model.select_update(layer_index=layer_index)
-        self.assertEqual(selected_index, layer_index)
+    def test_normalise(self):
+        y_pred_list = [self.model(x) for x, _ in self.dataloader]
+
+        self.model.normalise()
+        y_pred_normalised_list = [self.model(x) for x, _ in self.dataloader]
+        for y_pred, y_pred_normalised in zip(y_pred_list, y_pred_normalised_list):
+            self.assertTrue(torch.allclose(y_pred, y_pred_normalised))
+
+    def test_normalisation_factor(self):
+        values = torch.tensor([1.0, 2.0, 3.0])
+        factors = self.model.normalisation_factor(values)
+        self.assertEqual(factors.shape, values.shape)
 
 
 if __name__ == "__main__":

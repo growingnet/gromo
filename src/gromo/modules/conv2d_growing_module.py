@@ -2,10 +2,10 @@ from warnings import warn
 
 import torch
 
-from gromo.modules.growing_module import AdditionGrowingModule, GrowingModule
+from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.modules.linear_growing_module import (
-    LinearAdditionGrowingModule,
     LinearGrowingModule,
+    LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import (
@@ -16,7 +16,7 @@ from gromo.utils.tools import (
 from gromo.utils.utils import global_device
 
 
-class Conv2dAdditionGrowingModule(AdditionGrowingModule):
+class Conv2dMergeGrowingModule(MergeGrowingModule):
     pass
 
 
@@ -37,10 +37,10 @@ class Conv2dGrowingModule(GrowingModule):
     dilation: int | tuple[int, int]
     post_layer_function: torch.nn.Module
         function applied after the layer (e.g. activation function)
-    previous_module: GrowingModule | AdditionGrowingModule | None
+    previous_module: GrowingModule | MergeGrowingModule | None
         previous module in the network (None if the first module),
         needed to extend the layer
-    next_module: GrowingModule | AdditionGrowingModule | None
+    next_module: GrowingModule | MergeGrowingModule | None
         next module in the network (None if the last module)
     allow_growing: bool
         whether the layer can grow in input size
@@ -62,8 +62,8 @@ class Conv2dGrowingModule(GrowingModule):
         # groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
-        previous_module: GrowingModule | AdditionGrowingModule | None = None,
-        next_module: GrowingModule | AdditionGrowingModule | None = None,
+        previous_module: GrowingModule | MergeGrowingModule | None = None,
+        next_module: GrowingModule | MergeGrowingModule | None = None,
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
@@ -187,7 +187,7 @@ class Conv2dGrowingModule(GrowingModule):
                 self.previous_module.unfolded_extended_input,
                 self.mask_tensor_t,
             )
-        elif isinstance(self.previous_module, Conv2dAdditionGrowingModule):
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
             raise NotImplementedError("TODO: implement this")
         else:
             raise NotImplementedError(
@@ -243,11 +243,12 @@ class Conv2dGrowingModule(GrowingModule):
         assert (
             self.input is not None
         ), f"The input must be stored to compute the update of S. (error in {self.name})"
+        unfolded_extended_input = self.unfolded_extended_input
         return (
             torch.einsum(
                 "iam, ibm -> ab",
-                self.unfolded_extended_input,
-                self.unfolded_extended_input,
+                unfolded_extended_input,
+                unfolded_extended_input,
             ),
             self.input.shape[0],
         )
@@ -314,7 +315,7 @@ class Conv2dGrowingModule(GrowingModule):
             )
         elif isinstance(self.previous_module, LinearGrowingModule):
             raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
             raise NotImplementedError("TODO: implement this")
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             return (
@@ -325,7 +326,7 @@ class Conv2dGrowingModule(GrowingModule):
                 ),
                 desired_activation.shape[0],
             )
-        elif isinstance(self.previous_module, Conv2dAdditionGrowingModule):
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
             raise NotImplementedError("TODO: implement this")
         else:
             raise NotImplementedError(
@@ -353,7 +354,7 @@ class Conv2dGrowingModule(GrowingModule):
             )
         elif isinstance(self.previous_module, LinearGrowingModule):
             raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
             raise NotImplementedError("TODO: implement this")
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             return (
@@ -364,7 +365,7 @@ class Conv2dGrowingModule(GrowingModule):
                 ),
                 self.input.shape[0],
             )
-        elif isinstance(self.previous_module, Conv2dAdditionGrowingModule):
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
             raise NotImplementedError("TODO: implement this")
         else:
             raise NotImplementedError(
@@ -385,13 +386,14 @@ class Conv2dGrowingModule(GrowingModule):
         int
             number of samples used to compute the update
         """
+        masked_unfolded_prev_input = self.masked_unfolded_prev_input
         return (
             torch.einsum(
                 "ijea, ijeb -> ab",
-                self.masked_unfolded_prev_input,
-                self.masked_unfolded_prev_input,
+                masked_unfolded_prev_input,
+                masked_unfolded_prev_input,
             ),
-            self.masked_unfolded_prev_input.shape[0],
+            masked_unfolded_prev_input.shape[0],
         )
 
     @property
@@ -618,11 +620,11 @@ class Conv2dGrowingModule(GrowingModule):
                 )
             elif isinstance(self.previous_module, LinearGrowingModule):
                 self.previous_module._sub_select_added_output_dimension(keep_neurons)
-            elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+            elif isinstance(self.previous_module, LinearMergeGrowingModule):
                 raise NotImplementedError(f"TODO")
             elif isinstance(self.previous_module, Conv2dGrowingModule):
                 self.previous_module._sub_select_added_output_dimension(keep_neurons)
-            elif isinstance(self.previous_module, Conv2dAdditionGrowingModule):
+            elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
                 raise NotImplementedError(f"TODO")
             else:
                 raise NotImplementedError(
@@ -663,6 +665,7 @@ class Conv2dGrowingModule(GrowingModule):
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
 
+        saved_dtype = tensor_s.dtype
         if tensor_s.dtype != dtype:
             tensor_s = tensor_s.to(dtype=dtype)
         if tensor_m.dtype != dtype:
@@ -705,7 +708,7 @@ class Conv2dGrowingModule(GrowingModule):
                     f"delta to zero."
                 )
                 self.delta_raw = torch.zeros_like(self.delta_raw)
-        self.delta_raw = self.delta_raw.to(dtype=torch.float32)
+        self.delta_raw = self.delta_raw.to(dtype=saved_dtype)
 
         assert self.delta_raw.shape[0] == self.out_channels, (
             f"delta_raw should have shape ({self.out_features=},...)"
@@ -782,6 +785,7 @@ class Conv2dGrowingModule(GrowingModule):
         )
         matrix_s = self.tensor_s_growth()
 
+        saved_dtype = matrix_s.dtype
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)
         if matrix_s.dtype != dtype:
@@ -803,9 +807,9 @@ class Conv2dGrowingModule(GrowingModule):
             == self.out_channels * self.kernel_size[0] * self.kernel_size[1]
         ), f"omega should have the same number of output features as the layer."
 
-        alpha = alpha.to(dtype=torch.float32)
-        omega = omega.to(dtype=torch.float32)
-        self.eigenvalues_extension = self.eigenvalues_extension.to(dtype=torch.float32)
+        alpha = alpha.to(dtype=saved_dtype)
+        omega = omega.to(dtype=saved_dtype)
+        self.eigenvalues_extension = self.eigenvalues_extension.to(dtype=saved_dtype)
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]
@@ -823,9 +827,9 @@ class Conv2dGrowingModule(GrowingModule):
                 self.previous_module.kernel_size[0],
                 self.previous_module.kernel_size[1],
             )
-        elif isinstance(self.previous_module, Conv2dAdditionGrowingModule):
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
             raise NotImplementedError("TODO: implement this: Conv Add -> Conv")
-        elif isinstance(self.previous_module, LinearAdditionGrowingModule):
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
             raise NotImplementedError("TODO: should we implement Lin Add -> Conv")
         else:
             raise NotImplementedError
@@ -860,12 +864,12 @@ class Conv2dGrowingModule(GrowingModule):
             if isinstance(
                 self.previous_module, LinearGrowingModule | Conv2dGrowingModule
             ):
-                self.previous_module.extended_output_layer = self.layer_of_tensor(
-                    alpha_weight, alpha_bias
+                self.previous_module.extended_output_layer = (
+                    self.previous_module.layer_of_tensor(alpha_weight, alpha_bias)
                 )
             elif isinstance(
                 self.previous_module,
-                LinearAdditionGrowingModule | Conv2dAdditionGrowingModule,
+                LinearMergeGrowingModule | Conv2dMergeGrowingModule,
             ):
                 raise NotImplementedError("TODO: implement this")
             else:
