@@ -606,7 +606,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 0
         Store activity : 0
-        Tensor S : S(start) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 0 samples
         Previous tensor S : None
         Previous tensor M : None
 LinearGrowingModule(l1) module with 60 parameters.
@@ -617,9 +617,9 @@ LinearGrowingModule(l1) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l1) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(start) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l1) tensor of shape (6, 10) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l1)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l1)) tensor of shape (6, 10) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -631,9 +631,9 @@ LinearGrowingModule(l2) module with 55 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l2) tensor of shape (11, 11) with 0 samples
-        Tensor S : S(l2) tensor of shape (11, 11) with 0 samples
-        Tensor M : M(l2) tensor of shape (11, 5) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 0 samples
+        Tensor S : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 0 samples
+        Tensor M : M(LinearGrowingModule(l2)) tensor of shape (11, 5) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -644,7 +644,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 0
         Store activity : 0
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
@@ -655,9 +655,9 @@ LinearGrowingModule(l3) module with 6 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l3) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l3) tensor of shape (6, 1) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l3)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l3)) tensor of shape (6, 1) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -669,9 +669,9 @@ LinearGrowingModule(l4) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l4) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l4) tensor of shape (6, 10) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l4)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l4)) tensor of shape (6, 10) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -683,9 +683,9 @@ LinearGrowingModule(l5) module with 11 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l5) tensor of shape (11, 11) with 0 samples
-        Tensor S : S(l5) tensor of shape (11, 11) with 0 samples
-        Tensor M : M(l5) tensor of shape (11, 1) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 0 samples
+        Tensor S : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 0 samples
+        Tensor M : M(LinearGrowingModule(l5)) tensor of shape (11, 1) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -696,7 +696,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 0
         Store activity : 0
-        Tensor S : S(end) tensor of shape (2, 2) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(end)) tensor of shape (2, 2) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 0 samples
 ================================================================================
@@ -707,7 +707,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 0
         Store activity : 1
-        Tensor S : S(start) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 0 samples
         Previous tensor S : None
         Previous tensor M : None
 LinearGrowingModule(l1) module with 60 parameters.
@@ -718,9 +718,9 @@ LinearGrowingModule(l1) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(l1) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(start) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l1) tensor of shape (6, 10) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l1)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l1)) tensor of shape (6, 10) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -732,9 +732,9 @@ LinearGrowingModule(l2) module with 55 parameters.
         self._internal_store_input=True
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l2) tensor of shape (11, 11) with 0 samples
-        Tensor S : S(l2) tensor of shape (11, 11) with 0 samples
-        Tensor M : M(l2) tensor of shape (11, 5) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 0 samples
+        Tensor S : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 0 samples
+        Tensor M : M(LinearGrowingModule(l2)) tensor of shape (11, 5) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -745,7 +745,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 1
         Store activity : 2
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
@@ -756,9 +756,9 @@ LinearGrowingModule(l3) module with 6 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l3) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l3) tensor of shape (6, 1) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l3)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l3)) tensor of shape (6, 1) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -770,9 +770,9 @@ LinearGrowingModule(l4) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(l4) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l4) tensor of shape (6, 10) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l4)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l4)) tensor of shape (6, 10) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -784,9 +784,9 @@ LinearGrowingModule(l5) module with 11 parameters.
         self._internal_store_input=True
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l5) tensor of shape (11, 11) with 0 samples
-        Tensor S : S(l5) tensor of shape (11, 11) with 0 samples
-        Tensor M : M(l5) tensor of shape (11, 1) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 0 samples
+        Tensor S : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 0 samples
+        Tensor M : M(LinearGrowingModule(l5)) tensor of shape (11, 1) with 0 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -797,7 +797,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 2
         Store activity : 0
-        Tensor S : S(end) tensor of shape (2, 2) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(end)) tensor of shape (2, 2) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 0 samples
 LinearMergeGrowingModule module.
@@ -807,7 +807,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 0
         Store activity : 1
-        Tensor S : S(start) tensor of shape (6, 6) with 40 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 40 samples
         Previous tensor S : None
         Previous tensor M : None
 LinearGrowingModule(l1) module with 60 parameters.
@@ -818,9 +818,9 @@ LinearGrowingModule(l1) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(l1) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(start) tensor of shape (6, 6) with 40 samples
-        Tensor M : M(l1) tensor of shape (6, 10) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l1)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 40 samples
+        Tensor M : M(LinearGrowingModule(l1)) tensor of shape (6, 10) with 40 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -832,9 +832,9 @@ LinearGrowingModule(l2) module with 55 parameters.
         self._internal_store_input=True
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l2) tensor of shape (11, 11) with 40 samples
-        Tensor S : S(l2) tensor of shape (11, 11) with 40 samples
-        Tensor M : M(l2) tensor of shape (11, 5) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 40 samples
+        Tensor S : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 40 samples
+        Tensor M : M(LinearGrowingModule(l2)) tensor of shape (11, 5) with 40 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -845,7 +845,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 1
         Store activity : 2
-        Tensor S : S(res) tensor of shape (6, 6) with 40 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 40 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
@@ -856,9 +856,9 @@ LinearGrowingModule(l3) module with 6 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l3) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 40 samples
-        Tensor M : M(l3) tensor of shape (6, 1) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l3)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 40 samples
+        Tensor M : M(LinearGrowingModule(l3)) tensor of shape (6, 1) with 40 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -870,9 +870,9 @@ LinearGrowingModule(l4) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(l4) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 40 samples
-        Tensor M : M(l4) tensor of shape (6, 10) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l4)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 40 samples
+        Tensor M : M(LinearGrowingModule(l4)) tensor of shape (6, 10) with 40 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -884,9 +884,9 @@ LinearGrowingModule(l5) module with 11 parameters.
         self._internal_store_input=True
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l5) tensor of shape (11, 11) with 40 samples
-        Tensor S : S(l5) tensor of shape (11, 11) with 40 samples
-        Tensor M : M(l5) tensor of shape (11, 1) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 40 samples
+        Tensor S : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 40 samples
+        Tensor M : M(LinearGrowingModule(l5)) tensor of shape (11, 1) with 40 samples
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
@@ -897,11 +897,9 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 2
         Store activity : 0
-        Tensor S : S(end) tensor of shape (2, 2) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(end)) tensor of shape (2, 2) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 40 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 40 samples
-/home/runner/work/gromo/gromo/src/gromo/modules/linear_growing_module.py:958: UserWarning: Using the pseudo-inverse for the computation of the optimal delta for LinearGrowingModule(l5).
-  warn(
 LinearMergeGrowingModule module.
         Previous modules : []
         Next modules : [LinearGrowingModule(LinearGrowingModule(l1))(in_features=5, out_features=10, use_bias=True), LinearMergeGrowingModule module with 2 previous modules and 2 next modules.]
@@ -909,7 +907,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 0
         Store activity : 1
-        Tensor S : S(start) tensor of shape (6, 6) with 40 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 40 samples
         Previous tensor S : None
         Previous tensor M : None
 LinearGrowingModule(l1) module with 60 parameters.
@@ -920,9 +918,9 @@ LinearGrowingModule(l1) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(l1) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(start) tensor of shape (6, 6) with 40 samples
-        Tensor M : M(l1) tensor of shape (6, 10) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l1)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 40 samples
+        Tensor M : M(LinearGrowingModule(l1)) tensor of shape (6, 10) with 40 samples
         Optimal delta layer : Linear(in_features=5, out_features=10, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -934,9 +932,9 @@ LinearGrowingModule(l2) module with 55 parameters.
         self._internal_store_input=True
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l2) tensor of shape (11, 11) with 40 samples
-        Tensor S : S(l2) tensor of shape (11, 11) with 40 samples
-        Tensor M : M(l2) tensor of shape (11, 5) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 40 samples
+        Tensor S : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 40 samples
+        Tensor M : M(LinearGrowingModule(l2)) tensor of shape (11, 5) with 40 samples
         Optimal delta layer : Linear(in_features=10, out_features=5, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -947,7 +945,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 1
         Store activity : 2
-        Tensor S : S(res) tensor of shape (6, 6) with 40 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 40 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
@@ -958,9 +956,9 @@ LinearGrowingModule(l3) module with 6 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l3) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 40 samples
-        Tensor M : M(l3) tensor of shape (6, 1) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l3)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 40 samples
+        Tensor M : M(LinearGrowingModule(l3)) tensor of shape (6, 1) with 40 samples
         Optimal delta layer : Linear(in_features=5, out_features=1, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -972,9 +970,9 @@ LinearGrowingModule(l4) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(l4) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 40 samples
-        Tensor M : M(l4) tensor of shape (6, 10) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l4)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 40 samples
+        Tensor M : M(LinearGrowingModule(l4)) tensor of shape (6, 10) with 40 samples
         Optimal delta layer : Linear(in_features=5, out_features=10, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -986,9 +984,9 @@ LinearGrowingModule(l5) module with 11 parameters.
         self._internal_store_input=True
         Store pre-activity : True
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l5) tensor of shape (11, 11) with 40 samples
-        Tensor S : S(l5) tensor of shape (11, 11) with 40 samples
-        Tensor M : M(l5) tensor of shape (11, 1) with 40 samples
+        Tensor S (internal) : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 40 samples
+        Tensor S : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 40 samples
+        Tensor M : M(LinearGrowingModule(l5)) tensor of shape (11, 1) with 40 samples
         Optimal delta layer : Linear(in_features=10, out_features=1, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -999,7 +997,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : 2
         Store activity : 0
-        Tensor S : S(end) tensor of shape (2, 2) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(end)) tensor of shape (2, 2) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 40 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 40 samples
 LinearMergeGrowingModule module.
@@ -1009,7 +1007,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : False
         Store activity : 0
-        Tensor S : S(start) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 0 samples
         Previous tensor S : None
         Previous tensor M : None
 LinearGrowingModule(l1) module with 60 parameters.
@@ -1020,9 +1018,9 @@ LinearGrowingModule(l1) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l1) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(start) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l1) tensor of shape (6, 10) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l1)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(start)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l1)) tensor of shape (6, 10) with 0 samples
         Optimal delta layer : Linear(in_features=5, out_features=10, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -1034,9 +1032,9 @@ LinearGrowingModule(l2) module with 55 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l2) tensor of shape (11, 11) with 0 samples
-        Tensor S : S(l2) tensor of shape (11, 11) with 0 samples
-        Tensor M : M(l2) tensor of shape (11, 5) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 0 samples
+        Tensor S : S(LinearGrowingModule(l2)) tensor of shape (11, 11) with 0 samples
+        Tensor M : M(LinearGrowingModule(l2)) tensor of shape (11, 5) with 0 samples
         Optimal delta layer : Linear(in_features=10, out_features=5, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -1047,7 +1045,7 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : False
         Store activity : 0
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(res)) tensor of shape (17, 5) with 0 samples
 LinearGrowingModule(l3) module with 6 parameters.
@@ -1058,9 +1056,9 @@ LinearGrowingModule(l3) module with 6 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l3) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l3) tensor of shape (6, 1) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l3)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l3)) tensor of shape (6, 1) with 0 samples
         Optimal delta layer : Linear(in_features=5, out_features=1, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -1072,9 +1070,9 @@ LinearGrowingModule(l4) module with 60 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l4) tensor of shape (6, 6) with 0 samples
-        Tensor S : S(res) tensor of shape (6, 6) with 0 samples
-        Tensor M : M(l4) tensor of shape (6, 10) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l4)) tensor of shape (6, 6) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(res)) tensor of shape (6, 6) with 0 samples
+        Tensor M : M(LinearGrowingModule(l4)) tensor of shape (6, 10) with 0 samples
         Optimal delta layer : Linear(in_features=5, out_features=10, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -1086,9 +1084,9 @@ LinearGrowingModule(l5) module with 11 parameters.
         self._internal_store_input=False
         Store pre-activity : False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(l5) tensor of shape (11, 11) with 0 samples
-        Tensor S : S(l5) tensor of shape (11, 11) with 0 samples
-        Tensor M : M(l5) tensor of shape (11, 1) with 0 samples
+        Tensor S (internal) : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 0 samples
+        Tensor S : S(LinearGrowingModule(l5)) tensor of shape (11, 11) with 0 samples
+        Tensor M : M(LinearGrowingModule(l5)) tensor of shape (11, 1) with 0 samples
         Optimal delta layer : Linear(in_features=10, out_features=1, bias=True)
         Extended input layer : None
         Extended output layer : None
@@ -1099,12 +1097,12 @@ LinearMergeGrowingModule module.
         Allow growing : False
         Store input : False
         Store activity : 0
-        Tensor S : S(end) tensor of shape (2, 2) with 0 samples
+        Tensor S : S(LinearMergeGrowingModule(end)) tensor of shape (2, 2) with 0 samples
         Previous tensor S : S[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 17) with 0 samples
         Previous tensor M : M[-1](LinearMergeGrowingModule(end)) tensor of shape (17, 1) with 0 samples
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.057 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.028 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-growing-network-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/1f144851d4d5f1d2199c074fae654a1b/plot_growing_network.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_growing_network.ipynb</span></code></a></p>
