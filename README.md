@@ -35,4 +35,4 @@ python -m build
 pip install -e .
 ```
 
-You may also need to install `build` wth `pip install build`.
+You may also need to install `build` with `pip install build`.
