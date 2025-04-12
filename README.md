@@ -27,7 +27,7 @@ Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G. (2024). Growi
 
 ## Installation
 
-Simply run the following command to install the package:
+Simply run the following commands to install the package:
 
 ```bash
 git clone git@github.com:growingnet/gromo.git
