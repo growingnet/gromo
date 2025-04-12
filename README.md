@@ -24,3 +24,15 @@ contact us!
 ```
 Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G. (2024). Growing tiny networks: Spotting expressivity bottlenecks and fixing them optimally. Transactions on Machine Learning Research.
 ```
+
+## Installation
+
+Simply run the following commands to install the package:
+
+```bash
+git clone git@github.com:growingnet/gromo.git
+python -m build
+pip install -e .
+```
+
+You may also need to install `build` with `pip install build`.
