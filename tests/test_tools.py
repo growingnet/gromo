@@ -3,10 +3,12 @@ from unittest import TestCase, main
 import torch
 
 from gromo.utils.tools import (
+    apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
     compute_output_shape_conv,
     sqrt_inverse_matrix_semi_positive,
 )
+from tests.torch_unittest import TorchTestCase
 
 from .unittest_tools import unittest_parametrize
 
@@ -19,7 +21,7 @@ test_input_shapes = [
 ]
 
 
-class TestTools(TestCase):
+class TestTools(TorchTestCase):
     def test_sqrt_inverse_matrix_semi_positive(self):
         matrix = 9 * torch.eye(5)
         sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
@@ -148,6 +150,114 @@ class TestTools(TestCase):
                         f"Error with {h=}, {w=}, {k_h=}, {k_w=} "
                         f"Error: {torch.abs(y_th - y_via_mask).max().item():.2e}",
                     )
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_apply_border_effect_on_unfolded(self, bias: bool):
+        for kh in (1, 2, 3):
+            for kw in (1, 2, 3):
+                for ph in (0, 1, 2):
+                    for pw in (0, 1, 2):
+                        with self.subTest(kh=kh, kw=kw, ph=ph, pw=pw):
+                            self._test_apply_border_effect_on_unfolded(
+                                bias=bias, kh=kh, kw=kw, ph=ph, pw=pw
+                            )
+
+    def _test_apply_border_effect_on_unfolded(
+        self, bias: bool = True, kh: int = 3, kw: int = 3, ph: int = 1, pw: int = 1
+    ):
+        # kh, kw = 3, 1
+        # ph, pw = 0, 0
+        conv1 = torch.nn.Conv2d(2, 3, (3, 5), padding=(1, 2), bias=bias)
+        x = torch.randn(11, 2, 13, 17)
+        unfolded_x = torch.nn.functional.unfold(
+            x,
+            kernel_size=conv1.kernel_size,
+            padding=conv1.padding,
+            stride=conv1.stride,
+            dilation=conv1.dilation,
+        )
+        if bias:
+            unfolded_x = torch.cat(
+                [unfolded_x, torch.ones_like(unfolded_x[:, :1])], dim=1
+            )
+        # kh, kw, ph, pw = torch.randint(low=0, high=4, size=(4,))
+        # kh, kw, ph, pw = 3, 3, 2, 2
+        conv2 = torch.nn.Conv2d(3, 4, (kh, kw), padding=(ph, pw))
+
+        bordered_unfolded_x = apply_border_effect_on_unfolded(
+            unfolded_x,
+            (x.shape[2], x.shape[3]),
+            border_effect_conv=conv2,
+        )
+        self.assertShapeEqual(
+            bordered_unfolded_x,
+            (
+                x.shape[0],
+                conv1.in_channels * conv1.kernel_size[0] * conv1.kernel_size[1] + bias,
+                None,
+            ),
+        )  # None because we don't check the size of the last dimension
+
+        conv2 = torch.nn.Conv2d(3, 4, (kh, kw), padding=(ph, pw), bias=False)
+        # We are sure that conv2 has no bias as it represents an expansion
+        new_kernel = torch.zeros_like(conv2.weight)
+        new_kernel[:, :, kh // 2 : kh // 2 + 1, kw // 2 : kw // 2 + 1] = (
+            conv2.weight[:, :, kh // 2, kw // 2].unsqueeze(-1).unsqueeze(-1)
+        )
+        conv2.weight = torch.nn.Parameter(new_kernel)
+
+        y_th = conv1(x)
+        z_th = conv2(y_th)
+        self.assertShapeEqual(
+            bordered_unfolded_x,
+            (
+                x.shape[0],
+                conv1.in_channels * conv1.kernel_size[0] * conv1.kernel_size[1] + bias,
+                z_th.shape[2] * z_th.shape[3],
+            ),
+        )
+        # self.assertAllClose(
+        #     bordered_unfolded_x,
+        #     unfolded_x,
+        # )
+        w_c1 = conv1.weight.flatten(start_dim=1)
+        if bias:
+            w_c1 = torch.cat([w_c1, conv1.bias[:, None]], dim=1)
+
+        y_via_mask = torch.einsum(
+            "iax, ca -> icx",
+            bordered_unfolded_x,
+            w_c1,
+        )
+        # self.assertAllClose(
+        #     y_th.flatten(start_dim=2),
+        #     y_via_mask,
+        #     atol=1e-6,
+        #     message=f"Error on y.",
+        # )
+        self.assertShapeEqual(
+            y_via_mask, (x.shape[0], conv1.out_channels, z_th.shape[2] * z_th.shape[3])
+        )
+
+        z_via_mask = torch.einsum(
+            "iax, ca -> icx",
+            y_via_mask,
+            conv2.weight[:, :, kh // 2, kw // 2],
+        )
+
+        self.assertShapeEqual(
+            z_via_mask, (x.shape[0], conv2.out_channels, z_th.shape[2] * z_th.shape[3])
+        )
+        z_via_mask = z_via_mask.reshape(
+            z_via_mask.shape[0], z_via_mask.shape[1], z_th.shape[2], z_th.shape[3]
+        )
+
+        self.assertAllClose(
+            z_th,
+            z_via_mask,
+            atol=1e-6,
+            message=f"Error: {torch.abs(z_th - z_via_mask).max().item():.2e}",
+        )
 
 
 if __name__ == "__main__":

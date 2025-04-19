@@ -8,7 +8,11 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import compute_mask_tensor_t, compute_output_shape_conv
+from gromo.utils.tools import (
+    apply_border_effect_on_unfolded,
+    compute_mask_tensor_t,
+    compute_output_shape_conv,
+)
 from gromo.utils.utils import global_device
 
 
@@ -63,6 +67,7 @@ class Conv2dGrowingModule(GrowingModule):
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
+        s_growth_is_needed: bool = False,
     ) -> None:
         device = device if device is not None else global_device()
         self.in_channels = in_channels
@@ -94,39 +99,26 @@ class Conv2dGrowingModule(GrowingModule):
             ),
             device=device,
             name=name,
+            s_growth_is_needed=s_growth_is_needed,
         )
         self.kernel_size = self.layer.kernel_size
 
         # TODO: update S_growth shape in layer_in_extension
         self.input_size: tuple[int, int] = input_size
-        self._mask_tensor_t: torch.Tensor | None = None
         self.use_bias = use_bias
-
-    @property
-    def mask_tensor_t(self) -> torch.Tensor:
-        """
-        Compute the tensor T for the layer.
-
-        Returns
-        -------
-        torch.Tensor
-            mask tensor T
-        """
-        assert self.input_size != (-1, -1), (
-            f"The input size should be set before computing the mask tensor T "
-            f"for {self.name}."
-        )
-        self.layer: torch.nn.Conv2d  # CHECK: why do we need to specify the type here?
-        if self._mask_tensor_t is None:
-            self._mask_tensor_t = compute_mask_tensor_t(self.input_size, self.layer).to(
-                self.device
-            )
-        return self._mask_tensor_t
 
     # Information functions
     # TODO: implement activation_gradient ?
     # this function is used to estimate the F.O. improvement of the loss after the extension of the network
     # however this won't work if we do not have only the activation function as the post_layer_function
+
+    @property
+    def padding(self):
+        return self.layer.padding
+
+    @padding.setter
+    def padding(self, value):
+        self.layer.padding = value
 
     @property
     def unfolded_extended_input(self) -> torch.Tensor:
@@ -161,35 +153,6 @@ class Conv2dGrowingModule(GrowingModule):
             )
         else:
             return unfolded_input
-
-    @property
-    def masked_unfolded_prev_input(self) -> torch.Tensor:
-        """
-        Return the previous masked unfolded activation.
-
-        Returns
-        -------
-        torch.Tensor
-            previous masked unfolded activation
-        """
-        if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}."
-                "Therefore the previous masked unfolded activation is not defined."
-            )
-        elif isinstance(self.previous_module, Conv2dGrowingModule):
-            return torch.einsum(
-                "ial, jel -> ijea",
-                self.previous_module.unfolded_extended_input,
-                self.mask_tensor_t,
-            )
-        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        else:
-            raise NotImplementedError(
-                f"The computation of the previous masked unfolded activation is not implemented yet "
-                f"for {type(self.previous_module)} as previous module."
-            )
 
     def number_of_parameters(self) -> int:
         """
@@ -280,141 +243,6 @@ class Conv2dGrowingModule(GrowingModule):
             ),
             self.input.shape[0],
         )
-
-    def compute_m_prev_update(
-        self, desired_activation: torch.Tensor | None = None
-    ) -> tuple[torch.Tensor, int]:
-        """
-        Compute the update of the tensor M_{-2} := B[-2] <x> dA.
-        Precisely: M_{-2}(bca) = Bt[-2](ixab) dA(icx)
-        where Bt[-2] is the masked unfolded input of the previous layer.
-
-        Parameters
-        ----------
-        desired_activation: torch.Tensor | None
-            desired variation direction of the output  of the layer
-
-        Returns
-        -------
-        torch.Tensor
-            update of the tensor M_{-2}
-        int
-            number of samples used to compute the update
-        """
-        if desired_activation is None:
-            desired_activation = self.pre_activity.grad
-        desired_activation = desired_activation.flatten(start_dim=-2)
-
-        if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}. Thus M_{-2} is not defined."
-            )
-        elif isinstance(self.previous_module, LinearGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, LinearMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, Conv2dGrowingModule):
-            return (
-                torch.einsum(
-                    "ixab, icx -> bca",
-                    self.masked_unfolded_prev_input,
-                    desired_activation,
-                ),
-                desired_activation.shape[0],
-            )
-        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        else:
-            raise NotImplementedError(
-                f"The computation of M_{-2} is not implemented yet "
-                f"for {type(self.previous_module)} as previous module."
-            )
-
-    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
-        """
-        Compute the update of the tensor P := B[-2] <x> B[-1].
-        Precisely: P(abe) = Bt[-2](ixab) Bc[-1](iex)
-        where Bt[-2] is the masked unfolded input of the previous layer
-        and Bc[-1] is the unfolded input of the current layer.
-
-        Returns
-        -------
-        torch.Tensor
-            update of the tensor P
-        int
-            number of samples used to compute the update
-        """
-        if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}. Thus the cross covariance is not defined."
-            )
-        elif isinstance(self.previous_module, LinearGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, LinearMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, Conv2dGrowingModule):
-            return (
-                torch.einsum(
-                    "ixab, iex -> abe",
-                    self.masked_unfolded_prev_input,
-                    self.unfolded_extended_input,
-                ),
-                self.input.shape[0],
-            )
-        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        else:
-            raise NotImplementedError(
-                f"The computation of P is not implemented yet "
-                f"for {type(self.previous_module)} as previous module."
-            )
-
-    def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
-        """
-        Compute the update of the tensor S_growth.
-        With the input tensor B, the update is
-        S_growth := (Bt)^T Bt \in (C dd, C dd).
-
-        Returns
-        -------
-        torch.Tensor
-            update of the tensor S_growth
-        int
-            number of samples used to compute the update
-        """
-        masked_unfolded_prev_input = self.masked_unfolded_prev_input
-        return (
-            torch.einsum(
-                "ijea, ijeb -> ab",
-                masked_unfolded_prev_input,
-                masked_unfolded_prev_input,
-            ),
-            masked_unfolded_prev_input.shape[0],
-        )
-
-    @property
-    def tensor_n(self) -> torch.Tensor:
-        """
-        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
-
-        Returns
-        -------
-        torch.Tensor
-            N
-        """
-        assert (
-            self.tensor_m_prev() is not None
-        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
-        assert (
-            self.cross_covariance() is not None
-        ), f"The cross covariance should be computed before the tensor N for {self.name}."
-        assert (
-            self.delta_raw is not None
-        ), f"The optimal delta should be computed before the tensor N for {self.name}."
-        return (
-            -self.tensor_m_prev()
-            - torch.einsum("abe, ce -> bca", self.cross_covariance(), self.delta_raw)
-        ).flatten(start_dim=-2)
 
     # Layer edition
     def layer_of_tensor(
@@ -628,7 +456,656 @@ class Conv2dGrowingModule(GrowingModule):
                     f"yet for {type(self.previous_module)} as previous module."
                 )
 
-    # Optimal update computation
+    def update_input_size(self, input_size: tuple[int, int] | None = None) -> None:
+        """
+        Update the input size of the layer. Either according to the parameter or the input currently stored.
+
+        Parameters
+        ----------
+        input_size: tuple[int, int] | None
+            new input size
+        """
+        if input_size is not None:
+            new_size = input_size
+        elif self.store_input and self.input is not None:
+            new_size = self.input.shape[-2:]
+        elif self.previous_module and self.previous_module.input_size != (-1, -1):
+            new_size = compute_output_shape_conv(
+                self.previous_module.input_size, self.previous_module.layer
+            )
+        else:
+            raise AssertionError(f"Unable to compute the input size for {self.name}.")
+
+        if self.input_size != (-1, -1) and new_size != self.input_size:
+            warn(
+                f"The input size of the layer {self.name} has changed from {self.input_size} to {new_size}."
+                f"This may lead to errors if the size of the tensor statistics "
+                f"and of the mask tensor T are not updated."
+            )
+        self.input_size = new_size
+
+    def update_computation(self) -> None:
+        """
+        Update the computation of the layer.
+        """
+        self.update_input_size()
+        super(Conv2dGrowingModule, self).update_computation()
+
+
+class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
+    """
+    Conv2dGrowingModule for a Conv2d layer with a growth scheme Conv -> Conv 1x1.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | tuple[int, int],
+        stride: int | tuple[int, int] = 1,
+        padding: int | tuple[int, int] = 0,
+        dilation: int | tuple[int, int] = 1,
+        input_size: tuple[int, int] = (-1, -1),
+        # groups: int = 1,
+        use_bias: bool = True,
+        post_layer_function: torch.nn.Module = torch.nn.Identity(),
+        previous_module: GrowingModule | MergeGrowingModule | None = None,
+        next_module: GrowingModule | MergeGrowingModule | None = None,
+        allow_growing: bool = False,
+        device: torch.device | None = None,
+        name: str | None = None,
+    ) -> None:
+        super(RestrictedConv2dGrowingModule, self).__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            input_size=input_size,
+            use_bias=use_bias,
+            post_layer_function=post_layer_function,
+            previous_module=previous_module,
+            next_module=next_module,
+            allow_growing=allow_growing,
+            device=device,
+            name=name,
+            s_growth_is_needed=False,
+        )
+
+    @property
+    def tensor_s_growth(self):
+        """
+        Supercharge tensor_s_growth to redirect to the normal tensor_s as it is the same for Linear layers.
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus S growth is not defined."
+            )
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            return self.previous_module.tensor_s
+        else:
+            raise NotImplementedError(
+                f"S growth is not implemented yet for {type(self.previous_module)} as previous module."
+            )
+
+    def linear_layer_of_tensor(
+        self, weight: torch.Tensor, bias: torch.Tensor | None = None
+    ) -> torch.nn.Conv2d:
+        """
+        Create a layer with the same characteristics (excepted the shape)
+        with `weight` as parameter for the central weights and bias as bias
+        i.e. `weight` are the parameters of 1x1 convolution.
+
+        Parameters
+        ----------
+        weight: torch.Tensor
+            weight of the layer of size (out_channels, in_channels) or
+            (out_channels, in_channels, 1, 1)
+        bias: torch.Tensor | None
+            bias of the layer
+
+        Returns
+        -------
+        torch.nn.Conv2d
+            layer with the same characteristics
+        """
+        assert self.use_bias is (bias is not None), (
+            f"The new layer should have a bias ({bias is not None=}) if and only if "
+            f"the main layer bias ({self.use_bias =}) is not None."
+        )
+
+        assert weight.dim() in (
+            2,
+            4,
+        ), f"weight should have 2 or 4 dimensions, but got {weight.dim()=}."
+        assert weight.dim() == 2 or weight.shape[2:] == (1, 1), (
+            f"weight should have 2 dimensions or the last two dimensions should be (1, 1), "
+            f"but got {weight.shape=}."
+        )
+
+        if weight.dim() == 2:
+            weight = weight.unsqueeze(-1).unsqueeze(-1)
+
+        self.layer.kernel_size: tuple[int, int]
+        self.layer.stride: tuple[int, int]
+        self.layer.dilation: tuple[int, int]
+
+        full_weight = torch.zeros(
+            weight.shape[0],
+            weight.shape[1],
+            self.kernel_size[0],
+            self.kernel_size[1],
+            device=self.device,
+        )
+        mid = (self.kernel_size[0] // 2, self.kernel_size[1] // 2)
+        full_weight[:, :, mid[0] : mid[0] + 1, mid[1] : mid[1] + 1] = weight
+
+        new_layer = torch.nn.Conv2d(
+            weight.shape[1],
+            weight.shape[0],
+            bias=self.use_bias,
+            device=self.device,
+            kernel_size=self.layer.kernel_size,
+            stride=self.layer.stride,
+            padding=self.layer.padding,
+            dilation=self.layer.dilation,
+        )
+        new_layer.weight = torch.nn.Parameter(full_weight)
+        if self.use_bias:
+            new_layer.bias = torch.nn.Parameter(bias)
+        return new_layer
+
+    @property
+    def bordered_unfolded_extended_prev_input(self) -> torch.Tensor:
+        """
+        Return the unfolded input extended with a channel of ones if the bias is used of
+        the previous layer and with border effect of the current layer already applied.
+        """
+        self.previous_module.update_input_size()
+        return apply_border_effect_on_unfolded(
+            unfolded_tensor=self.previous_module.unfolded_extended_input,
+            original_size=self.previous_module.input_size,
+            border_effect_conv=self.layer,
+        )
+
+    def compute_m_prev_update(
+        self, desired_activation: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor M_{-2} := B[-2] <x> dA.
+        Precisely: M_{-2}(bca) = Bt[-2](ixab) dA(icx)
+        where Bt[-2] is the masked unfolded input of the previous layer.
+
+        Parameters
+        ----------
+        desired_activation: torch.Tensor | None
+            desired variation direction of the output  of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor M_{-2}
+        int
+            number of samples used to compute the update
+        """
+        if desired_activation is None:
+            desired_activation = self.pre_activity.grad
+        desired_activation = desired_activation.flatten(start_dim=-2)
+
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus M_{-2} is not defined."
+            )
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            unfolded_extended_input = self.bordered_unfolded_extended_prev_input
+            assert unfolded_extended_input.shape[0] == desired_activation.shape[0], (
+                f"The number of samples is incoherent: {unfolded_extended_input.shape[0]=} "
+                f"and {desired_activation.shape[0]=} should be equal."
+            )
+            assert unfolded_extended_input.shape[2] == desired_activation.shape[2], (
+                f"The number of features is incoherent: {unfolded_extended_input.shape[2]=} "
+                f"and {desired_activation.shape[2]=} should be equal."
+            )
+            return (
+                torch.einsum(
+                    "iax, icx -> ac",
+                    unfolded_extended_input,
+                    desired_activation,
+                ),
+                desired_activation.shape[0],
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        else:
+            raise NotImplementedError(
+                f"The computation of M_{-2} is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
+
+    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor P := B[-2] <x> B[-1].
+        Precisely: P(ab) = Bc[-2](iax) Bc[-1](ibx)
+        where Bc[-2] is the unfolded input of the previous layer
+        and Bc[-1] is the unfolded input of the current layer.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor P
+        int
+            number of samples used to compute the update
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus the cross covariance is not defined."
+            )
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            return (
+                torch.einsum(
+                    "iax, ibx -> ab",
+                    self.bordered_unfolded_extended_prev_input,
+                    self.unfolded_extended_input,
+                ),
+                self.input.shape[0],
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        else:
+            raise NotImplementedError(
+                f"The computation of P is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
+
+    @property
+    def tensor_n(self) -> torch.Tensor:
+        """
+        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
+
+        Returns
+        -------
+        torch.Tensor
+            N
+        """
+        assert (
+            self.tensor_m_prev() is not None
+        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        assert (
+            self.cross_covariance() is not None
+        ), f"The cross covariance should be computed before the tensor N for {self.name}."
+        assert isinstance(
+            self.cross_covariance(), torch.Tensor
+        ), f"The cross covariance should be a tensor for {self.name}, is {type(self.cross_covariance())}."
+        assert (
+            self.cross_covariance().shape[1]
+            == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+            + self.use_bias
+        ), (
+            f"The cross covariance should have shape "
+            f"(..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1]  + self.use_bias})"
+            f" but got {self.cross_covariance().shape}."
+        )
+        assert (
+            self.delta_raw is not None
+        ), f"The optimal delta should be computed before the tensor N for {self.name}."
+        assert isinstance(
+            self.delta_raw, torch.Tensor
+        ), f"The optimal delta should be a tensor for {self.name}, is {type(self.delta_raw)}."
+        assert (
+            self.delta_raw.shape[0]
+            == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+            + self.use_bias
+        ), (
+            f"The delta should have shape ({self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, ...)"
+            f" but got {self.delta_raw.shape}."
+        )
+        assert (
+            self.delta_raw.shape[1] == self.out_channels
+        ), f"The delta should have shape ({self.out_channels}, ...) but got {self.delta_raw.shape}."
+        return -self.tensor_m_prev() - torch.einsum(
+            "ab, bc -> ac", self.cross_covariance(), self.delta_raw
+        )
+
+    def compute_optimal_added_parameters(
+        self,
+        numerical_threshold: float = 1e-15,
+        statistical_threshold: float = 1e-3,
+        maximum_added_neurons: int | None = None,
+        update_previous: bool = True,
+        dtype: torch.dtype = torch.float32,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
+        """
+        Compute the optimal added parameters to extend the input layer.
+
+        Parameters
+        ----------
+        numerical_threshold: float
+            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+        statistical_threshold: float
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+        maximum_added_neurons: int | None
+            maximum number of added neurons, if None all significant neurons are kept
+        update_previous: bool
+            whether to change the previous layer extended_output_layer
+        dtype: torch.dtype
+            dtype for S and N during the computation
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
+            optimal added weights (alpha weights, alpha bias, omega) and eigenvalues lambda
+        """
+        alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
+            numerical_threshold=numerical_threshold,
+            statistical_threshold=statistical_threshold,
+            maximum_added_neurons=maximum_added_neurons,
+            dtype=dtype,
+        )
+
+        k = self.eigenvalues_extension.shape[0]
+        assert alpha.shape[0] == omega.shape[1] == k, (
+            f"alpha and omega should have the same number of added neurons {k}."
+            f"but got {alpha.shape} and {omega.shape}."
+        )
+        assert (
+            omega.shape[0] == self.out_channels
+        ), f"omega should have the same number of output features as the layer."
+
+        if self.previous_module.use_bias:
+            alpha_weight = alpha[:, :-1]
+            alpha_bias = alpha[:, -1]
+        else:
+            alpha_weight = alpha
+            alpha_bias = None
+
+        if isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: should we implement Lin -> Conv")
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            alpha_weight = alpha_weight.reshape(
+                k,
+                self.previous_module.in_channels,
+                self.previous_module.kernel_size[0],
+                self.previous_module.kernel_size[1],
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this: Conv Add -> Conv")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError("TODO: should we implement Lin Add -> Conv")
+        else:
+            raise NotImplementedError
+
+        assert omega.shape == (
+            self.out_channels,
+            k,
+        ), (
+            f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, {self.kernel_size[1]})"
+            f"but got {omega.shape}."
+        )
+        assert alpha.shape[0] == k, (
+            f"alpha should have shape ({k}, ...)" f"but got {alpha.shape}."
+        )
+
+        self.extended_input_layer = self.linear_layer_of_tensor(
+            omega,
+            bias=(
+                torch.zeros(self.out_channels, device=self.device)
+                if self.use_bias
+                else None
+            ),
+        )
+
+        if update_previous:
+            if isinstance(
+                self.previous_module, LinearGrowingModule | Conv2dGrowingModule
+            ):
+                self.previous_module.extended_output_layer = (
+                    self.previous_module.layer_of_tensor(alpha_weight, alpha_bias)
+                )
+            elif isinstance(
+                self.previous_module,
+                LinearMergeGrowingModule | Conv2dMergeGrowingModule,
+            ):
+                raise NotImplementedError("TODO: implement this")
+            else:
+                raise NotImplementedError(
+                    f"The computation of the optimal added parameters is not implemented "
+                    f"yet for {type(self.previous_module)} as previous module."
+                )
+
+        return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
+
+
+class FullConv2dGrowingModule(Conv2dGrowingModule):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | tuple[int, int],
+        stride: int | tuple[int, int] = 1,
+        padding: int | tuple[int, int] = 0,
+        dilation: int | tuple[int, int] = 1,
+        input_size: tuple[int, int] = (-1, -1),
+        # groups: int = 1,
+        use_bias: bool = True,
+        post_layer_function: torch.nn.Module = torch.nn.Identity(),
+        previous_module: GrowingModule | MergeGrowingModule | None = None,
+        next_module: GrowingModule | MergeGrowingModule | None = None,
+        allow_growing: bool = False,
+        device: torch.device | None = None,
+        name: str | None = None,
+    ) -> None:
+        super(FullConv2dGrowingModule, self).__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            input_size=input_size,
+            use_bias=use_bias,
+            post_layer_function=post_layer_function,
+            previous_module=previous_module,
+            next_module=next_module,
+            allow_growing=allow_growing,
+            device=device,
+            name=name,
+            s_growth_is_needed=True,
+        )
+        self._mask_tensor_t: torch.Tensor | None = None
+
+    @property
+    def mask_tensor_t(self) -> torch.Tensor:
+        """
+        Compute the tensor T for the layer.
+
+        Returns
+        -------
+        torch.Tensor
+            mask tensor T
+        """
+        assert self.input_size != (-1, -1), (
+            f"The input size should be set before computing the mask tensor T "
+            f"for {self.name}."
+        )
+        self.layer: torch.nn.Conv2d  # CHECK: why do we need to specify the type here?
+        if self._mask_tensor_t is None:
+            self._mask_tensor_t = compute_mask_tensor_t(self.input_size, self.layer).to(
+                self.device
+            )
+        return self._mask_tensor_t
+
+    @property
+    def masked_unfolded_prev_input(self) -> torch.Tensor:
+        """
+        Return the previous masked unfolded activation.
+
+        Returns
+        -------
+        torch.Tensor
+            previous masked unfolded activation
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}."
+                "Therefore the previous masked unfolded activation is not defined."
+            )
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            return torch.einsum(
+                "ial, jel -> ijea",
+                self.previous_module.unfolded_extended_input,
+                self.mask_tensor_t,
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        else:
+            raise NotImplementedError(
+                f"The computation of the previous masked unfolded activation is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
+
+    def compute_m_prev_update(
+        self, desired_activation: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor M_{-2} := B[-2] <x> dA.
+        Precisely: M_{-2}(bca) = Bt[-2](ixab) dA(icx)
+        where Bt[-2] is the masked unfolded input of the previous layer.
+
+        Parameters
+        ----------
+        desired_activation: torch.Tensor | None
+            desired variation direction of the output  of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor M_{-2}
+        int
+            number of samples used to compute the update
+        """
+        if desired_activation is None:
+            desired_activation = self.pre_activity.grad
+        desired_activation = desired_activation.flatten(start_dim=-2)
+
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus M_{-2} is not defined."
+            )
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            return (
+                torch.einsum(
+                    "ixab, icx -> bca",
+                    self.masked_unfolded_prev_input,
+                    desired_activation,
+                ),
+                desired_activation.shape[0],
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        else:
+            raise NotImplementedError(
+                f"The computation of M_{-2} is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
+
+    def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor S_growth.
+        With the input tensor B, the update is
+        S_growth := (Bt)^T Bt \in (C dd, C dd).
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor S_growth
+        int
+            number of samples used to compute the update
+        """
+        return (
+            torch.einsum(
+                "ijea, ijeb -> ab",
+                self.masked_unfolded_prev_input,
+                self.masked_unfolded_prev_input,
+            ),
+            self.masked_unfolded_prev_input.shape[0],
+        )
+
+    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor P := B[-2] <x> B[-1].
+        Precisely: P(abe) = Bt[-2](ixab) Bc[-1](iex)
+        where Bt[-2] is the masked unfolded input of the previous layer
+        and Bc[-1] is the unfolded input of the current layer.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor P
+        int
+            number of samples used to compute the update
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus the cross covariance is not defined."
+            )
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            return (
+                torch.einsum(
+                    "ixab, iex -> abe",
+                    self.masked_unfolded_prev_input,
+                    self.unfolded_extended_input,
+                ),
+                self.input.shape[0],
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        else:
+            raise NotImplementedError(
+                f"The computation of P is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
+
+    @property
+    def tensor_n(self) -> torch.Tensor:
+        """
+        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
+
+        Returns
+        -------
+        torch.Tensor
+            N
+        """
+        assert (
+            self.tensor_m_prev() is not None
+        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        assert (
+            self.cross_covariance() is not None
+        ), f"The cross covariance should be computed before the tensor N for {self.name}."
+        assert (
+            self.delta_raw is not None
+        ), f"The optimal delta should be computed before the tensor N for {self.name}."
+        return (
+            -self.tensor_m_prev()
+            - torch.einsum("abe, ce -> bca", self.cross_covariance(), self.delta_raw)
+        ).flatten(start_dim=-2)
+
     def compute_optimal_added_parameters(
         self,
         numerical_threshold: float = 1e-15,
@@ -743,38 +1220,3 @@ class Conv2dGrowingModule(GrowingModule):
                 )
 
         return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
-
-    def update_input_size(self, input_size: tuple[int, int] | None = None) -> None:
-        """
-        Update the input size of the layer. Either according to the parameter or the input currently stored.
-
-        Parameters
-        ----------
-        input_size: tuple[int, int] | None
-            new input size
-        """
-        if input_size is not None:
-            new_size = input_size
-        elif self.store_input and self.input is not None:
-            new_size = self.input.shape[-2:]
-        elif self.previous_module and self.previous_module.input_size != (-1, -1):
-            new_size = compute_output_shape_conv(
-                self.previous_module.input_size, self.previous_module.layer
-            )
-        else:
-            raise AssertionError(f"Unable to compute the input size for {self.name}.")
-
-        if self.input_size != (-1, -1) and self.input.shape[-2:] != self.input_size:
-            warn(
-                f"The input size of the layer {self.name} has changed from {self.input_size} to {new_size}."
-                f"This may lead to errors if the size of the tensor statistics "
-                f"and of the mask tensor T are not updated."
-            )
-        self.input_size = new_size
-
-    def update_computation(self) -> None:
-        """
-        Update the computation of the layer.
-        """
-        self.update_input_size()
-        super(Conv2dGrowingModule, self).update_computation()
