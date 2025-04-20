@@ -79,7 +79,7 @@ class GrowingResidualBlock(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = [self.second_layer]
+        self._growing_layers = torch.nn.ModuleList([self.second_layer])
 
     def extended_forward(self, x: Tensor) -> Tensor:
         """
@@ -212,7 +212,9 @@ class GrowingResidualMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self):
-        self._growing_layers = list(block.second_layer for block in self.blocks)
+        self._growing_layers = torch.nn.ModuleList(
+            block.second_layer for block in self.blocks
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.embedding(x)

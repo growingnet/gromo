@@ -68,7 +68,7 @@ class GrowingMLPBlock(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = [self.second_layer]
+        self._growing_layers = torch.nn.ModuleList([self.second_layer])
 
     def extended_forward(self, x: Tensor) -> Tensor:
         """
@@ -371,7 +371,7 @@ class GrowingMixerLayer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = list()
+        self._growing_layers = torch.nn.ModuleList()
         self._growing_layers.extend(self.token_mixer._growing_layers)
         self._growing_layers.extend(self.channel_mixer._growing_layers)
 
@@ -503,7 +503,7 @@ class GrowingMLPMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = list()
+        self._growing_layers = torch.nn.ModuleList()
         for mixer in self.mixers:
             self._growing_layers.append(mixer.token_mixer.mlp.second_layer)
             self._growing_layers.append(mixer.channel_mixer.mlp.second_layer)
