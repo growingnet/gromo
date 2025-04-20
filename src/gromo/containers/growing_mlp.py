@@ -84,7 +84,7 @@ class GrowingMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = self.layers[1:]
+        self._growing_layers = nn.ModuleList(self.layers[1:])
 
     def forward(self, x: Tensor) -> Tensor:
         """
