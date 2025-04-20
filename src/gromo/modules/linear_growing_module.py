@@ -383,7 +383,7 @@ class LinearGrowingModule(GrowingModule):
         if self.use_bias:
             # TODO (optimize this): we could directly store the extended input
             return torch.cat(
-                (self.input, torch.ones(*self.input.shape[:-1], 1, device=self.device)),
+                (self.input, torch.ones(*self.input.shape[:-1], 1, device=self.input.device)),
                 dim=-1,
             )
         else:

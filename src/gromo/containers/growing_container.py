@@ -1,8 +1,9 @@
 import torch
 
 from gromo.config.loader import load_config
-from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.utils import get_correct_device, global_device
+from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
+from gromo.utils.tensor_statistic import TensorStatistic
 
 
 def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -43,7 +44,7 @@ class GrowingContainer(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self._growing_layers = list()
+        self._growing_layers = torch.nn.ModuleList()
         self.currently_updated_layer_index = None
 
     def set_growing_layers(self):
@@ -136,3 +137,26 @@ class GrowingContainer(torch.nn.Module):
             Number of parameters.
         """
         return sum(p.numel() for p in self.parameters())
+    
+    def to(self, device: torch.device | str | None = None, dtype: torch.dtype | None = None):
+        """
+        Move the module to a new device and/or dtype.
+
+        Parameters
+        ----------
+        device: torch.device | str | None
+            device to move the module to
+        dtype: torch.dtype | None
+            dtype to move the module to
+        """
+        if device is not None:
+            self.device = device
+
+        # Move all growing layers
+        for layer in self.layers:
+            if isinstance(layer, (torch.nn.Module, GrowingModule, MergeGrowingModule)):
+                layer.to(device=device, dtype=dtype)
+        
+        print(f"{self.__dict__.keys()=}")
+
+        return self
