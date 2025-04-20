@@ -578,7 +578,9 @@ class GrowingModule(torch.nn.Module):
         """
         return sum(p.numel() for p in self.parameters())
 
-    def to(self, device: torch.device | str | None = None, dtype: torch.dtype | None = None):
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
         """
         Move the module to a new device and/or dtype.
 
@@ -591,7 +593,7 @@ class GrowingModule(torch.nn.Module):
         """
         if device is not None:
             self.device = device
-        
+
         # Move the pytorch modules
         self.layer.to(device, dtype)
         self.post_layer_function.to(device, dtype)
@@ -601,7 +603,7 @@ class GrowingModule(torch.nn.Module):
             self.extended_input_layer.to(device, dtype)
         if self.extended_output_layer is not None:
             self.extended_output_layer.to(device, dtype)
-        
+
         # Move the tensor statistics
         self.tensor_s.to(device, dtype)
         self.tensor_m.to(device, dtype)

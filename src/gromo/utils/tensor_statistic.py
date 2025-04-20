@@ -72,7 +72,9 @@ class TensorStatistic:
     def __str__(self):
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
-    def to(self, device: torch.device | str | None = None, dtype: torch.dtype | None = None):
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
         if device is not None:
             self.device = device
         if self._tensor is not None:
