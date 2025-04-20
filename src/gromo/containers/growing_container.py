@@ -151,12 +151,4 @@ class GrowingContainer(torch.nn.Module):
         dtype: torch.dtype | None
             dtype to move the module to
         """
-        if device is not None:
-            self.device = device
-
-        # Move all growing layers
-        for layer in self.layers:
-            if isinstance(layer, (torch.nn.Module, GrowingModule, MergeGrowingModule)):
-                layer.to(device=device, dtype=dtype)
-
-        return self
+        raise NotImplementedError

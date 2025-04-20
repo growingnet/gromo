@@ -385,7 +385,7 @@ class LinearGrowingModule(GrowingModule):
             return torch.cat(
                 (
                     self.input,
-                    torch.ones(*self.input.shape[:-1], 1, device=self.input.device),
+                    torch.ones(*self.input.shape[:-1], 1, device=self.device),
                 ),
                 dim=-1,
             )

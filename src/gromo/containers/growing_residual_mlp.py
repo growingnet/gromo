@@ -129,6 +129,17 @@ class GrowingResidualBlock(GrowingContainer):
             x = y + x
         return x
 
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+        """
+        self.norm.to(device=device, dtype=dtype)
+        self.first_layer.to(device=device, dtype=dtype)
+        self.second_layer.to(device=device, dtype=dtype)
+        return self
+
     @staticmethod
     def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
         min_value = tensor.min().item()
@@ -245,6 +256,18 @@ class GrowingResidualMLP(GrowingContainer):
             else:
                 self.currently_updated_layer_index = i
         return self.currently_updated_layer_index
+
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+        """
+        self.embedding.to(device=device, dtype=dtype)
+        self.projection.to(device=device, dtype=dtype)
+        for block in self.blocks:
+            block.to(device=device, dtype=dtype)
+        return self
 
     @staticmethod
     def tensor_statistics(tensor) -> dict[str, float]:
