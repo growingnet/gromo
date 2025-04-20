@@ -159,6 +159,4 @@ class GrowingContainer(torch.nn.Module):
             if isinstance(layer, (torch.nn.Module, GrowingModule, MergeGrowingModule)):
                 layer.to(device=device, dtype=dtype)
 
-        print(f"{self.__dict__.keys()=}")
-
         return self
