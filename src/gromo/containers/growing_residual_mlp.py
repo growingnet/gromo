@@ -135,6 +135,8 @@ class GrowingResidualBlock(GrowingContainer):
         """
         Move the module to a new device and/or dtype.
         """
+        if device is not None:
+            self.device = device
         self.norm.to(device=device, dtype=dtype)
         self.first_layer.to(device=device, dtype=dtype)
         self.second_layer.to(device=device, dtype=dtype)
@@ -263,6 +265,8 @@ class GrowingResidualMLP(GrowingContainer):
         """
         Move the module to a new device and/or dtype.
         """
+        if device is not None:
+            self.device = device
         self.embedding.to(device=device, dtype=dtype)
         self.projection.to(device=device, dtype=dtype)
         for block in self.blocks:
