@@ -141,14 +141,15 @@ class GrowingContainer(torch.nn.Module):
     def to(
         self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
     ):
-        """
-        Move the module to a new device and/or dtype.
+        """Move the module to a new device and/or dtype.
+
+        Child classes should implement this to handle their specific attributes.
 
         Parameters
         ----------
         device: torch.device | str | None
-            device to move the module to
+            Target device
         dtype: torch.dtype | None
-            dtype to move the module to
+            Target dtype
         """
         raise NotImplementedError
