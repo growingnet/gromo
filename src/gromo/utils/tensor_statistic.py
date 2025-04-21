@@ -79,6 +79,7 @@ class TensorStatistic:
             self.device = device
         if self._tensor is not None:
             self._tensor = self._tensor.to(device=device, dtype=dtype)
+        return self
 
     def update(self, **kwargs):
         assert (
