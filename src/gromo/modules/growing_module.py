@@ -595,34 +595,34 @@ class GrowingModule(torch.nn.Module):
             self.device = device
 
         # Move the pytorch modules
-        self.layer.to(device, dtype)
-        self.post_layer_function.to(device, dtype)
+        self.layer.to(device=device, dtype=dtype)
+        self.post_layer_function.to(device=device, dtype=dtype)
         if self.optimal_delta_layer is not None:
-            self.optimal_delta_layer.to(device, dtype)
+            self.optimal_delta_layer.to(device=device, dtype=dtype)
         if self.extended_input_layer is not None:
-            self.extended_input_layer.to(device, dtype)
+            self.extended_input_layer.to(device=device, dtype=dtype)
         if self.extended_output_layer is not None:
-            self.extended_output_layer.to(device, dtype)
+            self.extended_output_layer.to(device=device, dtype=dtype)
 
         # Move the tensor statistics
-        self.tensor_s.to(device, dtype)
-        self.tensor_m.to(device, dtype)
-        self.tensor_m_prev.to(device, dtype)
-        self.cross_covariance.to(device, dtype)
+        self.tensor_s.to(device=device, dtype=dtype)
+        self.tensor_m.to(device=device, dtype=dtype)
+        self.tensor_m_prev.to(device=device, dtype=dtype)
+        self.cross_covariance.to(device=device, dtype=dtype)
         if self.s_growth_is_needed:
-            self.tensor_s_growth.to(device, dtype)
+            self.tensor_s_growth.to(device=device, dtype=dtype)
 
         # Move the other attributes
         if self.delta_raw is not None:
-            self.delta_raw.to(device, dtype)
+            self.delta_raw.to(device=device, dtype=dtype)
         if self.parameter_update_decrease is not None:
-            self.parameter_update_decrease.to(device, dtype)
+            self.parameter_update_decrease.to(device=device, dtype=dtype)
         if self.eigenvalues_extension is not None:
-            self.eigenvalues_extension.to(device, dtype)
+            self.eigenvalues_extension.to(device=device, dtype=dtype)
         if self.scaling_factor is not None:
-            self.scaling_factor.to(device, dtype)
+            self.scaling_factor.to(device=device, dtype=dtype)
         if self._scaling_factor_next_module is not None:
-            self._scaling_factor_next_module.to(device, dtype)
+            self._scaling_factor_next_module.to(device=device, dtype=dtype)
 
     def __str__(self, verbose=0):
         if verbose == 0:
