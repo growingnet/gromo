@@ -41,8 +41,10 @@ class PrototypeAttention(nn.Module):
         self.d_e: int = d_e
         self.d_k: int = d_k
         self.d_v: int = d_v
+        self.scale = d_k**0.5
         self.pre_attn: nn.Module | None = pre_attn
         self.post_attn: nn.Module | None = post_attn
+        self.S_grad = None  # Placeholder for the gradient of S
 
         # Linear projections for Q, K, V (with bias if requested)
         self.W_q = nn.Linear(d_e, d_k, bias=use_bias)
@@ -51,6 +53,14 @@ class PrototypeAttention(nn.Module):
 
         # Output projection
         self.W_o = nn.Linear(d_v, d_e, bias=use_bias)
+
+    def save_S_grad(self, grad: torch.Tensor) -> None:
+        """Hook to save the gradient of S."""
+        self.S_grad = grad
+
+    def get_S_grad(self) -> torch.Tensor | None:
+        """Return the gradient of S from the last backward pass"""
+        return self.S_grad
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """Forward pass of the attention module
@@ -77,7 +87,12 @@ class PrototypeAttention(nn.Module):
         V = self.W_v(X)  # (b, d_s, d_v)
 
         # Scaled dot‑product attention
-        S = torch.matmul(Q, K.transpose(-2, -1)) / (self.d_k**0.5)  # (b, d_s, d_s)
+        S = torch.matmul(Q, K.transpose(-2, -1)) / self.scale  # (b, d_s, d_s)
+
+        # We save the gradient of S
+        if S.requires_grad:
+            S.register_hook(self.save_S_grad)
+
         A = F.softmax(S, dim=-1)  # (b, d_s, d_s)
 
         # Weighted sum of values
@@ -101,6 +116,20 @@ if __name__ == "__main__":
     batch_size = 8
 
     model = PrototypeAttention(d_s, d_e, d_k, d_v)
-    x = torch.randn(batch_size, d_s, d_e)
+    x = torch.randn(batch_size, d_s, d_e, requires_grad=True).to(global_device())
+
+    # Forward pass
     output = model(x)
+    print(
+        f"Output shape: {output.shape}"
+    )  # Should be (batch_size, seq_length, embed_dim)
+    # Compute loss and do backward pass to get gradients
+    loss = output.sum()
+    loss.backward()
+    # Get the gradient of S after backward pass
+    S_grad = model.get_S_grad()
+    if S_grad is not None:
+        print(f"S gradient shape: {S_grad.shape}")  # Should be (batch_size, d_s, d_s)
+
+    print(global_device())
     print(output.shape)  # Should be (batch_size, seq_length, embed_dim)
