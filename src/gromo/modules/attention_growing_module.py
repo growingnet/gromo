@@ -6,6 +6,61 @@ import torch.nn.functional as F
 from gromo.utils.utils import global_device
 
 
+def svd_low_rank(
+    Z: torch.Tensor,
+    d_low: int,
+    *,
+    reconstruction_error: bool = False,
+    atol=1e-7,
+    rtol=1e-6,
+):
+    """
+    Factor a (d_high × d_high) matrix Z into tall skinny matrices A, B with inner
+    dimension d_low  (d_low « d_high) so that   A  @  B.T  ≈  Z.
+
+    Parameters
+    ----------
+    Z    : torch.Tensor  shape [d_high, d_high]  (can be non-symmetric, any real dtype)
+    d_low  : int           target rank  (1 ≤ d_low ≤ d_high)
+    atol, rtol : float   tolerances for the optional consistency check
+
+    Returns
+    -------
+    A : [d_high, d_low]
+    B : [d_high, d_low]
+    rel_err : float   ‖A Bᵀ − Z‖_F / ‖Z‖_F
+    """
+    assert Z.dim() == 2, "Z must be a 2-D matrix"
+    d_high0, d_high1 = Z.shape
+    assert d_high0 == d_high1, f"Z must be square (got {d_high0} × {d_high1})"
+    assert 1 <= d_low <= d_high0, f"d_k must be between 1 and {d_high0}"
+    assert torch.is_floating_point(Z), "Z must have a floating-point dtype"
+
+    U, S, Vh = torch.linalg.svd(
+        Z, full_matrices=False
+    )  # U:[d_high,d_high], S:[d_high], Vh:[d_high,d_high]
+    U_k = U[:, :d_low]  # [d_high, d_low]
+    S_k = S[:d_low]  # [d_low]
+    V_k = Vh[:d_low, :].T  # [d_high, d_low]
+
+    sqrtS = S_k.sqrt()  # [d_low]
+
+    A = U_k * sqrtS.unsqueeze(0)  # broadcast over rows
+    B = V_k * sqrtS.unsqueeze(0)
+
+    Z_hat = A @ B.T
+    rel_err = torch.linalg.norm(Z_hat - Z) / torch.linalg.norm(Z)
+
+    if reconstruction_error:
+        # optional consistency check (mainly to catch NaNs / infs)
+        assert torch.allclose(Z_hat, Z, atol=atol, rtol=rtol) or d_low < d_high0, (
+            "Exact reconstruction failed; either numerical issues "
+            "or d_low is strictly less than rank(Z)."
+        )
+        return A, B, rel_err
+    return A, B
+
+
 class PrototypeAttention(nn.Module):
     def __init__(
         self,
@@ -109,11 +164,8 @@ class PrototypeAttention(nn.Module):
         torch.Tensor
             Output tensor of shape (batch_size, d_s, d_e)
         """
-        print(f"X shape before bias: {X.shape}")
         if self.use_bias:
             X = self.add_bias(X)  # (b, d_s, d_e + 1)
-        print(f"X shape after bias: {X.shape}")
-        print(f"W_q shape: {self.W_q.weight.shape}")
 
         # Optional pre-attention transform
         if self.pre_attn is not None:
@@ -168,22 +220,23 @@ class PrototypeAttention(nn.Module):
         loss.backward()
         S_grad = self.get_S_grad()  # (b, d_s, d_s)
 
-        print(f"X_pinv shape: {X_pinv.shape}")
         Z = S_grad + S * self.scale  # (b, d_s, d_s)
         Z = torch.matmul(X_pinv, Z)  # (b, d_e (+1), d_s)
         Z = torch.matmul(Z, X_pinv.transpose(-2, -1))  # (b, d_e (+1), d_e (+1))
-        print(f"Z shape: {Z.shape}")
+        Z_mean = Z.mean(dim=0)  # (d_e (+1), d_e (+1))
 
 
 if __name__ == "__main__":
+    torch.manual_seed(0)
+    device = global_device()
+    print(f"Device: {device}")
+
     d_s = 8
     d_e = 32
     d_k = 16
     d_v = 18
     batch_size = 4
 
-    model = PrototypeAttention(d_s, d_e, d_k, d_v)
-    x = torch.randn(batch_size, d_s, d_e, requires_grad=True).to(global_device())
-
-    print(f"Device: {global_device()}")
-    model.get_growed_weight_matrices(x, False)
+    # model = PrototypeAttention(d_s, d_e, d_k, d_v)
+    # x = torch.randn(batch_size, d_s, d_e, requires_grad=True).to(device)
+    # model.get_growed_weight_matrices(x, False)
