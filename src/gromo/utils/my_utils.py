@@ -8,7 +8,7 @@ def my_svd_low_rank(
     reconstruction_error: bool = False,
     atol=1e-7,
     rtol=1e-6,
-):
+) -> tuple[torch.Tensor, torch.Tensor, float | bool]:
     """
     Factor a (d_high × d_high) matrix Z into tall skinny matrices A, B with inner
     dimension d_low  (d_low « d_high) so that   A  @  B.T  ≈  Z.
@@ -52,5 +52,14 @@ def my_svd_low_rank(
             "or d_low is strictly less than rank(Z)."
         )
     else:
-        rel_err = -1
+        rel_err = False
     return A, B, rel_err
+
+
+def check_2Dtensor_shape(tensor: torch.Tensor, row_dim: int, col_dim: int) -> None:
+    expected_rows = row_dim
+    expected_cols = col_dim
+    assert tensor.shape == (expected_rows, expected_cols), (
+        f"Tensor shape mismatch: expected ({expected_rows}, {expected_cols}), "
+        f"got {tensor.shape}"
+    )
