@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
-from gromo.utils.my_utils import check_2Dtensor_shape, my_svd_low_rank
+from gromo.modules.attention.my_utils import check_2Dtensor_shape, my_svd_low_rank
 from gromo.utils.utils import global_device
 
 
@@ -15,6 +15,7 @@ class PrototypeAttention(nn.Module):
         d_k: int,
         d_v: int,
         use_bias: bool = True,
+        add_bias_before_pseudoinverse: bool = True,
         # pre_attn: nn.Module | None = None,
         # post_attn: nn.Module | None = None,
     ) -> None:
@@ -48,6 +49,7 @@ class PrototypeAttention(nn.Module):
         # self.pre_attn: nn.Module | None = pre_attn
         # self.post_attn: nn.Module | None = post_attn
         self.use_bias: bool = use_bias
+        self.add_bias_before_pseudoinverse: bool = add_bias_before_pseudoinverse
 
         # WARN: Remove placeholders or keep them?
         # self.S_grad = None  # Placeholder for the gradient of S
@@ -61,6 +63,7 @@ class PrototypeAttention(nn.Module):
         # self.Z_mean: torch.Tensor | None = None  # (d_e (+1), d_e (+1))
 
         # To later do computations on X (pseudoinverse), we add the bias manually
+        # TODO: Transform the transformations into matrices
         if self.use_bias:
             self.W_Q = nn.Linear(d_e + 1, d_k, bias=False)
             self.W_K = nn.Linear(d_e + 1, d_k, bias=False)
@@ -198,7 +201,6 @@ class PrototypeAttention(nn.Module):
     def compute_growed_weight_matrices(
         self,
         X: torch.Tensor,
-        add_bias_before_pseudoinverse: bool,
         p: int = 1,
     ) -> None:
         """
@@ -207,7 +209,9 @@ class PrototypeAttention(nn.Module):
         if self.use_bias:
             Y, S, X_bias = self.forward(X)
 
-            if add_bias_before_pseudoinverse:
+            if (
+                self.add_bias_before_pseudoinverse
+            ):  # WARN: Check if need to add the bias before or after
                 X_pinv = torch.linalg.pinv(X_bias)  # (b, d_e +1, d_s)
             else:
                 X_pinv = torch.linalg.pinv(X)  # (b, d_e, d_s)
@@ -216,7 +220,7 @@ class PrototypeAttention(nn.Module):
             Y, S, _ = self.forward(X)
             X_pinv = torch.linalg.pinv(X)  # (b,d_e,d_s)
 
-        # WARN X has shape (b, d_s, d_e) here, the bias was only applied in the forward
+        # WARN: X has shape (b, d_s, d_e) here, the bias was only applied in the forward
         # Problem with bias, when to add it?
         # Add it before doing the pseudoinverse? After?
 
@@ -241,6 +245,17 @@ class PrototypeAttention(nn.Module):
 
         self.breve_W_Q = breve_W_Q
         self.breve_W_K = breve_W_K
+
+    def update_WQ_WK(self, X: torch.Tensor, p: int = 1):
+        self.compute_growed_weight_matrices(X, p)
+        # TODO: Give possibility to get split matrices, W_Q, dW_Q, W_Q_new
+
+        # Weight change in the linear transformation
+        with torch.no_grad():
+            self.W_Q.weight.copy_(self.breve_W_Q)
+            self.W_K.weight.copy_(self.breve_W_K)
+        # TODO: After the update, the model needs to know the new d_k?
+        # TODO: Make a good program with the general schema (see ipad)
 
 
 if __name__ == "__main__":
