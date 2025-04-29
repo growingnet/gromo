@@ -4,11 +4,7 @@ import torch
 def my_svd_low_rank(
     Z: torch.Tensor,
     d_low: int,
-    *,
-    reconstruction_error: bool = False,
-    atol=1e-7,
-    rtol=1e-6,
-) -> tuple[torch.Tensor, torch.Tensor, float | bool]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Factor a (d_high × d_high) matrix Z into tall skinny matrices A, B with inner
     dimension d_low  (d_low « d_high) so that   A  @  B.T  ≈  Z.
@@ -17,13 +13,10 @@ def my_svd_low_rank(
     ----------
     Z    : torch.Tensor  shape [d_high, d_high]  (can be non-symmetric, any real dtype)
     d_low  : int           target rank  (1 ≤ d_low ≤ d_high)
-    atol, rtol : float   tolerances for the optional consistency check
-
     Returns
     -------
     A : [d_high, d_low]
     B : [d_high, d_low]
-    rel_err : float   ‖A Bᵀ − Z‖_F / ‖Z‖_F
     """
     assert Z.dim() == 2, "Z must be a 2-D matrix"
     d_high0, d_high1 = Z.shape
@@ -43,17 +36,7 @@ def my_svd_low_rank(
     A = U_k * sqrtS.unsqueeze(0)  # broadcast over rows
     B = V_k * sqrtS.unsqueeze(0)
 
-    if reconstruction_error:
-        Z_hat = A @ B.T
-        rel_err = torch.linalg.norm(Z_hat - Z) / torch.linalg.norm(Z)
-        # optional consistency check (mainly to catch NaNs / infs)
-        assert torch.allclose(Z_hat, Z, atol=atol, rtol=rtol) or d_low < d_high0, (
-            "Exact reconstruction failed; either numerical issues "
-            "or d_low is strictly less than rank(Z)."
-        )
-    else:
-        rel_err = False
-    return A, B, rel_err
+    return A, B
 
 
 def check_2Dtensor_shape(tensor: torch.Tensor, row_dim: int, col_dim: int) -> None:

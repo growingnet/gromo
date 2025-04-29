@@ -49,6 +49,17 @@ class PrototypeAttention(nn.Module):
         self.use_bias: bool = use_bias
         self.S_grad = None  # Placeholder for the gradient of S
 
+        self.breve_W_Q: torch.Tensor | None = None  # (d_e (+1), d_k + p)
+        self.breve_W_K: torch.Tensor | None = None  # (d_e (+1), d_k + p)
+
+        self.dW_Q: torch.Tensor | None = None  # (d_e (+1), d_k)
+        self.dW_K: torch.Tensor | None = None  # (d_e (+1), d_k)
+        self.W_Q_new: torch.Tensor | None = None  # (d_e (+1), p)
+        self.W_K_new: torch.Tensor | None = None  # (d_e (+1), p)
+
+        self.reconstruction_error: float | None = None
+        # self.Z_mean: torch.Tensor | None = None  # (d_e (+1), d_e (+1))
+
         # Linear projections for Q, K, V (with bias if requested)
         if self.use_bias:
             self.W_Q = nn.Linear(d_e + 1, d_k, bias=False)
@@ -143,14 +154,59 @@ class PrototypeAttention(nn.Module):
 
         return Y, S, X
 
-    def get_growed_weight_matrices(
+    def compute_split_breve(self) -> None:
+        assert self.breve_W_Q is not None, "breve_W_Q is None"
+        assert self.breve_W_K is not None, "breve_W_K is None"
+
+        self.W_Q_temp = self.breve_W_Q[:, : self.d_k]  # (d_e (+1), d_k)
+        self.dW_Q = self.W_Q_temp - self.W_Q  # (d_e (+1), d_k)
+        self.W_Q_new = self.breve_W_Q[:, self.d_k :]  # (d_e (+1), p)
+        assert torch.equal(
+            torch.cat((self.W_Q_temp, self.W_Q_new), dim=1), self.breve_W_Q
+        ), (
+            "Concatenation of W_Q_temp and W_Q_new does not match breve_W_Q"
+        )  # OPTIMIZE: Put the assertion in a test
+
+        self.W_K_temp = self.breve_W_K[:, : self.d_k]  # (d_e (+1), d_k)
+        self.dW_K = self.W_K_temp - self.W_K  # (d_e (+1), d_k)
+        self.W_K_new = self.breve_W_K[:, self.d_k :]  # (d_e (+1), p)
+        assert torch.equal(
+            torch.cat((self.W_K_temp, self.W_K_new), dim=1), self.breve_W_K
+        ), (
+            "Concatenation of W_K_temp and W_K_new does not match breve_W_K"
+        )  # OPTIMIZE: Put the assertion in a test
+
+    def compute_reconstruction_error(
+        self,
+        atol=1e-7,
+        rtol=1e-6,
+    ) -> None:
+        """
+        atol, rtol : float   tolerances for the optional consistency check
+        rel_err : float   ‖A Bᵀ − Z‖_F / ‖Z‖_F
+        """
+        assert self.breve_W_Q is not None, "breve_W_Q is None"
+        assert self.breve_W_K is not None, "breve_W_K is None"
+        assert self.Z_mean is not None, "Z_mean is None"
+
+        Z_hat = self.breve_W_Q @ self.breve_W_K.T
+        rel_err = torch.linalg.norm(Z_hat - self.Z_mean) / torch.linalg.norm(self.Z_mean)
+        # optional consistency check (mainly to catch NaNs / infs)
+        assert (
+            torch.allclose(Z_hat, self.Z_mean, atol=atol, rtol=rtol)
+            or self.breve_W_Q.shape[1] < self.Z_mean.shape[1]
+        ), (
+            "Exact reconstruction failed; either numerical issues "
+            "or d_low is strictly less than rank(Z)."
+        )
+        self.reconstruction_error = rel_err
+
+    def compute_growed_weight_matrices(
         self,
         X: torch.Tensor,
         add_bias_before_pseudoinverse: bool,
         p: int = 1,
-        get_reconstruction_error: bool = False,
-        split_breve: bool = False,
-    ):
+    ) -> None:
         """
         p: neuron to add
         """
@@ -177,12 +233,10 @@ class PrototypeAttention(nn.Module):
         Z = S_grad + S * self.scale  # (b, d_s, d_s)
         Z = torch.matmul(X_pinv, Z)  # (b, d_e (+1), d_s)
         Z = torch.matmul(Z, X_pinv.transpose(-2, -1))  # (b, d_e (+1), d_e (+1))
-        Z_mean: torch.Tensor = Z.mean(dim=0)  # (d_e (+1), d_e (+1))
-        Z_mean = Z_mean.detach()
+        self.Z_mean: torch.Tensor = Z.mean(dim=0)  # (d_e (+1), d_e (+1))
+        self.Z_mean = self.Z_mean.detach()
 
-        breve_W_Q, breve_W_K, reconstruction_error = my_svd_low_rank(
-            Z_mean, self.d_k + p, reconstruction_error=get_reconstruction_error
-        )
+        breve_W_Q, breve_W_K = my_svd_low_rank(self.Z_mean, self.d_k + p)
 
         if self.use_bias:  # OPTIMIZE: Put asserts in a test instead of here?
             check_2Dtensor_shape(breve_W_Q, d_e + 1, d_k + p)
@@ -191,23 +245,8 @@ class PrototypeAttention(nn.Module):
             check_2Dtensor_shape(breve_W_Q, d_e, d_k + p)
             check_2Dtensor_shape(breve_W_K, d_e, d_k + p)
 
-        if not split_breve:
-            return breve_W_Q, breve_W_K, reconstruction_error
-        else:
-            W_Q_temp = breve_W_Q[:, : self.d_k]  # (d_e (+1), d_k)
-            dW_Q = W_Q_temp - self.W_Q  # (d_e (+1), d_k)
-            W_Q_new = breve_W_Q[:, self.d_k :]  # (d_e (+1), p)
-            assert torch.equal(torch.cat((W_Q_temp, W_Q_new), dim=1), breve_W_Q), (
-                "Concatenation of W_Q_temp and W_Q_new does not match breve_W_Q"
-            )  # OPTIMIZE: Put the assertion in a test
-
-            W_K_temp = breve_W_K[:, : self.d_k]  # (d_e (+1), d_k)
-            dW_K = W_K_temp - self.W_K  # (d_e (+1), d_k)
-            W_K_new = breve_W_K[:, self.d_k :]  # (d_e (+1), p)
-            assert torch.equal(torch.cat((W_K_temp, W_K_new), dim=1), breve_W_K), (
-                "Concatenation of W_K_temp and W_K_new does not match breve_W_K"
-            )  # OPTIMIZE: Put the assertion in a test
-            return d_WQ, W_Q_new, d_WK, W_K_new, reconstruction_error
+        self.breve_W_Q = breve_W_Q
+        self.breve_W_K = breve_W_K
 
 
 if __name__ == "__main__":
@@ -223,7 +262,21 @@ if __name__ == "__main__":
 
     model = PrototypeAttention(d_s, d_e, d_k, d_v)
     x = torch.randn(batch_size, d_s, d_e, requires_grad=True).to(device)
-    # W_Q, W_K, rel_err = model.get_growed_weight_matrices(
-    #     x, False, get_reconstruction_error=True, split_breve=False
-    # )
-    # print(W_Q.shape, W_K.shape, rel_err)
+    model.compute_growed_weight_matrices(  # TODO: TEST
+        x,
+        False,
+        p=1,
+    )
+    assert model.breve_W_Q is not None, "breve_W_Q is None"
+    assert model.breve_W_K is not None, "breve_W_K is None"
+    print(f"breve_W_Q shape: {model.breve_W_Q.shape}")
+    print(f"breve_W_K shape: {model.breve_W_K.shape}")
+
+    model.compute_reconstruction_error()
+    print(f"reconstruction_error: {model.reconstruction_error}")
+
+    model.compute_split_breve()
+    assert model.W_Q_new is not None, "W_Q_new is None"
+    assert model.W_K_new is not None, "W_K_new is None"
+    print(f"W_Q_new shape: {model.W_Q_new.shape}")
+    print(f"W_K_new shape: {model.W_K_new.shape}")
