@@ -15,11 +15,12 @@ class PrototypeAttention(nn.Module):
         d_k: int,
         d_v: int,
         use_bias: bool = True,
-        pre_attn: nn.Module | None = None,
-        post_attn: nn.Module | None = None,
+        # pre_attn: nn.Module | None = None,
+        # post_attn: nn.Module | None = None,
     ) -> None:
         """Growing module for attention
-        # NOTE Currently only focusing on growing kdim, for one head, without bias
+        # NOTE Currently only focusing on growing d_k, for one head
+        batch_size = b
 
             Parameters
             ----------
@@ -44,23 +45,22 @@ class PrototypeAttention(nn.Module):
         self.d_k: int = d_k
         self.d_v: int = d_v
         self.scale = d_k**0.5
-        self.pre_attn: nn.Module | None = pre_attn
-        self.post_attn: nn.Module | None = post_attn
+        # self.pre_attn: nn.Module | None = pre_attn
+        # self.post_attn: nn.Module | None = post_attn
         self.use_bias: bool = use_bias
-        self.S_grad = None  # Placeholder for the gradient of S
 
-        self.breve_W_Q: torch.Tensor | None = None  # (d_e (+1), d_k + p)
-        self.breve_W_K: torch.Tensor | None = None  # (d_e (+1), d_k + p)
-
-        self.dW_Q: torch.Tensor | None = None  # (d_e (+1), d_k)
-        self.dW_K: torch.Tensor | None = None  # (d_e (+1), d_k)
-        self.W_Q_new: torch.Tensor | None = None  # (d_e (+1), p)
-        self.W_K_new: torch.Tensor | None = None  # (d_e (+1), p)
-
-        self.reconstruction_error: float | None = None
+        # WARN: Remove placeholders or keep them?
+        # self.S_grad = None  # Placeholder for the gradient of S
+        # self.breve_W_Q: torch.Tensor | None = None  # (d_e (+1), d_k + p)
+        # self.breve_W_K: torch.Tensor | None = None  # (d_e (+1), d_k + p)
+        # self.dW_Q: torch.Tensor | None = None  # (d_e (+1), d_k)
+        # self.dW_K: torch.Tensor | None = None  # (d_e (+1), d_k)
+        # self.W_Q_new: torch.Tensor | None = None  # (d_e (+1), p)
+        # self.W_K_new: torch.Tensor | None = None  # (d_e (+1), p)
+        # self.reconstruction_error: float | None = None
         # self.Z_mean: torch.Tensor | None = None  # (d_e (+1), d_e (+1))
 
-        # Linear projections for Q, K, V (with bias if requested)
+        # To later do computations on X (pseudoinverse), we add the bias manually
         if self.use_bias:
             self.W_Q = nn.Linear(d_e + 1, d_k, bias=False)
             self.W_K = nn.Linear(d_e + 1, d_k, bias=False)
@@ -70,7 +70,6 @@ class PrototypeAttention(nn.Module):
             self.W_K = nn.Linear(d_e, d_k, bias=False)
             self.W_V = nn.Linear(d_e, d_v, bias=False)
 
-        # Output projection
         self.W_O = nn.Linear(d_v, d_e, bias=use_bias)
 
     def save_S_grad(self, grad: torch.Tensor) -> None:
@@ -108,51 +107,46 @@ class PrototypeAttention(nn.Module):
             ones = torch.ones(X.size(0), 1, X.size(2), device=X.device, dtype=X.dtype)
             return torch.cat((X, ones), dim=1)
 
-    def forward(self, X: torch.Tensor):
-        """Forward pass of the attention module
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        """Classical forward pass of the attention module
+        NOTE: This forward pass will also be used during the growing iteration, so one must be careful when adding transformations, to not disrupt the growing process.
 
         Parameters
         ----------
         X : torch.Tensor
-            Input tensor of shape (batch_size, d_s, d_e)
+            Input tensor of shape (b, d_s, d_e)
 
         Returns
         -------
         torch.Tensor
-            Output tensor of shape (batch_size, d_s, d_e)
+            Output tensor of shape (b, d_s, d_e)
         """
-        if self.use_bias:
+        # Optional pre-attention transform # WARN: pre and post-attention transforms would probably mess things up for the growing? like gradient calculation, other?
+        # if self.pre_attn is not None:
+        #     X = self.pre_attn(X)
+
+        if self.use_bias:  # WARN: Add bias after or before the pre-attention transform?
             X = self.add_bias(X)  # (b, d_s, d_e + 1)
 
-        # Optional pre-attention transform
-        if self.pre_attn is not None:
-            X = self.pre_attn(X)
-
-        # Compute Q, K, V
         Q = self.W_Q(X)  # (b, d_s, d_k)
         K = self.W_K(X)  # (b, d_s, d_k)
         V = self.W_V(X)  # (b, d_s, d_v)
 
-        # Scaled dot‑product attention
-        S = torch.matmul(Q, K.transpose(-2, -1)) / self.scale  # (b, d_s, d_s)
+        self.S = torch.matmul(Q, K.transpose(-2, -1)) / self.scale  # (b, d_s, d_s)
 
         # We save the gradient of S
-        if S.requires_grad:
-            S.register_hook(self.save_S_grad)
+        if self.S.requires_grad:
+            self.S.register_hook(self.save_S_grad)
 
-        A = F.softmax(S, dim=-1)  # (b, d_s, d_s)
-
-        # Weighted sum of values
+        A = F.softmax(self.S, dim=-1)  # (b, d_s, d_s)
         H = torch.matmul(A, V)  # (b, d_s, d_v)
-
-        # Final projection
         Y = self.W_O(H)  # (b, d_s, d_e)
 
-        # Optional post-attention transform
-        if self.post_attn is not None:
-            Y = self.post_attn(Y)
+        # Optional post-attention transform # WARN: Same problem as pre-attention transform
+        # if self.post_attn is not None:
+        #     Y = self.post_attn(Y)
 
-        return Y, S, X
+        return Y
 
     def compute_split_breve(self) -> None:
         assert self.breve_W_Q is not None, "breve_W_Q is None"
@@ -261,12 +255,6 @@ if __name__ == "__main__":
     batch_size = 4
 
     model = PrototypeAttention(d_s, d_e, d_k, d_v)
-    x = torch.randn(batch_size, d_s, d_e, requires_grad=True).to(device)
-    model.compute_growed_weight_matrices(  # TODO: TEST
-        x,
-        False,
-        p=1,
-    )
     assert model.breve_W_Q is not None, "breve_W_Q is None"
     assert model.breve_W_K is not None, "breve_W_K is None"
     print(f"breve_W_Q shape: {model.breve_W_Q.shape}")
