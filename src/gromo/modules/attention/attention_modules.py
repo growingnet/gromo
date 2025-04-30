@@ -7,10 +7,74 @@ from gromo.modules.attention.my_utils import check_2Dtensor_shape, my_svd_low_ra
 from gromo.utils.utils import global_device
 
 
-class PrototypeAttention(nn.Module):
+class AttentionBaselineModule(nn.Module):
+    """
+    A baseline implementation of self-attention mechanism.
+
+    Attributes
+    ----------
+    W_Q : nn.Linear
+        Linear layer to compute query vectors.
+    W_K : nn.Linear
+        Linear layer to compute key vectors.
+    W_V : nn.Linear
+        Linear layer to compute value vectors.
+    W_O : nn.Linear
+        Linear layer to compute the output representation.
+    scale : float
+        Scaling factor for the dot-product attention scores.
+    """
+
+    def __init__(self, d_e, d_k, d_v, use_bias=True):
+        """
+        Initialize the AttentionBaselineModule.
+
+        Parameters
+        ----------
+        d_e : int
+            Embedding dimension of the input.
+        d_k : int
+            Dimension of the query and key vectors.
+        d_v : int
+            Dimension of the value vectors.
+        use_bias : bool, optional
+            Whether to use bias in the linear layers (default is True).
+        """
+        super().__init__()
+        self.W_Q = nn.Linear(d_e, d_k, bias=use_bias)
+        self.W_K = nn.Linear(d_e, d_k, bias=use_bias)
+        self.W_V = nn.Linear(d_e, d_v, bias=use_bias)
+        self.W_O = nn.Linear(d_v, d_e, bias=use_bias)
+        self.scale = d_k**0.5
+
+    def forward(self, X):
+        """
+        Forward pass of the attention mechanism.
+
+        Parameters
+        ----------
+        X : torch.Tensor
+            Input tensor of shape (batch_size, seq_len, d_e).
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of shape (batch_size, seq_len, d_e).
+        """
+        Q = self.W_Q(X)  # Compute query vectors
+        K = self.W_K(X)  # Compute key vectors
+        V = self.W_V(X)  # Compute value vectors
+        S = (
+            torch.matmul(Q, K.transpose(-2, -1)) / self.scale
+        )  # Compute scaled dot-product scores
+        A = F.softmax(S, dim=-1)  # Apply softmax to get attention weights
+        H = torch.matmul(A, V)  # Compute the weighted sum of values
+        return self.W_O(H)  # Transform the result and return
+
+
+class AttentionGrowingModule(nn.Module):
     def __init__(
         self,
-        d_s: int,
         d_e: int,
         d_k: int,
         d_v: int,
@@ -20,13 +84,11 @@ class PrototypeAttention(nn.Module):
         # post_attn: nn.Module | None = None,
     ) -> None:
         """Growing module for attention
-        # NOTE Currently only focusing on growing d_k, for one head
-        batch_size = b
+        Currently only focusing on growing d_k, for one head
+        Abbreviations: batch_size = b, sequence_length = d_s
 
             Parameters
             ----------
-            d_s : int
-                dimension of the input sequence
             d_e : int
                 dimension of the input and output embedding
             d_k : int
@@ -41,7 +103,6 @@ class PrototypeAttention(nn.Module):
                 optional module to apply after attention
         """
         super().__init__()
-        self.d_s: int = d_s
         self.d_e: int = d_e
         self.d_k: int = d_k
         self.d_v: int = d_v
@@ -51,19 +112,7 @@ class PrototypeAttention(nn.Module):
         self.use_bias: bool = use_bias
         self.add_bias_before_pseudoinverse: bool = add_bias_before_pseudoinverse
 
-        # WARN: Remove placeholders or keep them?
-        # self.S_grad = None  # Placeholder for the gradient of S
-        # self.breve_W_Q: torch.Tensor | None = None  # (d_e (+1), d_k + p)
-        # self.breve_W_K: torch.Tensor | None = None  # (d_e (+1), d_k + p)
-        # self.dW_Q: torch.Tensor | None = None  # (d_e (+1), d_k)
-        # self.dW_K: torch.Tensor | None = None  # (d_e (+1), d_k)
-        # self.W_Q_new: torch.Tensor | None = None  # (d_e (+1), p)
-        # self.W_K_new: torch.Tensor | None = None  # (d_e (+1), p)
-        # self.reconstruction_error: float | None = None
-        # self.Z_mean: torch.Tensor | None = None  # (d_e (+1), d_e (+1))
-
         # To later do computations on X (pseudoinverse), we add the bias manually
-        # TODO: Transform the transformations into matrices
         if self.use_bias:
             self.W_Q = nn.Linear(d_e + 1, d_k, bias=False)
             self.W_K = nn.Linear(d_e + 1, d_k, bias=False)
@@ -255,7 +304,6 @@ class PrototypeAttention(nn.Module):
             self.W_Q.weight.copy_(self.breve_W_Q)
             self.W_K.weight.copy_(self.breve_W_K)
         # TODO: After the update, the model needs to know the new d_k?
-        # TODO: Make a good program with the general schema (see ipad)
 
 
 if __name__ == "__main__":
@@ -263,23 +311,8 @@ if __name__ == "__main__":
     device = global_device()
     print(f"Device: {device}")
 
-    d_s = 8
-    d_e = 32
-    d_k = 16
-    d_v = 18
-    batch_size = 4
-
-    model = PrototypeAttention(d_s, d_e, d_k, d_v)
-    assert model.breve_W_Q is not None, "breve_W_Q is None"
-    assert model.breve_W_K is not None, "breve_W_K is None"
-    print(f"breve_W_Q shape: {model.breve_W_Q.shape}")
-    print(f"breve_W_K shape: {model.breve_W_K.shape}")
-
-    model.compute_reconstruction_error()
-    print(f"reconstruction_error: {model.reconstruction_error}")
-
-    model.compute_split_breve()
-    assert model.W_Q_new is not None, "W_Q_new is None"
-    assert model.W_K_new is not None, "W_K_new is None"
-    print(f"W_Q_new shape: {model.W_Q_new.shape}")
-    print(f"W_K_new shape: {model.W_K_new.shape}")
+    d_s = 4
+    d_e = 16
+    d_k = 2
+    d_v = 8
+    batch_size = 64
