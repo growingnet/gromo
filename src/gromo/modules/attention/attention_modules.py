@@ -9,6 +9,57 @@ from gromo.modules.attention.my_utils import assert_2Dtensor_shape, my_svd_low_r
 from gromo.utils.utils import global_device
 
 
+def generate_teacher_dataset(
+    d_s, d_e, d_k, d_v, path, device, N_samples=5000, gen_batch=128
+):
+    """
+    Generate a dataset using a teacher attention model.
+
+    Parameters
+    ----------
+    d_s : int
+        Sequence length of the input.
+    d_e : int
+        Embedding dimension of the input.
+    d_k : int
+        Dimension of the query and key vectors.
+    d_v : int
+        Dimension of the value vectors.
+    path : str
+        Path to save the generated dataset.
+    device : torch.device
+        Device to run the computations on.
+    N_samples : int, optional
+        Total number of samples to generate (default is 5000).
+    gen_batch : int, optional
+        Batch size for dataset generation (default is 128).
+
+    Returns
+    -------
+    None
+    """
+    # Create and freeze the teacher model
+    teacher = AttentionBaselineModule(d_e, d_k, d_v).to(device)
+    teacher.eval()
+    for z in teacher.parameters():
+        z.requires_grad = False
+
+    # Generate the dataset
+    all_X, all_Y = [], []
+    with torch.no_grad():
+        for _ in range(0, N_samples, gen_batch):
+            Xb = torch.randn(gen_batch, d_s, d_e, device=device)
+            Yb = teacher.forward(Xb)
+            all_X.append(Xb.cpu())
+            all_Y.append(Yb.cpu())
+
+    X = torch.cat(all_X, dim=0)
+    Y = torch.cat(all_Y, dim=0)
+    torch.save({"X": X, "Y": Y}, path)
+
+    print(f"Saved dataset with {X.size(0)} samples to {path}")
+
+
 class AttentionDataset(Dataset):
     """
     Dataset class to help load the data.
@@ -28,6 +79,8 @@ class AttentionDataset(Dataset):
 class AttentionBaselineModule(nn.Module):
     """
     A baseline implementation of self-attention mechanism.
+    Used to create a teacher network to create a dataset,
+    and to compare the growing model to a baseline.
 
     Attributes
     ----------
@@ -459,6 +512,7 @@ if __name__ == "__main__":
     d_s = 4
     d_e = 16
     d_k_grow = 2
+    d_k_teacher = 8
     p = 2
     d_v = 8
     batch_size = 64
@@ -471,9 +525,11 @@ if __name__ == "__main__":
     FILEPATH_DATASET = (
         "src/gromo/modules/attention/attention_dataset.pt"  # Path to the dataset file
     )
-    assert os.path.exists(FILEPATH_DATASET), (
-        f"Dataset not found at {FILEPATH_DATASET}. Please run `example_attention_student.py` to generate the dataset."
-    )  # This is a temp solution
+
+    if not os.path.exists(FILEPATH_DATASET):
+        generate_teacher_dataset(d_s, d_e, d_k_teacher, d_v, FILEPATH_DATASET, device)
+
+    assert os.path.exists(FILEPATH_DATASET), f"Dataset not found at {FILEPATH_DATASET}."
 
     dataset = AttentionDataset(FILEPATH_DATASET)
     test_size = int(test_ratio * len(dataset))
@@ -520,7 +576,6 @@ if __name__ == "__main__":
             ):  # Growing iteration case
                 # Grow p=1 every first batch of every 10 epoch, except for the first epoch
 
-                # model_growing.update_weights(p=1)  # Get new W_Q, W_K
                 y_pred = model_growing.forward(xb, pre_growing=True)  # Creates self.S
                 loss = loss_fn(y_pred, yb)
                 loss.backward()  # Creates self.S_grad
@@ -540,11 +595,6 @@ if __name__ == "__main__":
                     loss.item() * xb.size(0)
                 )  # WARN: Need to do a running loss also with the growing iteration or not?
 
-            # Manual weight update
-            # with torch.no_grad():
-            #     for layer in model.modules():
-            #         if isinstance(layer, nn.Linear):
-            #             layer.weight += some_custom_update
             flag_first_batch_of_epoch = False
 
         epoch_train_loss = running_train / train_size

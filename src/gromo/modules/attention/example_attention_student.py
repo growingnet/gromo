@@ -10,6 +10,8 @@ from gromo.modules.attention.attention_modules import (
     AttentionDataset,
 )
 
+# TODO: Old file mostly obsolete, to refactor/delete a lot of stuff
+
 MAKE_PLOT = True  # Plot the loss or not
 FILEPATH_DATASET = (
     "src/gromo/modules/attention/attention_dataset.pt"  # Path to the dataset file
