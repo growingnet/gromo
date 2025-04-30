@@ -39,7 +39,7 @@ def my_svd_low_rank(
     return A, B
 
 
-def check_2Dtensor_shape(tensor: torch.Tensor, row_dim: int, col_dim: int) -> None:
+def assert_2Dtensor_shape(tensor: torch.Tensor, row_dim: int, col_dim: int) -> None:
     expected_rows = row_dim
     expected_cols = col_dim
     assert tensor.shape == (expected_rows, expected_cols), (

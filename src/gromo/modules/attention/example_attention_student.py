@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
 import os
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
 from gromo.utils.utils import global_device
 from gromo.modules.attention.attention_modules import (
     AttentionBaselineModule,
     AttentionGrowingModule,
+    AttentionDataset,
 )
 
 MAKE_PLOT = True  # Plot the loss or not
@@ -14,7 +15,7 @@ FILEPATH_DATASET = (
     "src/gromo/modules/attention/attention_dataset.pt"  # Path to the dataset file
 )
 
-### Hyperparameters ###
+# --- Hyperparameters
 torch.manual_seed(0)
 device = global_device()
 
@@ -25,11 +26,11 @@ d_k_grow = 2
 d_v = 8
 
 train_batch = 64
-num_epochs = 100
+num_epochs = 200
 lr = 1e-3
 test_ratio = 0.2
 
-# Creation of a dataset by a teacher network if it doesn't exist yet
+# --- Creation of a dataset by a teacher network if it doesn't exist yet
 if not os.path.exists(FILEPATH_DATASET):
     N_samples = 5000
     gen_batch = 128
@@ -40,12 +41,12 @@ if not os.path.exists(FILEPATH_DATASET):
     for p in teacher.parameters():
         p.requires_grad = False
 
-    ### Generate the dataset ###
+    # Generate the dataset
     all_X, all_Y = [], []
     with torch.no_grad():
         for _ in range(0, N_samples, gen_batch):
             Xb = torch.randn(gen_batch, d_s, d_e, device=device)
-            Yb = teacher(Xb)
+            Yb = teacher.forward(Xb)
             all_X.append(Xb.cpu())
             all_Y.append(Yb.cpu())
 
@@ -56,19 +57,7 @@ if not os.path.exists(FILEPATH_DATASET):
     print(f"Saved dataset with {X.size(0)} samples to {FILEPATH_DATASET}")
 
 
-### Get the dataset ###
-class AttentionDataset(Dataset):
-    def __init__(self, path=FILEPATH_DATASET):
-        data = torch.load(path)
-        self.X, self.Y = data["X"], data["Y"]
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx]
-
-
+# --- Get the dataset
 dataset = AttentionDataset(FILEPATH_DATASET)
 test_size = int(test_ratio * len(dataset))
 train_size = len(dataset) - test_size
@@ -77,10 +66,10 @@ train_ds, test_ds = random_split(dataset, [train_size, test_size])
 train_loader = DataLoader(train_ds, batch_size=train_batch, shuffle=True)
 test_loader = DataLoader(test_ds, batch_size=train_batch)
 
-### Get the models ###
+# --- Get the models
 model_baseline = AttentionBaselineModule(d_e, d_k_regular, d_v).to(device)
 model_growing = AttentionGrowingModule(
-    d_e, d_k_grow, d_v, use_bias=True, add_bias_before_pseudoinverse=True
+    d_e, d_k_grow, d_v, use_bias=True, add_bias_before_pseudoinverse_calc=True
 ).to(device)
 
 # TODO: (Non prio) Adam possible with the growing model or not?
@@ -91,7 +80,7 @@ loss_fn = nn.MSELoss()
 train_losses_baseline, test_losses_baseline = [], []
 train_losses_growing, test_losses_growing = [], []
 
-### Training loop ###
+# --- Training loop
 # For the regular model:
 for epoch in range(1, num_epochs + 1):
     # Train
@@ -100,7 +89,7 @@ for epoch in range(1, num_epochs + 1):
     for xb, yb in train_loader:
         xb, yb = xb.to(device), yb.to(device)
         optimizer_baseline.zero_grad()
-        y_pred = model_baseline(xb)
+        y_pred = model_baseline.forward(xb)
         loss = loss_fn(y_pred, yb)
         loss.backward()
         optimizer_baseline.step()
@@ -114,7 +103,7 @@ for epoch in range(1, num_epochs + 1):
     with torch.no_grad():
         for xb, yb in test_loader:
             xb, yb = xb.to(device), yb.to(device)
-            y_pred = model_baseline(xb)
+            y_pred = model_baseline.forward(xb)
             running_test += loss_fn(y_pred, yb).item() * xb.size(0)
     epoch_test_loss = running_test / test_size
     test_losses_baseline.append(epoch_test_loss)
@@ -128,7 +117,6 @@ for epoch in range(1, num_epochs + 1):
 
 # For the growing model:
 # TODO: d_k growing in size causes problems?
-# TODO: Make the training no growing iteration work
 
 # NOTE:
 # Pytorch gradient calculation works by machine batch size
@@ -151,9 +139,9 @@ growing_iteration = False
 #
 #         optimizer_growing.zero_grad()
 #         if growing_iteration:
-#             model_growing.update_weights(p=1)  # Get new W_Q, W_K
+#             model_growing.update_weights(p=1)  # Get new W_Q, W_K #TODO: change, implement
 #         else:
-#             y_pred = model_growing(xb)
+#             y_pred = model_growing.forward(xb)
 #             loss = loss_fn(y_pred, yb)
 #             loss.backward()
 #
@@ -177,7 +165,7 @@ growing_iteration = False
 #     with torch.no_grad():
 #         for xb, yb in test_loader:
 #             xb, yb = xb.to(device), yb.to(device)
-#             y_pred = model_growing(xb)
+#             y_pred = model_growing.forward(xb)
 #             running_test += loss_fn(y_pred, yb).item() * xb.size(0)
 #     epoch_test_loss = running_test / test_size
 #     test_losses_growing.append(epoch_test_loss)
@@ -189,7 +177,7 @@ growing_iteration = False
 #             f"Growing Test Loss: {epoch_test_loss:.6f}"
 #         )
 
-### Plotting ###
+# --- Plotting
 if MAKE_PLOT:
     plt.figure()
     plt.plot(range(1, num_epochs + 1), train_losses_baseline)
