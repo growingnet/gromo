@@ -74,7 +74,6 @@ model_growing = AttentionGrowingModule(
     d_e, d_k_grow, d_v, use_bias=True, add_bias_before_pseudoinverse_calc=True
 ).to(device)
 
-# TODO: (Non prio) Adam possible with the growing model or not?
 optimizer_baseline = torch.optim.SGD(model_baseline.parameters(), lr=lr)
 optimizer_growing = torch.optim.SGD(model_growing.parameters(), lr=lr)
 
@@ -118,18 +117,7 @@ for epoch in range(1, num_epochs + 1):
         )
 
 # For the growing model:
-# TODO: d_k growing in size causes problems?
 
-# NOTE:
-# Pytorch gradient calculation works by machine batch size
-# The growing mechanism works by statistical batch size
-# Strategy: For now, every start of epoch except for the first, add p=1 to d_k_grow (unless d_k_regular is reacher) during 1 mini-batch?
-# Problem: Make running loss calculation work with the growing iteration
-
-# NOTE: Problem: Be sure that the growing iteration does not mess up all the gradient calculations
-# Choice: For every batch except the growing one, use nn.Linear type
-# -> For the growing batch, need to find a way to update the matrices "inside" their nn.Linear type
-# As there is a `.zero_grad()` at the start of each new batch, updating manually the nn.Linear types and making them grow would not cause a problem? # WARN: Verify this
 
 growing_iteration = False
 # for epoch in range(1, num_epochs + 1):
@@ -141,7 +129,7 @@ growing_iteration = False
 #
 #         optimizer_growing.zero_grad()
 #         if growing_iteration:
-#             model_growing.update_weights(p=1)  # Get new W_Q, W_K #TODO: change, implement
+#             model_growing.update_weights(p=1)
 #         else:
 #             y_pred = model_growing.forward(xb)
 #             loss = loss_fn(y_pred, yb)
@@ -150,7 +138,7 @@ growing_iteration = False
 #             optimizer_growing.step()
 #             running_train += loss.item() * xb.size(
 #                 0
-#             )  # WARN: Need to do a running loss also with the growing iteration or not?
+#             )
 #
 #         # Manual weight update
 #         # with torch.no_grad():

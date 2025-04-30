@@ -558,15 +558,29 @@ if __name__ == "__main__":
                     )
                 )
             ):  # Growing iteration case
-                # Grow p=1 every first batch of every 10 epoch, except for the first epoch
+                # Grow p every first batch of every 10 epoch, except for the first epoch
+
+                # NOTE:
+                # Pytorch gradient calculation works by machine batch size
+                # The growing mechanism works by statistical batch size
+                # Strategy: For now, grow (d_k_new = d_k + p) at every first batch of
+                # every 10 epochs except for the first one (unless d_k_max is reached)
+
+                # NOTE: Problem: Be sure that the growing iteration does not mess up
+                # all the gradient calculations
+                # Choice: For every batch except the growing one, use nn.Linear type
+                # -> For the growing batch, need to find a way to update the matrices
+                # "inside" their nn.Linear type
+                # -> Implemented in the `update_WQ_WK()` method
 
                 y_pred = model_growing.forward(xb, pre_growing=True)  # Creates self.S
                 loss = loss_fn(y_pred, yb)
                 loss.backward()  # Creates self.S_grad
                 model_growing.grow_WQ_WK(xb, p=p, compute_reconstruction_error=True)
-                # print(f"rec_error: {model_growing.reconstruction_error}")
+                print(f"rec_error: {model_growing.reconstruction_error}")
                 model_growing.update_WQ_WK(optimizer=optimizer_growing, p=p)
-                # print(model_growing.W_Q)
+                print(model_growing.W_Q)
+                print("\n")
 
                 optimizer_growing.zero_grad()  # WARN: Useless?
 
