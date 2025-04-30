@@ -291,7 +291,7 @@ class AttentionGrowingModule(nn.Module):
             torch.cat((self.W_Q_temp, self.W_Q_new), dim=1), self.breve_W_Q
         ), (
             "Concatenation of W_Q_temp and W_Q_new does not match breve_W_Q"
-        )  # OPTIMIZE: Put the assertion in a test
+        )  # OPTIMIZE: Put the assertion in a test?
 
         self.W_K_temp = self.breve_W_K[:, : self.d_k]  # (d_e (+1), d_k)
         self.dW_K = self.W_K_temp - self.W_K  # (d_e (+1), d_k)
@@ -300,38 +300,33 @@ class AttentionGrowingModule(nn.Module):
             torch.cat((self.W_K_temp, self.W_K_new), dim=1), self.breve_W_K
         ), (
             "Concatenation of W_K_temp and W_K_new does not match breve_W_K"
-        )  # OPTIMIZE: Put the assertion in a test
+        )  # OPTIMIZE: Put the assertion in a test?
 
-    def compute_reconstruction_error(
-        self,
+    @staticmethod
+    def _compute_reconstruction_error(
+        A: torch.Tensor,
+        B: torch.Tensor,
+        Z: torch.Tensor,
         atol=1e-7,
         rtol=1e-6,
     ) -> None:
-        # TODO: Old implementation, to refactor
         """
         atol, rtol : float   tolerances for the optional consistency check
         rel_err : float   ‖A Bᵀ − Z‖_F / ‖Z‖_F
         """
-        assert self.breve_W_Q is not None, "breve_W_Q is None"
-        assert self.breve_W_K is not None, "breve_W_K is None"
-        assert self.Z_mean is not None, "Z_mean is None"
-
-        Z_hat = self.breve_W_Q @ self.breve_W_K.T
-        rel_err = torch.linalg.norm(Z_hat - self.Z_mean) / torch.linalg.norm(self.Z_mean)
+        Z_hat = A @ B.T
+        rel_err = torch.linalg.norm(Z_hat - Z) / torch.linalg.norm(Z)
         # optional consistency check (mainly to catch NaNs / infs)
         assert (
-            torch.allclose(Z_hat, self.Z_mean, atol=atol, rtol=rtol)
-            or self.breve_W_Q.shape[1] < self.Z_mean.shape[1]
+            torch.allclose(Z_hat, Z, atol=atol, rtol=rtol) or A.shape[1] < Z.shape[1]
         ), (
             "Exact reconstruction failed; either numerical issues "
             "or d_low is strictly less than rank(Z)."
         )
-        self.reconstruction_error = rel_err
+        return rel_err
 
     def grow_WQ_WK(
-        self,
-        X: torch.Tensor,
-        p: int = 1,
+        self, X: torch.Tensor, p: int = 1, compute_reconstruction_error: bool = False
     ) -> None:
         """
         Not fully implemented yet. The goal is to compute update the old W_Q and W_K matrices, of shape (d_e, d_k), into new growed matrices W_Q and W_K, of shape (d_e, d_k + p).
@@ -366,10 +361,6 @@ class AttentionGrowingModule(nn.Module):
         else:
             X_pinv = torch.linalg.pinv(X)  # (b, d_e, d_s)
 
-        # loss = Y.sum()
-        # loss.backward()
-        # S_grad = self.get_S_grad()  # (b, d_s, d_s)
-
         assert self.S is not None, (
             "S is not available. Make sure to call forward() first."
         )
@@ -381,9 +372,9 @@ class AttentionGrowingModule(nn.Module):
         Z = torch.matmul(X_pinv, Z)  # (b, d_e (+1), d_s)
         Z = torch.matmul(Z, X_pinv.transpose(-2, -1))  # (b, d_e (+1), d_e (+1))
         Z_mean: torch.Tensor = Z.mean(dim=0)  # (d_e (+1), d_e (+1))
-        self.Z_mean = Z_mean.detach()  # TODO: Really need to be a class variable?
+        Z_mean = Z_mean.detach()
 
-        breve_W_Q, breve_W_K = my_svd_low_rank(self.Z_mean, self.d_k + p)
+        breve_W_Q, breve_W_K = my_svd_low_rank(Z_mean, self.d_k + p)
 
         if self.use_bias:  # OPTIMIZE: Put asserts in a test instead of here?
             assert_2Dtensor_shape(breve_W_Q, self.d_e + 1, self.d_k + p)
@@ -392,20 +383,13 @@ class AttentionGrowingModule(nn.Module):
             assert_2Dtensor_shape(breve_W_Q, self.d_e, self.d_k + p)
             assert_2Dtensor_shape(breve_W_K, self.d_e, self.d_k + p)
 
+        if compute_reconstruction_error:
+            self.reconstruction_error = self._compute_reconstruction_error(
+                breve_W_Q, breve_W_K, Z_mean
+            )
+
         self.breve_W_Q = breve_W_Q
         self.breve_W_K = breve_W_K
-
-        # TODO: updated d_k size
-        # TODO: Give possibility to get split matrices, W_Q, dW_Q, W_Q_new
-
-    # def update_WQ_WK(self, X: torch.Tensor, p: int = 1):
-    #     self.compute_growed_weight_matrices(X, p)
-    #
-    #     # Weight change in the linear transformation
-    #     with torch.no_grad():
-    #         self.W_Q.weight.copy_(self.breve_W_Q)
-    #         self.W_K.weight.copy_(self.breve_W_K)
-    #     # TODO: After the update, the model needs to know the new d_k?
 
     @staticmethod
     def _tensor_to_linear(
@@ -579,9 +563,10 @@ if __name__ == "__main__":
                 y_pred = model_growing.forward(xb, pre_growing=True)  # Creates self.S
                 loss = loss_fn(y_pred, yb)
                 loss.backward()  # Creates self.S_grad
-                model_growing.grow_WQ_WK(xb, p=p)
+                model_growing.grow_WQ_WK(xb, p=p, compute_reconstruction_error=True)
+                # print(f"rec_error: {model_growing.reconstruction_error}")
                 model_growing.update_WQ_WK(optimizer=optimizer_growing, p=p)
-                print(model_growing.W_Q)
+                # print(model_growing.W_Q)
 
                 optimizer_growing.zero_grad()  # WARN: Useless?
 
