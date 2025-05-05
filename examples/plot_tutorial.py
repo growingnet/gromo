@@ -134,7 +134,7 @@ growing_net[1].bias.data = torch.zeros_like(growing_net[1].bias.data)
 ###############################################################################
 
 l2_err = evaluate_model(growing_net, data, loss_function)[0]
-print(f"Initial error: {l2_err:.2e}")
+print(f"Error: {l2_err:.2e}")
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 plt_model(growing_net, ax)
 
@@ -158,7 +158,7 @@ plt.legend()
 plt.show()
 
 l2_err = evaluate_model(growing_net, data, loss_function, aux_loss_function=None)[0]
-print(f"Initial error: {l2_err:.2e}")
+print(f"Error: {l2_err:.2e}")
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 plt_model(growing_net, ax)
 ###############################################################################
@@ -326,7 +326,7 @@ print(growing_net[1].__str__(verbose=2))
 #
 
 l2_err = evaluate_model(growing_net, data, loss_function)[0]
-print(f"Initial error: {l2_err:.2e}")
+print(f"New error: {l2_err:.2e}")
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 plt_model(growing_net, ax)
 
