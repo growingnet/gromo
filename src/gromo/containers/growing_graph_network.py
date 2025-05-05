@@ -18,10 +18,12 @@ class GrowingGraphNetwork(GrowingContainer):
 
     Parameters
     ----------
-    in_features : int, optional
-        size of input features, by default 5
-    out_features : int, optional
-        size of output dimension, by default 1
+    in_features : int
+        size of input features
+    out_features : int
+        size of output dimension
+    loss_fn : torch.nn.Module
+        loss function
     use_bias : bool, optional
         automatically use bias in the layers, by default True
     use_batch_norm : bool, optional
@@ -34,8 +36,9 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def __init__(
         self,
-        in_features: int = 5,
-        out_features: int = 1,
+        in_features: int,
+        out_features: int,
+        loss_fn: torch.nn.Module,
         neurons: int = 20,
         use_bias: bool = True,
         use_batch_norm: bool = False,
@@ -54,7 +57,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         self.global_step = 0
         self.global_epoch = 0
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.loss_fn = loss_fn
 
         self.reset_network()
 
