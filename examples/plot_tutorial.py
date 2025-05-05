@@ -110,8 +110,8 @@ print(growing_net)
 # ``LinearGrowingModule`` layer**, this allow to easily access the
 # intermediate results both before and after the activation function.
 #
-# Not also that the second layer is is linked to the first one by
-# ``previous_module=first_layer``. This allow to extend the input of the
+# Note also that the second layer is linked to the first one by
+# ``previous_module=first_layer``. This allows extending the input of the
 # second layer and let it grow with the first layer.
 #
 # 2. Use it like a normal model
