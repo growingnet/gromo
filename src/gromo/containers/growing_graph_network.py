@@ -608,7 +608,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weight of next_node's incoming edge
-                self.update_edge_weights(
+                bott_loss_history = self.update_edge_weights(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
@@ -629,7 +629,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weights of new edges
-                self.expand_node(
+                bott_loss_history = self.expand_node(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
@@ -647,6 +647,7 @@ class GrowingGraphNetwork(GrowingContainer):
             acc_val, loss_val = expansion.dag.evaluate(X_val, Y_val, loss_fn=self.loss_fn)
 
             # TODO: return all info instead of saving
+            expansion.metrics["loss_bott"] = bott_loss_history[-1]
             expansion.metrics["loss_train"] = loss_train
             expansion.metrics["loss_dev"] = loss_dev
             expansion.metrics["loss_val"] = loss_val
