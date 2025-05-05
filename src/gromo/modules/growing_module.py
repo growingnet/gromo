@@ -6,6 +6,7 @@ import torch
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tools import compute_optimal_added_parameters
 from gromo.utils.utils import get_correct_device
 
 
@@ -51,7 +52,7 @@ class MergeGrowingModule(torch.nn.Module):
             tensor_s_shape,
             update_function=self.compute_s_update,
             device=self.device,
-            name=f"S({name})",
+            name=f"S({self.name})",
         )
 
         self.previous_tensor_s: TensorStatistic | None = None
@@ -474,13 +475,13 @@ class GrowingModule(torch.nn.Module):
             tensor_s_shape,
             update_function=self.compute_s_update,
             device=self.device,
-            name=f"S({name})",
+            name=f"S({self.name})",
         )
         self.tensor_m = TensorStatistic(
             tensor_m_shape,
             update_function=self.compute_m_update,
             device=self.device,
-            name=f"M({name})",
+            name=f"M({self.name})",
         )
         # self.tensor_n = TensorStatistic(output_shape, update_function=self.compute_n_update)
 
@@ -511,13 +512,13 @@ class GrowingModule(torch.nn.Module):
             None,
             update_function=self.compute_m_prev_update,
             device=self.device,
-            name=f"M_prev({name})",
+            name=f"M_prev({self.name})",
         )
         self.cross_covariance = TensorStatistic(
             None,
             update_function=self.compute_cross_covariance_update,
             device=self.device,
-            name=f"C({name})",
+            name=f"C({self.name})",
         )
 
         self.s_growth_is_needed = s_growth_is_needed
@@ -1164,6 +1165,7 @@ class GrowingModule(torch.nn.Module):
         self,
         update: bool = True,
         dtype: torch.dtype = torch.float32,
+        force_pseudo_inverse: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]:
         """
         Compute the optimal delta for the layer using current S and M tensors.
@@ -1180,13 +1182,130 @@ class GrowingModule(torch.nn.Module):
             if True update the optimal delta layer attribute and the first order decrease
         dtype: torch.dtype
             dtype for S and M during the computation
+        force_pseudo_inverse: bool
+            if True, use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible
 
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]
             optimal delta for the weights, the biases if needed and the first order decrease
         """
-        raise NotImplementedError
+        tensor_s = self.tensor_s()
+        tensor_m = self.tensor_m()
+
+        saved_dtype = tensor_s.dtype
+        if tensor_s.dtype != dtype:
+            tensor_s = tensor_s.to(dtype=dtype)
+        if tensor_m.dtype != dtype:
+            tensor_m = tensor_m.to(dtype=dtype)
+
+        if not force_pseudo_inverse:
+            try:
+                self.delta_raw = torch.linalg.solve(tensor_s, tensor_m).t()
+            except torch.linalg.LinAlgError:
+                force_pseudo_inverse = True
+                # self.delta_raw = torch.linalg.lstsq(tensor_s, tensor_m).solution.t()
+                # do not use lstsq because it does not work with the GPU
+                warnings.warn(
+                    f"Using the pseudo-inverse for the computation of the optimal delta "
+                    f"for {self.name}."
+                )
+        if force_pseudo_inverse:
+            self.delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
+
+        assert self.delta_raw is not None, "self.delta_raw should be computed by now."
+        assert (
+            self.delta_raw.isnan().sum() == 0
+        ), f"The optimal delta should not contain NaN values for {self.name}."
+        self.parameter_update_decrease = torch.trace(tensor_m @ self.delta_raw)
+        if self.parameter_update_decrease < 0:
+            warnings.warn(
+                f"The parameter update decrease should be positive, "
+                f"but got {self.parameter_update_decrease=} for layer {self.name}."
+            )
+            if not force_pseudo_inverse:
+                warnings.warn(
+                    f"Trying to use the pseudo-inverse for {self.name} with torch.float64."
+                )
+                return self.compute_optimal_delta(
+                    update=update, dtype=torch.float64, force_pseudo_inverse=True
+                )
+            else:
+                warnings.warn(
+                    f"Failed to compute the optimal delta for {self.name}, set"
+                    f"delta to zero."
+                )
+                self.delta_raw = torch.zeros_like(self.delta_raw)
+        self.delta_raw = self.delta_raw.to(dtype=saved_dtype)
+
+        if self.use_bias:
+            delta_weight = self.delta_raw[:, :-1]
+            delta_bias = self.delta_raw[:, -1]
+        else:
+            delta_weight = self.delta_raw
+            delta_bias = None
+
+        delta_weight = delta_weight.reshape(*self.weight.shape)
+
+        if update:
+            self.optimal_delta_layer = self.layer_of_tensor(delta_weight, delta_bias)
+        return delta_weight, delta_bias, self.parameter_update_decrease
+
+    def _auxiliary_compute_alpha_omega(
+        self,
+        numerical_threshold: float = 1e-15,
+        statistical_threshold: float = 1e-3,
+        maximum_added_neurons: int | None = None,
+        dtype: torch.dtype = torch.float32,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Auxiliary function to compute the optimal added parameters (alpha, omega, k)
+
+        Parameters
+        ----------
+        numerical_threshold: float
+            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+        statistical_threshold: float
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+        maximum_added_neurons: int | None
+            maximum number of added neurons, if None all significant neurons are kept
+        dtype: torch.dtype
+            dtype for S and N during the computation
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+            optimal added weights alpha, omega and eigenvalues lambda
+        """
+        matrix_n = self.tensor_n
+        # It seems that sometimes the tensor N is not accessible.
+        # I have no idea why this occurs sometimes.
+
+        assert self.previous_module, (
+            f"No previous module for {self.name}."
+            "Therefore neuron addition is not possible."
+        )
+        matrix_s = self.tensor_s_growth()
+
+        saved_dtype = matrix_s.dtype
+        if matrix_n.dtype != dtype:
+            matrix_n = matrix_n.to(dtype=dtype)
+        if matrix_s.dtype != dtype:
+            matrix_s = matrix_s.to(dtype=dtype)
+        alpha, omega, eigenvalues_extension = compute_optimal_added_parameters(
+            matrix_s=matrix_s,
+            matrix_n=matrix_n,
+            numerical_threshold=numerical_threshold,
+            statistical_threshold=statistical_threshold,
+            maximum_added_neurons=maximum_added_neurons,
+        )
+
+        alpha = alpha.to(dtype=saved_dtype)
+        omega = omega.to(dtype=saved_dtype)
+        eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
+
+        return alpha, omega, eigenvalues_extension
 
     def compute_optimal_added_parameters(
         self,

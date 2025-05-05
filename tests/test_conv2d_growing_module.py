@@ -542,6 +542,7 @@ class TestConv2dGrowingModule(TorchTestCase):
                 )
                 self.assertShapeEqual(demo_couple[1].tensor_m_prev(), m_prev_shape_theory)
 
+                demo_couple[1].compute_optimal_delta()
                 alpha, alpha_b, omega, eigenvalues = demo_couple[
                     1
                 ].compute_optimal_added_parameters()

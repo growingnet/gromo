@@ -4,9 +4,11 @@ import torch
 
 from gromo.modules.growing_module import GrowingModule
 from gromo.utils.utils import global_device
+from tests.torch_unittest import TorchTestCase
+from tests.unittest_tools import unittest_parametrize
 
 
-class TestGrowingModule(TestCase):
+class TestGrowingModule(TorchTestCase):
     def setUp(self):
         torch.manual_seed(0)
         self.x = torch.randn(2, 3, device=global_device())
@@ -173,6 +175,35 @@ class TestGrowingModule(TestCase):
         with self.assertRaises(TypeError):
             l1.previous_module = True  # type: ignore
             l1.delete_update(include_previous=False)
+
+    def test_input(self, bias: bool = True):
+        self.model.store_input = False
+        self.model(self.x)
+
+        with self.assertRaises(ValueError):
+            _ = self.model.input
+
+        self.model.store_input = True
+        self.model(self.x)
+        self.assertAllClose(
+            self.model.input,
+            self.x,
+        )
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_input_extended(self, bias: bool = True):
+        self.model.use_bias = bias
+        self.model.store_input = True
+        self.model(self.x)
+
+        if bias:
+            with self.assertRaises(NotImplementedError):
+                _ = self.model.input_extended
+        else:
+            self.assertAllClose(
+                self.model.input_extended,
+                self.x,
+            )
 
 
 if __name__ == "__main__":

@@ -8,11 +8,7 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import (
-    compute_mask_tensor_t,
-    compute_optimal_added_parameters,
-    compute_output_shape_conv,
-)
+from gromo.utils.tools import compute_mask_tensor_t, compute_output_shape_conv
 from gromo.utils.utils import global_device
 
 
@@ -633,114 +629,6 @@ class Conv2dGrowingModule(GrowingModule):
                 )
 
     # Optimal update computation
-    def compute_optimal_delta(
-        self,
-        update: bool = True,
-        dtype: torch.dtype = torch.float32,
-        force_pseudo_inverse: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]:
-        """
-        Compute the optimal delta for the layer using current S and M tensors.
-
-        dW* = M S[-1]^-1 (if needed we use the pseudo-inverse)
-
-        Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
-        L(A + gamma * B * dW) = L(A) - gamma * d + o(gamma)
-        where d is the first order decrease and gamma the scaling factor.
-
-        Parameters
-        ----------
-        update: bool
-            if True update the optimal delta layer attribute
-        dtype: torch.dtype
-            dtype for S and M during the computation
-        force_pseudo_inverse: bool
-            whether to use the pseudo-inverse in any case
-
-        Returns
-        -------
-        tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]
-            optimal delta for the weights, the biases if needed and the first order decrease
-        """
-        tensor_s = self.tensor_s()
-        tensor_m = self.tensor_m()
-
-        saved_dtype = tensor_s.dtype
-        if tensor_s.dtype != dtype:
-            tensor_s = tensor_s.to(dtype=dtype)
-        if tensor_m.dtype != dtype:
-            tensor_m = tensor_m.to(dtype=dtype)
-
-        if not force_pseudo_inverse:
-            try:
-                self.delta_raw = torch.linalg.solve(tensor_s, tensor_m).t()
-            except torch.linalg.LinAlgError:
-                force_pseudo_inverse = True
-                # self.delta_raw = torch.linalg.lstsq(tensor_s, tensor_m).solution.t()
-                # do not use lstsq because it does not work with the GPU
-                warn(
-                    f"Using the pseudo-inverse for the computation of the optimal delta "
-                    f"for {self.name}."
-                )
-        if force_pseudo_inverse:
-            self.delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
-
-        assert self.delta_raw is not None, "self.delta_raw should be computed by now."
-        assert (
-            self.delta_raw.isnan().sum() == 0
-        ), f"The optimal delta should not contain NaN values for {self.name}."
-        self.parameter_update_decrease = torch.trace(tensor_m @ self.delta_raw)
-        if self.parameter_update_decrease < 0:
-            warn(
-                f"The parameter update decrease should be positive, "
-                f"but got {self.parameter_update_decrease=} for layer {self.name}."
-            )
-            if not force_pseudo_inverse:
-                warn(
-                    f"Trying to use the pseudo-inverse for {self.name} with torch.float64."
-                )
-                return self.compute_optimal_delta(
-                    update=update, dtype=torch.float64, force_pseudo_inverse=True
-                )
-            else:
-                warn(
-                    f"Failed to compute the optimal delta for {self.name}, set"
-                    f"delta to zero."
-                )
-                self.delta_raw = torch.zeros_like(self.delta_raw)
-        self.delta_raw = self.delta_raw.to(dtype=saved_dtype)
-
-        assert self.delta_raw.shape[0] == self.out_channels, (
-            f"delta_raw should have shape ({self.out_features=},...)"
-            f"but got {self.delta_raw.shape=}"
-        )
-        if self.use_bias:
-            assert self.delta_raw.shape[1] == (
-                self.in_channels * self.kernel_size[0] * self.kernel_size[1] + 1
-            ), (
-                f"delta_raw should have shape (..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + 1=}) "
-                f"but got (..., {self.delta_raw.shape[1]})"
-            )
-            delta_weight = self.delta_raw[:, :-1]
-            delta_bias = self.delta_raw[:, -1]
-        else:
-            assert self.delta_raw.shape[1] == (
-                self.in_channels * self.kernel_size[0] * self.kernel_size[1]
-            ), (
-                f"delta_raw should have shape (..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1]=})"
-                f"but got {self.delta_raw.shape=}"
-            )
-            delta_weight = self.delta_raw
-            delta_bias = None
-
-        delta_weight = delta_weight.reshape(
-            self.out_channels, self.in_channels, self.kernel_size[0], self.kernel_size[1]
-        )
-
-        if update:
-            self.optimal_delta_layer = self.layer_of_tensor(delta_weight, delta_bias)
-        return delta_weight, delta_bias, self.parameter_update_decrease
-
     def compute_optimal_added_parameters(
         self,
         numerical_threshold: float = 1e-15,
@@ -770,33 +658,13 @@ class Conv2dGrowingModule(GrowingModule):
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
             optimal added weights (alpha weights, alpha bias, omega) and eigenvalues lambda
         """
-        if self.delta_raw is None:
-            self.compute_optimal_delta()
-        try:
-            matrix_n = self.tensor_n
-        except AttributeError as e:
-            raise AttributeError(
-                "It seems that the tensor N is not accessible. I have no idea why this occurs sometimes."
-            ) from e
-
-        assert self.previous_module, (
-            f"No previous module for {self.name}."
-            "Therefore neuron addition is not possible."
-        )
-        matrix_s = self.tensor_s_growth()
-
-        saved_dtype = matrix_s.dtype
-        if matrix_n.dtype != dtype:
-            matrix_n = matrix_n.to(dtype=dtype)
-        if matrix_s.dtype != dtype:
-            matrix_s = matrix_s.to(dtype=dtype)
-        alpha, omega, self.eigenvalues_extension = compute_optimal_added_parameters(
-            matrix_s=matrix_s,
-            matrix_n=matrix_n,
+        alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
+            dtype=dtype,
         )
+
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1] == k, (
             f"alpha and omega should have the same number of added neurons {k}."
@@ -806,10 +674,6 @@ class Conv2dGrowingModule(GrowingModule):
             omega.shape[0]
             == self.out_channels * self.kernel_size[0] * self.kernel_size[1]
         ), f"omega should have the same number of output features as the layer."
-
-        alpha = alpha.to(dtype=saved_dtype)
-        omega = omega.to(dtype=saved_dtype)
-        self.eigenvalues_extension = self.eigenvalues_extension.to(dtype=saved_dtype)
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]

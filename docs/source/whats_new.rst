@@ -20,6 +20,8 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Code factorization of methods `compute_optimal_added_parameters` and `compute_optimal_delta` that are now abstracted in the `GrowingModule` class. (:gh:`87` by `Théo Rudkiewicz`_).
+- Stops automatically computing parameter update in `Conv2dGrowingModule.compute_optimal_added_parameters`to be consistent with `LinearGrowingModule.compute_optimal_added_parameters` (:gh:`87` by `Théo Rudkiewicz`_) .
 - Adds a generic GrowingContainer to simplify model management along with unit testing. Propagates modifications to models. (:gh:`77` by `Stéphane Rivaud`_)
 - Refactor and simplify repo structure (:gh:`72` and :gh:`73` by `Stella Douka`_)
 - Simplify global device handling (:gh:`72` by `Stella Douka`_)
