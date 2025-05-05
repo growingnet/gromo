@@ -535,6 +535,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         def simulate_loss(factor):
             for prev_edge_module in node_module.previous_modules:
+                prev_edge_module.scaling_factor = factor
                 prev_edge_module._scaling_factor_next_module[0] = factor
             if next_node_modules is not None:
                 for next_node_module in next_node_modules:
