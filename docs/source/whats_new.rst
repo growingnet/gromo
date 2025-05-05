@@ -43,6 +43,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Fix inconsistency with torch.empty not creating empty tensors (:gh:`78` by `Stella Douka`_)
 - Expansion of existing nodes not executed in GrowingDAG (:gh:`78` by `Stella Douka`_)
 - Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)
 - Fix the data type management for growth related computations. (:gh:`79` by `Stéphane Rivaud`_)
