@@ -17,7 +17,156 @@ from gromo.utils.utils import global_device
 
 
 class Conv2dMergeGrowingModule(MergeGrowingModule):
-    pass
+    def __init__(
+        self,
+        in_channels: int,
+        kernel_size: int | tuple[int, int],
+        post_merge_function: torch.nn.Module = torch.nn.Identity(),
+        previous_modules: list[GrowingModule | MergeGrowingModule] = None,
+        next_modules: list[GrowingModule | MergeGrowingModule] = None,
+        allow_growing: bool = False,
+        in_features: int = None,
+        device: torch.device | None = None,
+        name: str = None,
+    ) -> None:
+        self.use_bias = True
+        self.in_channels = in_channels
+        self.out_channels = in_channels
+        self._in_features = in_features
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size)
+        self.kernel_size = kernel_size
+        super(Conv2dMergeGrowingModule, self).__init__(
+            post_merge_function=post_merge_function,
+            previous_modules=previous_modules,
+            next_modules=next_modules,
+            allow_growing=allow_growing,
+            tensor_s_shape=(
+                in_channels * kernel_size[0] * kernel_size[1] + self.use_bias,
+                in_channels * kernel_size[0] * kernel_size[1] + self.use_bias,
+            ),
+            device=device,
+            name=name,
+        )
+
+    @property
+    def in_features(self) -> int:
+        if self._in_features is not None:
+            return self._in_features
+        if len(self.previous_modules) <= 0:
+            warn(
+                f"Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
+            )
+            return -1
+        return self.previous_modules[0].out_features
+
+    @property
+    def out_features(self) -> int:
+        return self.in_features
+
+    def set_next_modules(
+        self, next_modules: list[MergeGrowingModule | GrowingModule]
+    ) -> None:
+        if self.tensor_s is not None and self.tensor_s.samples > 0:
+            warn(
+                f"You are setting the next modules of {self.name} with a non-empty tensor S."
+            )
+        self.next_modules = next_modules if next_modules else []
+        for module in self.next_modules:
+            if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
+                assert module.in_channels == self.out_channels
+            elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
+                assert module.in_features == self.out_features
+            else:
+                raise NotImplementedError(
+                    "The next modules must be either Linear or Convolution."
+                )
+        # assert all(
+        #     modules.in_features == self.out_features for modules in self.next_modules
+        # ), f"The output features must match the input features of the next modules."
+
+    def set_previous_modules(
+        self, previous_modules: list[MergeGrowingModule | GrowingModule]
+    ) -> None:
+        if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."
+            )
+        if self.previous_tensor_m is not None and self.previous_tensor_m.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor M."
+            )
+
+        self.previous_modules = previous_modules if previous_modules else []
+        self.total_in_features = 0
+        for module in self.previous_modules:
+            if not isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
+                raise TypeError(
+                    "The previous modules must be Conv2dGrowingModule or Conv2dMergeGrowingModule."
+                )
+            # if module.out_features != self.in_features:
+            #     raise ValueError(
+            #         "The input features must match the output features of the previous modules."
+            #     )
+            if module.out_channels != self.in_channels:
+                raise ValueError(
+                    "The input channels must match the output channels of the previous modules."
+                )
+            self.total_in_features += module.in_features
+            # self.total_in_features += module.use_bias
+        if self.total_in_features > 0:
+            self.previous_tensor_s = TensorStatistic(
+                (
+                    self.total_in_features,
+                    self.total_in_features,
+                ),
+                device=self.device,
+                name=f"S[-1]({self.name})",
+                update_function=self.compute_previous_s_update,
+            )
+        else:
+            self.previous_tensor_s = None
+
+        if self.total_in_features > 0:
+            self.previous_tensor_m = TensorStatistic(
+                (self.total_in_features, self.in_features),
+                device=self.device,
+                name=f"M[-1]({self.name})",
+                update_function=self.compute_previous_m_update,
+            )
+        else:
+            self.previous_tensor_m = None
+
+    def construct_full_activity(self) -> torch.Tensor:
+        assert self.previous_modules, f"No previous modules for {self.name}."
+        full_activity = torch.ones(
+            (self.previous_modules[0].input.shape[0], self.total_in_features),
+            device=self.device,
+        )
+        current_index = 0
+        for module in self.previous_modules:
+            if module.use_bias:
+                full_activity[:, current_index : current_index + module.in_features] = (
+                    module.unfolded_extended_input
+                )
+                current_index += module.in_features + 1
+            else:
+                full_activity[:, current_index : current_index + module.in_features] = (
+                    module.unfolded_extended_input
+                )
+                current_index += module.in_features
+        return full_activity
+
+    def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+        full_activity = self.construct_full_activity()
+        return (
+            torch.einsum(
+                "iam, ibm -> ab",
+                full_activity,
+                full_activity,
+            ),
+            full_activity.shape[0],
+        )
 
 
 class Conv2dGrowingModule(GrowingModule):
@@ -69,7 +218,6 @@ class Conv2dGrowingModule(GrowingModule):
         name: str | None = None,
         s_growth_is_needed: bool = False,
     ) -> None:
-        device = device if device is not None else global_device()
         self.in_channels = in_channels
         self.out_channels = out_channels
         if isinstance(kernel_size, int):
@@ -119,6 +267,35 @@ class Conv2dGrowingModule(GrowingModule):
     @padding.setter
     def padding(self, value):
         self.layer.padding = value
+
+    @property
+    def stride(self) -> tuple[int, int]:
+        return self.layer.stride
+
+    def __out_dimention(self, dim: int) -> int:
+        return (
+            int(
+                (self.input_size[dim] - self.kernel_size[dim] + 2 * self.padding[dim])
+                / self.stride[dim]
+            )
+            + 1
+        )
+
+    @property
+    def out_width(self) -> int:
+        return self.__out_dimention(0)
+
+    @property
+    def out_height(self) -> int:
+        return self.__out_dimention(1)
+
+    @property
+    def in_features(self) -> int:
+        return self.in_channels * self.input_size[0] * self.input_size[1] + self.use_bias
+
+    @property
+    def out_features(self) -> int:
+        return self.out_channels * self.out_width * self.out_height
 
     @property
     def unfolded_extended_input(self) -> torch.Tensor:
