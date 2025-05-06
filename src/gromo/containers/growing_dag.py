@@ -834,9 +834,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         if verbose:
             print("\nExtended Forward DAG...")
         x = self.flatten(x)
-        output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {
-            self.root: (x, torch.empty(x.shape[0], 0))
-        }
+        output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, None)}
         for node in nx.topological_sort(self):
             if verbose:
                 print(f"{node=}")
@@ -846,11 +844,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     print("\t-->", module.name, module)
                 module_input = output[previous_node]
                 activity, activity_ext = module.extended_forward(*module_input)
-                activity_ext = (
-                    activity_ext
-                    if activity_ext is not None
-                    else torch.empty(x.shape[0], module.out_features, device=self.device)
-                )
+                # activity_ext = (
+                #     activity_ext
+                #     if activity_ext is not None
+                #     else torch.empty(0, x.shape[0], module.out_features, device=self.device)
+                # )
 
                 assert activity.shape[1] == self.nodes[node]["size"]
 
@@ -1135,3 +1133,12 @@ class Expansion:
             del self.dag
             del self.growth_history
             del self.metrics
+
+    def __repr__(self) -> str:
+        if self.type == "new edge":
+            return f"[Expansion]: New edge from {self.previous_node} to {self.next_node}"
+        elif self.type == "new node":
+            return f"[Expansion]: New node {self.expanding_node} from {self.previous_node} to {self.next_node}"
+        elif self.type == "expanded node":
+            return f"[Expansion]: Expanding node {self.expanding_node}"
+        return "[Expansion]: NotImplemented"
