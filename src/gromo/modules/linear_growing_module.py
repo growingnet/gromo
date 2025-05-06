@@ -18,7 +18,6 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         device: torch.device | None = None,
         name: str = None,
     ) -> None:
-        device = device if device is not None else global_device()
         self.use_bias = True
         self.total_in_features: int = -1
         self.in_features = in_features
@@ -326,7 +325,6 @@ class LinearGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        device = device if device is not None else global_device()
         super(LinearGrowingModule, self).__init__(
             layer=torch.nn.Linear(
                 in_features, out_features, bias=use_bias, device=device
