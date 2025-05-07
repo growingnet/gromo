@@ -44,7 +44,11 @@ def indicator_batch(
 
 class TorchTestCase(TestCase):
     def assertShapeEqual(
-        self, t: torch.Tensor, shape: tuple[int, ...], message: str = ""
+        self,
+        t: torch.Tensor,
+        shape: tuple[int | None, ...],
+        message: str = "",
+        msg: str = "",
     ):
         """
         Check the shape of a torch tensor is equal to the expected shape
@@ -57,7 +61,11 @@ class TorchTestCase(TestCase):
             expected shape, if a dimension is not tested set it to -1
         message: str
             message to display if the test fails
+        msg: str
+            alias for message (if message is not used)
         """
+        if message == "":
+            message = msg
         self.assertIsInstance(t, torch.Tensor)
         self.assertEqual(
             t.dim(),
@@ -65,7 +73,7 @@ class TorchTestCase(TestCase):
             f"Error: {t.dim()=} should be {len(shape)=}\n" f"{message}",
         )
         for i, s in enumerate(shape):
-            if s >= 0:
+            if s is not None and s >= 0:
                 self.assertEqual(
                     t.size(i),
                     s,
@@ -80,6 +88,7 @@ class TorchTestCase(TestCase):
         atol: float = 1e-8,
         rtol: float = 1e-5,
         message: str = "",
+        msg: str = "",
     ):
         """
         Check that two torch tensors are close.
@@ -96,7 +105,11 @@ class TorchTestCase(TestCase):
               relative tolerance
         message: str
               message to display if the test fails
+        msg: str
+            alias for message (if message is not used)
         """
+        if message == "":
+            message = msg
         self.assertIsInstance(a, torch.Tensor)
         self.assertIsInstance(b, torch.Tensor)
         self.assertEqual(
