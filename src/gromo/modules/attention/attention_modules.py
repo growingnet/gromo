@@ -470,6 +470,7 @@ class AttentionGrowingModule(nn.Module):
         # --- Refresh the optimizer so it sees the new parameters
         # Rebuild the optimizer with identical hyper-params
         # TODO: Check if this is right
+        # TODO: Reset momentum to 0, reset optimizer after growing
         if optimizer is not None:
             # cls = type(optimizer) # Saves the class of the optimizer
 
