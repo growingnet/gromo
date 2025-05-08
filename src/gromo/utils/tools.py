@@ -229,3 +229,67 @@ def compute_mask_tensor_t(
             if t_info[k, lc] > 0:
                 tensor_t[lc, k, t_info[k, lc] - 1] = 1
     return tensor_t
+
+
+def apply_border_effect_on_unfolded(
+    unfolded_tensor: torch.Tensor,
+    original_size: tuple[int, int],
+    border_effect_conv: torch.nn.Conv2d,
+) -> torch.Tensor:
+    """
+    Simulate the effect of a 1x1 convolution on the size of an unfolded tensor.
+    Should satisfy that for a convolution C1 and a convolution C2,
+    if B is the output of C1 of shape (n, C, H, W) we get
+    as unfolded tensor the unfolded input of C1 of shape
+    (n, C * C1.kernel_size[0] * C1.kernel_size[1], H * W).
+    Then B[+1] is the output of C2 of shape (n, C[+1], H[+1], W[+1])
+    the output of this function (noted F) should be of shape
+    (n, C[+1] * C2.kernel_size[0] * C2.kernel_size[1], H[+1] * W[+1])
+    such that if C2 has only 1x1 centered non-zero kernel
+    C2 o C1(F) should be equal to C1 o C2(B[+1]).
+
+    Parameters
+    ----------
+    unfolded_tensor: torch.Tensor
+        unfolded tensor to be modified
+    original_size: tuple[int, int]
+        original size of the tensor before unfolding
+    border_effect_conv: torch.Conv2d
+        convolutional layer to be applied on the unfolded tensor
+
+    Returns
+    -------
+    torch.Tensor
+        modified unfolded tensor
+    """
+    if not isinstance(unfolded_tensor, torch.Tensor):
+        raise TypeError("Input 'unfolded_tensor' must be a torch.Tensor")
+
+    unfolded_tensor = unfolded_tensor.reshape(
+        unfolded_tensor.shape[0],
+        unfolded_tensor.shape[1],
+        original_size[0],
+        original_size[1],
+    )
+
+    channels = unfolded_tensor.shape[1]
+    identity_conv = torch.nn.Conv2d(
+        channels,
+        channels,
+        kernel_size=border_effect_conv.kernel_size,
+        padding=border_effect_conv.padding,
+        stride=border_effect_conv.stride,
+        dilation=border_effect_conv.dilation,
+        bias=False,
+    )
+    identity_conv.weight.data.fill_(0)
+    mid = (border_effect_conv.kernel_size[0] // 2, border_effect_conv.kernel_size[1] // 2)
+    identity_conv.weight.data[:, :, mid[0] : mid[0] + 1, mid[1] : mid[1] + 1] = (
+        torch.eye(channels).unsqueeze(-1).unsqueeze(-1)
+    )
+    identity_conv.weight.data = identity_conv.weight.data.to(unfolded_tensor.device)
+
+    unfolded_tensor = identity_conv(unfolded_tensor)
+    unfolded_tensor = unfolded_tensor.flatten(start_dim=2)
+
+    return unfolded_tensor
