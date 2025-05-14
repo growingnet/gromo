@@ -504,14 +504,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             node_module.previous_tensor_m.update()
 
             # Compute optimal possible updates
-            deltas = node_module.compute_optimal_delta(update=True, return_deltas=True)
+            node_module.compute_optimal_delta(update=True, return_deltas=False)
 
             # Compute expressivity bottleneck
             bottleneck[node_module._name] = (
                 node_module.projected_v_goal().clone().detach()
             )  # (batch_size, out_features)
 
-            del deltas
             # TODO: separate to functions that add the hooks and remove them
 
             if constant_module:
