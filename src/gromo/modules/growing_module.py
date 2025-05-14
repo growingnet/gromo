@@ -736,7 +736,7 @@ class GrowingModule(torch.nn.Module):
                 )
             pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
         else:
-            if x_ext is not None:
+            if x_ext is not None:  # TODO: and is not empty
                 warnings.warn(
                     f"x_ext must be None got {x_ext} for {self.name}. As the input is not extended, no extension is needed.",
                     UserWarning,
