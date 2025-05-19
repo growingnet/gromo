@@ -50,13 +50,16 @@ if __name__ == "__main__":
     device = global_device()
     print(f"Device:{device}")
 
+    # Hyperparams dataset
     DATA_PATH = "src/gromo/modules/attention/transf_teacher.pt"
     test_ratio = 0.2
     train_batch = 64
-    lr = 1e-3
+
+    # Hyperparams training
     num_epochs = 1000
-    gammas = list(np.linspace(0, 10000, 10))
-    # gammas = range(-10000, 10000, 1000)
+    log_every_x_epochs = num_epochs // 10
+    lr = 1e-3
+    gammas = [round(g, 2) for g in np.linspace(0, 100000, 8)]
 
     config = ModelConfig(
         d_s=4,
@@ -79,61 +82,78 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_ds, batch_size=train_batch)
 
     model = Block(config).to(device)
-
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-
     loss_fn = nn.MSELoss()
+
     train_losses = []
-    gammas_test_losses = {}
-    for gamma in gammas:
-        gammas_test_losses[gamma] = []
+    gammas_train_losses = {gamma: [] for gamma in gammas}
 
     for epoch in range(1, num_epochs + 1):
         model.train()
         running_loss = 0.0
+        running_gammas_train_losses = {gamma: 0.0 for gamma in gammas}
         for xb, yb in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
             y_pred = model(xb)
             loss = loss_fn(y_pred, yb)
-            loss.backward()
-            optimizer.step()
+            loss.backward()  # Get S_grad
+
+            # Eval train Loss(S + S_grad), on the training set
+            # Eval done here because otherwise S_grad would be associated to the wrong data batch
+            with torch.no_grad():
+                for gamma in gammas:
+                    assert gamma is not None
+
+                    y_pred = model.forward(xb, gamma=gamma)  # Forward with (S + S_grad)
+                    running_gammas_train_losses[gamma] += loss_fn(
+                        y_pred, yb
+                    ).item() * xb.size(0)
+
+            optimizer.step()  # Weight update
             running_loss += loss.item() * xb.size(0)
+
+        # For each gamma, accumulate the running batch loss into an epoch loss
+        for gamma in gammas:
+            running_gammas_train_losses[gamma] /= train_size
+            gammas_train_losses[gamma].append(running_gammas_train_losses[gamma])
+
         epoch_train_loss = running_loss / train_size
         train_losses.append(epoch_train_loss)
 
-        model.eval()
+        # WARN: Old code, wrong because the S_grad is not the one associated with the data batch
+        # model.eval()
+        # for gamma in gammas:
+        #     assert gamma is not None
+        #     running_test = 0.0
+        #     with torch.no_grad():
+        #         for xb, yb in test_loader:
+        #             xb, yb = xb.to(device), yb.to(device)
+        #             y_pred = model.forward(xb, gamma=gamma)
+        #             running_test += loss_fn(y_pred, yb).item() * xb.size(0)
+        #     epoch_test_loss = running_test / test_size
+        #     gammas_test_losses[gamma].append(epoch_test_loss)
 
-        for gamma in gammas:
-            assert gamma is not None
-            running_test = 0.0
-            with torch.no_grad():
-                for xb, yb in test_loader:
-                    xb, yb = xb.to(device), yb.to(device)
-                    y_pred = model.forward(xb, gamma=gamma)
-                    running_test += loss_fn(y_pred, yb).item() * xb.size(0)
-
-            epoch_test_loss = running_test / test_size
-            gammas_test_losses[gamma].append(epoch_test_loss)
-
-        if (epoch == 1) or (epoch % 100 == 0):
+        if (epoch == 1) or (epoch % log_every_x_epochs == 0):
             print(
-                f"Epoch {epoch}/{num_epochs} — Train Loss: {epoch_train_loss:.6f}, "
+                f"Epoch {epoch}/{num_epochs} — Train Loss: \t{epoch_train_loss:.6f}, "
                 # f"Baseline Test Loss: {epoch_test_loss:.6f}"
             )
             for gamma in gammas:
-                print(f"Test Loss (gamma={gamma}): {gammas_test_losses[gamma][-1]:.6f}")
+                print(
+                    f"Train Loss (gamma={gamma:.2f}): \t{gammas_train_losses[gamma][-1]:.6f}"
+                )
 
     if True:
         plt.figure()
         plt.plot(range(1, num_epochs + 1), train_losses)
         legend = ["Train"]
         for gamma in gammas:
-            plt.plot(range(1, num_epochs + 1), gammas_test_losses[gamma])
+            plt.plot(range(1, num_epochs + 1), gammas_train_losses[gamma])
             legend.append("gamma=" + str(gamma))
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.yscale("log")
         plt.legend(legend)
-        plt.title("Training vs. Testing Loss")
+        plt.title("Training loss")
         plt.show()

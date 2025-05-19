@@ -50,7 +50,7 @@ class SelfAttentionBaseline(nn.Module):
 
         if gamma is not None:
             assert self.S_grad is not None
-            S += gamma * self.S_grad
+            S -= gamma * self.S_grad
 
         A = F.softmax(S, dim=-1)  # Apply softmax to get attention weights
         H = A @ V
