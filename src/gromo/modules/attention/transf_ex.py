@@ -56,10 +56,10 @@ if __name__ == "__main__":
     train_batch = 64
 
     # Hyperparams training
-    num_epochs = 1000
+    num_epochs = 10
     log_every_x_epochs = num_epochs // 10
     lr = 1e-3
-    gammas = [round(g, 2) for g in np.linspace(0, 100000, 8)]
+    gammas = [round(g, 2) for g in np.linspace(0, 32000, 16 + 1)]
 
     config = ModelConfig(
         d_s=4,
@@ -69,7 +69,7 @@ if __name__ == "__main__":
         bias=False,
     )
 
-    if not os.path.exists(DATA_PATH):
+    if not os.path.exists(DATA_PATH) or True:
         generate_teacher_dataset(config, DATA_PATH, device)
     assert os.path.exists(DATA_PATH), f"Dataset not found at {DATA_PATH}."
 
@@ -146,14 +146,26 @@ if __name__ == "__main__":
 
     if True:
         plt.figure()
-        plt.plot(range(1, num_epochs + 1), train_losses)
-        legend = ["Train"]
-        for gamma in gammas:
-            plt.plot(range(1, num_epochs + 1), gammas_train_losses[gamma])
-            legend.append("gamma=" + str(gamma))
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
+        legend = []
+        for epoch in range(1, num_epochs + 1):
+            if (epoch == 1) or (epoch % log_every_x_epochs == 0):
+                plt.plot(
+                    gammas, [gammas_train_losses[gamma][epoch - 1] for gamma in gammas]
+                )
+                legend.append(f"Epoch {epoch}")
         plt.yscale("log")
+        plt.xlabel("Gamma")
+        plt.ylabel("Loss")
+        plt.title("Train Loss (gamma)")
         plt.legend(legend)
-        plt.title("Training loss")
+        # plt.plot(range(1, num_epochs + 1), train_losses)
+        # legend = ["Train"]
+        # for gamma in gammas:
+        #     plt.plot(range(1, num_epochs + 1), gammas_train_losses[gamma])
+        #     legend.append("gamma=" + str(gamma))
+        # plt.xlabel("Epoch")
+        # plt.ylabel("Loss")
+        # plt.yscale("log")
+        # plt.legend(legend)
+        # plt.title("Training loss")
         plt.show()
