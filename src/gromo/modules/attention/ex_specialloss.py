@@ -1,3 +1,5 @@
+"""Test Loss(S - gamma * grad_S) instead of Loss(S)"""
+
 import os
 import matplotlib.pyplot as plt
 import numpy as np
