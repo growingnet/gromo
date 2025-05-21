@@ -1,4 +1,5 @@
 import torch
+from torch.utils.data import Dataset
 
 
 # TODO: Explain why custom svd function is needed
@@ -47,3 +48,40 @@ def assert_2Dtensor_shape(tensor: torch.Tensor, row_dim: int, col_dim: int) -> N
         f"Tensor shape mismatch: expected ({expected_rows}, {expected_cols}), "
         f"got {tensor.shape}"
     )
+
+
+def generate_teacher_dataset(
+    teacher_model, cfg, path, device, N_samples=5000, gen_batch=128
+):
+    # Create and freeze the teacher model
+    teacher = teacher_model(cfg).to(device)
+    teacher.eval()
+    for z in teacher.parameters():
+        z.requires_grad = False
+
+    # Generate the dataset
+    all_X, all_Y = [], []
+    with torch.no_grad():
+        for _ in range(0, N_samples, gen_batch):
+            Xb = torch.randn(gen_batch, cfg.d_s, cfg.d_e, device=device)
+            Yb = teacher.forward(Xb)
+            all_X.append(Xb.cpu())
+            all_Y.append(Yb.cpu())
+
+    X = torch.cat(all_X, dim=0)
+    Y = torch.cat(all_Y, dim=0)
+    torch.save({"X": X, "Y": Y}, path)
+
+    print(f"Saved dataset with {X.size(0)} samples to {path}")
+
+
+class AttentionDataset(Dataset):
+    def __init__(self, path):
+        data = torch.load(path)
+        self.X, self.Y = data["X"], data["Y"]
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.Y[idx]

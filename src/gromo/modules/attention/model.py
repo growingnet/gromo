@@ -13,6 +13,7 @@ class ModelConfig:
     d_k: int = 8
     d_v: int = 8
     bias: bool = False
+    assert bias is False, "The growing algorithm is not implemented with bias"
 
 
 class SelfAttentionBaseline(nn.Module):
