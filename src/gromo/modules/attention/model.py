@@ -170,16 +170,22 @@ class Block(nn.Module):
         self.attn.W_Q = WQ_layer
         self.attn.W_K = WK_layer
 
-    def update_WQ_WK(self, cfg, lbd: float, dif: bool = False, verbose: bool = False):
+    def update_WQ_WK(
+        self,
+        cfg,
+        lbd: float,
+        choice_P_stat: tuple,
+        dif: bool = False,
+        verbose: bool = False,
+    ):
         """
         Update the linear layers W_Q and W_K.
         The update depends on the saved WQt and WKt, lbd, and the statistic P.
 
         dif: If True, find dWQ, dWK = SVD(-lbd * P); instead of finding directly WQ, WK
         """
-        assert isinstance(self.P_stat, dict)
-        # TODO: possibility for other P_stat of the dict
-        temp_P = self.P_stat[("small_f", "out_e")]
+        assert isinstance(self.P_stat[choice_P_stat], torch.Tensor)
+        temp_P = self.P_stat[choice_P_stat]
 
         new_WQ = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
         new_WK = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
