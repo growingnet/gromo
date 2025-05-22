@@ -128,25 +128,58 @@ class Block(nn.Module):
         ) / torch.linalg.matrix_norm(self.P_leo, ord=2, dim=(-2, -1))
         return fro, op
 
-    def update_WQ_WK(self, cfg):
-        """Update the weights of W_Q and W_K using the natural gradient"""
-        assert self.P_leo is not None
-        self.WQ_copy = self.attn.W_Q.weight.clone().T
-        self.WK_copy = self.attn.W_K.weight.clone().T
+    def save_WQt_WKt(self):
+        # Notation (out,in) -> (in,out)
+        self.WQt = self.attn.W_Q.weight.clone().T
+        self.WKt = self.attn.W_K.weight.clone().T
 
-        lbd = 10000000  # TODO: Get this with line search
-        WQ_new, WK_new = my_svd_low_rank(
-            self.WQ_copy @ self.WK_copy.T - lbd * self.P_leo, cfg.d_k
-        )
-        WQ_new = WQ_new.T
-        WK_new = WK_new.T
+    def reset_WQt_WKt(self, cfg):
+        """
+        Restore the linear layers W_Q and W_K using the saved WQt and WKt.
+        """
+        WQ_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
+        WK_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
+        with torch.no_grad():
+            WQ_layer.weight.copy_(self.WQt.T)
+            WK_layer.weight.copy_(self.WKt.T)
+        self.attn.W_Q = WQ_layer
+        self.attn.W_K = WK_layer
+
+    def update_WQ_WK(self, cfg, lbd: float, dif: bool = False, verbose: bool = False):
+        """
+        Update the linear layers W_Q and W_K.
+        The update depends on the saved WQt and WKt, lbd, and the statistic P.
+
+        dif: If True, find dWQ, dWK = SVD(-lbd * P); instead of finding directly WQ, WK
+        """
+        assert self.P_leo is not None
 
         new_WQ = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
         new_WK = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
 
-        with torch.no_grad():
-            new_WQ.weight.copy_(WQ_new)
-            new_WK.weight.copy_(WK_new)
+        if not dif:
+            WQtplus1, WKtplus1 = my_svd_low_rank(
+                self.WQt @ self.WKt.T - lbd * self.P_leo, cfg.d_k
+            )
 
-        self.W_Q = new_WQ
-        self.W_K = new_WK
+            # Notation (in, out) -> (out, in)
+            WQtplus1 = WQtplus1.T
+            WKtplus1 = WKtplus1.T
+        else:
+            dWQ, dWK = my_svd_low_rank(-lbd * self.P_leo, cfg.d_k)
+
+            # Notation (in, out) -> (out, in)
+            WQtplus1 = (self.WQt + dWQ).T
+            WKtplus1 = (self.WKt + dWK).T
+
+        with torch.no_grad():
+            new_WQ.weight.copy_(WQtplus1)
+            new_WK.weight.copy_(WKtplus1)
+
+        if verbose:
+            print(
+                f"Norm ratio WQ new/old: {torch.linalg.matrix_norm(new_WQ.weight, ord='fro') / torch.linalg.matrix_norm(self.attn.W_Q.weight, ord='fro')}"
+            )
+
+        self.attn.W_Q = new_WQ
+        self.attn.W_K = new_WK
