@@ -72,7 +72,9 @@ for epoch in range(1, num_epochs + 1):
             for gamma in gammas:
                 assert gamma is not None
 
-                y_pred = model.forward(xb, gamma=gamma)  # Forward with (S + S_grad)
+                y_pred = model.forward(
+                    xb, scaling_test=gamma
+                )  # Forward with (S + S_grad)
                 running_gammas_train_losses[gamma] += loss_fn(
                     y_pred, yb
                 ).item() * xb.size(0)
