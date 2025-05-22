@@ -57,8 +57,7 @@ lbds_epoch_losses_dif = []
 for epoch in range(1, num_epochs + 1):
     model.train()
     running_loss = 0.0
-    fro_mean_outside, op_mean_outside = 0.0, 0.0
-    fro_mean_inside, op_mean_inside = 0.0, 0.0
+    running_ratio_norm_inside, running_ratio_norm_outside = 0.0, 0.0
     running_lbds_train_losses = {lbd: 0.0 for lbd in lbds}
     running_lbds_train_losses_dif = {lbd: 0.0 for lbd in lbds}
 
@@ -68,21 +67,17 @@ for epoch in range(1, num_epochs + 1):
         y_pred = model.forward(xb)  # Retain the attention block input
         loss = loss_fn(y_pred, yb)
         loss.backward()  # Retain S_grad
+        model.freeze_input_and_grad()  # Freeze the input and gradient of S_grad
 
         if epoch % 2 == 0:
             with torch.no_grad():
-                model.compute_statistics(outside_esp=False)
-                fro_inside, op_inside = model.get_P_ratios()
-                fro_mean_inside += fro_inside.item() * xb.size(0)
-                op_mean_inside += op_inside.item() * xb.size(0)
-
-                model.compute_statistics(outside_esp=True)
-                fro_outside, op_outside = model.get_P_ratios()
-                fro_mean_outside += fro_outside.item() * xb.size(0)
-                op_mean_outside += op_outside.item() * xb.size(0)
+                model.compute_statistics()
+                temp_ratio_norm_inside, temp_ratio_norm_outside = model.get_P_ratios()
+                running_ratio_norm_inside += temp_ratio_norm_inside.item() * xb.size(0)
+                running_ratio_norm_outside += temp_ratio_norm_outside.item() * xb.size(0)
 
                 # lbd search
-                model.save_WQt_WKt()
+                model.freeze_WQt_WKt()
                 for lbd in lbds:
                     model.update_WQ_WK(config, lbd=lbd)
                     y_pred_search = model.forward(xb)
@@ -93,7 +88,7 @@ for epoch in range(1, num_epochs + 1):
                     y_pred_search = model.forward(xb)
                     loss_search = loss_fn(y_pred_search, yb)
                     running_lbds_train_losses_dif[lbd] += loss_search.item() * xb.size(0)
-                model.reset_WQt_WKt(config)
+                model.reset_layers_WQt_WKt(config)
 
         else:
             optimizer.step()
@@ -106,13 +101,11 @@ for epoch in range(1, num_epochs + 1):
         print(f"lbd: {lbd}, Loss: {running_lbds_train_losses[lbd]}")
 
     epoch_loss = running_loss / train_size
-    epoch_fro_outside = fro_mean_outside / train_size
-    epoch_op_outside = op_mean_outside / train_size
-    epoch_fro_inside = fro_mean_inside / train_size
-    epoch_op_inside = op_mean_inside / train_size
+    epoch_ratio_norm_inside = running_ratio_norm_inside / train_size
+    epoch_ratio_norm_outside = running_ratio_norm_outside / train_size
     print(f"Epoch {epoch}/{num_epochs}, Loss: {epoch_loss}")
-    print(f"Outside Fro: \t{epoch_fro_outside:.4f}, Op: \t{epoch_op_outside:.4f}")
-    print(f"Inside Fro: \t{epoch_fro_inside:.4f}, Op: \t{epoch_op_inside:.4f}")
+    print(f"Ratio Norm Inside: \t{epoch_ratio_norm_inside:.4f}")
+    print(f"Ratio Norm Outside: \t{epoch_ratio_norm_outside:.4f}")
     train_losses.append(epoch_loss)
     lbds_epoch_losses.append(running_lbds_train_losses)
     lbds_epoch_losses_dif.append(running_lbds_train_losses_dif)

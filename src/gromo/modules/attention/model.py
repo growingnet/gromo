@@ -92,56 +92,81 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln2(x))
         return x
 
-    def compute_statistics(self, outside_esp: bool):
+    def freeze_input_and_grad(self):
         assert self.attn.S_grad is not None
-        x = self.input_attention_block  # (b,s,e)
+        self.frozen_x = self.input_attention_block.clone()
+        self.frozen_S_grad = self.attn.S_grad.clone()
+
+    def compute_statistics(self):
+        """
+        Compute the statistics used for the natural gradient.
+        Depends on the last input of the forward pass, and on the last gradient of S.
+
+        Returns a dict with key (formula small/big, expectation outside/inside) and value the statistic P.
+
+        formula:
+            small_f: X^+ G (X^+).T
+            big_f: (X.T X)^+ X.T G X (X.T X)^+
+        expectation:
+            out_e: Averages over the global formula.
+            in_e: Averages over the smaller statistics.
+                X, G for small_f
+                X.T, X.T G X for big_f
+        """
+        assert self.frozen_S_grad is not None
+        x = self.frozen_x  # (b,s,e)
         xt = x.transpose(-2, -1)  # (b,e,s)
+        self.P_stat = {}
 
-        if outside_esp:
-            acc_cov = torch.linalg.pinv((xt @ x))  # (b,e,e)
-            acc_cov_grad = xt @ self.attn.S_grad @ x  # (b,e,e)
-            acc_x = torch.linalg.pinv(x)  # (b,e,s)
-            acc_x_grad = self.attn.S_grad  # (b,s,s)
+        acc_cov = torch.linalg.pinv((xt @ x).mean(dim=0))  # (e,e)
+        acc_cov_grad = (xt @ self.frozen_S_grad @ x).mean(dim=0)  # (e,e)
+        self.P_stat[("big_f", "in_e")] = acc_cov @ acc_cov_grad @ acc_cov  # (e,e)
 
-            self.P_steph = (acc_cov @ acc_cov_grad @ acc_cov).mean(dim=0)  # (e,e)
-            self.P_leo = (acc_x @ acc_x_grad @ acc_x.transpose(-2, -1)).mean(
-                dim=0
-            )  # (e,e)
-        else:
-            acc_cov = torch.linalg.pinv((xt @ x).mean(dim=0))  # (e,e)
-            acc_cov_grad = (xt @ self.attn.S_grad @ x).mean(dim=0)  # (e,e)
-            acc_x = torch.linalg.pinv(x.mean(dim=0))  # (e,s)
-            acc_x_grad = (self.attn.S_grad).mean(dim=0)  # (s,s)
+        acc_cov = torch.linalg.pinv((xt @ x))  # (b,e,e)
+        acc_cov_grad = xt @ self.frozen_S_grad @ x  # (b,e,e)
+        self.P_stat[("big_f", "out_e")] = (acc_cov @ acc_cov_grad @ acc_cov).mean(
+            dim=0
+        )  # (e,e)
 
-            self.P_steph = acc_cov @ acc_cov_grad @ acc_cov  # (e,e)
-            self.P_leo = acc_x @ acc_x_grad @ acc_x.transpose(-2, -1)  # (e,e)
+        acc_x = torch.linalg.pinv(x.mean(dim=0))  # (e,s)
+        acc_x_grad = (self.frozen_S_grad).mean(dim=0)  # (s,s)
+        self.P_stat[("small_f", "in_e")] = (
+            acc_x @ acc_x_grad @ acc_x.transpose(-2, -1)
+        )  # (e,e)
+
+        acc_x = torch.linalg.pinv(x)  # (b,e,s)
+        acc_x_grad = self.frozen_S_grad  # (b,s,s)
+        self.P_stat[("small_f", "out_e")] = (
+            acc_x @ acc_x_grad @ acc_x.transpose(-2, -1)
+        ).mean(dim=0)  # (e,e)
+
+        return self.P_stat
 
     def get_P_ratios(self):
-        """Return the Frobenius and Operator norm of the differences of P_steph and P_leo"""
-        assert self.P_steph is not None
-        assert self.P_leo is not None
-        fro = torch.linalg.matrix_norm(
-            self.P_steph, ord="fro", dim=(-2, -1)
-        ) / torch.linalg.matrix_norm(self.P_leo, ord="fro", dim=(-2, -1))
-        op = torch.linalg.matrix_norm(
-            self.P_steph, ord=2, dim=(-2, -1)
-        ) / torch.linalg.matrix_norm(self.P_leo, ord=2, dim=(-2, -1))
-        return fro, op
+        """Return the ratio of the Frobenius norm of P_stat small_f/big_f"""
+        assert isinstance(self.P_stat, dict)
+        ratio_in_e = torch.linalg.matrix_norm(
+            self.P_stat[("small_f", "in_e")], ord="fro"
+        ) / torch.linalg.matrix_norm(self.P_stat[("big_f", "in_e")], ord="fro")
+        ratio_out_e = torch.linalg.matrix_norm(
+            self.P_stat[("small_f", "out_e")], ord="fro"
+        ) / torch.linalg.matrix_norm(self.P_stat[("big_f", "out_e")], ord="fro")
+        return ratio_in_e, ratio_out_e
 
-    def save_WQt_WKt(self):
+    def freeze_WQt_WKt(self):
         # Notation (out,in) -> (in,out)
-        self.WQt = self.attn.W_Q.weight.clone().T
-        self.WKt = self.attn.W_K.weight.clone().T
+        self.frozen_WQt = self.attn.W_Q.weight.clone().T
+        self.frozen_WKt = self.attn.W_K.weight.clone().T
 
-    def reset_WQt_WKt(self, cfg):
+    def reset_layers_WQt_WKt(self, cfg):
         """
         Restore the linear layers W_Q and W_K using the saved WQt and WKt.
         """
         WQ_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
         WK_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
         with torch.no_grad():
-            WQ_layer.weight.copy_(self.WQt.T)
-            WK_layer.weight.copy_(self.WKt.T)
+            WQ_layer.weight.copy_(self.frozen_WQt.T)
+            WK_layer.weight.copy_(self.frozen_WKt.T)
         self.attn.W_Q = WQ_layer
         self.attn.W_K = WK_layer
 
@@ -152,25 +177,27 @@ class Block(nn.Module):
 
         dif: If True, find dWQ, dWK = SVD(-lbd * P); instead of finding directly WQ, WK
         """
-        assert self.P_leo is not None
+        assert isinstance(self.P_stat, dict)
+        # TODO: possibility for other P_stat of the dict
+        temp_P = self.P_stat[("small_f", "out_e")]
 
         new_WQ = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
         new_WK = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
 
         if not dif:
             WQtplus1, WKtplus1 = my_svd_low_rank(
-                self.WQt @ self.WKt.T - lbd * self.P_leo, cfg.d_k
+                self.frozen_WQt @ self.frozen_WKt.T - lbd * temp_P, cfg.d_k
             )
 
             # Notation (in, out) -> (out, in)
             WQtplus1 = WQtplus1.T
             WKtplus1 = WKtplus1.T
         else:
-            dWQ, dWK = my_svd_low_rank(-lbd * self.P_leo, cfg.d_k)
+            dWQ, dWK = my_svd_low_rank(-lbd * temp_P, cfg.d_k)
 
             # Notation (in, out) -> (out, in)
-            WQtplus1 = (self.WQt + dWQ).T
-            WKtplus1 = (self.WKt + dWK).T
+            WQtplus1 = (self.frozen_WQt + dWQ).T
+            WKtplus1 = (self.frozen_WKt + dWK).T
 
         with torch.no_grad():
             new_WQ.weight.copy_(WQtplus1)
