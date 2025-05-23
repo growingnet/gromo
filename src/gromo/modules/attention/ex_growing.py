@@ -35,7 +35,7 @@ config = ModelConfig(
     d_k=2,
     d_k_max=8,
     d_v=8,
-    bias=False,
+    bias_attention=False,
 )
 
 if not os.path.exists(DATA_PATH) or True:

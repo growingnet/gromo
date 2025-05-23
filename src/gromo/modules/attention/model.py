@@ -14,17 +14,18 @@ class ModelConfig:
     d_k: int = 8
     d_k_max: int = 8
     d_v: int = 8
-    bias: bool = False
-    assert bias is False, "The growing algorithm is not implemented with bias"
+    bias_attention: bool = False
+    bias_other: bool = True
+    assert bias_attention is False, "The growing algorithm is not implemented with bias"
 
 
 class SelfAttentionBaseline(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.W_Q = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
-        self.W_K = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
-        self.W_V = nn.Linear(cfg.d_e, cfg.d_v, bias=cfg.bias)
-        self.W_O = nn.Linear(cfg.d_v, cfg.d_e, bias=cfg.bias)
+        self.W_Q = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
+        self.W_K = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
+        self.W_V = nn.Linear(cfg.d_e, cfg.d_v, bias=cfg.bias_attention)
+        self.W_O = nn.Linear(cfg.d_v, cfg.d_e, bias=cfg.bias_attention)
         self.scale = math.sqrt(cfg.d_k)
         self.S_grad = None
 
@@ -64,9 +65,9 @@ class SelfAttentionBaseline(nn.Module):
 class MLP(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.lin1 = nn.Linear(cfg.d_e, 4 * cfg.d_e, bias=cfg.bias)
+        self.lin1 = nn.Linear(cfg.d_e, 4 * cfg.d_e, bias=cfg.bias_other)
         self.gelu = nn.GELU()
-        self.lin2 = nn.Linear(4 * cfg.d_e, cfg.d_e, bias=cfg.bias)
+        self.lin2 = nn.Linear(4 * cfg.d_e, cfg.d_e, bias=cfg.bias_other)
 
     def forward(self, x):
         x = self.lin1(x)
@@ -78,9 +79,9 @@ class MLP(nn.Module):
 class Block(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.ln1 = LayerNorm(cfg.d_e, eps=1e-5, bias=cfg.bias)
+        self.ln1 = LayerNorm(cfg.d_e, eps=1e-5, bias=cfg.bias_other)
         self.attn = SelfAttentionBaseline(cfg)
-        self.ln2 = LayerNorm(cfg.d_e, eps=1e-5, bias=cfg.bias)
+        self.ln2 = LayerNorm(cfg.d_e, eps=1e-5, bias=cfg.bias_other)
         self.mlp = MLP(cfg)
 
     def forward(self, x, scaling_test: None | float = None):
@@ -162,8 +163,8 @@ class Block(nn.Module):
         """
         Restore the linear layers W_Q and W_K using the saved WQt and WKt.
         """
-        WQ_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
-        WK_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
+        WQ_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
+        WK_layer = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
         with torch.no_grad():
             WQ_layer.weight.copy_(self.frozen_WQt.T)
             WK_layer.weight.copy_(self.frozen_WKt.T)
@@ -188,8 +189,8 @@ class Block(nn.Module):
         assert isinstance(self.P_stat[choice_P_stat], torch.Tensor)
         temp_P = self.P_stat[choice_P_stat]
 
-        new_WQ = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
-        new_WK = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias)
+        new_WQ = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
+        new_WK = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
 
         if not dif:
             WQtplus1, WKtplus1 = my_svd_low_rank(
