@@ -148,10 +148,10 @@ class Block(nn.Module):
         ratio_in_e = torch.linalg.matrix_norm(
             self.P_stat[("small_f", "in_e")], ord="fro"
         ) / torch.linalg.matrix_norm(self.P_stat[("big_f", "in_e")], ord="fro")
-        ratio_out_e = torch.linalg.matrix_norm(
-            self.P_stat[("small_f", "out_e")], ord="fro"
-        ) / torch.linalg.matrix_norm(self.P_stat[("big_f", "out_e")], ord="fro")
-        return ratio_in_e, ratio_out_e
+        ratio_big_f = torch.linalg.matrix_norm(
+            self.P_stat[("big_f", "out_e")], ord="fro"
+        ) / torch.linalg.matrix_norm(self.P_stat[("big_f", "in_e")], ord="fro")
+        return ratio_in_e, ratio_big_f
 
     def freeze_WQt_WKt(self):
         # Notation (out,in) -> (in,out)
@@ -176,6 +176,7 @@ class Block(nn.Module):
         lbd: float,
         choice_P_stat: tuple,
         dif: bool = False,
+        test_search_formula: bool = False,  # TODO:
         verbose: bool = False,
     ):
         """

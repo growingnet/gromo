@@ -23,14 +23,14 @@ test_ratio = 0.2
 # Hyperparams training
 test_stat_formula = False
 tol_minimize = 1e-6
-lbds = [i for i in np.linspace(0, 5e5, 16 + 1)]
-num_epochs = 8
+lbds = [i for i in np.linspace(0, 1e7, 16 + 1)]
+num_epochs = 4
 log_every_x_epochs = num_epochs // 10 if num_epochs > 10 else 1
 train_batch = 64
 lr = 1e-3
 
 config = ModelConfig(
-    d_s=4,
+    d_s=16 * 4,
     d_e=16,
     d_k=2,
     d_k_max=8,
@@ -70,7 +70,7 @@ def loss_SVD(lbd, config, model, choice_P_stat, xb, loss_fn):
 for epoch in range(1, num_epochs + 1):
     model.train()
     running_loss = 0.0
-    running_ratio_norm_inside, running_ratio_norm_outside = 0.0, 0.0
+    running_ratio_norm_inside, running_ratio_norm_bigf = 0.0, 0.0
     running_lbds_train_losses = {lbd: 0.0 for lbd in lbds}
     running_lbds_train_losses_dif = {lbd: 0.0 for lbd in lbds}
     running_lbds_train_losses_dif2 = {lbd: 0.0 for lbd in lbds}
@@ -87,9 +87,9 @@ for epoch in range(1, num_epochs + 1):
         if epoch % 2 == 0:
             with torch.no_grad():
                 model.compute_statistics()
-                temp_ratio_norm_inside, temp_ratio_norm_outside = model.get_P_ratios()
+                temp_ratio_norm_inside, temp_ratio_norm_bigf = model.get_P_ratios()
                 running_ratio_norm_inside += temp_ratio_norm_inside.item() * xb.size(0)
-                running_ratio_norm_outside += temp_ratio_norm_outside.item() * xb.size(0)
+                running_ratio_norm_bigf += temp_ratio_norm_bigf.item() * xb.size(0)
 
                 # lbd search
                 model.freeze_WQt_WKt()
@@ -103,7 +103,10 @@ for epoch in range(1, num_epochs + 1):
                 lbd_min = minimize_scalar(
                     loss_SVD,
                     args=(config, model, ("small_f", "out_e"), xb, loss_fn),
-                    options={"xtol": tol_minimize},
+                    options={
+                        "xtol": tol_minimize,
+                        # "maxiter": 1e10,
+                    },
                 )
                 running_lbd_min += lbd_min.x * xb.size(0)
                 if test_stat_formula:
@@ -134,7 +137,7 @@ for epoch in range(1, num_epochs + 1):
 
     epoch_loss = running_loss / train_size
     epoch_ratio_norm_inside = running_ratio_norm_inside / train_size
-    epoch_ratio_norm_outside = running_ratio_norm_outside / train_size
+    epoch_ratio_norm_bigf = running_ratio_norm_bigf / train_size
     epoch_lbd_min = running_lbd_min / train_size
 
     print(f"Epoch {epoch}/{num_epochs}, Loss: {epoch_loss}")
@@ -152,8 +155,8 @@ for epoch in range(1, num_epochs + 1):
             if test_stat_formula:
                 running_lbds_train_losses_dif[lbd] /= train_size
                 running_lbds_train_losses_dif2[lbd] /= train_size
-        print(f"Ratio Norm Inside: \t{epoch_ratio_norm_inside:.4f}")
-        print(f"Ratio Norm Outside: \t{epoch_ratio_norm_outside:.4f}")
+        print(f"Ratio Norm Inside smallf/bigf: \t{epoch_ratio_norm_inside:.4f}")
+        print(f"Ratio Norm Bigf out_e/in_e: \t{epoch_ratio_norm_bigf:.4f}")
         print(f"Opti: {epoch_lbd_min:.4f}")
 
 plt.figure()
