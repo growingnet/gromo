@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from scipy.optimize import minimize_scalar
 import os
 
 import torch
@@ -21,7 +22,9 @@ test_ratio = 0.2
 
 # Hyperparams training
 test_stat_formula = False
-num_epochs = 4
+tol_minimize = 1e-6
+lbds = [i for i in np.linspace(0, 5e5, 16 + 1)]
+num_epochs = 8
 log_every_x_epochs = num_epochs // 10 if num_epochs > 10 else 1
 train_batch = 64
 lr = 1e-3
@@ -51,11 +54,19 @@ test_loader = DataLoader(test_ds, batch_size=train_batch)
 model = Block(config).to(device)
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 loss_fn = nn.MSELoss()
-lbds = [i for i in np.linspace(-1e6, 1e6, 16 + 1)]
 train_losses = []
 lbds_epoch_losses = []
 lbds_epoch_losses_dif = []
 lbds_epoch_losses_dif2 = []
+lbds_min = []
+
+
+def loss_SVD(lbd, config, model, choice_P_stat, xb, loss_fn):
+    model.update_WQ_WK(config, lbd, choice_P_stat)
+    y_pred = model.forward(xb)
+    return loss_fn(y_pred, yb)
+
+
 for epoch in range(1, num_epochs + 1):
     model.train()
     running_loss = 0.0
@@ -63,6 +74,7 @@ for epoch in range(1, num_epochs + 1):
     running_lbds_train_losses = {lbd: 0.0 for lbd in lbds}
     running_lbds_train_losses_dif = {lbd: 0.0 for lbd in lbds}
     running_lbds_train_losses_dif2 = {lbd: 0.0 for lbd in lbds}
+    running_lbd_min = 0.0
 
     for xb, yb in train_loader:
         xb, yb = xb.to(device), yb.to(device)
@@ -88,6 +100,12 @@ for epoch in range(1, num_epochs + 1):
                     y_pred_search = model.forward(xb)
                     loss_search = loss_fn(y_pred_search, yb)
                     running_lbds_train_losses[lbd] += loss_search.item() * xb.size(0)
+                lbd_min = minimize_scalar(
+                    loss_SVD,
+                    args=(config, model, ("small_f", "out_e"), xb, loss_fn),
+                    options={"xtol": tol_minimize},
+                )
+                running_lbd_min += lbd_min.x * xb.size(0)
                 if test_stat_formula:
                     for lbd in lbds:
                         model.update_WQ_WK(
@@ -117,9 +135,12 @@ for epoch in range(1, num_epochs + 1):
     epoch_loss = running_loss / train_size
     epoch_ratio_norm_inside = running_ratio_norm_inside / train_size
     epoch_ratio_norm_outside = running_ratio_norm_outside / train_size
+    epoch_lbd_min = running_lbd_min / train_size
+
     print(f"Epoch {epoch}/{num_epochs}, Loss: {epoch_loss}")
     train_losses.append(epoch_loss)
     lbds_epoch_losses.append(running_lbds_train_losses)
+    lbds_min.append(epoch_lbd_min)
     if test_stat_formula:
         lbds_epoch_losses_dif.append(running_lbds_train_losses_dif)
         lbds_epoch_losses_dif2.append(running_lbds_train_losses_dif2)
@@ -133,6 +154,7 @@ for epoch in range(1, num_epochs + 1):
                 running_lbds_train_losses_dif2[lbd] /= train_size
         print(f"Ratio Norm Inside: \t{epoch_ratio_norm_inside:.4f}")
         print(f"Ratio Norm Outside: \t{epoch_ratio_norm_outside:.4f}")
+        print(f"Opti: {epoch_lbd_min:.4f}")
 
 plt.figure()
 legend = []
@@ -140,6 +162,9 @@ for epoch in range(1, num_epochs + 1):
     if epoch % 2 == 0:
         plt.plot(lbds, [lbds_epoch_losses[epoch - 1][lbd] for lbd in lbds])
         legend.append(f"Epoch {epoch} small_f/big_g, out_e")
+        plt.axvline(lbds_min[epoch - 1], linestyle="--", label=f"Opti Epoch {epoch}")
+        legend.append(f"Lbd min Epoch {epoch}")
+
         if test_stat_formula:
             plt.plot(lbds, [lbds_epoch_losses_dif[epoch - 1][lbd] for lbd in lbds])
             legend.append(f"Epoch {epoch} small_f, in_e")
