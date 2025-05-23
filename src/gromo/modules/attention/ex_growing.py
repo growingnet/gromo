@@ -20,6 +20,7 @@ DATA_PATH = "src/gromo/modules/attention/transf_teacher.pt"
 test_ratio = 0.2
 
 # Hyperparams training
+test_stat_formula = False
 num_epochs = 4
 log_every_x_epochs = num_epochs // 10 if num_epochs > 10 else 1
 train_batch = 64
@@ -87,20 +88,25 @@ for epoch in range(1, num_epochs + 1):
                     y_pred_search = model.forward(xb)
                     loss_search = loss_fn(y_pred_search, yb)
                     running_lbds_train_losses[lbd] += loss_search.item() * xb.size(0)
-                for lbd in lbds:
-                    model.update_WQ_WK(
-                        config, lbd=lbd, choice_P_stat=("small_f", "in_e"), dif=False
-                    )
-                    y_pred_search = model.forward(xb)
-                    loss_search = loss_fn(y_pred_search, yb)
-                    running_lbds_train_losses_dif[lbd] += loss_search.item() * xb.size(0)
-                for lbd in lbds:
-                    model.update_WQ_WK(
-                        config, lbd=lbd, choice_P_stat=("big_f", "in_e"), dif=False
-                    )
-                    y_pred_search = model.forward(xb)
-                    loss_search = loss_fn(y_pred_search, yb)
-                    running_lbds_train_losses_dif2[lbd] += loss_search.item() * xb.size(0)
+                if test_stat_formula:
+                    for lbd in lbds:
+                        model.update_WQ_WK(
+                            config, lbd=lbd, choice_P_stat=("small_f", "in_e"), dif=False
+                        )
+                        y_pred_search = model.forward(xb)
+                        loss_search = loss_fn(y_pred_search, yb)
+                        running_lbds_train_losses_dif[lbd] += (
+                            loss_search.item() * xb.size(0)
+                        )
+                    for lbd in lbds:
+                        model.update_WQ_WK(
+                            config, lbd=lbd, choice_P_stat=("big_f", "in_e"), dif=False
+                        )
+                        y_pred_search = model.forward(xb)
+                        loss_search = loss_fn(y_pred_search, yb)
+                        running_lbds_train_losses_dif2[lbd] += (
+                            loss_search.item() * xb.size(0)
+                        )
                 model.reset_layers_WQt_WKt(config)
 
         else:
@@ -114,15 +120,17 @@ for epoch in range(1, num_epochs + 1):
     print(f"Epoch {epoch}/{num_epochs}, Loss: {epoch_loss}")
     train_losses.append(epoch_loss)
     lbds_epoch_losses.append(running_lbds_train_losses)
-    lbds_epoch_losses_dif.append(running_lbds_train_losses_dif)
-    lbds_epoch_losses_dif2.append(running_lbds_train_losses_dif2)
+    if test_stat_formula:
+        lbds_epoch_losses_dif.append(running_lbds_train_losses_dif)
+        lbds_epoch_losses_dif2.append(running_lbds_train_losses_dif2)
 
     if epoch % 2 == 0:
         for lbd in lbds:
             running_lbds_train_losses[lbd] /= train_size
-            running_lbds_train_losses_dif[lbd] /= train_size
-            running_lbds_train_losses_dif2[lbd] /= train_size
             print(f"lbd: {lbd}, Loss: {running_lbds_train_losses[lbd]}")
+            if test_stat_formula:
+                running_lbds_train_losses_dif[lbd] /= train_size
+                running_lbds_train_losses_dif2[lbd] /= train_size
         print(f"Ratio Norm Inside: \t{epoch_ratio_norm_inside:.4f}")
         print(f"Ratio Norm Outside: \t{epoch_ratio_norm_outside:.4f}")
 
@@ -132,10 +140,11 @@ for epoch in range(1, num_epochs + 1):
     if epoch % 2 == 0:
         plt.plot(lbds, [lbds_epoch_losses[epoch - 1][lbd] for lbd in lbds])
         legend.append(f"Epoch {epoch} small_f/big_g, out_e")
-        plt.plot(lbds, [lbds_epoch_losses_dif[epoch - 1][lbd] for lbd in lbds])
-        legend.append(f"Epoch {epoch} small_f, in_e")
-        plt.plot(lbds, [lbds_epoch_losses_dif2[epoch - 1][lbd] for lbd in lbds])
-        legend.append(f"Epoch {epoch} big_f, in_e")
+        if test_stat_formula:
+            plt.plot(lbds, [lbds_epoch_losses_dif[epoch - 1][lbd] for lbd in lbds])
+            legend.append(f"Epoch {epoch} small_f, in_e")
+            plt.plot(lbds, [lbds_epoch_losses_dif2[epoch - 1][lbd] for lbd in lbds])
+            legend.append(f"Epoch {epoch} big_f, in_e")
 plt.yscale("log")
 plt.xlabel("Lambda")
 plt.ylabel("Loss")
