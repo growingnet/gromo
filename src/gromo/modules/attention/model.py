@@ -47,6 +47,7 @@ class SelfAttentionBaseline(nn.Module):
         V = self.W_V(X)  # Compute value vectors
 
         S = (Q @ K.transpose(-2, -1)) * (1 / self.scale)
+        self.S_keep = S
 
         # We save the gradient of S
         if S.requires_grad:
@@ -97,6 +98,7 @@ class Block(nn.Module):
         assert self.attn.S_grad is not None
         self.frozen_x = self.input_attention_block.clone()
         self.frozen_S_grad = self.attn.S_grad.clone()
+        self.frozen_S = self.attn.S_keep.clone()
 
     def compute_statistics(self):
         """
@@ -119,11 +121,11 @@ class Block(nn.Module):
         xt = x.transpose(-2, -1)  # (b,e,s)
         self.P_stat = {}
 
-        acc_cov = torch.linalg.pinv((xt @ x).mean(dim=0))  # (e,e)
+        acc_cov = torch.linalg.pinv((xt @ x).mean(dim=0), hermitian=True)  # (e,e)
         acc_cov_grad = (xt @ self.frozen_S_grad @ x).mean(dim=0)  # (e,e)
         self.P_stat[("big_f", "in_e")] = acc_cov @ acc_cov_grad @ acc_cov  # (e,e)
 
-        acc_cov = torch.linalg.pinv((xt @ x))  # (b,e,e)
+        acc_cov = torch.linalg.pinv((xt @ x), hermitian=True)  # (b,e,e)
         acc_cov_grad = xt @ self.frozen_S_grad @ x  # (b,e,e)
         self.P_stat[("big_f", "out_e")] = (acc_cov @ acc_cov_grad @ acc_cov).mean(
             dim=0
