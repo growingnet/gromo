@@ -122,6 +122,7 @@ class Block(nn.Module):
         self.P_stat = {}
 
         acc_cov = torch.linalg.pinv((xt @ x).mean(dim=0), hermitian=True)  # (e,e)
+        # TODO: check plus grande valeur propre
         acc_cov_grad = (xt @ self.frozen_S_grad @ x).mean(dim=0)  # (e,e)
         self.P_stat[("big_f", "in_e")] = acc_cov @ acc_cov_grad @ acc_cov  # (e,e)
 
