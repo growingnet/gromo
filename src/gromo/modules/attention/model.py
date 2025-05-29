@@ -119,12 +119,29 @@ class Block(nn.Module):
         assert self.frozen_S_grad is not None
         x = self.frozen_x  # (b,s,e)
         xt = x.transpose(-2, -1)  # (b,e,s)
+        covi = xt @ x
+        b = covi.size(0)
+        e = covi.size(-1)
         self.P_stat = {}
+
+        # Kronecker product for each batch
+        covi1 = covi.unsqueeze(2).unsqueeze(4)  # (b,e,1,e,1)
+        covi2 = covi.unsqueeze(1).unsqueeze(3)  # (b,1,e,1,e)
+        kro = (covi1 * covi2).reshape(b, e * e, e * e)  # (b,e*e,e*e)
+        # kro_mean symetrical? use faster pinv?
+        kro_mean = kro.mean(dim=0)  # (e*e,e*e)
+        kro_mean = torch.linalg.pinv(kro_mean)  # (e*e,e*e)
+
+        simple = (xt @ self.frozen_S_grad @ x).mean(dim=0).reshape(-1, 1)
+        self.P_stat[("kro", "kro")] = (kro_mean @ simple).reshape(e, e)  # (e,e)
 
         acc_cov = torch.linalg.pinv((xt @ x).mean(dim=0), hermitian=True)  # (e,e)
         # TODO: check plus grande valeur propre
         acc_cov_grad = (xt @ self.frozen_S_grad @ x).mean(dim=0)  # (e,e)
         self.P_stat[("big_f", "in_e")] = acc_cov @ acc_cov_grad @ acc_cov  # (e,e)
+        print(
+            f"Ratio norm kro/big_f: {torch.linalg.matrix_norm(self.P_stat[('kro', 'kro')], ord='fro') / torch.linalg.matrix_norm(self.P_stat[('big_f', 'in_e')], ord='fro')}"
+        )
 
         acc_cov = torch.linalg.pinv((xt @ x), hermitian=True)  # (b,e,e)
         acc_cov_grad = xt @ self.frozen_S_grad @ x  # (b,e,e)

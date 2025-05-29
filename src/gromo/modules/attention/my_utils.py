@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset
+from torch.distributions import MultivariateNormal
 
 
 # TODO: Explain why custom svd function is needed
@@ -53,6 +54,7 @@ def assert_2Dtensor_shape(tensor: torch.Tensor, row_dim: int, col_dim: int) -> N
 def generate_teacher_dataset(
     teacher_model, cfg, path, device, N_samples=5000, gen_batch=128
 ):
+    assert isinstance(cfg.d_s, int)
     # Create and freeze the teacher model
     teacher = teacher_model(cfg).to(device)
     teacher.eval()
@@ -63,7 +65,20 @@ def generate_teacher_dataset(
     all_X, all_Y = [], []
     with torch.no_grad():
         for _ in range(0, N_samples, gen_batch):
-            Xb = torch.randn(gen_batch, cfg.d_s, cfg.d_e, device=device)
+            A = torch.randn(cfg.d_e, cfg.d_e, device=device)
+            sigma = A @ A.T + 1e-3 * torch.eye(cfg.d_e, device=device)  # make it SPD
+
+            # 2) create the distribution
+            mvn = MultivariateNormal(
+                loc=torch.zeros(cfg.d_e, device=device), covariance_matrix=sigma
+            )
+
+            # 3) draw batch of sequence vectors
+            #    shape: (gen_batch, d_s, d_e)
+            batch_shape = torch.Size((gen_batch, cfg.d_s))
+            Xb = mvn.sample(batch_shape)
+
+            # Xb = torch.randn(gen_batch, cfg.d_s, cfg.d_e, device=device)
             Yb = teacher.forward(Xb)
             all_X.append(Xb.cpu())
             all_Y.append(Yb.cpu())

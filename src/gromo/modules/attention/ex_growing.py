@@ -23,7 +23,7 @@ test_ratio = 0.2
 test_stat_formula = False
 tol_minimize = 1e-6
 lbds = [i for i in np.linspace(-1e8, 1e8, 16 + 1)]
-num_epochs = 10
+num_epochs = 2
 log_every_x_epochs = num_epochs // 10 if num_epochs > 10 else 1
 train_batch = 64
 lr = 1e-3
@@ -31,14 +31,6 @@ lr = 1e-3
 alpha_armijo = 0.1
 beta_armijo = 0.5
 
-# config = ModelConfig(
-#     d_s=16 * 4,
-#     d_e=16,
-#     d_k=6,
-#     d_k_max=8,
-#     d_v=8,
-#     bias_attention=False,
-# )
 config = ModelConfig(
     d_k=8,
     d_k_max=16,
@@ -57,7 +49,7 @@ config = ModelConfig(
 # )
 
 
-if not os.path.exists(DATA_PATH):
+if not os.path.exists(DATA_PATH) or True:
     generate_teacher_dataset(Block, config, DATA_PATH, device)
 assert os.path.exists(DATA_PATH), f"Dataset not found at {DATA_PATH}."
 
@@ -74,7 +66,8 @@ model = Block(config).to(device)
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 loss_fn = nn.MSELoss()
 train_losses = []
-lbds_epoch_losses = []
+lbds_epoch_losses_kro = []
+lbds_epoch_losses_bigf = []
 lbds_epoch_losses_dif = []
 lbds_epoch_losses_dif2 = []
 lbds_min = []
@@ -147,9 +140,17 @@ def armijo_line_search(
     # the minibatch, then average them
     # tmp = model.frozen_x.transpose(-2, -1) @ model.frozen_S_grad @ model.frozen_x
     # inner = torch.sum(tmp * model.P_stat[choice_P_stat] * (-1), dim=(-2, -1))
-    # dphi0 = inner.mean().item()
+    # dphi0_2 = inner.mean().item()
+    # print(f"dphi0_2 no norm: \t{dphi0_2}")
+    # normalize = (
+    #     model.frozen_x @ model.P_stat[choice_P_stat] @ model.frozen_x.transpose(-2, -1)
+    # )
+    # norms_per_batch = torch.linalg.norm(normalize, ord="fro", dim=(-2, -1)).mean().item()
+    # dphi0_2 /= norms_per_batch
+    # print(f"dphi0_2: \t{dphi0_2}")
 
     dphi0 = derivative(phi, 0, h=1e7, method="central").item()
+    # print(f"dphi0: \t{dphi0}")
 
     if dphi0 < 0:
         t = -2 * phi0 / dphi0
@@ -200,7 +201,8 @@ for epoch in range(1, num_epochs + 1):
     model.train()
     running_loss = 0.0
     running_ratio_norm_inside, running_ratio_norm_bigf = 0.0, 0.0
-    running_lbds_train_losses = {lbd: 0.0 for lbd in lbds}
+    running_lbds_train_losses_kro = {lbd: 0.0 for lbd in lbds}
+    running_lbds_train_losses_bigf = {lbd: 0.0 for lbd in lbds}
     running_lbds_train_losses_dif = {lbd: 0.0 for lbd in lbds}
     running_lbds_train_losses_dif2 = {lbd: 0.0 for lbd in lbds}
     running_lbd_min = 0.0
@@ -228,15 +230,20 @@ for epoch in range(1, num_epochs + 1):
                 # lbd search
                 model.freeze_WQt_WKt()
                 for lbd in lbds:
-                    model.update_WQ_WK(config, lbd=lbd, choice_P_stat=("big_f", "out_e"))
+                    model.update_WQ_WK(config, lbd=lbd, choice_P_stat=("kro", "kro"))
                     y_pred_search = model.forward(xb)
                     loss_search = loss_fn(y_pred_search, yb)
-                    running_lbds_train_losses[lbd] += loss_search.item() * xb.size(0)
+                    running_lbds_train_losses_kro[lbd] += loss_search.item() * xb.size(0)
+                for lbd in lbds:
+                    model.update_WQ_WK(config, lbd=lbd, choice_P_stat=("big_f", "in_e"))
+                    y_pred_search = model.forward(xb)
+                    loss_search = loss_fn(y_pred_search, yb)
+                    running_lbds_train_losses_bigf[lbd] += loss_search.item() * xb.size(0)
                 lbd_min, dphi0, phi0 = armijo_line_search(
                     loss_SVD,
                     config,
                     model,
-                    choice_P_stat=("big_f", "out_e"),
+                    choice_P_stat=("kro", "kro"),
                     xb=xb,
                     loss_fn=loss_fn,
                     alpha=alpha_armijo,
@@ -255,7 +262,7 @@ for epoch in range(1, num_epochs + 1):
                 if test_stat_formula:
                     for lbd in lbds:
                         model.update_WQ_WK(
-                            config, lbd=lbd, choice_P_stat=("big_f", "out_e"), dif=False
+                            config, lbd=lbd, choice_P_stat=("kro", "kro"), dif=False
                         )
                         y_pred_search = model.forward(xb)
                         loss_search = loss_fn(y_pred_search, yb)
@@ -264,7 +271,7 @@ for epoch in range(1, num_epochs + 1):
                         )
                     for lbd in lbds:
                         model.update_WQ_WK(
-                            config, lbd=lbd, choice_P_stat=("big_f", "out_e"), dif=False
+                            config, lbd=lbd, choice_P_stat=("kro", "kro"), dif=False
                         )
                         y_pred_search = model.forward(xb)
                         loss_search = loss_fn(y_pred_search, yb)
@@ -293,7 +300,8 @@ for epoch in range(1, num_epochs + 1):
 
     print(f"\nEpoch {epoch}/{num_epochs}, Loss: {epoch_loss}")
     train_losses.append(epoch_loss)
-    lbds_epoch_losses.append(running_lbds_train_losses)
+    lbds_epoch_losses_kro.append(running_lbds_train_losses_kro)
+    lbds_epoch_losses_bigf.append(running_lbds_train_losses_bigf)
     lbds_min.append(epoch_lbd_min)
     if test_stat_formula:
         lbds_epoch_losses_dif.append(running_lbds_train_losses_dif)
@@ -301,7 +309,8 @@ for epoch in range(1, num_epochs + 1):
 
     if epoch % 2 == 0:
         for lbd in lbds:
-            running_lbds_train_losses[lbd] /= train_size
+            running_lbds_train_losses_kro[lbd] /= train_size
+            running_lbds_train_losses_bigf[lbd] /= train_size
             # print(f"lbd: {lbd}, Loss: {running_lbds_train_losses[lbd]}")
             if test_stat_formula:
                 running_lbds_train_losses_dif[lbd] /= train_size
@@ -339,9 +348,12 @@ plt.figure()
 legend = []
 for epoch in range(1, num_epochs + 1):
     if epoch % 2 == 0:
-        lbd_per_epoch = [lbds_epoch_losses[epoch - 1][lbd] for lbd in lbds]
+        lbd_per_epoch = [lbds_epoch_losses_kro[epoch - 1][lbd] for lbd in lbds]
         plt.plot(lbds, lbd_per_epoch)
-        legend.append(f"Epoch {epoch} big_f, out_e")
+        legend.append(f"Epoch {epoch} kro")
+        lbd_per_epoch = [lbds_epoch_losses_bigf[epoch - 1][lbd] for lbd in lbds]
+        plt.plot(lbds, lbd_per_epoch)
+        legend.append(f"Epoch {epoch} big_f, in_e")
         plt.axvline(lbds_min[epoch - 1], linestyle="--", label=f"Opti Epoch {epoch}")
         legend.append(f"Lbd min Epoch {epoch}")
         if False:
