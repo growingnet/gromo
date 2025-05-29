@@ -1,5 +1,5 @@
+import time
 import matplotlib.pyplot as plt
-import numpy as np  # only for convenience; not strictly required
 import os
 
 import torch
@@ -14,23 +14,33 @@ from gromo.utils.utils import global_device
 torch.manual_seed(0)
 device = global_device()
 print(f"Device:{device}")
+start_file = time.time()
 
 # Hyperparams dataset
 DATA_PATH = "src/gromo/modules/attention/transf_teacher.pt"
 test_ratio = 0.2
 
-# Hyperparams training
-test_stat_formula = False
-tol_minimize = 1e-6
-lbds = [i for i in np.linspace(-1e8, 1e8, 16 + 1)]
+# Hyperparams training ----------------------------
 num_epochs = 2
-log_every_x_epochs = num_epochs // 10 if num_epochs > 10 else 1
-train_batch = 64
+methods = ["kro", "big_in"]
+lbds = [i for i in torch.linspace(-1e8, 1e8, 16 + 1).tolist()]
+train_batch_size = 64
+stats_batch_size = 64
 lr = 1e-3
 
+armijo_method = "kro"
 alpha_armijo = 0.1
 beta_armijo = 0.5
+plot_armijo = True
 
+# config = ModelConfig(
+#     d_k=4,
+#     d_k_max=8,
+#     d_v=8,
+#     d_e=16,
+#     d_s=32,
+#     bias_attention=False,
+# )
 config = ModelConfig(
     d_k=8,
     d_k_max=16,
@@ -48,32 +58,27 @@ config = ModelConfig(
 #     bias_attention=False,
 # )
 
-
+# Dataset generation ---------------------
 if not os.path.exists(DATA_PATH) or True:
     generate_teacher_dataset(Block, config, DATA_PATH, device)
 assert os.path.exists(DATA_PATH), f"Dataset not found at {DATA_PATH}."
-
 dataset = AttentionDataset(DATA_PATH)
-test_size = int(test_ratio * len(dataset))
-train_size = len(dataset) - test_size
-train_ds, test_ds = random_split(dataset, [train_size, test_size])
+test_obs_size = int(test_ratio * len(dataset))
+train_obs_size = len(dataset) - test_obs_size  # Number of observations in the train set
+train_ds, test_ds = random_split(dataset, [train_obs_size, test_obs_size])
 
-train_loader = DataLoader(train_ds, batch_size=train_batch, shuffle=True)
-test_loader = DataLoader(test_ds, batch_size=train_batch)
+# Data loaders ---------------------
+train_loader = DataLoader(train_ds, batch_size=train_batch_size, shuffle=True)
+stats_loader = DataLoader(train_ds, batch_size=stats_batch_size, shuffle=False)
+test_loader = DataLoader(test_ds, batch_size=train_batch_size)
 
-
+# Model ---------------------------
 model = Block(config).to(device)
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 loss_fn = nn.MSELoss()
-train_losses = []
-lbds_epoch_losses_kro = []
-lbds_epoch_losses_bigf = []
-lbds_epoch_losses_dif = []
-lbds_epoch_losses_dif2 = []
-lbds_min = []
 
 
-def loss_SVD(lbd, config, model, choice_P_stat, xb, loss_fn):
+def loss_SVD(lbd, config, model, choice_P_stat: str, xb, loss_fn):
     model.update_WQ_WK(config, lbd, choice_P_stat)
     y_pred = model.forward(xb)
     return loss_fn(y_pred, yb)
@@ -116,7 +121,7 @@ def armijo_line_search(
     phi_fn,
     config: ModelConfig,
     model: nn.Module,
-    choice_P_stat: tuple,
+    choice_P_stat: str,
     xb: torch.Tensor,
     loss_fn,
     alpha: float,
@@ -193,151 +198,111 @@ def armijo_line_search(
     return t, dphi0, phi0
 
 
-hist_li_lbd_min_epoch = []  # to plot hist
-proportion_lbdmin_0 = []
-li_epoch_dphi0 = []
-li_epoch_phi0 = []
+# lbd_min = None
+train_losses = []
+all_train_losses = {method: {} for method in methods}
+running_all_losses = {method: {} for method in methods}
+# lbds_min = []
+
+for method in methods:
+    for lbd in lbds:
+        all_train_losses[method][lbd] = []
+
 for epoch in range(1, num_epochs + 1):
+    start_epoch = time.time()
     model.train()
     running_loss = 0.0
-    running_ratio_norm_inside, running_ratio_norm_bigf = 0.0, 0.0
-    running_lbds_train_losses_kro = {lbd: 0.0 for lbd in lbds}
-    running_lbds_train_losses_bigf = {lbd: 0.0 for lbd in lbds}
-    running_lbds_train_losses_dif = {lbd: 0.0 for lbd in lbds}
-    running_lbds_train_losses_dif2 = {lbd: 0.0 for lbd in lbds}
-    running_lbd_min = 0.0
-    running_dphi0 = 0.0
-    hist_li_lbd_min_batch = []
-    nb_lbdmin_0 = 0
-    nb_lbdmin_not0 = 0
-    running_phi0 = 0.0
-
-    for xb, yb in train_loader:
-        xb, yb = xb.to(device), yb.to(device)
-        optimizer.zero_grad()
-        y_pred = model.forward(xb)  # Retain the attention block input
-        loss = loss_fn(y_pred, yb)
-        loss.backward()  # Retain S_grad
-        model.freeze_input_and_grad()  # Freeze the input and gradient of S_grad
-
-        if epoch % 2 == 0:
-            with torch.no_grad():
-                model.compute_statistics()
-                temp_ratio_norm_inside, temp_ratio_norm_bigf = model.get_P_ratios()
-                running_ratio_norm_inside += temp_ratio_norm_inside.item() * xb.size(0)
-                running_ratio_norm_bigf += temp_ratio_norm_bigf.item() * xb.size(0)
-
-                # lbd search
-                model.freeze_WQt_WKt()
-                for lbd in lbds:
-                    model.update_WQ_WK(config, lbd=lbd, choice_P_stat=("kro", "kro"))
-                    y_pred_search = model.forward(xb)
-                    loss_search = loss_fn(y_pred_search, yb)
-                    running_lbds_train_losses_kro[lbd] += loss_search.item() * xb.size(0)
-                for lbd in lbds:
-                    model.update_WQ_WK(config, lbd=lbd, choice_P_stat=("big_f", "in_e"))
-                    y_pred_search = model.forward(xb)
-                    loss_search = loss_fn(y_pred_search, yb)
-                    running_lbds_train_losses_bigf[lbd] += loss_search.item() * xb.size(0)
-                lbd_min, dphi0, phi0 = armijo_line_search(
-                    loss_SVD,
-                    config,
-                    model,
-                    choice_P_stat=("kro", "kro"),
-                    xb=xb,
-                    loss_fn=loss_fn,
-                    alpha=alpha_armijo,
-                    beta=beta_armijo,
-                    expand=True,
-                )
-                if int(lbd_min) == 0:
-                    nb_lbdmin_0 += 1
-                else:
-                    nb_lbdmin_not0 += 1
-                hist_li_lbd_min_batch.append(lbd_min)
-                running_lbd_min += lbd_min * xb.size(0)
-                running_dphi0 += dphi0 * xb.size(0)
-                running_phi0 += phi0 * xb.size(0)
-
-                if test_stat_formula:
-                    for lbd in lbds:
-                        model.update_WQ_WK(
-                            config, lbd=lbd, choice_P_stat=("kro", "kro"), dif=False
-                        )
-                        y_pred_search = model.forward(xb)
-                        loss_search = loss_fn(y_pred_search, yb)
-                        running_lbds_train_losses_dif[lbd] += (
-                            loss_search.item() * xb.size(0)
-                        )
-                    for lbd in lbds:
-                        model.update_WQ_WK(
-                            config, lbd=lbd, choice_P_stat=("kro", "kro"), dif=False
-                        )
-                        y_pred_search = model.forward(xb)
-                        loss_search = loss_fn(y_pred_search, yb)
-                        running_lbds_train_losses_dif2[lbd] += (
-                            loss_search.item() * xb.size(0)
-                        )
-                model.reset_layers_WQt_WKt(config)
-
-        else:
-            optimizer.step()
-
-        running_loss += loss.item() * xb.size(0)
-
-    epoch_loss = running_loss / train_size
-    epoch_ratio_norm_inside = running_ratio_norm_inside / train_size
-    epoch_ratio_norm_bigf = running_ratio_norm_bigf / train_size
-    epoch_lbd_min = running_lbd_min / train_size
-    epoch_dphi0 = running_dphi0 / train_size
-    epoch_phi0 = running_phi0 / train_size
-
-    hist_li_lbd_min_epoch.append(hist_li_lbd_min_batch)
-    if epoch % 2 == 0:
-        proportion_lbdmin_0.append(nb_lbdmin_0 / (nb_lbdmin_not0 + nb_lbdmin_0))
-    li_epoch_dphi0.append(epoch_dphi0)
-    li_epoch_phi0.append(epoch_phi0)
-
-    print(f"\nEpoch {epoch}/{num_epochs}, Loss: {epoch_loss}")
-    train_losses.append(epoch_loss)
-    lbds_epoch_losses_kro.append(running_lbds_train_losses_kro)
-    lbds_epoch_losses_bigf.append(running_lbds_train_losses_bigf)
-    lbds_min.append(epoch_lbd_min)
-    if test_stat_formula:
-        lbds_epoch_losses_dif.append(running_lbds_train_losses_dif)
-        lbds_epoch_losses_dif2.append(running_lbds_train_losses_dif2)
-
-    if epoch % 2 == 0:
+    for method in methods:
         for lbd in lbds:
-            running_lbds_train_losses_kro[lbd] /= train_size
-            running_lbds_train_losses_bigf[lbd] /= train_size
-            # print(f"lbd: {lbd}, Loss: {running_lbds_train_losses[lbd]}")
-            if test_stat_formula:
-                running_lbds_train_losses_dif[lbd] /= train_size
-                running_lbds_train_losses_dif2[lbd] /= train_size
-        print(f"Ratio Norm Inside smallf/bigf: \t{epoch_ratio_norm_inside:.4f}")
-        print(f"Ratio Norm Bigf out_e/in_e: \t{epoch_ratio_norm_bigf:.4f}")
-        print(f"Lbd*: \t{epoch_lbd_min:e}")
-        print(f"Average phi0: \t{epoch_phi0}")
-        print(f"Average dphi0: \t{epoch_dphi0}")
-        # TODO: comparaison de taille S et lbd * dS
-        print(
-            f"lbd * P big_f/out_e \t{(epoch_lbd_min * model.P_stat[('big_f', 'out_e')]).mean()}"
-        )
-        print(
-            f"lbd * P big_f/in_e \t{(epoch_lbd_min * model.P_stat[('big_f', 'in_e')]).mean()}"
-        )
-        print(
-            f"lbd * P small_f/out_e \t{(epoch_lbd_min * model.P_stat[('small_f', 'out_e')]).mean()}"
-        )
-        print(
-            f"lbd * P small_f/in_e \t{(epoch_lbd_min * model.P_stat[('small_f', 'in_e')]).mean()}"
-        )
-        print(f"S \t{model.frozen_S.mean()}")
-        print(f"lbd * S_grad \t{(epoch_lbd_min * model.frozen_S_grad).mean()}")
-print(f"\nProportion lbd_min = 0 by epoch: \t{proportion_lbdmin_0}")
-# print(f"Average for all epochs of proportion lbd_min = 0: {np.mean(proportion_lbdmin_0)}")
-print(f"list dphi0 per epoch: \t{li_epoch_dphi0}")
+            running_all_losses[method][lbd] = 0.0
+
+    if epoch % 2 != 0:
+        for xb, yb in train_loader:
+            optimizer.zero_grad()
+            y_pred = model.forward(xb)
+            loss = loss_fn(y_pred, yb)
+            loss.backward()
+            running_loss += loss.item() * xb.size(0)
+            optimizer.step()
+        # lbds_min.append(0.0)  # Just for epoch number consistency
+    else:
+        model.reinitialize_batch_stats()
+        cpt = 0
+        # First pass on the batches to accumulate the intermediate stats
+        for xb, yb in stats_loader:
+            cpt += 1
+            optimizer.zero_grad()
+            y_pred = model.forward(xb)  # Retain attention block input
+            loss = loss_fn(y_pred, yb)
+            loss.backward()  # Retain S_grad
+            running_loss += loss.item() * xb.size(0)
+            model.freeze_batch_input_and_grad()  # Freeze the input and gradient of S_grad
+            model.accumulate_batch_stats(methods)
+
+        # Computing the P_stat
+        with torch.no_grad():
+            model.average_batch_stats(cpt)
+            model.compute_P_stat(methods)
+            model.freeze_WQt_WKt()
+            for method in methods:
+                print(
+                    f"Norm P {method}: \t{torch.linalg.norm(model.P_stat[method], ord='fro')}"
+                )
+            print(f"Norm S_grad: \t{torch.linalg.norm(model.grad_S_batch, ord='fro')}")
+
+            # Second pass on the batches to test the forward
+        for xb, yb in stats_loader:
+            for method in methods:
+                for lbd in lbds:
+                    model.update_WQ_WK(config, lbd=lbd, choice_P_stat=method)
+                    y_pred_search = model.forward(xb)
+                    loss_search = loss_fn(y_pred_search, yb)
+                    running_all_losses[method][lbd] += loss_search.item() * xb.size(0)
+
+            # WARN: Line search not method agnostic
+            # lbd_min, dphi0, phi0 = armijo_line_search(
+            #     loss_SVD,
+            #     config,
+            #     model,
+            #     choice_P_stat=armijo_method,
+            #     xb=xb,
+            #     loss_fn=loss_fn,
+            #     alpha=alpha_armijo,
+            #     beta=beta_armijo,
+            #     expand=True,
+            # )
+        model.reset_layers_WQt_WKt(config)
+        # lbds_min.append(lbd_min)
+
+    end_epoch = time.time()
+
+    running_loss /= train_obs_size
+    print(
+        f"Epoch {epoch}/{num_epochs}, Time {end_epoch - start_epoch:.2f}s, Loss: {running_loss}"
+    )
+    train_losses.append(running_loss)
+    if epoch % 2 == 0:
+        for method in methods:
+            for lbd in lbds:
+                running_all_losses[method][lbd] /= train_obs_size
+                all_train_losses[method][lbd].append(running_all_losses[method][lbd])
+        # print(f"Lbd*: \t{lbd_min:e}")
+        # TODO: Comparaison S et lbd*dS
+
+        # for method in methods:
+        #     print(
+        #         f"Norm (lbd * P {method}): \t{torch.linalg.norm(lbd_min * model.P_stat[method], ord='fro')}"
+        #     )
+        #
+        # TODO: Change the frozen batch version to all version
+
+        # print(
+        #     f"Norm (lbd * S_grad): \t{torch.linalg.norm(lbd_min * model.frozen_S_grad, ord='fro')}"
+        # )
+        # print(f"Norm S: \t{torch.linalg.norm(model.S_batch, ord='fro')}")
+
+end_file = time.time()
+print(f"Time taken: {end_file - start_file:.2f} seconds")
 
 
 def testalph(lbd, phi0, dphi0, alpha):
@@ -348,72 +313,53 @@ plt.figure()
 legend = []
 for epoch in range(1, num_epochs + 1):
     if epoch % 2 == 0:
-        lbd_per_epoch = [lbds_epoch_losses_kro[epoch - 1][lbd] for lbd in lbds]
-        plt.plot(lbds, lbd_per_epoch)
-        legend.append(f"Epoch {epoch} kro")
-        lbd_per_epoch = [lbds_epoch_losses_bigf[epoch - 1][lbd] for lbd in lbds]
-        plt.plot(lbds, lbd_per_epoch)
-        legend.append(f"Epoch {epoch} big_f, in_e")
-        plt.axvline(lbds_min[epoch - 1], linestyle="--", label=f"Opti Epoch {epoch}")
-        legend.append(f"Lbd min Epoch {epoch}")
-        if False:
+        for method in methods:
             plt.plot(
-                lbds,
-                [
-                    testalph(lbd, li_epoch_phi0[epoch - 1], li_epoch_dphi0[epoch - 1], 1)
-                    for lbd in lbds
-                ],
+                lbds, [all_train_losses[method][lbd][epoch // 2 - 1] for lbd in lbds]
             )
-            legend.append("phi0 + lbd * dphi0")
-            plt.plot(
-                lbds,
-                [
-                    testalph(
-                        lbd, li_epoch_phi0[epoch - 1], li_epoch_dphi0[epoch - 1], 1 / 2
-                    )
-                    for lbd in lbds
-                ],
-            )
-            legend.append("phi0 + 1/2 * lbd * dphi0")
-            plt.plot(
-                lbds,
-                [
-                    testalph(
-                        lbd,
-                        li_epoch_phi0[epoch - 1],
-                        li_epoch_dphi0[epoch - 1],
-                        alpha_armijo,
-                    )
-                    for lbd in lbds
-                ],
-            )
-            legend.append("phi0 + alpha * lbd * dphi0")
+            legend.append(f"Epoch {epoch}, {method}")
 
-        # print(f"f(lbds): {[testalph(lbd, li_epoch_dphi0[epoch - 1]) for lbd in lbds]}")
+        # plt.axvline(lbds_min[epoch - 1], linestyle="--")
+        # legend.append(f"lbd_min Epoch {epoch} {armijo_method}")
 
-        if test_stat_formula:
-            plt.plot(lbds, lbd_per_epoch)
-            legend.append(f"Epoch {epoch} small_f, in_e")
-            plt.plot(lbds, lbd_per_epoch)
-            legend.append(f"Epoch {epoch} big_f, in_e")
+        # if plot_armijo:
+        #     plt.plot(
+        #         lbds,
+        #         [
+        #             testalph(lbd, li_epoch_phi0[epoch - 1], li_epoch_dphi0[epoch - 1], 1)
+        #             for lbd in lbds
+        #         ],
+        #     )
+        #     legend.append("phi0 + lbd * dphi0")
+        #     plt.plot(
+        #         lbds,
+        #         [
+        #             testalph(
+        #                 lbd, li_epoch_phi0[epoch - 1], li_epoch_dphi0[epoch - 1], 1 / 2
+        #             )
+        #             for lbd in lbds
+        #         ],
+        #     )
+        #     legend.append("phi0 + 1/2 * lbd * dphi0")
+        #     plt.plot(
+        #         lbds,
+        #         [
+        #             testalph(
+        #                 lbd,
+        #                 li_epoch_phi0[epoch - 1],
+        #                 li_epoch_dphi0[epoch - 1],
+        #                 alpha_armijo,
+        #             )
+        #             for lbd in lbds
+        #         ],
+        #     )
+        #     legend.append("phi0 + alpha * lbd * dphi0")
 plt.yscale("log")
 plt.xlabel("Lambda")
 plt.ylabel("Loss")
 plt.title("Train Loss(lambda)")
 plt.legend(legend)
 plt.show()
-
-# plt.hist(
-#     hist_li_lbd_min_epoch,
-#     # bins=30,
-#     stacked=True,
-#     # color=colors,
-#     # label=["iter 1", "iter 2"],
-#     edgecolor="black",
-# )
-# plt.xlabel("x")
-# plt.ylabel("count")
-# plt.show()
 
 
 # Evaluate on test set

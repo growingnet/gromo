@@ -86,7 +86,6 @@ class Block(nn.Module):
         self.mlp = MLP(cfg)
 
     def forward(self, x, scaling_test: None | float = None):
-        """If a batch size is provided, the statistics for the natural gradient will be retained. The batch size should be equal to the training batch size"""
         x = self.ln1(x)
         self.input_attention_block = x
 
@@ -94,85 +93,75 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln2(x))
         return x
 
-    def freeze_input_and_grad(self):
+    def freeze_batch_input_and_grad(self):
         assert self.attn.S_grad is not None
         self.frozen_x = self.input_attention_block.clone()
         self.frozen_S_grad = self.attn.S_grad.clone()
         self.frozen_S = self.attn.S_keep.clone()
 
-    def compute_statistics(self):
+    def reinitialize_batch_stats(self):
+        self.kro_batch = 0.0
+        self.vec_xtGx_batch = 0.0
+        self.xtx_batch = 0.0
+        self.xtGx_batch = 0.0
+        self.bigf_batch = 0.0
+        self.grad_S_batch = 0.0
+        self.S_batch = 0.0
+
+    def average_batch_stats(self, N):
+        self.kro_batch /= N
+        self.vec_xtGx_batch /= N
+        self.xtx_batch /= N
+        self.xtGx_batch /= N
+        self.bigf_batch /= N
+        self.grad_S_batch /= N
+        self.S_batch /= N
+
+    def accumulate_batch_stats(self, method_li: list[str]):
         """
-        Compute the statistics used for the natural gradient.
-        Depends on the last input of the forward pass, and on the last gradient of S.
-
-        Returns a dict with key (formula small/big, expectation outside/inside) and value the statistic P.
-
-        formula:
-            small_f: X^+ G (X^+).T
-            big_f: (X.T X)^+ X.T G X (X.T X)^+
-        expectation:
-            out_e: Averages over the global formula.
-            in_e: Averages over the smaller statistics.
-                X, G for small_f
-                X.T, X.T G X for big_f
+        Compute the intermediate statistics for a batch.
         """
         assert self.frozen_S_grad is not None
-        x = self.frozen_x  # (b,s,e)
-        xt = x.transpose(-2, -1)  # (b,e,s)
-        covi = xt @ x
-        b = covi.size(0)
-        e = covi.size(-1)
+        xt = self.frozen_x.transpose(-2, -1)  # (b,e,s)
+        xtx = xt @ self.frozen_x  # (b,e,e)
+        xtGx = xt @ self.frozen_S_grad @ self.frozen_x
+        b = xtx.size(0)
+        e = xtx.size(-1)
+
+        # TODO: Check eigeinvalues of methods
+        if "kro" in method_li:
+            # Kronecker product for each batch
+            covi1 = xtx.unsqueeze(2).unsqueeze(4)  # (b,e,1,e,1)
+            covi2 = xtx.unsqueeze(1).unsqueeze(3)  # (b,1,e,1,e)
+            kro = (covi1 * covi2).reshape(b, e * e, e * e)  # (b,e*e,e*e)
+            self.kro_batch += kro.mean(dim=0)  # (e*e,e*e)
+            self.vec_xtGx_batch += xtGx.mean(dim=0).reshape(-1, 1)
+
+        if "big_in" in method_li:
+            self.xtx_batch += xtx.mean(dim=0)  # (e,e)
+            self.xtGx_batch += xtGx.mean(dim=0)  # (e,e)
+
+        if "big_out" in method_li:
+            xtx_plus = torch.linalg.pinv(xtx, hermitian=True)  # (b,e,e)
+            self.bigf_batch += (xtx_plus @ xtGx @ xtx_plus).mean(dim=0)  # (e,e)
+
+        self.grad_S_batch += self.frozen_S_grad.mean(dim=0)  # (s,s)
+        self.S_batch += self.frozen_S.mean(dim=0)  # (s,s)
+
+    def compute_P_stat(self, method_li: list[str]):
         self.P_stat = {}
+        e = self.frozen_x.size(-1)
 
-        # Kronecker product for each batch
-        covi1 = covi.unsqueeze(2).unsqueeze(4)  # (b,e,1,e,1)
-        covi2 = covi.unsqueeze(1).unsqueeze(3)  # (b,1,e,1,e)
-        kro = (covi1 * covi2).reshape(b, e * e, e * e)  # (b,e*e,e*e)
-        # kro_mean symetrical? use faster pinv?
-        kro_mean = kro.mean(dim=0)  # (e*e,e*e)
-        kro_mean = torch.linalg.pinv(kro_mean)  # (e*e,e*e)
-
-        simple = (xt @ self.frozen_S_grad @ x).mean(dim=0).reshape(-1, 1)
-        self.P_stat[("kro", "kro")] = (kro_mean @ simple).reshape(e, e)  # (e,e)
-
-        acc_cov = torch.linalg.pinv((xt @ x).mean(dim=0), hermitian=True)  # (e,e)
-        # TODO: check plus grande valeur propre
-        acc_cov_grad = (xt @ self.frozen_S_grad @ x).mean(dim=0)  # (e,e)
-        self.P_stat[("big_f", "in_e")] = acc_cov @ acc_cov_grad @ acc_cov  # (e,e)
-        print(
-            f"Ratio norm kro/big_f: {torch.linalg.matrix_norm(self.P_stat[('kro', 'kro')], ord='fro') / torch.linalg.matrix_norm(self.P_stat[('big_f', 'in_e')], ord='fro')}"
-        )
-
-        acc_cov = torch.linalg.pinv((xt @ x), hermitian=True)  # (b,e,e)
-        acc_cov_grad = xt @ self.frozen_S_grad @ x  # (b,e,e)
-        self.P_stat[("big_f", "out_e")] = (acc_cov @ acc_cov_grad @ acc_cov).mean(
-            dim=0
-        )  # (e,e)
-
-        acc_x = torch.linalg.pinv(x.mean(dim=0))  # (e,s)
-        acc_x_grad = (self.frozen_S_grad).mean(dim=0)  # (s,s)
-        self.P_stat[("small_f", "in_e")] = (
-            acc_x @ acc_x_grad @ acc_x.transpose(-2, -1)
-        )  # (e,e)
-
-        acc_x = torch.linalg.pinv(x)  # (b,e,s)
-        acc_x_grad = self.frozen_S_grad  # (b,s,s)
-        self.P_stat[("small_f", "out_e")] = (
-            acc_x @ acc_x_grad @ acc_x.transpose(-2, -1)
-        ).mean(dim=0)  # (e,e)
-
-        return self.P_stat
-
-    def get_P_ratios(self):
-        """Return the ratio of the Frobenius norm of P_stat small_f/big_f"""
-        assert isinstance(self.P_stat, dict)
-        ratio_in_e = torch.linalg.matrix_norm(
-            self.P_stat[("small_f", "in_e")], ord="fro"
-        ) / torch.linalg.matrix_norm(self.P_stat[("big_f", "in_e")], ord="fro")
-        ratio_big_f = torch.linalg.matrix_norm(
-            self.P_stat[("big_f", "out_e")], ord="fro"
-        ) / torch.linalg.matrix_norm(self.P_stat[("big_f", "in_e")], ord="fro")
-        return ratio_in_e, ratio_big_f
+        # TODO: Check if hermitian to speedup
+        if "kro" in method_li:
+            self.P_stat["kro"] = (
+                torch.linalg.pinv(self.kro_batch) @ self.vec_xtGx_batch
+            ).reshape(e, e)
+        if "big_in" in method_li:
+            xtx_inv = torch.linalg.pinv(self.xtx_batch, hermitian=True)  # (e,e)
+            self.P_stat["big_in"] = xtx_inv @ self.xtGx_batch @ xtx_inv  # (e,e)
+        if "big_out" in method_li:
+            self.P_stat["big_out"] = self.bigf_batch  # (e,e)
 
     def freeze_WQt_WKt(self):
         # Notation (out,in) -> (in,out)
@@ -195,14 +184,13 @@ class Block(nn.Module):
         self,
         cfg,
         lbd: float,
-        choice_P_stat: tuple,
+        choice_P_stat: str,
         dif: bool = False,
         test_search_formula: bool = False,  # TODO:
-        verbose: bool = False,
     ):
         """
         Update the linear layers W_Q and W_K.
-        The update depends on the saved WQt and WKt, lbd, and the statistic P.
+        Depends on: Frozen WQt and WKt, lbd, P_stat
 
         dif: If True, find dWQ, dWK = SVD(-lbd * P); instead of finding directly WQ, WK
         """
@@ -230,11 +218,6 @@ class Block(nn.Module):
         with torch.no_grad():
             new_WQ.weight.copy_(WQtplus1)
             new_WK.weight.copy_(WKtplus1)
-
-        if verbose:
-            print(
-                f"Norm ratio WQ new/old: {torch.linalg.matrix_norm(new_WQ.weight, ord='fro') / torch.linalg.matrix_norm(self.attn.W_Q.weight, ord='fro')}"
-            )
 
         self.attn.W_Q = new_WQ
         self.attn.W_K = new_WK
