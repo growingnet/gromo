@@ -21,7 +21,7 @@ DATA_PATH = "src/gromo/modules/attention/transf_teacher.pt"
 test_ratio = 0.2
 
 # Hyperparams training ----------------------------
-num_epochs = 2
+num_epochs = 10
 methods = ["kro", "big_in"]
 lbds = [i for i in torch.linspace(-1e8, 1e8, 16 + 1).tolist()]
 train_batch_size = 64
@@ -226,7 +226,7 @@ for epoch in range(1, num_epochs + 1):
             optimizer.step()
         # lbds_min.append(0.0)  # Just for epoch number consistency
     else:
-        model.reinitialize_batch_stats()
+        model.reinitialize_stats(methods)
         cpt = 0
         # First pass on the batches to accumulate the intermediate stats
         for xb, yb in stats_loader:
@@ -238,17 +238,22 @@ for epoch in range(1, num_epochs + 1):
             running_loss += loss.item() * xb.size(0)
             model.freeze_batch_input_and_grad()  # Freeze the input and gradient of S_grad
             model.accumulate_batch_stats(methods)
+            model.compute_stats_average(cpt)
+            # Compute cumulative P_stat only for last grow epoch
+            if epoch == num_epochs:
+                model.compute_P_stat(methods)
+        # Compute only the P_stat for whole dataset for other epochs
+        if epoch != num_epochs:
+            model.compute_P_stat(methods)
 
         # Computing the P_stat
         with torch.no_grad():
-            model.average_batch_stats(cpt)
-            model.compute_P_stat(methods)
             model.freeze_WQt_WKt()
             for method in methods:
                 print(
-                    f"Norm P {method}: \t{torch.linalg.norm(model.P_stat[method], ord='fro')}"
+                    f"Norm P {method}: \t{torch.linalg.norm(model.P_stat[method][-1], ord='fro')}"
                 )
-            print(f"Norm S_grad: \t{torch.linalg.norm(model.grad_S_batch, ord='fro')}")
+            print(f"Norm S_grad: \t{torch.linalg.norm(model.grad_S_avg[-1], ord='fro')}")
 
             # Second pass on the batches to test the forward
         for xb, yb in stats_loader:
@@ -300,9 +305,26 @@ for epoch in range(1, num_epochs + 1):
         #     f"Norm (lbd * S_grad): \t{torch.linalg.norm(lbd_min * model.frozen_S_grad, ord='fro')}"
         # )
         # print(f"Norm S: \t{torch.linalg.norm(model.S_batch, ord='fro')}")
-
 end_file = time.time()
 print(f"Time taken: {end_file - start_file:.2f} seconds")
+
+
+def cosine_similarity(a, b):
+    return (
+        torch.sum(a * b)
+        / (torch.linalg.norm(a, ord="fro") * torch.linalg.norm(b, ord="fro"))
+    ).item()
+
+
+li_kro_cossim = []
+for stat in model.kro_avg:
+    li_kro_cossim.append(cosine_similarity(stat, model.kro_avg[-1]))
+print(f"Cossim kro: {li_kro_cossim}")
+
+li_dzkro_cossim = []
+for stat in model.P_stat["kro"]:
+    li_dzkro_cossim.append(cosine_similarity(stat, model.P_stat["kro"][-1]))
+print(f"Cossim dzkro: {li_dzkro_cossim}")
 
 
 def testalph(lbd, phi0, dphi0, alpha):

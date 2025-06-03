@@ -99,7 +99,7 @@ class Block(nn.Module):
         self.frozen_S_grad = self.attn.S_grad.clone()
         self.frozen_S = self.attn.S_keep.clone()
 
-    def reinitialize_batch_stats(self):
+    def reinitialize_stats(self, methods):
         self.kro_batch = 0.0
         self.vec_xtGx_batch = 0.0
         self.xtx_batch = 0.0
@@ -108,14 +108,26 @@ class Block(nn.Module):
         self.grad_S_batch = 0.0
         self.S_batch = 0.0
 
-    def average_batch_stats(self, N):
-        self.kro_batch /= N
-        self.vec_xtGx_batch /= N
-        self.xtx_batch /= N
-        self.xtGx_batch /= N
-        self.bigf_batch /= N
-        self.grad_S_batch /= N
-        self.S_batch /= N
+        self.kro_avg = []
+        self.vec_xtGx_avg = []
+        self.xtx_avg = []
+        self.xtGx_avg = []
+        self.bigf_avg = []
+        self.grad_S_avg = []
+        self.S_avg = []
+
+        self.P_stat = {}
+        for method in methods:
+            self.P_stat[method] = []
+
+    def compute_stats_average(self, N):
+        self.kro_avg.append(self.kro_batch / N)
+        self.vec_xtGx_avg.append(self.vec_xtGx_batch / N)
+        self.xtx_avg.append(self.xtx_batch / N)
+        self.xtGx_avg.append(self.xtGx_batch / N)
+        self.bigf_avg.append(self.bigf_batch / N)
+        self.grad_S_avg.append(self.grad_S_batch / N)
+        self.S_avg.append(self.S_batch / N)
 
     def accumulate_batch_stats(self, method_li: list[str]):
         """
@@ -149,19 +161,21 @@ class Block(nn.Module):
         self.S_batch += self.frozen_S.mean(dim=0)  # (s,s)
 
     def compute_P_stat(self, method_li: list[str]):
-        self.P_stat = {}
         e = self.frozen_x.size(-1)
 
         # TODO: Check if hermitian to speedup
         if "kro" in method_li:
-            self.P_stat["kro"] = (
-                torch.linalg.pinv(self.kro_batch) @ self.vec_xtGx_batch
-            ).reshape(e, e)
+            self.P_stat["kro"].append(
+                (
+                    torch.linalg.pinv(self.kro_avg[-1], hermitian=True)
+                    @ self.vec_xtGx_avg[-1]
+                ).reshape(e, e)
+            )
         if "big_in" in method_li:
-            xtx_inv = torch.linalg.pinv(self.xtx_batch, hermitian=True)  # (e,e)
-            self.P_stat["big_in"] = xtx_inv @ self.xtGx_batch @ xtx_inv  # (e,e)
+            xtx_inv = torch.linalg.pinv(self.xtx_avg[-1], hermitian=True)  # (e,e)
+            self.P_stat["big_in"].append(xtx_inv @ self.xtGx_avg[-1] @ xtx_inv)  # (e,e)
         if "big_out" in method_li:
-            self.P_stat["big_out"] = self.bigf_batch  # (e,e)
+            self.P_stat["big_out"].append(self.bigf_avg[-1])  # (e,e)
 
     def freeze_WQt_WKt(self):
         # Notation (out,in) -> (in,out)
@@ -186,7 +200,6 @@ class Block(nn.Module):
         lbd: float,
         choice_P_stat: str,
         dif: bool = False,
-        test_search_formula: bool = False,  # TODO:
     ):
         """
         Update the linear layers W_Q and W_K.
@@ -194,8 +207,8 @@ class Block(nn.Module):
 
         dif: If True, find dWQ, dWK = SVD(-lbd * P); instead of finding directly WQ, WK
         """
-        assert isinstance(self.P_stat[choice_P_stat], torch.Tensor)
-        temp_P = self.P_stat[choice_P_stat]
+        assert isinstance(self.P_stat[choice_P_stat][-1], torch.Tensor)
+        temp_P = self.P_stat[choice_P_stat][-1]
 
         new_WQ = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
         new_WK = nn.Linear(cfg.d_e, cfg.d_k, bias=cfg.bias_attention)
