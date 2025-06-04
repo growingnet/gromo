@@ -986,6 +986,53 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         return accuracy, loss.item()
 
+    def evaluate_extended(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        loss_fn: Callable,
+        with_f1score: bool = False,
+    ) -> tuple[float, float] | tuple[float, float, float]:
+        """Evaluate extended network on batch
+
+        Important: Assumes that the batch is already on the correct device
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input features tensor
+        y : torch.Tensor
+            true labels tensor
+        loss_fn : Callable
+            loss function for bottleneck calculation
+        with_f1score : bool, optional
+            calculate f1-score, by default False
+
+        Returns
+        -------
+        tuple[float, float] | tuple[float, float, float]
+            accuracy and loss, optionally f1-score
+        """
+        with torch.no_grad():
+            pred = self.extended_forward(x)
+            loss = loss_fn(pred, y)
+
+        if self.out_features > 1:
+            final_pred = pred.argmax(axis=1)
+            correct = (final_pred == y).int().sum()
+            accuracy = (correct / pred.shape[0]).item()
+        else:
+            accuracy = -1
+
+        if with_f1score:
+            if self.out_features > 1:
+                f1score = f1_micro(y.cpu(), final_pred.cpu())
+            else:
+                f1score = -1
+            return accuracy, loss.item(), f1score
+
+        return accuracy, loss.item()
+
 
 expansion_types = ["new edge", "new node", "expanded node"]
 
