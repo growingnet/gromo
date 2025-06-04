@@ -66,7 +66,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         self.add_edges_from(edges)
         self.update_nodes(self.nodes, node_attributes)
-        self.update_edges(edges, edge_attributes)
+        self.update_edges(edges, edge_attributes, zero_weights=False)
         self.update_connections(edges)
         self.id_last_node_added = max(len(node_attributes.keys()) - 2, 0)
 
@@ -206,7 +206,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return [self.get_node_module(node) for node in nodes]
 
     def add_direct_edge(
-        self, prev_node: str, next_node: str, edge_attributes: dict = {}
+        self,
+        prev_node: str,
+        next_node: str,
+        edge_attributes: dict = {},
+        zero_weights: bool = False,
     ) -> None:
         """Add direct edge to graph, link two nodes with a new module
 
@@ -218,10 +222,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             outgoing node of edge
         edge_attributes : _type_, optional
             extra attributes of edge, by default {}
+        zero_weights : bool, optional
+            set the weights to zero, by default False
         """
         self.add_edge(prev_node, next_node)
         edges = [(prev_node, next_node)]
-        self.update_edges(edges, edge_attributes=edge_attributes)
+        self.update_edges(
+            edges, edge_attributes=edge_attributes, zero_weights=zero_weights
+        )
         self.update_connections(edges)
 
     def add_node_with_two_edges(
@@ -231,6 +239,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         next_node: str,
         node_attributes: dict,
         edge_attributes: dict = {},
+        zero_weights: bool = False,
     ) -> None:
         """Add new node to graph, create incoming and outgoing edges with new modules
 
@@ -246,6 +255,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             attributes of new node
         edge_attributes : dict, optional
             extra attributes of edge, by default {}
+        zero_weights : bool, optional
+            set the weights to zero, by default False
 
         Raises
         ------
@@ -268,7 +279,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # TODO: separate functions for different modules, no need to check the type of node
         # self.nodes[new_node].update(node_attributes)
         self.update_nodes([new_node], node_attributes={new_node: node_attributes})
-        self.update_edges(new_edges, edge_attributes=edge_attributes)
+        self.update_edges(
+            new_edges, edge_attributes=edge_attributes, zero_weights=zero_weights
+        )
         self.update_connections(new_edges)
         self.id_last_node_added += 1
 
@@ -347,7 +360,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 )
 
     def update_edges(
-        self, edges: list[tuple[str, str]], edge_attributes: dict = {}
+        self,
+        edges: list[tuple[str, str]],
+        edge_attributes: dict = {},
+        zero_weights: bool = False,
     ) -> None:
         """Create new modules for edges based on node types
 
@@ -357,6 +373,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             list of edges to update modules
         edge_attributes : dict, optional
             extra attributes for edges, by default {}
+        zero_weights : bool, optional
+            set the weights to zero, by default False
         """
         for prev_node, next_node in edges:
             if edge_attributes.get("constant"):
@@ -375,16 +393,21 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 self.nodes[prev_node]["type"] == "linear"
                 and self.nodes[next_node]["type"] == "linear"
             ):
+                new_module = LinearGrowingModule(
+                    in_features=self.nodes[prev_node]["size"],
+                    out_features=self.nodes[next_node]["size"],
+                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    device=self.device,
+                    name=f"l{prev_node}_{next_node}",
+                )
+                if zero_weights:
+                    new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
+                    if new_module.use_bias:
+                        new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
                 self.__set_edge_module(
                     prev_node,
                     next_node,
-                    LinearGrowingModule(
-                        in_features=self.nodes[prev_node]["size"],
-                        out_features=self.nodes[next_node]["size"],
-                        use_bias=edge_attributes.get("use_bias", self.use_bias),
-                        device=self.device,
-                        name=f"l{prev_node}_{next_node}",
-                    ),
+                    new_module,
                 )
                 self[prev_node][next_node]["type"] = "linear"
                 # TODO: set bias to zeros
@@ -544,6 +567,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             # Remove constant module if needed
             self.remove_direct_edge(self.root, self.end)
             self.remove_direct_edge(self.root, self.end)
+
+        # TODO: Temporary solution
+        for expansion in actions:
+            expansion.dag = copy.deepcopy(self)
 
         return bottleneck, input_B
 
@@ -1083,9 +1110,9 @@ class Expansion:
     def expand(self) -> None:
         """Create new edge or node on the enclosed GrowingDAG"""
         if self.type == "new edge":
-            self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes)  # type: ignore
+            self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
         elif self.type == "new node":
-            self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes)  # type: ignore
+            self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes, zero_weights=True)  # type: ignore
 
     def update_growth_history(
         self,
