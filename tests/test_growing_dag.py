@@ -596,6 +596,40 @@ class TestGrowingDAG(unittest.TestCase):
         numel += self.hidden_size * self.out_features + self.out_features
         self.assertEqual(self.dag.count_parameters([("start", "1"), ("1", "end")]), numel)
 
+    def test_evaluate_extended(self) -> None:
+        self.dag.add_direct_edge("start", "end")
+        self.dag.get_edge_module("start", "end").optimal_delta_layer = torch.nn.Linear(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            device=global_device(),
+        )
+        self.dag.add_node_with_two_edges(
+            "start", "1", "end", node_attributes=self.single_node_attributes
+        )
+        self.dag.get_edge_module("start", "1").extended_output_layer = torch.nn.Linear(
+            in_features=self.in_features,
+            out_features=self.hidden_size,
+            device=global_device(),
+        )
+        self.dag.get_edge_module("1", "end").extended_input_layer = torch.nn.Linear(
+            in_features=self.hidden_size,
+            out_features=self.out_features,
+            device=global_device(),
+        )
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device()).argmax(axis=1)
+        loss_fn = torch.nn.CrossEntropyLoss()
+        actual_out = self.dag.extended_forward(x)
+        actual_loss = loss_fn(actual_out, y).item()
+        acc, _, f1 = self.dag.evaluate_extended(
+            x, actual_out.argmax(axis=1), loss_fn, with_f1score=True
+        )
+        self.assertEqual(acc, 1.0)
+        self.assertEqual(f1, 1.0)
+        _, loss, _ = self.dag.evaluate_extended(x, y, loss_fn, with_f1score=True)
+        self.assertEqual(actual_loss, loss)
+
     def test_expansion_init(self) -> None:
         with self.assertRaises(ValueError):
             Expansion(
