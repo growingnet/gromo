@@ -627,8 +627,44 @@ class TestGrowingDAG(unittest.TestCase):
         )
         self.assertEqual(acc, 1.0)
         self.assertEqual(f1, 1.0)
-        _, loss, _ = self.dag.evaluate_extended(x, y, loss_fn, with_f1score=True)
+
+        _, loss = self.dag.evaluate_extended(x, y, loss_fn, with_f1score=False)
         self.assertEqual(actual_loss, loss)
+
+        dag = GrowingDAG(
+            in_features=self.in_features,
+            out_features=1,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            layer_type="linear",
+        )
+        dag.get_edge_module("start", "end").optimal_delta_layer = torch.nn.Linear(
+            in_features=self.in_features,
+            out_features=1,
+            device=global_device(),
+        )
+        dag.add_node_with_two_edges(
+            "start", "1", "end", node_attributes=self.single_node_attributes
+        )
+        dag.get_edge_module("start", "1").extended_output_layer = torch.nn.Linear(
+            in_features=self.in_features,
+            out_features=self.hidden_size,
+            device=global_device(),
+        )
+        dag.get_edge_module("1", "end").extended_input_layer = torch.nn.Linear(
+            in_features=self.hidden_size,
+            out_features=1,
+            device=global_device(),
+        )
+        y = torch.rand((50, 1), device=global_device())
+        loss_fn = torch.nn.MSELoss()
+        actual_out = dag.extended_forward(x)
+        actual_loss = loss_fn(actual_out, y).item()
+        acc, loss, f1 = dag.evaluate_extended(x, y, loss_fn, with_f1score=True)
+        self.assertEqual(acc, -1)
+        self.assertEqual(f1, -1)
+        self.assertEqual(loss, actual_loss)
 
     def test_expansion_init(self) -> None:
         with self.assertRaises(ValueError):
