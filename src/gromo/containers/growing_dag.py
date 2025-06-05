@@ -205,6 +205,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         return [self.get_node_module(node) for node in nodes]
 
+    def get_all_node_modules(self) -> list[LinearMergeGrowingModule]:
+        """Getter function for all modules attached to nodes
+
+        Returns
+        -------
+        list[LinearMergeGrowingModule]
+            list of modules for all existing nodes
+        """
+        return self.get_node_modules(list(self.nodes))
+
     def add_direct_edge(
         self,
         prev_node: str,
@@ -555,13 +565,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             # node_module.delete_update()
 
         # Reset all hooks
-        for next_node_module in next_node_modules:
-            for parallel_module in next_node_module.previous_modules:
-                parallel_module.reset_computation()
-                # DO NOT delete updates
-                # parallel_module.delete_update(include_previous=False)
+        for node_module in self.get_all_node_modules():
+            if node_module in next_node_modules:
+                for parallel_module in node_module.previous_modules:
+                    parallel_module.reset_computation()
+                    # DO NOT delete updates
+                    # parallel_module.delete_update(include_previous=False)
             # Delete activities
-            next_node_module.delete_update()
+            node_module.delete_update()
 
         if constant_module:
             # Remove constant module if needed

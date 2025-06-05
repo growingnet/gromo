@@ -77,6 +77,30 @@ class TestGrowingDAG(unittest.TestCase):
             ],
         )
 
+    def test_get_all_node_modules(self) -> None:
+        self.assertEqual(
+            set(self.dag.get_all_node_modules()),
+            set(
+                [
+                    self.dag.get_node_module("start"),
+                    self.dag.get_node_module("end"),
+                ]
+            ),
+        )
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "test", self.dag.end, self.single_node_attributes
+        )
+        self.assertEqual(
+            set(self.dag.get_all_node_modules()),
+            set(
+                [
+                    self.dag.get_node_module("start"),
+                    self.dag.get_node_module("test"),
+                    self.dag.get_node_module("end"),
+                ]
+            ),
+        )
+
     def test_add_direct_edge(self) -> None:
         self.dag.add_direct_edge(prev_node="start", next_node="end")
         self.assertEqual(list(self.dag.edges), [("start", "end")])
@@ -245,6 +269,66 @@ class TestGrowingDAG(unittest.TestCase):
 
         self.dag.add_edge("start", "end")
         self.assertFalse(self.dag.is_empty())
+
+    def test_calculate_bottleneck(self) -> None:
+        expansions = [
+            Expansion(
+                self.dag,
+                type="new edge",
+                previous_node=self.dag.root,
+                next_node=self.dag.end,
+            )
+        ]
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device())
+
+        bottleneck, input_B = self.dag.calculate_bottleneck(
+            actions=expansions,
+            X=x,
+            Y=y,
+        )
+        self.assertIn(self.dag.end, bottleneck)
+        self.assertEqual(bottleneck[self.dag.end].shape, (50, self.out_features))
+        self.assertIn(self.dag.root, input_B)
+        self.assertEqual(input_B[self.dag.root].shape, (50, self.in_features))
+
+        self.dag.add_node_with_two_edges(
+            self.dag.root,
+            "test",
+            self.dag.end,
+            self.single_node_attributes,
+            zero_weights=True,
+        )
+        bottleneck, input_B = self.dag.calculate_bottleneck(
+            actions=expansions,
+            X=x,
+            Y=y,
+        )
+        for node_module in self.dag.get_all_node_modules():
+            self.assertIsNone(node_module.activity)
+        self.assertIsNotNone(
+            self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer
+        )
+        self.assertIsNotNone(
+            expansions[0].dag.get_edge_module("test", self.dag.end).optimal_delta_layer
+        )
+        self.assertTrue(
+            torch.all(
+                self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.weight
+                == expansions[0]
+                .dag.get_edge_module("test", self.dag.end)
+                .optimal_delta_layer.weight
+            )
+        )
+        self.assertTrue(
+            torch.all(
+                self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.bias
+                == expansions[0]
+                .dag.get_edge_module("test", self.dag.end)
+                .optimal_delta_layer.bias
+            )
+        )
 
     def test_get_ancestors(self) -> None:
         self.dag.add_direct_edge("start", "end")
@@ -567,6 +651,13 @@ class TestGrowingDAG(unittest.TestCase):
             next_node=self.dag.end,
         )
         self.assertEqual(expansion.new_edges, (self.dag.root, self.dag.end))
+        expansion.expand()
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).weight)
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).bias)
+        )
 
         expansion = Expansion(
             self.dag,
@@ -574,6 +665,7 @@ class TestGrowingDAG(unittest.TestCase):
             expanding_node="test",
             previous_node=self.dag.root,
             next_node=self.dag.end,
+            node_attributes=self.single_node_attributes,
         )
         self.assertEqual(
             expansion.new_edges,
@@ -581,6 +673,19 @@ class TestGrowingDAG(unittest.TestCase):
                 (self.dag.root, "test"),
                 ("test", self.dag.end),
             ],
+        )
+        expansion.expand()
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module(self.dag.root, "test").weight)
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module(self.dag.root, "test").bias)
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module("test", self.dag.end).weight)
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module("test", self.dag.end).bias)
         )
 
         self.dag.add_node_with_two_edges(
