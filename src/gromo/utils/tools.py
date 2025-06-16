@@ -242,7 +242,7 @@ def apply_border_effect_on_unfolded(
     Should satisfy that for a convolution C1 and a convolution C2,
     if B is the output of C1 of shape (n, C, H, W) we get
     as unfolded tensor the unfolded input of C1 of shape
-    (n, C * C1.kernel_size[0] * C1.kernel_size[1], H * W).
+    (n, C[-1] * C1.kernel_size[0] * C1.kernel_size[1], H * W).
     Then B[+1] is the output of C2 of shape (n, C[+1], H[+1], W[+1])
     the output of this function (noted F) should be of shape
     (n, C[+1] * C2.kernel_size[0] * C2.kernel_size[1], H[+1] * W[+1])
@@ -266,29 +266,29 @@ def apply_border_effect_on_unfolded(
     if not isinstance(unfolded_tensor, torch.Tensor):
         raise TypeError("Input 'unfolded_tensor' must be a torch.Tensor")
 
-    unfolded_tensor = unfolded_tensor.reshape(
-        unfolded_tensor.shape[0],
-        unfolded_tensor.shape[1],
-        original_size[0],
-        original_size[1],
-    )
-
     channels = unfolded_tensor.shape[1]
     identity_conv = torch.nn.Conv2d(
-        channels,
-        channels,
+        in_channels=channels,
+        out_channels=channels,
+        groups=channels,
         kernel_size=border_effect_conv.kernel_size,
         padding=border_effect_conv.padding,
         stride=border_effect_conv.stride,
         dilation=border_effect_conv.dilation,
         bias=False,
     )
+
     identity_conv.weight.data.fill_(0)
     mid = (border_effect_conv.kernel_size[0] // 2, border_effect_conv.kernel_size[1] // 2)
-    identity_conv.weight.data[:, :, mid[0] : mid[0] + 1, mid[1] : mid[1] + 1] = (
-        torch.eye(channels).unsqueeze(-1).unsqueeze(-1)
-    )
+    identity_conv.weight.data[:, 0, mid[0], mid[1]] = 1.0
     identity_conv.weight.data = identity_conv.weight.data.to(unfolded_tensor.device)
+
+    unfolded_tensor = unfolded_tensor.reshape(
+        unfolded_tensor.shape[0],
+        unfolded_tensor.shape[1],
+        original_size[0],
+        original_size[1],
+    )
 
     unfolded_tensor = identity_conv(unfolded_tensor)
     unfolded_tensor = unfolded_tensor.flatten(start_dim=2)
