@@ -12,6 +12,7 @@ from gromo.utils.tools import (
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
     compute_output_shape_conv,
+    create_bordering_effect_convolution,
 )
 from gromo.utils.utils import global_device
 
@@ -532,6 +533,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             name=name,
             s_growth_is_needed=False,
         )
+        self.bordering_convolution = None
 
     @property
     def tensor_s_growth(self):
@@ -622,11 +624,29 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         Return the unfolded input extended with a channel of ones if the bias is used of
         the previous layer and with border effect of the current layer already applied.
         """
+        if self.previous_module is None:
+            raise ValueError(
+                f"Cannot compute the bordered unfolded input without a previous module for {self.name}."
+            )
+        if self.bordering_convolution is None:
+            if isinstance(self.previous_module, Conv2dGrowingModule):
+                self.bordering_convolution = create_bordering_effect_convolution(
+                    self.previous_module.in_channels
+                    * self.previous_module.kernel_size[0]
+                    * self.previous_module.kernel_size[1]
+                    + self.previous_module.use_bias,
+                    convolution=self.layer,
+                )
+            elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+                raise NotImplementedError
+            else:
+                raise NotImplementedError
         self.previous_module.update_input_size()
         return apply_border_effect_on_unfolded(
             unfolded_tensor=self.previous_module.unfolded_extended_input,
             original_size=self.previous_module.input_size,
             border_effect_conv=self.layer,
+            identity_conv=self.bordering_convolution,
         )
 
     def compute_m_prev_update(
