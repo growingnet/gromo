@@ -276,12 +276,12 @@ def apply_border_effect_on_unfolded(
         stride=border_effect_conv.stride,
         dilation=border_effect_conv.dilation,
         bias=False,
+        device=unfolded_tensor.device,
     )
 
     identity_conv.weight.data.fill_(0)
     mid = (border_effect_conv.kernel_size[0] // 2, border_effect_conv.kernel_size[1] // 2)
     identity_conv.weight.data[:, 0, mid[0], mid[1]] = 1.0
-    identity_conv.weight.data = identity_conv.weight.data.to(unfolded_tensor.device)
 
     unfolded_tensor = unfolded_tensor.reshape(
         unfolded_tensor.shape[0],
