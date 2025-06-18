@@ -84,7 +84,7 @@ class GrowingMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = list(self.layers[1:])
+        self._growing_layers = nn.ModuleList(self.layers[1:])
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -204,6 +204,27 @@ class GrowingMLP(GrowingContainer):
             0 <= item < len(self.layers)
         ), f"{item=} should be in [0, {len(self.layers)})"
         return self.layers[item]
+
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+
+        Parameters
+        ----------
+        device: torch.device | str | None
+            device to move the module to
+        dtype: torch.dtype | None
+            dtype to move the module to
+        """
+        if device is not None:
+            self.device = device
+
+        for layer in self.layers:
+            layer.to(device=device, dtype=dtype)
+
+        return self
 
 
 class Perceptron(GrowingMLP):

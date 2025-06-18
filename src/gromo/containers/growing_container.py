@@ -2,6 +2,7 @@ import torch
 
 from gromo.config.loader import load_config
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import get_correct_device, global_device
 
 
@@ -43,7 +44,7 @@ class GrowingContainer(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self._growing_layers = list()
+        self._growing_layers = torch.nn.ModuleList()
         self.currently_updated_layer_index = None
 
     def set_growing_layers(self):
@@ -136,3 +137,19 @@ class GrowingContainer(torch.nn.Module):
             Number of parameters.
         """
         return sum(p.numel() for p in self.parameters())
+
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """Move the module to a new device and/or dtype.
+
+        Child classes should implement this to handle their specific attributes.
+
+        Parameters
+        ----------
+        device: torch.device | str | None
+            Target device
+        dtype: torch.dtype | None
+            Target dtype
+        """
+        raise NotImplementedError
