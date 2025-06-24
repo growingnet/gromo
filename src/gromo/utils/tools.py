@@ -89,7 +89,7 @@ def compute_optimal_added_parameters(
         diff = torch.abs(matrix_s - matrix_s.t())
         warn(
             f"Warning: The input matrix S is not symmetric.\n"
-            f"Max difference: {diff.max():.2e},"
+            f"Max difference: {diff.max():.2e},\n"
             f"% of non-zero elements: {100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
         )
         matrix_s = (matrix_s + matrix_s.t()) / 2
@@ -231,6 +231,7 @@ def compute_mask_tensor_t(
     return tensor_t
 
 
+@torch.no_grad
 def apply_border_effect_on_unfolded(
     unfolded_tensor: torch.Tensor,
     original_size: tuple[int, int],

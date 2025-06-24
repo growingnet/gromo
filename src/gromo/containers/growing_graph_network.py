@@ -18,10 +18,12 @@ class GrowingGraphNetwork(GrowingContainer):
 
     Parameters
     ----------
-    in_features : int, optional
-        size of input features, by default 5
-    out_features : int, optional
-        size of output dimension, by default 1
+    in_features : int
+        size of input features
+    out_features : int
+        size of output dimension
+    loss_fn : torch.nn.Module
+        loss function
     use_bias : bool, optional
         automatically use bias in the layers, by default True
     use_batch_norm : bool, optional
@@ -34,8 +36,9 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def __init__(
         self,
-        in_features: int = 5,
-        out_features: int = 1,
+        in_features: int,
+        out_features: int,
+        loss_fn: torch.nn.Module,
         neurons: int = 20,
         use_bias: bool = True,
         use_batch_norm: bool = False,
@@ -54,7 +57,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         self.global_step = 0
         self.global_epoch = 0
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.loss_fn = loss_fn
 
         self.reset_network()
 
@@ -368,7 +371,7 @@ class GrowingGraphNetwork(GrowingContainer):
         for prev_edge_module in node_module.previous_modules:
             # we do not need to change the _scaling_factor_next_module as it is
             # given as a parameter of _apply_output_changes
-            # prev_edge_module._scaling_factor_next_module = factor
+            # prev_edge_module._scaling_factor_next_module = factor # Warning
             prev_edge_module._apply_output_changes(factor)
             # Delete activities
             prev_edge_module.delete_update(include_previous=False)
@@ -532,6 +535,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         def simulate_loss(factor):
             for prev_edge_module in node_module.previous_modules:
+                prev_edge_module.scaling_factor = factor
                 prev_edge_module._scaling_factor_next_module[0] = factor
             if next_node_modules is not None:
                 for next_node_module in next_node_modules:
@@ -604,7 +608,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weight of next_node's incoming edge
-                self.update_edge_weights(
+                bott_loss_history = self.update_edge_weights(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
@@ -615,7 +619,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
             # Create/Expand node
-            elif expansion.type == "new node":
+            elif (expansion.type == "new node") or (expansion.type == "expanded node"):
                 expansion.growth_history = copy.copy(self.growth_history)
                 expansion.expand()
                 expansion.update_growth_history(
@@ -625,7 +629,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weights of new edges
-                self.expand_node(
+                bott_loss_history = self.expand_node(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
@@ -643,6 +647,7 @@ class GrowingGraphNetwork(GrowingContainer):
             acc_val, loss_val = expansion.dag.evaluate(X_val, Y_val, loss_fn=self.loss_fn)
 
             # TODO: return all info instead of saving
+            expansion.metrics["loss_bott"] = bott_loss_history[-1]
             expansion.metrics["loss_train"] = loss_train
             expansion.metrics["loss_dev"] = loss_dev
             expansion.metrics["loss_val"] = loss_val

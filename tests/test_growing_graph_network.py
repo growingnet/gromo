@@ -16,6 +16,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.net = GrowingGraphNetwork(
             in_features=self.in_features,
             out_features=self.out_features,
+            loss_fn=torch.nn.CrossEntropyLoss(),
         )
         self.net.dag.add_node_with_two_edges(
             "start",
