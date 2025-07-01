@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Optimize RestrictedConv2dGrowingModule to fasten the simulation of the side effect of a convolution (:gh:`99` by `Théo Rudkiewicz`_).
 - Split Conv2dGrowingModule into two subclass `FullConv2dGrowingModule`(that does the same as the previous class) and  `RestrictedConv2dGrowingModule` (that compute only the best 1x1 convolution as the second layer at growth time) (:gh:`92` by `Théo Rudkiewicz`_).
 - Code factorization of methods `compute_optimal_added_parameters` and `compute_optimal_delta` that are now abstracted in the `GrowingModule` class. (:gh:`87` by `Théo Rudkiewicz`_).
 - Stops automatically computing parameter update in `Conv2dGrowingModule.compute_optimal_added_parameters`to be consistent with `LinearGrowingModule.compute_optimal_added_parameters` (:gh:`87` by `Théo Rudkiewicz`_) .
@@ -44,6 +45,9 @@ Enhancements
 Bugs
 ~~~~
 
+- Delete leftover activity tensors (:gh:`78` by `Stella Douka`_)
+- Fix inconsistency with torch.empty not creating empty tensors (:gh:`78` by `Stella Douka`_)
+- Expansion of existing nodes not executed in GrowingDAG (:gh:`78` by `Stella Douka`_)
 - Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)
 - Fix the data type management for growth related computations. (:gh:`79` by `Stéphane Rivaud`_)
 - Revert global state changes, solve test issues (:gh:`70` by `Stella Douka`_)
@@ -53,6 +57,7 @@ Bugs
 - Fix the sub-selection of added neurons in the sequential case (:gh:`41` by `Théo Rudkiewicz`_)
 - Correct codecov upload (:gh:`49` by `Sylvain Chevallier`_)
 - Fix dataset input_shape: remove the flattening in data augmentation (:gh:`56` by `Stéphane Rivaud`_)
+- Fix memory leak from issue :gh:`96` (:gh:`97` by `Théo Rudkiewicz`_)
 
 API changes
 ~~~~~~~~~~~
