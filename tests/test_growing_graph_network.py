@@ -270,14 +270,31 @@ class TestGrowingGraphNetwork(unittest.TestCase):
     def test_restrict_action_space(self) -> None:
         self.assertEqual(len(self.actions), 4)
 
-        gens = self.net.restrict_action_space(self.actions, "end")
+        gens = self.net.restrict_action_space(self.actions, chosen_outputs=["end"])
         self.assertEqual(len(gens), 3)
 
-        gens = self.net.restrict_action_space(self.actions, "1")
+        gens = self.net.restrict_action_space(self.actions, chosen_outputs=["1"])
         self.assertEqual(len(gens), 2)
 
-        gens = self.net.restrict_action_space(self.actions, "start")
+        gens = self.net.restrict_action_space(self.actions, chosen_outputs=["start"])
         self.assertEqual(len(gens), 0)
+
+        gens = self.net.restrict_action_space(self.actions, chosen_inputs=["start"])
+        self.assertEqual(len(gens), 3)
+
+        gens = self.net.restrict_action_space(self.actions, chosen_inputs=["1"])
+        self.assertEqual(len(gens), 1)
+
+        gens = self.net.restrict_action_space(self.actions, chosen_inputs=["end"])
+        self.assertEqual(len(gens), 0)
+
+        with self.assertRaises(NotImplementedError):
+            self.net.restrict_action_space(
+                self.actions, chosen_outputs=["end"], chosen_inputs=["start"]
+            )
+
+        with self.assertWarns(UserWarning):
+            self.net.restrict_action_space(self.actions)
 
     def test_grow_step(self) -> None:
         pass

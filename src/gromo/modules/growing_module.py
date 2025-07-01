@@ -267,8 +267,10 @@ class MergeGrowingModule(torch.nn.Module):
         for module in self.previous_modules:
             module.store_input = False
             module.store_pre_activity = False
-        self.previous_tensor_s.reset()
-        self.previous_tensor_m.reset()
+        if self.previous_tensor_s is not None:
+            self.previous_tensor_s.reset()
+        if self.previous_tensor_m is not None:
+            self.previous_tensor_m.reset()
 
     def delete_update(self, include_previous: bool = False) -> None:
         """
