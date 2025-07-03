@@ -21,7 +21,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def __init__(
         self,
         in_channels: int,
-        kernel_size: int | tuple[int, int],
+        input_size: int | tuple[int, int],
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
         previous_modules: list[GrowingModule | MergeGrowingModule] = None,
         next_modules: list[GrowingModule | MergeGrowingModule] = None,
@@ -34,17 +34,17 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.in_channels = in_channels
         self.out_channels = in_channels
         self._in_features = in_features
-        if isinstance(kernel_size, int):
-            kernel_size = (kernel_size, kernel_size)
-        self.kernel_size = kernel_size
+        if isinstance(input_size, int):
+            input_size = (input_size, input_size)
+        self.input_size = input_size
         super(Conv2dMergeGrowingModule, self).__init__(
             post_merge_function=post_merge_function,
             previous_modules=previous_modules,
             next_modules=next_modules,
             allow_growing=allow_growing,
             tensor_s_shape=(
-                in_channels * kernel_size[0] * kernel_size[1] + self.use_bias,
-                in_channels * kernel_size[0] * kernel_size[1] + self.use_bias,
+                in_channels * input_size[0] * input_size[1] + self.use_bias,
+                in_channels * input_size[0] * input_size[1] + self.use_bias,
             ),
             device=device,
             name=name,
