@@ -99,7 +99,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             )
 
         self.previous_modules = previous_modules if previous_modules else []
-        self.total_in_features = 0
+        self.total_out_features = 0
         for module in self.previous_modules:
             if not isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
                 raise TypeError(
@@ -113,48 +113,49 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 raise ValueError(
                     "The input channels must match the output channels of the previous modules."
                 )
-            self.total_in_features += module.in_features
-            # self.total_in_features += module.use_bias
-        if self.total_in_features > 0:
+            self.total_out_features += module.out_features
+            # self.total_out_features += module.use_bias
+        if self.total_out_features > 0:
             self.previous_tensor_s = TensorStatistic(
                 (
-                    self.total_in_features,
-                    self.total_in_features,
+                    self.total_out_features,
+                    self.total_out_features,
                 ),
                 device=self.device,
                 name=f"S[-1]({self.name})",
                 update_function=self.compute_previous_s_update,
             )
-        else:
-            self.previous_tensor_s = None
-
-        if self.total_in_features > 0:
             self.previous_tensor_m = TensorStatistic(
-                (self.total_in_features, self.in_features),
+                (self.total_out_features, self.in_features),
                 device=self.device,
                 name=f"M[-1]({self.name})",
                 update_function=self.compute_previous_m_update,
             )
         else:
+            self.previous_tensor_s = None
             self.previous_tensor_m = None
 
     def construct_full_activity(self) -> torch.Tensor:
         assert self.previous_modules, f"No previous modules for {self.name}."
         full_activity = torch.ones(
-            (self.previous_modules[0].input.shape[0], self.total_in_features),
+            (
+                self.previous_modules[0].input.shape[0],
+                self.total_out_features,
+                self.out_channels,
+            ),
             device=self.device,
         )
         current_index = 0
         for module in self.previous_modules:
             if module.use_bias:
-                full_activity[:, current_index : current_index + module.in_features] = (
-                    module.unfolded_extended_input
-                )
+                full_activity[
+                    :, current_index : current_index + module.in_features, :
+                ] = module.unfolded_extended_input
                 current_index += module.in_features + 1
             else:
-                full_activity[:, current_index : current_index + module.in_features] = (
-                    module.unfolded_extended_input
-                )
+                full_activity[
+                    :, current_index : current_index + module.in_features, :
+                ] = module.unfolded_extended_input
                 current_index += module.in_features
         return full_activity
 
