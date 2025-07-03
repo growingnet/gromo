@@ -170,6 +170,48 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             full_activity.shape[0],
         )
 
+    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor S.
+
+        This method captures the second-order statistics of the full activity tensor
+        by flattening all spatial and channel dimensions into a single feature axis
+        per sample. Suitable when no patch-based unfolding is required when merged
+        activities result from element-wise additions rather than convolution.
+
+        Specifically:
+            - The activity tensor of shape (N, C, H, W) is flattened into (N, C⋅H⋅W),
+            - If `use_bias=True`, a constant '1' feature is appended to each sample,
+            enabling the computation to also capture the bias contribution,
+            - The second-moment matrix S is then computed as:
+                S := ∑_i X[i]^T X[i]
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor S, shape (D, D), with D = C⋅H⋅W [+1 if bias]
+        int
+            number of samples used to compute the update (i.e., batch size N)
+        """
+        assert (
+            self.store_activity
+        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
+        assert (
+            self.activity is not None
+        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
+
+        batch_size = self.activity.shape[0]
+        flattened = self.activity.view(batch_size, -1)  # (N, C⋅H⋅W)
+
+        if self.use_bias:
+            ones = torch.ones(batch_size, 1, device=self.activity.device)
+            input_extended = torch.cat((flattened, ones), dim=1)  # (N, C⋅H⋅W + 1)
+            update = torch.einsum("ij,ik->jk", input_extended, input_extended)
+        else:
+            update = torch.einsum("ij,ik->jk", flattened, flattened)
+
+        return update, batch_size
+
 
 class Conv2dGrowingModule(GrowingModule):
     """
