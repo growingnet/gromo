@@ -338,6 +338,10 @@ class MergeGrowingModule(torch.nn.Module):
         self.previous_tensor_s.init()
         self.previous_tensor_m.init()
 
+    def update_computation(self) -> None:
+        self.previous_tensor_s.update()
+        self.previous_tensor_m.update()
+
     def reset_computation(self) -> None:
         """
         Reset the computation of the optimal added parameters.
@@ -1514,7 +1518,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.init()
             self.tensor_s_growth.init()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.init_computation()
         else:
             raise NotImplementedError
 
@@ -1531,7 +1535,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.update()
             self.tensor_s_growth.update()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.update_computation()
         else:
             raise NotImplementedError
 
