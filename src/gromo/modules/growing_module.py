@@ -1553,6 +1553,10 @@ class GrowingModule(torch.nn.Module):
             self.tensor_m_prev.reset()
             self.cross_covariance.reset()
             self.tensor_s_growth.reset()
+        elif isinstance(self.previous_module, MergeGrowingModule):
+            self.previous_module.reset_computation()
+        else:
+            raise NotImplementedError
 
     def delete_update(
         self,
