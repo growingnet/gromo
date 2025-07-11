@@ -69,6 +69,96 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def out_features(self) -> int:
         return self.in_features
 
+    # @property
+    # def in_parameters(self) -> int:
+    #     return 0
+
+    @property
+    def padding(self) -> int:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the padding of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return 0
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.padding
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            return 0
+        else:
+            raise NotImplementedError
+
+    @property
+    def stride(self) -> int:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the stride of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return 1
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.stride
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            return 1
+        else:
+            raise NotImplementedError
+
+    @property
+    def dilation(self) -> int:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the dilation of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return 1
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.dilation
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            return 1
+        else:
+            raise NotImplementedError
+
+    @property
+    def unfolded_extended_activity(self) -> torch.Tensor:
+        """
+        Return the unfolded activity extended with a channel of ones if the bias is used.
+
+        Returns
+        -------
+        torch.Tensor
+            unfolded activity extended
+        """
+        if len(self.next_modules) <= 0 or isinstance(
+            self.next_modules[0], Conv2dGrowingModule
+        ):
+            unfolded_activity = torch.nn.functional.unfold(
+                self.activity,
+                self.kernel_size,
+                padding=self.padding,
+                stride=self.stride,
+                dilation=self.dilation,
+            )
+            if self.use_bias:
+                return torch.cat(
+                    (
+                        unfolded_activity,
+                        torch.ones(
+                            unfolded_activity.shape[0],
+                            1,
+                            unfolded_activity.shape[2],
+                            device=self.device,
+                        ),
+                    ),
+                    dim=1,
+                )
+            else:
+                return unfolded_activity
+        else:
+            if self.use_bias:
+                batch_size = self.activity.shape[0]
+                ones = torch.ones(batch_size, 1, device=self.activity.device)
+                activity_extended = torch.cat((self.activity, ones), dim=1)
+                return activity_extended
+            else:
+                return self.activity
+
     def set_next_modules(
         self, next_modules: list[MergeGrowingModule | GrowingModule]
     ) -> None:
