@@ -468,6 +468,12 @@ class Conv2dGrowingModule(GrowingModule):
         return self.out_channels * self.out_width * self.out_height
 
     @property
+    def in_parameters(self) -> int:
+        return (
+            self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
+        )
+
+    @property
     def unfolded_extended_input(self) -> torch.Tensor:
         """
         Return the unfolded input extended with a channel of ones if the bias is used.
