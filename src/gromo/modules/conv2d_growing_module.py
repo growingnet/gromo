@@ -327,14 +327,14 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         ), f"The activity must be stored to compute the update of S. (error in {self.name})"
 
         batch_size = self.activity.shape[0]
-        flattened = self.activity.view(batch_size, -1)  # (N, C⋅H⋅W)
+        unfolded_activity = self.unfolded_extended_activity
 
-        if self.use_bias:
-            ones = torch.ones(batch_size, 1, device=self.activity.device)
-            input_extended = torch.cat((flattened, ones), dim=1)  # (N, C⋅H⋅W + 1)
-            update = torch.einsum("ij,ik->jk", input_extended, input_extended)
+        if isinstance(self.next_modules[0], Conv2dGrowingModule):
+            update = torch.einsum("iam, ibm -> ab", unfolded_activity, unfolded_activity)
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            update = torch.einsum("ij,ik->jk", unfolded_activity, unfolded_activity)
         else:
-            update = torch.einsum("ij,ik->jk", flattened, flattened)
+            raise NotImplementedError
 
         return update, batch_size
 
