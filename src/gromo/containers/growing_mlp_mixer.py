@@ -68,7 +68,7 @@ class GrowingMLPBlock(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = [self.second_layer]
+        self._growing_layers = torch.nn.ModuleList([self.second_layer])
 
     def extended_forward(self, x: Tensor) -> Tensor:
         """
@@ -117,6 +117,18 @@ class GrowingMLPBlock(GrowingContainer):
         y = self.second_layer(y)
         y = self.dropout(y)
         return y
+
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+        """
+        if device is not None:
+            self.device = device
+        self.first_layer.to(device=device, dtype=dtype)
+        self.second_layer.to(device=device, dtype=dtype)
+        return self
 
     @staticmethod
     def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
@@ -241,6 +253,18 @@ class GrowingTokenMixer(GrowingContainer):
         out = y + residual
         return out
 
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+        """
+        if device is not None:
+            self.device = device
+        self.norm.to(device=device, dtype=dtype)
+        self.mlp.to(device=device, dtype=dtype)
+        return self
+
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         return self.mlp.weights_statistics()
 
@@ -322,6 +346,18 @@ class GrowingChannelMixer(GrowingContainer):
         out = x + residual
         return out
 
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+        """
+        if device is not None:
+            self.device = device
+        self.norm.to(device=device, dtype=dtype)
+        self.mlp.to(device=device, dtype=dtype)
+        return self
+
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         return self.mlp.weights_statistics()
 
@@ -371,7 +407,7 @@ class GrowingMixerLayer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = list()
+        self._growing_layers = torch.nn.ModuleList()
         self._growing_layers.extend(self.token_mixer._growing_layers)
         self._growing_layers.extend(self.channel_mixer._growing_layers)
 
@@ -410,6 +446,18 @@ class GrowingMixerLayer(GrowingContainer):
         x = self.token_mixer.extended_forward(x)
         x = self.channel_mixer.extended_forward(x)
         return x
+
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+        """
+        if device is not None:
+            self.device = device
+        self.token_mixer.to(device=device, dtype=dtype)
+        self.channel_mixer.to(device=device, dtype=dtype)
+        return self
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         statistics = {}
@@ -478,8 +526,8 @@ class GrowingMLPMixer(GrowingContainer):
         super().__init__(
             in_features=torch.tensor(in_features).prod().int().item(),
             out_features=out_features,
+            device=device,
         )
-        self.device = device
         self.patcher = nn.Conv2d(
             in_channels,
             num_features,
@@ -503,7 +551,7 @@ class GrowingMLPMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = list()
+        self._growing_layers = torch.nn.ModuleList()
         for mixer in self.mixers:
             self._growing_layers.append(mixer.token_mixer.mlp.second_layer)
             self._growing_layers.append(mixer.channel_mixer.mlp.second_layer)
@@ -555,6 +603,20 @@ class GrowingMLPMixer(GrowingContainer):
         embedding = embedding.mean(dim=1)
         logits = self.classifier(embedding)
         return logits
+
+    def to(
+        self, device: torch.device | str | None = None, dtype: torch.dtype | None = None
+    ):
+        """
+        Move the module to a new device and/or dtype.
+        """
+        if device is not None:
+            self.device = device
+        self.patcher.to(device=device, dtype=dtype)
+        self.classifier.to(device=device, dtype=dtype)
+        for mixer in self.mixers:
+            mixer.to(device=device, dtype=dtype)
+        return self
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         statistics = {}
