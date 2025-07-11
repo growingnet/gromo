@@ -276,6 +276,26 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             full_activity.shape[0],
         )
 
+    def compute_previous_m_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor M for the input of all previous modules.
+        B: full activity tensor
+        M = dLoss/dA^T B
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor M
+        int
+            number of samples used to compute the update
+        """
+        full_activity = self.construct_full_activity()
+        desired_activation = self.pre_activity.grad.flatten(start_dim=-2)
+        return (
+            torch.einsum("iam, icm -> ac", full_activity, desired_activation),
+            self.input.shape[0],
+        )
+
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S.
