@@ -20,6 +20,8 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+
+- Add `GrowingBatchNorm1d` and `GrowingBatchNorm2d` modules to support batch normalization in growing networks (:gh:`101` by `Théo Rudkiewicz`_).
 - Implemented Conv2dMergeGrowingModule and added support for computing number of parameters in Conv2dGrowingModule (:gh:`94` by `Stella Douka`_)
 - Optimize RestrictedConv2dGrowingModule to fasten the simulation of the side effect of a convolution (:gh:`99` by `Théo Rudkiewicz`_).
 - Split Conv2dGrowingModule into two subclass `FullConv2dGrowingModule`(that does the same as the previous class) and  `RestrictedConv2dGrowingModule` (that compute only the best 1x1 convolution as the second layer at growth time) (:gh:`92` by `Théo Rudkiewicz`_).
