@@ -292,26 +292,37 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
         """
-        Compute the update of the tensor S.
+        Compute the update of tensor S based on the unfolded activity tensor.
 
-        This method captures the second-order statistics of the full activity tensor
-        by flattening all spatial and channel dimensions into a single feature axis
-        per sample. Suitable when no patch-based unfolding is required when merged
-        activities result from element-wise additions rather than convolution.
+        This method captures the second-order statistics from the output activity of the previous
+        convolutional layers, formatted as an unfolded tensor.
 
-        Specifically:
-            - The activity tensor of shape (N, C, H, W) is flattened into (N, C⋅H⋅W),
-            - If `use_bias=True`, a constant '1' feature is appended to each sample,
-            enabling the computation to also capture the bias contribution,
-            - The second-moment matrix S is then computed as:
-                S := ∑_i X[i]^T X[i]
+        Depending on the type of the following (next) module, the tensor S is computed as follows:
+
+        - If the next module is a `Conv2dGrowingModule`:
+            The unfolded activity tensor is 3D: (batch_size, D, L), where
+                - D = output_channels * kernel_size^2 [+1 if bias]
+                - L = number of output spatial locations (e.g., H × W)
+            Then S is computed via:
+                S = ∑_{i,m} A[i,:,m] A[i,:,m]^T = einsum("iam, ibm -> ab", A, A)
+
+        - If the next module is a `LinearGrowingModule`:
+            The unfolded activity is treated as a flattened matrix of shape (batch_size, D),
+            and S is computed via:
+                S = ∑_{i} A[i]^T A[i] = einsum("ij, ik -> jk", A, A)
 
         Returns
         -------
         torch.Tensor
-            update of the tensor S, shape (D, D), with D = C⋅H⋅W [+1 if bias]
+            second-order update matrix S of shape (D, D), where D depends on whether
+            the next module is convolutional or linear.
         int
-            number of samples used to compute the update (i.e., batch size N)
+            batch size used in the computation.
+
+        Raises
+        ------
+        NotImplementedError
+            ff the type of the next module is unsupported for S computation.
         """
         assert (
             self.store_activity
