@@ -242,7 +242,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         """
         assert self.previous_modules, f"No previous modules for {self.name}."
         n = self.previous_modules[0].input.shape[0]
-        L = int(self.total_out_features / self.in_channels)
+        L = int(self.previous_modules[0].out_features / self.in_channels)
         full_activity = torch.ones(
             (
                 n,
@@ -253,16 +253,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         )
         current_index = 0
         for module in self.previous_modules:
-            if module.use_bias:
-                full_activity[
-                    :, current_index : current_index + module.in_parameters, :
-                ] = module.unfolded_extended_input
-                current_index += module.in_parameters + 1
-            else:
-                full_activity[
-                    :, current_index : current_index + module.in_parameters, :
-                ] = module.unfolded_extended_input
-                current_index += module.in_parameters
+            full_activity[:, current_index : current_index + module.in_parameters, :] = (
+                module.unfolded_extended_input
+            )
+            current_index += module.in_parameters
         return full_activity
 
     def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
