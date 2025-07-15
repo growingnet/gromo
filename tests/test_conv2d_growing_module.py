@@ -9,6 +9,7 @@ from gromo.modules.conv2d_growing_module import (
     FullConv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.tools import compute_output_shape_conv
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase, indicator_batch
@@ -42,7 +43,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # Target module under test
         self.merge = Conv2dMergeGrowingModule(
             in_channels=self.hidden_channels,
-            input_size=(self.prev.out_width, self.prev.out_height),
+            input_size=self.prev.out_width,
             next_kernel_size=self.kernel_size,
             device=self.device,
             name="merge",
@@ -96,12 +97,18 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         with self.assertWarns(UserWarning):
             self.assertEqual(self.merge.padding, 0)
 
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.assertEqual(self.merge.padding, 0)
+
     def test_stride(self):
         self.assertEqual(self.merge.stride, self.next.stride)
 
         self.merge.set_next_modules([])
         with self.assertWarns(UserWarning):
             self.assertEqual(self.merge.stride, 1)
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.assertEqual(self.merge.stride, 1)
 
     def test_dilation(self):
         self.assertEqual(self.merge.dilation, self.next.layer.dilation)
@@ -110,12 +117,21 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         with self.assertWarns(UserWarning):
             self.assertEqual(self.merge.dilation, 1)
 
-    def test_shapes_unfolded_extended_activity(self):
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.assertEqual(self.merge.dilation, 1)
+
+    def test_unfolded_extended_activity(self):
         unfolded = self.merge.unfolded_extended_activity
         self.assertEqual(unfolded.shape[0], self.batch_size)
         self.assertTrue(
             unfolded.shape[1] >= self.in_channels * self.kernel_size * self.kernel_size
         )
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.merge.activity = self.merge.activity.flatten(1)
+        unfolded = self.merge.unfolded_extended_activity
+        self.assertEqual(unfolded.shape[0], self.batch_size)
+        self.assertEqual(unfolded.shape[1], self.merge.out_features + self.merge.use_bias)
 
     def test_construct_full_activity(self):
         full = self.merge.construct_full_activity()
@@ -136,6 +152,13 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
     def test_compute_s_update(self):
         S, n = self.merge.compute_s_update()
         D = self.hidden_channels * self.kernel_size * self.kernel_size + 1
+        self.assertEqual(S.shape, (D, D))
+        self.assertEqual(n, self.batch_size)
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.merge.activity = self.merge.activity.flatten(1)
+        S, n = self.merge.compute_s_update()
+        D = self.merge.out_features + self.merge.use_bias
         self.assertEqual(S.shape, (D, D))
         self.assertEqual(n, self.batch_size)
 
@@ -161,6 +184,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             self.merge.set_next_modules(["not a module"])
         with self.assertRaises(NotImplementedError):
             self.merge.set_next_modules([torch.nn.Linear(1, 1)])
+        with self.assertRaises(AssertionError):
+            self.merge.set_next_modules([LinearGrowingModule(1, 1)])
 
 
 class TestConv2dGrowingModule(TorchTestCase):
