@@ -78,6 +78,38 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         for module in (self.prev, self.merge, self.next):
             module.update_computation()
 
+    def test_in_features(self):
+        self.assertEqual(self.merge.in_features, self.prev.out_features)
+        self.assertEqual(self.merge.in_features, self.merge.out_features)
+
+        self.merge.set_previous_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.in_features, -1)
+
+        self.merge._in_features = 0
+        self.assertEqual(self.merge.in_features, 0)
+
+    def test_padding(self):
+        self.assertEqual(self.merge.padding, self.next.padding)
+
+        self.merge.set_next_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.padding, 0)
+
+    def test_stride(self):
+        self.assertEqual(self.merge.stride, self.next.stride)
+
+        self.merge.set_next_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.stride, 1)
+
+    def test_dilation(self):
+        self.assertEqual(self.merge.dilation, self.next.layer.dilation)
+
+        self.merge.set_next_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.dilation, 1)
+
     def test_shapes_unfolded_extended_activity(self):
         unfolded = self.merge.unfolded_extended_activity
         self.assertEqual(unfolded.shape[0], self.batch_size)

@@ -69,10 +69,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def out_features(self) -> int:
         return self.in_features
 
-    # @property
-    # def in_parameters(self) -> int:
-    #     return 0
-
     @property
     def padding(self) -> int:
         if len(self.next_modules) <= 0:
