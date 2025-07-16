@@ -230,7 +230,7 @@ class TestConv2dGrowingModule(TorchTestCase):
             * self.demo_b.kernel_size[1]
             + 1
         )
-        self.assertEqual(self.demo_b.tensor_s().shape, (f, f))
+        self.assertShapeEqual(self.demo_b.tensor_s(), (f, f))
         self.assertEqual(
             self.demo_b.tensor_s()[-1, -1], self.input_x.size(2) * self.input_x.size(3)
         )
@@ -286,62 +286,40 @@ class TestConv2dGrowingModule(TorchTestCase):
         )
         self.assertShapeEqual(self.demo_b.tensor_m(), (f, self.demo_b.out_channels))
 
-    def test_compute_optimal_delta_without_bias(self):
-        self.demo.init_computation()
-        y = self.demo(self.input_x)
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_delta(self, bias: bool = False):
+        if bias:
+            demo = self.demo_b
+        else:
+            demo = self.demo
+
+        demo.init_computation()
+        y = demo(self.input_x)
         loss = torch.norm(y)
         loss.backward()
 
-        self.demo.tensor_s.update()
-        self.demo.tensor_m.update()
+        demo.tensor_s.update()
+        demo.tensor_m.update()
 
-        self.demo.compute_optimal_delta()
+        demo.compute_optimal_delta()
         self.assertShapeEqual(
-            self.demo.delta_raw,
+            demo.delta_raw,
             (
-                self.demo.out_channels,
-                self.demo.in_channels
-                * self.demo.kernel_size[0]
-                * self.demo.kernel_size[1],
+                demo.out_channels,
+                demo.in_channels * demo.kernel_size[0] * demo.kernel_size[1] + bias,
             ),
         )
-        self.assertTrue(self.demo.optimal_delta_layer is not None)
-        self.assertIsInstance(self.demo.optimal_delta_layer, torch.nn.Conv2d)
+        self.assertTrue(demo.optimal_delta_layer is not None)
+        self.assertIsInstance(demo.optimal_delta_layer, torch.nn.Conv2d)
+        if not bias:
+            self.assertTrue(demo.optimal_delta_layer.bias is None)
         # TODO: improve the specificity of the test
 
-        self.demo.compute_optimal_delta(dtype=torch.float64)
-        self.assertIsInstance(self.demo.optimal_delta_layer, torch.nn.Conv2d)
+        demo.compute_optimal_delta(dtype=torch.float64)
+        self.assertIsInstance(demo.optimal_delta_layer, torch.nn.Conv2d)
 
-        self.demo.reset_computation()
-        self.demo.delete_update()
-
-    def test_compute_optimal_delta_with_bias(self):
-        self.demo_b.init_computation()
-        y = self.demo_b(self.input_x)
-        loss = torch.norm(y)
-        loss.backward()
-
-        self.demo_b.tensor_s.update()
-        self.demo_b.tensor_m.update()
-
-        self.demo_b.compute_optimal_delta()
-        self.assertEqual(
-            self.demo_b.delta_raw.shape,
-            (
-                self.demo_b.out_channels,
-                self.demo_b.in_channels
-                * self.demo_b.kernel_size[0]
-                * self.demo_b.kernel_size[1]
-                + 1,
-            ),
-        )
-        self.assertTrue(self.demo_b.optimal_delta_layer is not None)
-        self.assertIsInstance(self.demo_b.optimal_delta_layer, torch.nn.Conv2d)
-        self.assertTrue(self.demo_b.optimal_delta_layer.bias is not None)
-        # TODO: improve the specificity of the test
-
-        self.demo_b.reset_computation()
-        self.demo_b.delete_update()
+        demo.reset_computation()
+        demo.delete_update()
 
     def test_compute_optimal_delta_empirical(self):
         """
@@ -835,9 +813,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         demo_out.cross_covariance.update()
 
         demo_out.delta_raw = torch.zeros(
+            demo_out.out_channels,
             demo_out.in_channels * demo_out.kernel_size[0] * demo_out.kernel_size[1]
             + bias,
-            demo_out.out_channels,
             device=global_device(),
         )
 
@@ -867,9 +845,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         demo_out.update_computation()
 
         demo_out.delta_raw = torch.zeros(
+            demo_out.out_channels,
             demo_out.in_channels * demo_out.kernel_size[0] * demo_out.kernel_size[1]
             + bias,
-            demo_out.out_channels,
             device=global_device(),
         )
 
