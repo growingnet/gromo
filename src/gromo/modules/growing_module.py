@@ -387,6 +387,7 @@ class GrowingModule(torch.nn.Module):
         tensor_s_shape: tuple[int, int] | None = None,
         tensor_m_shape: tuple[int, int] | None = None,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
+        extended_post_layer_function: torch.nn.Module | None = None,
         allow_growing: bool = True,
         previous_module: torch.nn.Module | None = None,
         next_module: torch.nn.Module | None = None,
@@ -448,6 +449,19 @@ class GrowingModule(torch.nn.Module):
 
         self.layer: torch.nn.Module = layer.to(self.device)
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
+        if extended_post_layer_function is None:
+            self.extended_post_layer_function = post_layer_function
+        else:
+            self.extended_post_layer_function = extended_post_layer_function.to(
+                self.device
+            )
+        if isinstance(extended_post_layer_function, torch.nn.Sequential):
+            for module in extended_post_layer_function:
+                if hasattr(module, "num_features"):
+                    warnings.warn(
+                        f"Warning in {self.name}: The extended post layer "
+                        f"function may get a variable input size."
+                    )
         self._allow_growing = allow_growing
         assert not self._allow_growing or isinstance(
             previous_module, (GrowingModule, MergeGrowingModule)
@@ -746,7 +760,9 @@ class GrowingModule(torch.nn.Module):
             supplementary_pre_activity = (
                 self._scaling_factor_next_module * self.extended_output_layer(x)
             )
-            supplementary_activity = self.post_layer_function(supplementary_pre_activity)
+            supplementary_activity = self.extended_post_layer_function(
+                supplementary_pre_activity
+            )
         else:
             supplementary_activity = None
 
@@ -802,7 +818,7 @@ class GrowingModule(torch.nn.Module):
                 )
                 return self.next_module.input
         else:
-            raise ValueError("The pre-activity is not stored.")
+            raise ValueError(f"The pre-activity is not stored for {self.name}.")
 
     # Statistics computation
     def projected_v_goal(self, input_vector: torch.Tensor) -> torch.Tensor:
@@ -1055,7 +1071,7 @@ class GrowingModule(torch.nn.Module):
         raise NotImplementedError
 
     def _apply_output_changes(
-        self, scaling_factor: float | torch.Tensor | None = None
+        self, scaling_factor: float | torch.Tensor | None = None, extension_size: int = 0
     ) -> None:
         """
         Extend the layer output with the current layer output extension,
@@ -1087,6 +1103,11 @@ class GrowingModule(torch.nn.Module):
                 else None
             ),
         )
+
+        if isinstance(self.post_layer_function, torch.nn.Sequential):
+            for module in self.post_layer_function:
+                if hasattr(module, "grow"):
+                    module.grow(extension_size)
 
     def apply_change(
         self,
@@ -1147,7 +1168,8 @@ class GrowingModule(torch.nn.Module):
             if apply_previous and self.previous_module is not None:
                 if isinstance(self.previous_module, GrowingModule):
                     self.previous_module._apply_output_changes(
-                        scaling_factor=self.scaling_factor
+                        scaling_factor=self.scaling_factor,
+                        extension_size=self.eigenvalues_extension.shape[0],
                     )
                 elif isinstance(self.previous_module, MergeGrowingModule):
                     raise NotImplementedError  # TODO

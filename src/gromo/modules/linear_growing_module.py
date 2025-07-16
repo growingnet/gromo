@@ -320,6 +320,7 @@ class LinearGrowingModule(GrowingModule):
         out_features: int,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
+        extended_post_layer_function: torch.nn.Module | None = None,
         previous_module: GrowingModule | MergeGrowingModule | None = None,
         next_module: GrowingModule | MergeGrowingModule | None = None,
         allow_growing: bool = False,
@@ -332,6 +333,7 @@ class LinearGrowingModule(GrowingModule):
                 in_features, out_features, bias=use_bias, device=device
             ),
             post_layer_function=post_layer_function,
+            extended_post_layer_function=extended_post_layer_function,
             previous_module=previous_module,
             next_module=next_module,
             allow_growing=allow_growing,
