@@ -357,6 +357,40 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
         return update, batch_size
 
+    def update_size(self) -> None:
+        if len(self.previous_modules) > 0:
+            new_channels = self.previous_modules[0].out_channels
+            self.in_channels = new_channels
+        self.total_in_features = self.sum_in_features(with_bias=True)
+
+        if self.total_in_features > 0:
+            if self.previous_tensor_s._shape != (
+                self.total_in_features,
+                self.total_in_features,
+            ):
+                self.previous_tensor_s = TensorStatistic(
+                    (
+                        self.total_in_features,
+                        self.total_in_features,
+                    ),
+                    device=self.device,
+                    name=f"S[-1]({self.name})",
+                    update_function=self.compute_previous_s_update,
+                )
+            if self.previous_tensor_m._shape != (
+                self.total_in_features,
+                self.in_channels,
+            ):
+                self.previous_tensor_m = TensorStatistic(
+                    (self.total_in_features, self.in_channels),
+                    device=self.device,
+                    name=f"M[-1]({self.name})",
+                    update_function=self.compute_previous_m_update,
+                )
+        else:
+            self.previous_tensor_s = None
+            self.previous_tensor_m = None
+
 
 class Conv2dGrowingModule(GrowingModule):
     """
