@@ -79,16 +79,16 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         for module in (self.prev, self.merge, self.next):
             module.update_computation()
 
-    def test_in_features(self):
-        self.assertEqual(self.merge.in_features, self.prev.out_features)
-        self.assertEqual(self.merge.in_features, self.merge.out_features)
+    def test_input_volume(self):
+        self.assertEqual(self.merge.input_volume, self.prev.out_features)
+        self.assertEqual(self.merge.input_volume, self.merge.out_features)
 
         self.merge.set_previous_modules([])
         with self.assertWarns(UserWarning):
-            self.assertEqual(self.merge.in_features, -1)
+            self.assertEqual(self.merge.input_volume, -1)
 
-        self.merge._in_features = 0
-        self.assertEqual(self.merge.in_features, 0)
+        self.merge._input_volume = 0
+        self.assertEqual(self.merge.input_volume, 0)
 
     def test_padding(self):
         self.assertEqual(self.merge.padding, self.next.padding)

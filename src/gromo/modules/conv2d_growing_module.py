@@ -14,7 +14,6 @@ from gromo.utils.tools import (
     compute_output_shape_conv,
     create_bordering_effect_convolution,
 )
-from gromo.utils.utils import global_device
 
 
 class Conv2dMergeGrowingModule(MergeGrowingModule):
@@ -27,14 +26,13 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         previous_modules: list[GrowingModule | MergeGrowingModule] = None,
         next_modules: list[GrowingModule | MergeGrowingModule] = None,
         allow_growing: bool = False,
-        in_features: int = None,
+        input_volume: int = None,
         device: torch.device | None = None,
         name: str = None,
     ) -> None:
         self.use_bias = True
         self.in_channels = in_channels
-        self.out_channels = in_channels
-        self._in_features = in_features
+        self._input_volume = input_volume
         if isinstance(input_size, int):
             input_size = (input_size, input_size)
         self.input_size = input_size
@@ -55,9 +53,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         )
 
     @property
-    def in_features(self) -> int:
-        if self._in_features is not None:
-            return self._in_features
+    def input_volume(self) -> int:
+        if self._input_volume is not None:
+            return self._input_volume
         if len(self.previous_modules) <= 0:
             warn(
                 f"Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
@@ -66,8 +64,21 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         return self.previous_modules[0].out_features
 
     @property
+    def out_channels(self) -> int:
+        return self.in_channels
+
+    @property
+    def in_features(self) -> int:
+        warn(f"WARNING!!! USING PROPERTY IN_FEATURES IN {self}")
+        return self.in_channels
+
+    @property
     def out_features(self) -> int:
-        return self.in_features
+        return self.input_volume
+
+    @property
+    def output_size(self) -> tuple[int, int]:
+        return self.input_size  # TODO: check for exceptions!
 
     @property
     def padding(self) -> int:
@@ -461,8 +472,8 @@ class Conv2dGrowingModule(GrowingModule):
         return self.__out_dimention(1)
 
     @property
-    def in_features(self) -> int:
-        return self.in_channels * self.input_size[0] * self.input_size[1] + self.use_bias
+    def input_volume(self) -> int:
+        return self.in_channels * self.input_size[0] * self.input_size[1]
 
     @property
     def out_features(self) -> int:
