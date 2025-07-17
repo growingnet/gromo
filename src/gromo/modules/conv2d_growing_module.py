@@ -177,6 +177,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         for module in self.next_modules:
             if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
                 assert module.in_channels == self.out_channels
+                module.input_size = self.output_size
             elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
                 assert module.in_features == self.out_features
             else:
@@ -219,6 +220,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             self.total_out_features += module.out_features
             # self.total_out_features += module.use_bias
         if self.total_in_features > 0:
+            if self.input_size is None:
+                self.input_size = (module.out_width, module.out_height)
             self.previous_tensor_s = TensorStatistic(
                 (
                     self.total_in_features,
