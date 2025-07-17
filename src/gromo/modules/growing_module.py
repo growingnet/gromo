@@ -280,15 +280,16 @@ class MergeGrowingModule(torch.nn.Module):
         previous_tensor_m = self.previous_tensor_m()
         assert previous_tensor_s.shape[0] == self.total_in_features, (
             f"The inverse of S should have the same number of features as the input "
-            f"of all previous modules."
+            f"of all previous modules. Expected {self.total_in_features}. Got {previous_tensor_s.shape[0]}."
         )
-        assert self.previous_tensor_m().shape[0] == self.total_in_features, (
+        assert previous_tensor_m.shape[0] == self.total_in_features, (
             f"The tensor M should have the same number of features as the input of "
-            f"all previous modules."
+            f"all previous modules. Expected {self.total_in_features}. Got {previous_tensor_m.shape[0]}."
         )
-        assert (
-            self.previous_tensor_m().shape[1] == self.in_features
-        ), f"The tensor M should have the same number of output features as the layer."
+        assert previous_tensor_m.shape[1] == self.in_features, (
+            f"The tensor M should have the same number of output features as the layer. "
+            f"Expected {self.in_features}. Got {previous_tensor_m.shape[1]}."
+        )
         if not force_pseudo_inverse:
             try:
                 delta = torch.linalg.solve(previous_tensor_s, previous_tensor_m).t()
