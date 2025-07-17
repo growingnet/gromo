@@ -200,7 +200,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             )
 
         self.previous_modules = previous_modules if previous_modules else []
-        self.total_in_parameters = 0
+        self.total_in_features = 0
         self.total_out_features = 0
         for module in self.previous_modules:
             if not isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
@@ -215,21 +215,21 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 raise ValueError(
                     "The input channels must match the output channels of the previous modules."
                 )
-            self.total_in_parameters += module.in_parameters
+            self.total_in_features += module.in_features + module.use_bias
             self.total_out_features += module.out_features
             # self.total_out_features += module.use_bias
-        if self.total_in_parameters > 0:
+        if self.total_in_features > 0:
             self.previous_tensor_s = TensorStatistic(
                 (
-                    self.total_in_parameters,
-                    self.total_in_parameters,
+                    self.total_in_features,
+                    self.total_in_features,
                 ),
                 device=self.device,
                 name=f"S[-1]({self.name})",
                 update_function=self.compute_previous_s_update,
             )
             self.previous_tensor_m = TensorStatistic(
-                (self.total_in_parameters, self.in_channels),
+                (self.total_in_features, self.in_channels),
                 device=self.device,
                 name=f"M[-1]({self.name})",
                 update_function=self.compute_previous_m_update,
@@ -253,17 +253,19 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         full_activity = torch.ones(
             (
                 n,
-                self.total_in_parameters,
+                self.total_in_features,
                 L,
             ),
             device=self.device,
         )
         current_index = 0
         for module in self.previous_modules:
-            full_activity[:, current_index : current_index + module.in_parameters, :] = (
-                module.unfolded_extended_input
+            full_activity[
+                :, current_index : current_index + module.in_features + module.use_bias, :
+            ] = (
+                module.unfolded_extended_input  # (n, in_channels*ks0*ks1+bias, w_out*h_out)
             )
-            current_index += module.in_parameters
+            current_index += module.in_features + module.use_bias
         return full_activity
 
     def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
@@ -290,7 +292,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         int
             number of samples used to compute the update
         """
-        full_activity = self.construct_full_activity()
+        full_activity = (
+            self.construct_full_activity()
+        )  # (n, total_in_parameters, W_out*H_out)
         desired_activation = self.pre_activity.grad.flatten(start_dim=-2)
         return (
             torch.einsum("iam, icm -> ac", full_activity, desired_activation),
@@ -480,10 +484,8 @@ class Conv2dGrowingModule(GrowingModule):
         return self.out_channels * self.out_width * self.out_height
 
     @property
-    def in_parameters(self) -> int:
-        return (
-            self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
-        )
+    def in_features(self) -> int:
+        return self.in_channels * self.kernel_size[0] * self.kernel_size[1]
 
     @property
     def unfolded_extended_input(self) -> torch.Tensor:

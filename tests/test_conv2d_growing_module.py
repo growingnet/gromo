@@ -136,16 +136,16 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
     def test_construct_full_activity(self):
         full = self.merge.construct_full_activity()
         self.assertEqual(full.shape[0], self.batch_size)
-        self.assertEqual(full.shape[1], self.prev.in_parameters)
+        self.assertEqual(full.shape[1], self.prev.in_features + self.prev.use_bias)
 
     def test_compute_previous_s_update(self):
         S, n = self.merge.compute_previous_s_update()
-        self.assertEqual(S.shape[0], self.prev.in_parameters)
+        self.assertEqual(S.shape[0], self.prev.in_features + self.prev.use_bias)
         self.assertEqual(n, self.batch_size)
 
     def test_compute_previous_m_update(self):
         M, n = self.merge.compute_previous_m_update()
-        self.assertEqual(M.shape[0], self.prev.in_parameters)
+        self.assertEqual(M.shape[0], self.prev.in_features + self.prev.use_bias)
         self.assertEqual(M.shape[1], self.merge.in_channels)
         self.assertEqual(n, self.batch_size)
 
@@ -169,11 +169,15 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             self.merge.set_previous_modules([torch.nn.Linear(1, 1)])
 
         self.merge.set_previous_modules([self.prev])
-        self.assertEqual(self.merge.total_in_parameters, self.prev.in_parameters)
+        self.assertEqual(
+            self.merge.total_in_features, self.prev.in_features + self.prev.use_bias
+        )
         self.assertEqual(self.merge.total_out_features, self.prev.out_features)
 
         self.merge.set_previous_modules([self.prev, self.prev])
-        self.assertEqual(self.merge.total_in_parameters, self.prev.in_parameters * 2)
+        self.assertEqual(
+            self.merge.total_in_features, (self.prev.in_features + self.prev.use_bias) * 2
+        )
         self.assertEqual(self.merge.total_out_features, self.prev.out_features * 2)
 
         with self.assertRaises(ValueError):
