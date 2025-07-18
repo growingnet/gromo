@@ -946,7 +946,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         if verbose:
             print("\nForward DAG...")
-        x = self.flatten(x)
         output = {self.root: x}
         for node in nx.topological_sort(self):
             if verbose:
@@ -956,7 +955,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 if verbose:
                     print("\t-->", module.name, module)
                 module_input = output[previous_node]
-                activity = safe_forward(module, module_input)
+                if isinstance(module, LinearGrowingModule):
+                    activity = safe_forward(module, module_input)
+                else:
+                    activity = module(module_input)
 
                 assert activity.shape[1] == self.nodes[node]["size"]
 
@@ -990,7 +992,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         if verbose:
             print("\nExtended Forward DAG...")
-        x = self.flatten(x)
         output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, None)}
         for node in nx.topological_sort(self):
             if verbose:
