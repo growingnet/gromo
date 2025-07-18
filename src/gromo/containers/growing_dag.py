@@ -754,13 +754,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         direct_edges = []
         for prev_node, successors in direct_successors.items():
             for next_node in successors:
-                # TODO: create getter for types
-                if (self.nodes[prev_node]["type"] == "linear") and (
-                    self.nodes[next_node]["type"] == "linear"
-                ):
-                    direct_edges.append(
-                        {"previous_node": prev_node, "next_node": next_node}
-                    )
+                direct_edges.append(
+                    {
+                        "previous_node": prev_node,
+                        "next_node": next_node,
+                        "edge_attributes": {"kernel_size": (3, 3)},
+                    }
+                )
 
         return direct_edges
 
@@ -788,22 +788,23 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         new_node = str(self.id_last_node_added + 1)
         for prev_node, succ in successors.items():
             for next_node in succ:
-                if (self.nodes[prev_node]["type"] == "linear") and (
-                    self.nodes[next_node]["type"] == "linear"
-                ):
-                    if not self._indirect_connection_exists(prev_node, next_node):
-                        one_hop_edges.append(
-                            {
-                                "previous_node": prev_node,
-                                "new_node": new_node,
-                                "next_node": next_node,
-                                "node_attributes": {
-                                    "type": self.layer_type,
-                                    "size": size,
-                                    "activation": self.activation,
-                                },
-                            }
-                        )
+                if not self._indirect_connection_exists(prev_node, next_node):
+                    one_hop_edges.append(
+                        {
+                            "previous_node": prev_node,
+                            "new_node": new_node,
+                            "next_node": next_node,
+                            "node_attributes": {
+                                "type": self.nodes[prev_node]["type"],
+                                "size": size,
+                                "activation": self.activation,
+                                "kernel_size": (3, 3),
+                            },
+                            "edge_attributes": {
+                                "kernel_size": (3, 3),
+                            },
+                        }
+                    )
 
         return one_hop_edges
 
@@ -831,7 +832,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         direct_edges = self._find_possible_direct_connections(possible_direct_successors)
 
         # Add new nodes
-        one_hop_edges = self._find_possible_one_hop_connections(possible_successors)
+        one_hop_edges = self._find_possible_one_hop_connections(
+            possible_successors, self.neurons
+        )
 
         # # Extend existing nodes
         # nodes_set.remove(self.root)
@@ -858,9 +861,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for attr in direct_edges:
             previous_node = attr.get("previous_node")
             next_node = attr.get("next_node")
+            edge_attributes = attr.get("edge_attributes", {})
 
             expansion = Expansion(
-                self, "new edge", previous_node=previous_node, next_node=next_node
+                self,
+                "new edge",
+                previous_node=previous_node,
+                next_node=next_node,
+                edge_attributes=edge_attributes,
             )
             actions.append(expansion)
 
@@ -870,6 +878,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             new_node = attr.get("new_node")
             next_node = attr.get("next_node")
             node_attributes = attr.get("node_attributes", {})
+            edge_attributes = attr.get("edge_attributes", {})
 
             expansion = Expansion(
                 self,
@@ -878,6 +887,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 previous_node=previous_node,
                 next_node=next_node,
                 node_attributes=node_attributes,
+                edge_attributes=edge_attributes,
             )
             actions.append(expansion)
 
