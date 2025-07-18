@@ -22,7 +22,13 @@ class TestGrowingDAG(unittest.TestCase):
         self.use_bias = True
         self.use_batch_norm = False
         self.single_node_attributes = {"type": "linear", "size": self.hidden_size}
-        self.default_node_attributes = {"type": "linear", "size": 0, "activation": "selu"}
+        self.default_node_attributes = {
+            "type": "linear",
+            "size": self.hidden_size,
+            "activation": "selu",
+            "kernel_size": (3, 3),
+        }
+        self.default_edge_attributes = {"kernel_size": (3, 3)}
         self.dag = GrowingDAG(
             in_features=self.in_features,
             out_features=self.out_features,
@@ -373,7 +379,13 @@ class TestGrowingDAG(unittest.TestCase):
         }
         self.assertEqual(
             self.dag._find_possible_direct_connections(possible_direct_successors),
-            [{"previous_node": "start", "next_node": "end"}],
+            [
+                {
+                    "previous_node": "start",
+                    "next_node": "end",
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
         )
 
         self.dag.add_direct_edge("start", "end")
@@ -403,7 +415,16 @@ class TestGrowingDAG(unittest.TestCase):
         direct_connections = self.dag._find_possible_direct_connections(
             possible_direct_successors
         )
-        self.assertEqual(direct_connections, [{"previous_node": "2", "next_node": "end"}])
+        self.assertEqual(
+            direct_connections,
+            [
+                {
+                    "previous_node": "2",
+                    "next_node": "end",
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
+        )
 
     def test_find_possible_one_hop_connections(self) -> None:
         nodes_set = set(self.dag.nodes)
@@ -411,7 +432,9 @@ class TestGrowingDAG(unittest.TestCase):
             node: nodes_set.difference(self.dag.ancestors[node])
             for node in self.dag.nodes
         }
-        one_hop_edges = self.dag._find_possible_one_hop_connections(possible_successors)
+        one_hop_edges = self.dag._find_possible_one_hop_connections(
+            possible_successors, size=self.hidden_size
+        )
         self.assertEqual(
             one_hop_edges,
             [
@@ -420,6 +443,7 @@ class TestGrowingDAG(unittest.TestCase):
                     "new_node": "1",
                     "next_node": "end",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 }
             ],
         )
@@ -430,7 +454,9 @@ class TestGrowingDAG(unittest.TestCase):
             node: nodes_set.difference(self.dag.ancestors[node])
             for node in self.dag.nodes
         }
-        one_hop_edges = self.dag._find_possible_one_hop_connections(possible_successors)
+        one_hop_edges = self.dag._find_possible_one_hop_connections(
+            possible_successors, size=self.hidden_size
+        )
         self.assertEqual(
             one_hop_edges,
             [
@@ -439,19 +465,30 @@ class TestGrowingDAG(unittest.TestCase):
                     "new_node": "2",
                     "next_node": "1",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
                 {
                     "previous_node": "1",
                     "new_node": "2",
                     "next_node": "end",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
             ],
         )
 
     def test_find_possible_extension(self) -> None:
         direct_edges, one_hop_edges = self.dag.find_possible_extensions()
-        self.assertEqual(direct_edges, [{"previous_node": "start", "next_node": "end"}])
+        self.assertEqual(
+            direct_edges,
+            [
+                {
+                    "previous_node": "start",
+                    "next_node": "end",
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
+        )
         self.assertEqual(
             one_hop_edges,
             [
@@ -460,6 +497,7 @@ class TestGrowingDAG(unittest.TestCase):
                     "new_node": "1",
                     "next_node": "end",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 }
             ],
         )
@@ -468,7 +506,16 @@ class TestGrowingDAG(unittest.TestCase):
             "start", "hidden", "end", self.single_node_attributes
         )
         direct_edges, one_hop_edges = self.dag.find_possible_extensions()
-        self.assertEqual(direct_edges, [{"previous_node": "start", "next_node": "end"}])
+        self.assertEqual(
+            direct_edges,
+            [
+                {
+                    "previous_node": "start",
+                    "next_node": "end",
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
+        )
         self.assertEqual(
             one_hop_edges,
             [
@@ -477,12 +524,14 @@ class TestGrowingDAG(unittest.TestCase):
                     "new_node": "2",
                     "next_node": "hidden",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
                 {
                     "previous_node": "hidden",
                     "new_node": "2",
                     "next_node": "end",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
             ],
         )
