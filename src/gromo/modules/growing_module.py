@@ -368,7 +368,13 @@ class MergeGrowingModule(torch.nn.Module):
         self.eigenvalues_extension = None
         self.activity = None
         self.input = None
-        # TODO: include_previous
+
+        if include_previous:
+            for previous_module in self.previous_modules:
+                if isinstance(previous_module, GrowingModule):
+                    previous_module.delete_update(
+                        include_previous=False, include_output=True
+                    )
 
     def update_size(self) -> None:
         """

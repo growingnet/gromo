@@ -69,7 +69,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def in_features(self) -> int:
-        warn(f"WARNING!!! USING PROPERTY IN_FEATURES IN {self}")
+        warn(f"Using property in_features in {self}")
         return self.in_channels
 
     @property
