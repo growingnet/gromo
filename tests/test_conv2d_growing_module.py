@@ -5,13 +5,191 @@ import torch
 
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
+    Conv2dMergeGrowingModule,
     FullConv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.tools import compute_output_shape_conv
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase, indicator_batch
 from tests.unittest_tools import unittest_parametrize
+
+
+class TestConv2dMergeGrowingModule(TorchTestCase):
+    def setUp(self):
+        self.input_size = (8, 8)
+        self.kernel_size = 3
+        self.in_channels = 2
+        self.hidden_channels = 3
+        self.out_channels = 2
+        self.batch_size = 5
+        self.device = global_device()
+        self.x = torch.randn(
+            self.batch_size, self.in_channels, *self.input_size, device=self.device
+        )
+        self.y = torch.randn(self.batch_size, 1, device=self.device)
+        self.loss_fn = torch.nn.MSELoss()
+
+        # Previous dummy module
+        self.prev = Conv2dGrowingModule(
+            in_channels=self.in_channels,
+            out_channels=self.hidden_channels,
+            kernel_size=self.kernel_size,
+            input_size=self.input_size,
+            device=self.device,
+            name="prev",
+        )
+        # Target module under test
+        self.merge = Conv2dMergeGrowingModule(
+            in_channels=self.hidden_channels,
+            input_size=self.prev.out_width,
+            next_kernel_size=self.kernel_size,
+            device=self.device,
+            name="merge",
+        )
+        # Next dummy module
+        self.next = Conv2dGrowingModule(
+            in_channels=self.hidden_channels,
+            out_channels=self.out_channels,
+            kernel_size=self.kernel_size,
+            input_size=(self.prev.out_width, self.prev.out_height),
+            post_layer_function=torch.nn.Flatten(),
+            device=self.device,
+            name="next",
+        )
+        self.mlp = torch.nn.Linear(self.next.out_features, 1, device=self.device)
+
+        self.merge.set_previous_modules([self.prev])
+        self.merge.set_next_modules([self.next])
+        self.prev.next_module = self.merge
+        self.next.previous_module = self.merge
+        self.next.next_module = self.mlp
+
+        self.net = torch.nn.Sequential(self.prev, self.merge, self.next, self.mlp)
+
+        for module in (self.prev, self.merge, self.next):
+            module.reset_computation()
+            module.init_computation()
+
+        y_pred = self.net(self.x)
+        loss = self.loss_fn(y_pred, self.y)
+        loss.backward()
+
+        for module in (self.prev, self.merge, self.next):
+            module.update_computation()
+
+    def test_input_volume(self):
+        self.assertEqual(self.merge.input_volume, self.prev.out_features)
+        self.assertEqual(self.merge.input_volume, self.merge.out_features)
+
+        self.merge.set_previous_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.input_volume, -1)
+
+        self.merge._input_volume = 0
+        self.assertEqual(self.merge.input_volume, 0)
+
+    def test_padding(self):
+        self.assertEqual(self.merge.padding, self.next.padding)
+
+        self.merge.set_next_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.padding, 0)
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.assertEqual(self.merge.padding, 0)
+
+    def test_stride(self):
+        self.assertEqual(self.merge.stride, self.next.stride)
+
+        self.merge.set_next_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.stride, 1)
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.assertEqual(self.merge.stride, 1)
+
+    def test_dilation(self):
+        self.assertEqual(self.merge.dilation, self.next.layer.dilation)
+
+        self.merge.set_next_modules([])
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.dilation, 1)
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.assertEqual(self.merge.dilation, 1)
+
+    def test_unfolded_extended_activity(self):
+        unfolded = self.merge.unfolded_extended_activity
+        self.assertEqual(unfolded.shape[0], self.batch_size)
+        self.assertTrue(
+            unfolded.shape[1] >= self.in_channels * self.kernel_size * self.kernel_size
+        )
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.merge.activity = self.merge.activity.flatten(1)
+        unfolded = self.merge.unfolded_extended_activity
+        self.assertEqual(unfolded.shape[0], self.batch_size)
+        self.assertEqual(unfolded.shape[1], self.merge.out_features + self.merge.use_bias)
+
+    def test_construct_full_activity(self):
+        full = self.merge.construct_full_activity()
+        self.assertEqual(full.shape[0], self.batch_size)
+        self.assertEqual(full.shape[1], self.prev.in_features + self.prev.use_bias)
+
+    def test_compute_previous_s_update(self):
+        S, n = self.merge.compute_previous_s_update()
+        self.assertEqual(S.shape[0], self.prev.in_features + self.prev.use_bias)
+        self.assertEqual(n, self.batch_size)
+
+    def test_compute_previous_m_update(self):
+        M, n = self.merge.compute_previous_m_update()
+        self.assertEqual(M.shape[0], self.prev.in_features + self.prev.use_bias)
+        self.assertEqual(M.shape[1], self.merge.in_channels)
+        self.assertEqual(n, self.batch_size)
+
+    def test_compute_s_update(self):
+        S, n = self.merge.compute_s_update()
+        D = self.hidden_channels * self.kernel_size * self.kernel_size + 1
+        self.assertEqual(S.shape, (D, D))
+        self.assertEqual(n, self.batch_size)
+
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        self.merge.activity = self.merge.activity.flatten(1)
+        S, n = self.merge.compute_s_update()
+        D = self.merge.out_features + self.merge.use_bias
+        self.assertEqual(S.shape, (D, D))
+        self.assertEqual(n, self.batch_size)
+
+    def test_set_previous_modules(self):
+        with self.assertRaises(TypeError):
+            self.merge.set_previous_modules(["not a module"])
+        with self.assertRaises(TypeError):
+            self.merge.set_previous_modules([torch.nn.Linear(1, 1)])
+
+        self.merge.set_previous_modules([self.prev])
+        self.assertEqual(
+            self.merge.total_in_features, self.prev.in_features + self.prev.use_bias
+        )
+        self.assertEqual(self.merge.total_out_features, self.prev.out_features)
+
+        self.merge.set_previous_modules([self.prev, self.prev])
+        self.assertEqual(
+            self.merge.total_in_features, (self.prev.in_features + self.prev.use_bias) * 2
+        )
+        self.assertEqual(self.merge.total_out_features, self.prev.out_features * 2)
+
+        with self.assertRaises(ValueError):
+            self.merge.set_previous_modules([self.prev, self.next])
+
+    def test_set_next_modules(self):
+        with self.assertRaises(NotImplementedError):
+            self.merge.set_next_modules(["not a module"])
+        with self.assertRaises(NotImplementedError):
+            self.merge.set_next_modules([torch.nn.Linear(1, 1)])
+        with self.assertRaises(AssertionError):
+            self.merge.set_next_modules([LinearGrowingModule(1, 1)])
 
 
 class TestConv2dGrowingModule(TorchTestCase):
