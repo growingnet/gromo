@@ -1,15 +1,24 @@
 import copy
 import operator
-from typing import Iterator
+import warnings
+from typing import Callable, Iterator
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_dag import Expansion, GrowingDAG
-from gromo.modules.linear_growing_module import LinearMergeGrowingModule
+from gromo.modules.conv2d_growing_module import (
+    Conv2dGrowingModule,
+    Conv2dMergeGrowingModule,
+)
+from gromo.modules.linear_growing_module import (
+    LinearGrowingModule,
+    LinearMergeGrowingModule,
+)
 from gromo.utils.utils import f1_micro, line_search, mini_batch_gradient_descent
 
 
@@ -60,6 +69,21 @@ class GrowingGraphNetwork(GrowingContainer):
         self.loss_fn = loss_fn
 
         self.reset_network()
+
+    def set_growing_layers(self):
+        self._growing_layers.append(self.dag)
+
+    def init_computation(self):
+        self.dag.init_computation()
+
+    def update_computation(self):
+        self.dag.update_computation()
+
+    def reset_computation(self):
+        self.dag.reset_computation()
+
+    def compute_optimal_updates(self, *args, **kwargs):
+        self.dag.compute_optimal_updates(*args, **kwargs)
 
     def init_empty_graph(self) -> None:
         """Create empty DAG with start and end nodes"""
