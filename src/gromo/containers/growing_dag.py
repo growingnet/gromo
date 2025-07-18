@@ -376,7 +376,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             when size of node is not specified in node_attributes[node] dictionary
         """
         for node in nodes:
-            # attributes = node_attributes if len(nodes) == 1 else node_attributes[node]
             attributes = node_attributes.get(node, {})
             if "type" not in attributes:
                 raise KeyError(
@@ -387,27 +386,54 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     'The size of the node should be specified at initialization. Example: key "size" in node_attributes[new_node]'
                 )
             self.nodes[node].update(attributes)
+            if attributes.get("use_batch_norm", self.use_batch_norm):
+                batch_norm = nn.BatchNorm1d(
+                    self.nodes[node]["size"], affine=False, device=self.device
+                )
+            else:
+                batch_norm = nn.Identity()
             if self.nodes[node]["type"] == "linear":
                 in_features = self.nodes[node]["size"]
-                if attributes.get("use_batch_norm", self.use_batch_norm):
-                    batch_norm = nn.BatchNorm1d(
-                        in_features, affine=False, device=self.device
-                    )
-                else:
-                    batch_norm = nn.Identity()
                 self.__set_node_module(
                     node,
                     LinearMergeGrowingModule(
-                        allow_growing=True,
                         in_features=in_features,
                         post_merge_function=torch.nn.Sequential(
                             batch_norm,
                             activation_fn(self.nodes[node].get("activation")),
                         ),
+                        allow_growing=True,
                         device=self.device,
                         name=f"{node}",
                     ),
                 )
+            elif self.nodes[node]["type"] == "convolution":
+                in_channels = self.nodes[node]["size"]
+                input_size = self.nodes[node].get("shape")
+                kernel_size = self.nodes[node]["kernel_size"]
+                input_volume = (
+                    in_channels * input_size * input_size
+                    if input_size is not None
+                    else None
+                )
+                self.__set_node_module(
+                    node,
+                    Conv2dMergeGrowingModule(
+                        in_channels=in_channels,
+                        input_size=input_size,
+                        next_kernel_size=kernel_size,
+                        input_volume=input_volume,
+                        post_merge_function=torch.nn.Sequential(
+                            batch_norm,
+                            activation_fn(self.nodes[node].get("activation")),
+                        ),
+                        allow_growing=True,
+                        device=self.device,
+                        name=f"{node}",
+                    ),
+                )
+            else:
+                raise NotImplementedError
 
     def update_edges(
         self,
