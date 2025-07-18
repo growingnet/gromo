@@ -464,6 +464,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     ),
                 )
                 self[prev_node][next_node]["type"] = "constant"
+                continue
             # If both nodes are linear
             elif (
                 self.nodes[prev_node]["type"] == "linear"
@@ -474,19 +475,62 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     out_features=self.nodes[next_node]["size"],
                     use_bias=edge_attributes.get("use_bias", self.use_bias),
                     device=self.device,
-                    name=f"l{prev_node}_{next_node}",
+                    name=f"L{prev_node}_{next_node}",
                 )
                 if zero_weights:
                     new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
                     if new_module.use_bias:
                         new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
-                self.__set_edge_module(
-                    prev_node,
-                    next_node,
-                    new_module,
-                )
-                self[prev_node][next_node]["type"] = "linear"
                 # TODO: set bias to zeros
+            elif (
+                self.nodes[prev_node]["type"] == "convolution"
+                and self.nodes[next_node]["type"] == "convolution"
+            ):
+                if "kernel_size" not in edge_attributes:
+                    raise KeyError(
+                        'The kernel size of the edge should be specified at initialization. Example: key "kernel_size" in edge_attributes'
+                    )
+                kernel_size = edge_attributes["kernel_size"]
+                input_size = self.get_node_module(prev_node).output_size
+                default_padding = ((kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2)
+                new_module = FullConv2dGrowingModule(
+                    in_channels=self.nodes[prev_node]["size"],
+                    out_channels=self.nodes[next_node]["size"],
+                    kernel_size=kernel_size,
+                    input_size=input_size,
+                    stride=edge_attributes.get("stride", 1),
+                    padding=edge_attributes.get("padding", default_padding),
+                    dilation=edge_attributes.get("dilation", 1),
+                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    # allow_growing=True,
+                    device=self.device,
+                    name=f"C{prev_node}_{next_node}",
+                )
+            elif (
+                self.nodes[prev_node]["type"] == "convolution"
+                and self.nodes[next_node]["type"] == "linear"
+            ):
+                in_features = self.nodes[prev_node]["module"].out_features
+                new_module = LinearGrowingModule(
+                    in_features=in_features,
+                    out_features=self.nodes[next_node]["size"],
+                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    device=self.device,
+                    name=f"L{prev_node}_{next_node}",
+                )
+                if zero_weights:
+                    new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
+                    if new_module.use_bias:
+                        new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
+            else:
+                raise NotImplementedError
+
+            self.__set_edge_module(
+                prev_node,
+                next_node,
+                new_module,
+            )
+            self[prev_node][next_node]["type"] = self.nodes[next_node]["type"]
 
     def update_connections(self, edges: list) -> None:
         """Update connections to modules on specific edges and their adjacent nodes
