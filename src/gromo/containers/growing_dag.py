@@ -966,10 +966,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 if verbose:
                     print("\t-->", module.name, module)
                 module_input = output[previous_node]
-                if isinstance(module, LinearGrowingModule):
-                    activity = safe_forward(module, module_input)
-                else:
-                    activity = module(module_input)
+                activity = module(module_input)
 
                 assert activity.shape[1] == self.nodes[node]["size"]
 
