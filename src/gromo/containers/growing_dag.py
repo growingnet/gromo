@@ -36,6 +36,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         activation: str = "selu",
         root: str = "start",
         end: str = "end",
+        input_shape: int = None,
         DAG_parameters: dict = None,
         device: torch.device | str | None = None,
         **kwargs,
@@ -60,6 +61,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 f"The default layer type is not supported. Expected one of {supported_layer_types}, got {default_layer_type}"
             )
         self.layer_type = default_layer_type
+        self.input_shape = input_shape
 
         if DAG_parameters is None:
             DAG_parameters = self.init_dag_parameters()
@@ -107,14 +109,21 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             self.root: {
                 "type": self.layer_type,  # shows what follows
                 "size": self.in_features,
+                "shape": self.input_shape,
+                "kernel_size": (3, 3),
             },
             self.end: {
                 "type": self.layer_type,
                 "size": self.out_features,
+                "kernel_size": (3, 3),
                 "use_batch_norm": self.use_batch_norm,
             },
         }
-        edge_attributes = {"type": self.layer_type, "use_bias": self.use_bias}
+        edge_attributes = {
+            "type": self.layer_type,
+            "use_bias": self.use_bias,
+            "kernel_size": (3, 3),
+        }
 
         DAG_parameters = {}
         DAG_parameters["edges"] = edges
