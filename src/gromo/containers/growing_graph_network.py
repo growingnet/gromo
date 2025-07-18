@@ -148,36 +148,42 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def block_forward(
         self,
+        layer_fn: Callable,
         alpha: torch.Tensor,
         omega: torch.Tensor,
         bias: torch.Tensor,
         x: torch.Tensor,
         sigma: nn.Module,
+        **kwargs,
     ) -> torch.Tensor:
-        """Output of block connection with specific weights
+        """
+        Output of block connection with specific weights
         Calculates A = omega*sigma(alpha*x + b)
 
         Parameters
         ----------
+        layer_fn : Callable
+            functional operation either `F.linear` or `F.conv2d`
         alpha : torch.Tensor
-            alpha input weights (neurons, in_features)
+            alpha input weights (new_neurons, in_features) or (new_channels, in_channels, *kernel_size)
         omega : torch.Tensor
-            omega output weights (out_features, neurons)
+            omega output weights (out_features, new_neurons) or (out_channels, new_channels, *kernel_size)
         bias : torch.Tensor
-            bias of input layer (neurons,)
+            bias of input layer (new_neurons,) or (new_channels,)
         x : torch.Tensor
-            input vector (in_features, batch_size)
+            input vector (*in_features, batch_size)
         sigma : nn.Module
             activation function
 
         Returns
         -------
         torch.Tensor
-            pre-activity of new connection block (out_features, batch_size)
+            pre-activity of new connection block (*out_features, batch_size)
         """
-        return torch.matmul(
-            omega, sigma(torch.matmul(alpha, x) + bias.sum(dim=1).unsqueeze(1))
-        )
+        bias = bias.sum(dim=1).view(-1)
+        hidden = sigma(layer_fn(x, alpha, bias=bias, **kwargs))
+        out = layer_fn(hidden, omega, bias=None, **kwargs)
+        return out
 
     def bottleneck_loss(
         self, activity: torch.Tensor, bottleneck: torch.Tensor
@@ -207,6 +213,8 @@ class GrowingGraphNetwork(GrowingContainer):
         B: torch.Tensor,
         sigma: nn.Module,
         bottleneck: torch.Tensor,
+        linear: bool = True,
+        operation_args: dict = {},
         verbose: bool = True,
     ) -> list[float]:
         """Bi-level optimization of new weights block with respect to the expressivity bottleneck
@@ -236,7 +244,15 @@ class GrowingGraphNetwork(GrowingContainer):
         """
 
         def forward_fn(B):
-            return self.block_forward(alpha, omega, bias, B.T, sigma).T
+            return self.block_forward(
+                F.linear if linear else F.conv2d,
+                alpha,
+                omega,
+                bias,
+                B,
+                sigma,
+                **operation_args if not linear else {},
+            )
 
         # # TODO FUTURE : try with extended forward, you have to set extended layers on all modules, avoid copying the model
         # new_activity = self.block_forward(alpha, omega, B.T, sigma).T # (batch_size, total_out_features)
@@ -359,6 +375,10 @@ class GrowingGraphNetwork(GrowingContainer):
             input_x,
             node_module.post_merge_function,
             bottleneck,
+            linear=isinstance(node_module, LinearMergeGrowingModule),
+            operation_args={
+                "padding": "same",
+            },
             verbose=verbose,
         )
 
@@ -535,9 +555,10 @@ class GrowingGraphNetwork(GrowingContainer):
         weight = weight.detach().clone().requires_grad_()
         bias = bias.detach().clone().requires_grad_()
 
-        # # Testing
-        # weight = torch.nn.init.orthogonal_(weight)
-        forward_fn = lambda activity: nn.functional.linear(activity, weight, bias)
+        if linear:
+            forward_fn = lambda activity: F.linear(activity, weight, bias)
+        else:
+            forward_fn = lambda activity: F.conv2d(activity, weight, bias, padding="same")
 
         loss_history, _ = mini_batch_gradient_descent(
             model=forward_fn,
