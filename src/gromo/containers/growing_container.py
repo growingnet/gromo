@@ -64,19 +64,19 @@ class GrowingContainer(torch.nn.Module):
     def init_computation(self):
         """Initialize statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.init_computation()
 
     def update_computation(self):
         """Update statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.update_computation()
 
     def reset_computation(self):
         """Reset statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.reset_computation()
 
     def compute_optimal_updates(self, *args, **kwargs):

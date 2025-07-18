@@ -75,6 +75,32 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.update_connections(edges)
         self.id_last_node_added = max(len(node_attributes.keys()) - 2, 0)
 
+    def init_computation(self):
+        for node_module in self.get_all_node_modules():
+            if node_module._name == self.root:
+                node_module.store_activity = True
+            else:
+                node_module.init_computation()
+
+    def update_computation(self):
+        for node_module in self.get_all_node_modules():
+            if node_module._name == self.root:
+                continue
+            node_module.previous_tensor_s.update()
+            node_module.previous_tensor_m.update()
+
+    def reset_computation(self):
+        for node_module in self.get_all_node_modules():
+            node_module.reset_computation()
+
+    def compute_optimal_updates(self, *args, **kwargs):
+        for node_module in self.get_all_node_modules():
+            node_module.compute_optimal_updates(*args, **kwargs)
+
+    def delete_update(self):
+        for node_module in self.get_all_node_modules():
+            node_module.delete_update(include_previous=True)
+
     def init_dag_parameters(self) -> dict:
         edges = [(self.root, self.end)]
         node_attributes = {
