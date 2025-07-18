@@ -325,8 +325,18 @@ class GrowingGraphNetwork(GrowingContainer):
         in_edges = len(node_module.previous_modules)
 
         # Initialize alpha and omega weights
-        alpha = torch.rand((self.neurons, total_in_features), device=self.device)
-        omega = torch.rand((total_out_features, self.neurons), device=self.device)
+        if isinstance(node_module, Conv2dMergeGrowingModule):
+            alpha = torch.rand(
+                (self.neurons, total_in_features, *node_module.kernel_size),
+                device=self.device,
+            )
+            omega = torch.rand(
+                (total_out_features, self.neurons, *node_module.kernel_size),
+                device=self.device,
+            )
+        else:
+            alpha = torch.rand((self.neurons, total_in_features), device=self.device)
+            omega = torch.rand((total_out_features, self.neurons), device=self.device)
         bias = torch.rand(
             (self.neurons, in_edges), device=self.device
         )  # TODO: fix bias for multiple input layers
@@ -357,28 +367,60 @@ class GrowingGraphNetwork(GrowingContainer):
 
         # Record layer extensions of new block
         i = 0
+        alpha = alpha.view(self.neurons, -1)  # (neurons, total_in_features)
         for i_edge, prev_edge_module in enumerate(node_module.previous_modules):
             # Output extension for alpha weights
             in_features = int(prev_edge_module.in_features)  # type: ignore
-            prev_edge_module._scaling_factor_next_module[0] = 1
+            prev_edge_module._scaling_factor_next_module[0] = 1  # type: ignore
+
+            _weight = alpha[:, i : i + in_features]
+            _weight = _weight.view((self.neurons, *prev_edge_module.weight.shape[1:]))
+            _bias = bias[:, i_edge]
+
             prev_edge_module.extended_output_layer = prev_edge_module.layer_of_tensor(
-                weight=alpha[:, i : i + in_features],
-                bias=bias[:, i_edge],  # TODO: fix for multiple input layers
+                weight=_weight,
+                bias=_bias,
             )  # bias is mandatory
             i += in_features
         i = 0
+        omega = omega.view(-1, self.neurons)  # (total_out_features, neurons)
         for next_edge_module in node_module.next_modules:
             # Input extension for omega weights
-            out_features = int(next_edge_module.out_features)  # type: ignore
-            next_edge_module.scaling_factor = 1
-            # next_edge_module.extended_input_layer = next_edge_module.layer_of_tensor(
-            #     weight=omega[i : i + out_features, :]
-            # ) # throws error because of bias
-            next_edge_module.extended_input_layer = nn.Linear(
-                self.neurons, out_features, bias=False
+            if isinstance(next_edge_module, LinearGrowingModule):
+                out_features = int(next_edge_module.out_features)  # type: ignore
+                next_edge_module.extended_input_layer = nn.Linear(
+                    self.neurons, out_features, bias=False
+                )
+            elif isinstance(next_edge_module, Conv2dGrowingModule):
+                out_features = int(
+                    next_edge_module.out_channels
+                    * next_edge_module.kernel_size[0]
+                    * next_edge_module.kernel_size[1]
+                )
+                next_edge_module.extended_input_layer = nn.Conv2d(
+                    in_channels=self.neurons,
+                    out_channels=next_edge_module.out_channels,
+                    bias=False,
+                    kernel_size=next_edge_module.layer.kernel_size,
+                    stride=next_edge_module.layer.stride,
+                    padding=next_edge_module.layer.padding,
+                    dilation=next_edge_module.layer.dilation,
+                )
+            next_edge_module.scaling_factor = 1  # type: ignore
+
+            _weight = omega[i : i + out_features, :]
+            _weight = _weight.view(
+                (
+                    next_edge_module.weight.shape[0],
+                    self.neurons,
+                    *next_edge_module.weight.shape[2:],
+                )
             )
+            # next_edge_module.extended_input_layer = next_edge_module.layer_of_tensor(
+            #     weight=_weight,
+            # ) # throws error because of bias
             next_edge_module.extended_input_layer.weight = nn.Parameter(
-                omega[i : i + out_features, :]
+                _weight,
             )
             i += out_features
 
@@ -470,11 +512,24 @@ class GrowingGraphNetwork(GrowingContainer):
         # [bi-level]  loss = edge_weight - bottleneck
         # [joint opt] loss = edge_weight + possible updates - desired_update
 
-        weight = torch.rand(
-            (new_edge_module.out_features, new_edge_module.in_features),
-            device=self.device,
-        )
-        bias = torch.rand((new_edge_module.out_features), device=self.device)
+        linear = isinstance(new_edge_module, LinearGrowingModule)
+
+        if linear:
+            weight = torch.rand(
+                (new_edge_module.out_features, new_edge_module.in_features),
+                device=self.device,
+            )
+            bias = torch.rand((new_edge_module.out_features), device=self.device)
+        else:
+            weight = torch.rand(
+                (
+                    new_edge_module.out_channels,
+                    new_edge_module.in_channels,
+                    *new_edge_module.kernel_size,
+                ),
+                device=self.device,
+            )
+            bias = torch.rand((new_edge_module.out_channels), device=self.device)
         weight = weight / np.sqrt(weight.numel())
         bias = bias / np.sqrt(bias.numel())
         weight = weight.detach().clone().requires_grad_()
