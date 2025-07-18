@@ -463,7 +463,7 @@ class GrowingGraphNetwork(GrowingContainer):
             # prev_edge_module._scaling_factor_next_module = factor # Warning
             prev_edge_module._apply_output_changes(factor)
             # Delete activities
-            prev_edge_module.delete_update(include_previous=False)
+            prev_edge_module.delete_update(include_previous=False, include_output=True)
 
         for next_node_module in next_node_modules:
             for parallel_module in next_node_module.previous_modules:
@@ -595,7 +595,7 @@ class GrowingGraphNetwork(GrowingContainer):
             edge.scaling_factor = factor
             edge.apply_change(apply_previous=False)
             edge.reset_computation()
-            edge.delete_update(include_previous=False)
+            edge.delete_update(include_previous=False, include_output=True)
 
         # next_node_module.reset_computation()
         next_node_module.delete_update()
