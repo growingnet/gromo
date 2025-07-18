@@ -9,6 +9,11 @@ import torch.nn as nn
 
 from gromo.containers.growing_container import GrowingContainer, safe_forward
 from gromo.modules.constant_module import ConstantModule
+from gromo.modules.conv2d_growing_module import (
+    Conv2dMergeGrowingModule,
+    FullConv2dGrowingModule,
+)
+from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -116,7 +121,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return super().out_degree
 
     def __set_edge_module(
-        self, prev_node: str, next_node: str, module: LinearGrowingModule
+        self, prev_node: str, next_node: str, module: GrowingModule
     ) -> None:
         """Setter function for module of edge
 
@@ -126,24 +131,24 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             incoming node of edge
         next_node : str
             outgoing module of edge
-        module : LinearGrowingModule
+        module : GrowingModule
             growable module to set to edge
         """
         self[prev_node][next_node]["module"] = module
 
-    def __set_node_module(self, node: str, module: LinearMergeGrowingModule) -> None:
+    def __set_node_module(self, node: str, module: MergeGrowingModule) -> None:
         """Setter function for module of node
 
         Parameters
         ----------
         node : str
             specified node name
-        module : LinearMergeGrowingModule
+        module : MergeGrowingModule
             growable module to set to node
         """
         self.nodes[node]["module"] = module
 
-    def get_edge_module(self, prev_node: str, next_node: str) -> LinearGrowingModule:
+    def get_edge_module(self, prev_node: str, next_node: str) -> GrowingModule:
         """Getter function for module of edge
 
         Parameters
@@ -155,12 +160,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        LinearGrowingModule
+        GrowingModule
             module attached to edge
         """
         return self[prev_node][next_node]["module"]
 
-    def get_node_module(self, node: str) -> LinearMergeGrowingModule:
+    def get_node_module(self, node: str) -> MergeGrowingModule:
         """Getter function for module of node
 
         Parameters
@@ -170,12 +175,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        LinearMergeGrowingModule
+        MergeGrowingModule
             module attached to node
         """
         return self.nodes[node]["module"]
 
-    def get_edge_modules(self, edges: list | set) -> list[LinearGrowingModule]:
+    def get_edge_modules(self, edges: list | set) -> list[GrowingModule]:
         """Getter function for modules attached to edges
 
         Parameters
@@ -185,12 +190,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        list[LinearGrowingModule]
+        list[GrowingModule]
             list of modules for each specified edge
         """
         return [self.get_edge_module(*edge) for edge in edges]
 
-    def get_node_modules(self, nodes: list | set) -> list[LinearMergeGrowingModule]:
+    def get_node_modules(self, nodes: list | set) -> list[MergeGrowingModule]:
         """Getter function for modules attached to nodes
 
         Parameters
@@ -200,17 +205,17 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        list[LinearMergeGrowingModule]
+        list[MergeGrowingModule]
             list of modules for each specified node
         """
         return [self.get_node_module(node) for node in nodes]
 
-    def get_all_node_modules(self) -> list[LinearMergeGrowingModule]:
+    def get_all_node_modules(self) -> list[MergeGrowingModule]:
         """Getter function for all modules attached to nodes
 
         Returns
         -------
-        list[LinearMergeGrowingModule]
+        list[MergeGrowingModule]
             list of modules for all existing nodes
         """
         return self.get_node_modules(list(self.nodes))
