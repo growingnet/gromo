@@ -98,6 +98,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node_module in self.get_all_node_modules():
             node_module.compute_optimal_updates(*args, **kwargs)
 
+    def compute_optimal_delta(self):
+        for node_module in self.get_all_node_modules():
+            if node_module._name == self.root:
+                continue
+            node_module.compute_optimal_delta()
+
     def delete_update(self):
         for node_module in self.get_all_node_modules():
             node_module.delete_update(include_previous=True)
@@ -457,7 +463,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     prev_node,
                     next_node,
                     ConstantModule(
-                        in_features=self.nodes[prev_node]["size"],
+                        in_features=self.get_node_module(prev_node).out_features,
                         out_features=self.nodes[next_node]["size"],
                         device=self.device,
                     ),
@@ -572,8 +578,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def calculate_bottleneck(
         self,
         actions: list["Expansion"],
-        X: torch.Tensor,
-        Y: torch.Tensor,
+        dataloader: torch.utils.data.DataLoader,
         loss_fn: Callable = nn.CrossEntropyLoss(),
     ) -> tuple[dict, dict]:
         """Calculate expressivity bottleneck on important nodes
@@ -625,29 +630,35 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # Add hooks on node modules of interest
         prev_node_modules = self.get_node_modules(prev_node_modules)
         next_node_modules = self.get_node_modules(next_node_modules)
-        for node_module in prev_node_modules:
-            node_module.store_activity = True
-        for node_module in next_node_modules:
-            node_module.init_computation()
+        # for node_module in prev_node_modules:
+        #     node_module.store_activity = True
+        # for node_module in next_node_modules:
+        #     node_module.init_computation()
+        self.init_computation()
 
         # Forward - Backward step
-        pred = self(X)
-        loss = loss_fn(pred, Y)
-        loss.backward()
+        for X, Y in dataloader:
+            self.zero_grad()
+            pred = self(X)
+            loss = loss_fn(pred, Y)
+            loss.backward()
+            self.update_computation()
 
         input_B = {}
         bottleneck = {}
 
+        self.compute_optimal_delta()
         # Update tensors
+        # for node_module in next_node_modules:
+        #     assert node_module.previous_tensor_s is not None
+        #     assert node_module.previous_tensor_m is not None
+        #     node_module.previous_tensor_s.update()
+        #     node_module.previous_tensor_m.update()
+
+        #     # Compute optimal possible updates
+        #     node_module.compute_optimal_delta(update=True, return_deltas=False)
+
         for node_module in next_node_modules:
-            assert node_module.previous_tensor_s is not None
-            assert node_module.previous_tensor_m is not None
-            node_module.previous_tensor_s.update()
-            node_module.previous_tensor_m.update()
-
-            # Compute optimal possible updates
-            node_module.compute_optimal_delta(update=True, return_deltas=False)
-
             # Compute expressivity bottleneck
             bottleneck[node_module._name] = (
                 node_module.projected_v_goal().clone().detach()
@@ -660,8 +671,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     bottleneck[node_module._name] == node_module.pre_activity.grad
                 ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
 
-            # Reset tensors and remove hooks
-            node_module.reset_computation()
+            # # Reset tensors and remove hooks
+            # node_module.reset_computation()
+        self.reset_computation()
 
         # Retrieve input activities
         for node_module in prev_node_modules:
