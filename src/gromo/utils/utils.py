@@ -149,6 +149,8 @@ def activation_fn(fn_name: str) -> nn.Module:
     fn_name = fn_name.strip().lower()
     if fn_name == "id":
         return nn.Identity()
+    elif fn_name == "flatten":
+        return nn.Flatten()
     elif fn_name == "selu":
         return nn.SELU()
     elif fn_name == "relu":

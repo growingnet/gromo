@@ -54,7 +54,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.activation = activation
         self.root = root
         self.end = end
-        self.flatten = nn.Flatten(start_dim=1)
 
         if default_layer_type not in supported_layer_types:
             raise NotImplementedError(
