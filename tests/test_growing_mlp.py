@@ -77,6 +77,21 @@ class TestGrowingMLP(unittest.TestCase):
         factors = self.model.normalisation_factor(values)
         self.assertEqual(factors.shape, values.shape)
 
+    def test_without_flatten(self):
+        # Test the model without flattening the input
+        in_features = (10, 4)
+        model = GrowingMLP(
+            in_features=in_features,
+            out_features=self.out_features,
+            hidden_size=self.hidden_size,
+            number_hidden_layers=self.number_hidden_layers,
+            activation=nn.ReLU(),
+            flatten=False,
+        )
+        x = torch.randn(1, *in_features)
+        y = model.forward(x)
+        self.assertEqual(y.shape, (1, *in_features[:-1], self.out_features))
+
 
 if __name__ == "__main__":
     unittest.main()
