@@ -1,3 +1,4 @@
+import types
 from warnings import warn
 
 import torch
@@ -478,6 +479,8 @@ class Conv2dGrowingModule(GrowingModule):
         self.input_size: tuple[int, int] = input_size
         self.use_bias = use_bias
 
+        self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
+
     # Information functions
     # TODO: implement activation_gradient ?
     # this function is used to estimate the F.O. improvement of the loss after the extension of the network
@@ -585,6 +588,32 @@ class Conv2dGrowingModule(GrowingModule):
             )
         else:
             return super(Conv2dGrowingModule, self).__str__(verbose=verbose)
+
+    def __make_safe_forward(self):
+        def _forward(conv_self, input: torch.Tensor) -> torch.Tensor:
+            if self.out_channels == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    0,
+                    self.out_height,
+                    self.out_width,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            if self.in_channels == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    self.out_channels,
+                    self.out_height,
+                    self.out_width,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            return torch.nn.Conv2d.forward(conv_self, input)
+
+        return _forward
 
     # Statistics computation
     def compute_s_update(self) -> tuple[torch.Tensor, int]:

@@ -589,10 +589,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         ----------
         actions : list[Expansion]
             list with growth actions information
-        X : torch.Tensor
-            train features
-        Y : torch.Tensor
-            train labels
+        dataloader : torch.utils.data.DataLoader
+            train features and labels
         loss_fn : Callable, optional
             loss function for bottleneck calculation, by default torch.nn.CrossEntropyLoss
 
@@ -843,9 +841,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         direct_edges = self._find_possible_direct_connections(possible_direct_successors)
 
         # Add new nodes
-        one_hop_edges = self._find_possible_one_hop_connections(
-            possible_successors, self.neurons
-        )
+        one_hop_edges = self._find_possible_one_hop_connections(possible_successors)
 
         # # Extend existing nodes
         # nodes_set.remove(self.root)
