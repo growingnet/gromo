@@ -772,6 +772,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         direct_edges = []
         for prev_node, successors in direct_successors.items():
             for next_node in successors:
+                if len(list(self.predecessors(next_node))) >= 2:
+                    continue
                 direct_edges.append(
                     {
                         "previous_node": prev_node,
@@ -807,6 +809,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for prev_node, succ in successors.items():
             for next_node in succ:
                 if not self._indirect_connection_exists(prev_node, next_node):
+                    if len(list(self.predecessors(next_node))) >= 2:
+                        continue
                     one_hop_edges.append(
                         {
                             "previous_node": prev_node,
@@ -1301,6 +1305,8 @@ class Expansion:
 
     def expand(self) -> None:
         """Create new edge or node on the enclosed GrowingDAG"""
+        if not self.check_available_memory():
+            return False
         if self.type == "new edge":
             self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
         elif self.type == "new node":
@@ -1345,6 +1351,69 @@ class Expansion:
             new_value = 2 if node in nodes_added else 0
             step_update[str(node)] = keep_max(new_value, str(node))
         self.growth_history[current_step].update(step_update)
+
+    def check_available_memory(self, safety_factor=0.9) -> bool:
+        has_enough_memory = True
+        n = 2  # batch_size
+
+        if self.type == "edge":
+            added_size = self.dag.get_node_module(self.previous_node).total_in_features
+        else:
+            added_size = self.dag.neurons
+        kernel_size = self.edge_attributes.get("kernel_size", (3, 3))
+        added_in_features = (
+            added_size * kernel_size[0] * kernel_size[1] + self.dag.use_bias
+        )
+        input_shape = self.dag.input_shape**2
+        for next_node in self.next_nodes:
+            next_node_module = self.dag.get_node_module(next_node)
+            current_total_in_features = next_node_module.total_in_features
+            if current_total_in_features + added_in_features >= 120:
+                return False
+            current_out_features = (
+                next_node_module.out_channels
+                if isinstance(next_node_module, Conv2dMergeGrowingModule)
+                else next_node_module.out_features
+            )
+
+            free_bytes, total_bytes = torch.cuda.mem_get_info(self.dag.device)
+            mem_free_MB = free_bytes / 1024**2
+
+            # Measure usage with and without the module
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats(self.dag.device)
+
+            with torch.no_grad():
+                before = torch.cuda.max_memory_allocated(self.dag.device)
+                try:
+                    full_activity = torch.zeros(
+                        n, added_in_features + current_total_in_features, input_shape
+                    ).to(self.dag.device)
+                    desired_activation = torch.zeros(
+                        n, current_out_features, input_shape
+                    ).to(self.dag.device)
+                    temp0 = torch.einsum(
+                        "iam, ibm -> ab",
+                        full_activity,
+                        full_activity,
+                    )
+                    temp1 = torch.einsum(
+                        "iam, icm -> ac",
+                        full_activity,
+                        desired_activation,
+                    )
+                except Exception as e:
+                    return False, None, mem_free_MB  # failed to run
+                after = torch.cuda.max_memory_allocated(self.dag.device)
+
+            mem_used_MB = (after - before) / 1024**2
+            usable_MB = safety_factor * mem_free_MB
+            can_add = mem_used_MB < usable_MB
+            if not can_add:
+                return False
+            has_enough_memory = can_add & has_enough_memory
+
+        return has_enough_memory
 
     def __del__(self) -> None:
         if "dag" in self.__dict__:
