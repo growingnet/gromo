@@ -98,11 +98,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node_module in self.get_all_node_modules():
             node_module.compute_optimal_updates(*args, **kwargs)
 
-    def compute_optimal_delta(self):
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        return_deltas: bool = False,
+        force_pseudo_inverse: bool = False,
+    ):
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 continue
-            node_module.compute_optimal_delta()
+            node_module.compute_optimal_delta(
+                update=update,
+                return_deltas=return_deltas,
+                force_pseudo_inverse=force_pseudo_inverse,
+            )
 
     def delete_update(self):
         for node_module in self.get_all_node_modules():
