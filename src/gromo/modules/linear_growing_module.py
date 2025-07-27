@@ -339,7 +339,6 @@ class LinearGrowingModule(GrowingModule):
             tensor_m_shape=(in_features + use_bias, out_features),
             device=device,
             name=name,
-            s_growth_is_needed=False,
         )
         self.use_bias = use_bias
         self.in_features = in_features
@@ -587,37 +586,6 @@ class LinearGrowingModule(GrowingModule):
             )
         else:
             raise TypeError("The next module must be a LinearGrowingModule.")
-
-    @property
-    def tensor_s_growth(self):
-        """
-        Supercharge tensor_s_growth to redirect to the normal tensor_s as it is the same for Linear layers.
-        """
-        if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}. Thus S is not defined."
-            )
-        elif isinstance(self.previous_module, LinearGrowingModule):
-            return self.previous_module.tensor_s
-        elif isinstance(self.previous_module, LinearMergeGrowingModule):
-            raise NotImplementedError(
-                f"S growth is not implemented for module preceded by an LinearMergeGrowingModule."
-                " (error in {self.name})"
-            )
-        else:
-            raise NotImplementedError(
-                f"S growth is not implemented yet for {type(self.previous_module)} as previous module."
-            )
-
-    @tensor_s_growth.setter
-    def tensor_s_growth(self, value) -> None:
-        """
-        Allow to set the tensor_s_growth but has no effect.
-        """
-        raise AttributeError(
-            f"You tried to set tensor_s_growth of a LinearGrowingModule (name={self.name})."
-            "This is not allowed as s growth is the same as tensor_s."
-        )
 
     @property
     def tensor_n(self) -> torch.Tensor:

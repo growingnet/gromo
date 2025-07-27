@@ -68,7 +68,6 @@ class Conv2dGrowingModule(GrowingModule):
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
-        s_growth_is_needed: bool = False,
     ) -> None:
         device = device if device is not None else global_device()
         self.in_channels = in_channels
@@ -100,11 +99,9 @@ class Conv2dGrowingModule(GrowingModule):
             ),
             device=device,
             name=name,
-            s_growth_is_needed=s_growth_is_needed,
         )
         self.kernel_size = self.layer.kernel_size
 
-        # TODO: update S_growth shape in layer_in_extension
         self.input_size: tuple[int, int] = input_size
         self.use_bias = use_bias
 
@@ -531,25 +528,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             allow_growing=allow_growing,
             device=device,
             name=name,
-            s_growth_is_needed=False,
         )
         self.bordering_convolution = None
-
-    @property
-    def tensor_s_growth(self):
-        """
-        Supercharge tensor_s_growth to redirect to the normal tensor_s as it is the same for Linear layers.
-        """
-        if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}. Thus S growth is not defined."
-            )
-        elif isinstance(self.previous_module, Conv2dGrowingModule):
-            return self.previous_module.tensor_s
-        else:
-            raise NotImplementedError(
-                f"S growth is not implemented yet for {type(self.previous_module)} as previous module."
-            )
 
     def linear_layer_of_tensor(
         self, weight: torch.Tensor, bias: torch.Tensor | None = None
@@ -938,9 +918,14 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             allow_growing=allow_growing,
             device=device,
             name=name,
-            s_growth_is_needed=True,
         )
         self._mask_tensor_t: torch.Tensor | None = None
+        self._tensor_s_growth = TensorStatistic(
+            None,
+            update_function=self.compute_s_growth_update,
+            device=self.device,
+            name=f"S_growth({name})",
+        )
 
     @property
     def mask_tensor_t(self) -> torch.Tensor:
@@ -1101,6 +1086,13 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
                 f"The computation of P is not implemented yet "
                 f"for {type(self.previous_module)} as previous module."
             )
+
+    @property
+    def tensor_s_growth(self) -> TensorStatistic:
+        """
+        Supercharge `tensor_s_growth` to redirect to `self._tensor_s_growth` instead of `self.previous_module.tensor_s`.
+        """
+        return self._tensor_s_growth
 
     @property
     def tensor_n(self) -> torch.Tensor:
