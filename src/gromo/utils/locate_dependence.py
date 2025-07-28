@@ -10,9 +10,6 @@ def linear_kernel(X):
 
 def gaussian_kernel(X, sigma=None):
     """Computes the gaussian kernel matrix"""
-    # dist = np.sum((X[:, np.newaxis] - X) ** 2, axis=-1) # (n,n)
-    # dist = squareform(pdist(X, "euclidean")) ** 2
-    # dist = torch.tensor(dist, device=global_device())
     dist = torch.cdist(X, X) ** 2
     if sigma is None:
         var = torch.median(dist)
