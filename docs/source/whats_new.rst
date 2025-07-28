@@ -65,6 +65,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)
 - Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)
 - Added support for configuration files that override default class arguments (:gh:`38` by `Stella Douka`_)
 
