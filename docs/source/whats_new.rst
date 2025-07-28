@@ -20,6 +20,8 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+
+- Estimate dependencies between activities for faster expansion (:gh:`100` by `Stella Douka`_)
 - Add `GrowingBatchNorm1d` and `GrowingBatchNorm2d` modules to support batch normalization in growing networks (:gh:`101` by `Théo Rudkiewicz`_).
 - Optimize RestrictedConv2dGrowingModule to fasten the simulation of the side effect of a convolution (:gh:`99` by `Théo Rudkiewicz`_).
 - Split Conv2dGrowingModule into two subclass `FullConv2dGrowingModule`(that does the same as the previous class) and  `RestrictedConv2dGrowingModule` (that compute only the best 1x1 convolution as the second layer at growth time) (:gh:`92` by `Théo Rudkiewicz`_).
@@ -46,7 +48,7 @@ Enhancements
 Bugs
 ~~~~
 
-- Delete leftover activity tensors (:gh:`78` by `Stella Douka`_)
+- Delete leftover activity tensors (:gh:`78` & `100` by `Stella Douka`_)
 - Fix inconsistency with torch.empty not creating empty tensors (:gh:`78` by `Stella Douka`_)
 - Expansion of existing nodes not executed in GrowingDAG (:gh:`78` by `Stella Douka`_)
 - Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)
