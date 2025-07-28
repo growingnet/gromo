@@ -904,12 +904,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     print("\t-->", module.name, module)
                 module_input = output[previous_node]
                 activity, activity_ext = module.extended_forward(*module_input)
-                # activity_ext = (
-                #     activity_ext
-                #     if activity_ext is not None
-                #     else torch.zeros(x.shape[0], self.neurons, device=self.device)
-                #     # else torch.empty(0, x.shape[0], module.out_features, device=self.device)
-                # )
+                # activity_ext = (x.shape[0], self.neurons)
 
                 assert activity.shape[1] == self.nodes[node]["size"]
 
