@@ -3,22 +3,23 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-# Example with default parameters.
+# Example of parameters, they are all optional because they have the following default values (that might depend on the method used)
 param_default = {
     # General parameters
     'reg': 1e-6,  # Regularization term for numerical stability when computing pseudo-inverse
-    'batch_size': 64,  # Batch size for training
-    'warning': True,  # Whether to print warnings when the training loss increases
+    'batch_size': 64,  # Batch size for training IS AUTOMATICALLY SET WHEN THE TRAIN_LOADER IS GIVEN 
+    'warning': True,  # Whether to print warnings when the training loss increases after an optimization step
     'analyse': False,  # Whether to compute the training time and losses at each epoch
-    'delta': 'one',  # Method to compute the ponderation, either 'one' or 'delta'
-    'z': 'star',  # Goal for the z optimization, either 'star' or 'mid'
+    'verbose': 0,  # Whether to print additional information during training, the bigger the number, the more information is printed
+    'delta': 'one',  # Method to compute the ponderation, either 'one' (standard estimation) or 'delta' (ponderated estimation)
+    'z': 'star',  # Goal for the z optimization, either 'star' or 'mid' (see the report)
     'method': 'Omega-A',  # Default optimization method, or : 'omega-SGD'
     
     # if method is Omega-A
     'nb_iterations_Om_A': 2,  # number of Omega <-> A optimization steps
     
     # if method is omega-SGD
-    'lr': 5e-3,  # Learning rate for SGD (Adam optimizer
+    'lr': 5e-3,  # Learning rate for SGD (Adam optimizer) If NOTHING IS GIVEN IS AUTOMATICALLY SET WHEN THE TRAIN_LOADER IS GIVEN using the get_lr method
     'epochs': 20,  # Number of epochs for omega-SGD method
     'omega_step': 10,  # Number of epochs between Omega optimizations for omega-SGD method
     'optimizer': 'Adam',  # Optimizer for the omega-SGD method, either 'SGD' or 'Adam'
@@ -77,7 +78,7 @@ class MLPHeuristicTraining(nn.Module):
     """
     Class defining the network and the training methods.
     """
-    def __init__(self, input_size, hidden_size, output_size, method="Omega-A", param = {}, activation = nn.Softplus):
+    def __init__(self, input_size, hidden_size, output_size, param = {}, activation = nn.Softplus):
         super(MLPHeuristicTraining, self).__init__()
         
         self.n = input_size
@@ -91,9 +92,8 @@ class MLPHeuristicTraining(nn.Module):
         
         # Choice of the optimization method
         self.method = param['method'] if 'method' in param else "Omega-A"  # Default method is Omega-A
-        assert(method in ["Omega-A"]), f"Unknown optimization method: {method}. Choose from 'Omega-A' or 'omega-SGD'."
-        
-        
+        assert(self.method in ["Omega-A"]), f"Unknown optimization method: {self.method}. Choose from 'Omega-A' or 'omega-SGD'."
+
         self.A = self.linear1.weight  # First layer weights A
         self.Omega = self.linear2.weight  # Second layer weights Ω
         
@@ -107,12 +107,7 @@ class MLPHeuristicTraining(nn.Module):
         self.warning = param['warning'] if 'warning' in param else True # Whether to print warnings when the training loss increases
         self.batch_size = param['batch_size'] if 'batch_size' in param else 64 # Batch size for training
         self.analyse = param['analyse'] if 'analyse' in param else False # Whether to compute the training time and losses at each epoch
-        
-        # Parameters for the A optimization
-        self.z = param['z'] if 'z' in param else 'star' # Goal for the z optimization, either 'star' or 'mid'
-        assert(self.z in ['star', 'mid']), "z must be 'star' or 'mid'. 'star' is the optimal solution, 'mid' is the middle point between the target and the student output."
-        self.z_optimization_method = param['z_optimization_method'] if 'z_optimization_method' in param else 'PGD' # Method to optimize z, either 'plsq', or 'PGD'
-        assert(self.z_optimization_method in ['plsq', 'PGD', 'leakyrelu']), "z_optimization_method must be 'plsq', 'PGD' or 'leakyrelu'."
+        self.verbose = param['verbose'] if 'verbose' in param else 0 # Whether to print additional information during training, the bigger the number, the more information is printed
         
         # Parameters for Adam optimizer for omega-SGD method
         self.lr = param['lr'] if 'lr' in param else self.get_lr(input_size,self.batch_size) # Learning rate for SGD (Adam optimizer) with omega-SGD method
@@ -121,15 +116,16 @@ class MLPHeuristicTraining(nn.Module):
         self.optimizer = param['optimizer'] if 'optimizer' in param else 'Adam' # Optimizer for the omega-SGD method, either 'SGD' or 'Adam'
         assert(self.optimizer in ['SGD', 'Adam']), "Optimizer must be 'SGD' or 'Adam'."
         
+        # Parameters for the Omega-A method
+        self.z = param['z'] if 'z' in param else 'star' # Goal for the z optimization, either 'star' or 'mid'
+        assert(self.z in ['star', 'mid']), "z must be 'star' or 'mid'. 'star' is the optimal solution, 'mid' is the middle point between the target and the student output."
+        self.z_optimization_method = param['z_optimization_method'] if 'z_optimization_method' in param else 'PGD' # Method to optimize z, either 'plsq', or 'PGD'
+        assert(self.z_optimization_method in ['plsq', 'PGD', 'leakyrelu']), "z_optimization_method must be 'plsq', 'PGD' or 'leakyrelu'."
         self.clip = param['clip'] if 'clip' in param else 0.05 # Clipping for z when computing the inverse of the softplus fonction
-        
         self.delta = param['delta'] if 'delta' in param else 'one' # Method to compute the ponderation, either 'one' or 'delta'
-        
         self.max_iter = param['max_iter'] if 'max_iter' in param else 15 # for PGD or lsq_linear
-        
         self.nb_iterations_Om_A = param['nb_iterations_Om_A'] if 'nb_iterations_Om_A' in param else 2 # number of Omega <-> A optimization steps 
-        
-        
+
     def forward(self, x):
         return self.linear2(self.activation(self.linear1(x)))
 
@@ -144,6 +140,8 @@ class MLPHeuristicTraining(nn.Module):
         test_losses = [self.evaluate_loss(test_loader)] # Start by computing the accuracy 
         train_time = [0.0]
         
+        self.batch_size = train_loader.batch_size 
+        
         # Randomly initialize the first layer weights and biases and closed form optimal solution for the second layer weights Ω
         # By default PyTorch initializes weights using kaiming uniform distribution for Linear layers, bias are initialized to 0
   
@@ -153,7 +151,6 @@ class MLPHeuristicTraining(nn.Module):
             self.train_Omega_A(train_loader, test_loader, train_losses, test_losses, train_time)
         else:
             raise ValueError(f"Unknown method: {self.method}. Choose from 'omega-SGD' or 'Omega-A'.")
-    
         return train_losses, test_losses, train_time
         
     def train_omega_SGD(self, train_loader, test_loader, train_losses, test_losses, train_time):
@@ -298,9 +295,12 @@ class MLPHeuristicTraining(nn.Module):
         # Update model weights
         self.linear2.weight.copy_(Omega_star)
         self.linear2.bias.copy_(mu_y - Omega_star @ mu_F)
+        
+        if self.verbose:
+            print('Optimization of Omega done. Norm of Omega: ', torch.norm(self.Omega, p='fro').item())
 
     @torch.no_grad()
-    def A_opt(self, dataloader,verbose = False):
+    def A_opt(self, dataloader):
         """
         Closed-form solution for the first Layer weights A using the expectation formulas:
             A* = E[z_inv x^T] @ (E[x x^T] + reg * I_n)^†
@@ -328,8 +328,8 @@ class MLPHeuristicTraining(nn.Module):
             theta_1 = torch.eye(self.k, device=device) - Q*L
             precompute |= {'L': L, 'theta_1': theta_1, 'Q': Q}
         
-        if verbose:
-            print('norm of Omega inverse: ', torch.norm(precompute['omega_inv'], p='fro').item())
+        if self.verbose:
+            print('Computing A matrix. Norm of Omega inverse: ', torch.norm(precompute['omega_inv'], p='fro').item())
         
         # Accumulate statistics for expectations
         mu_x_pond_sum = torch.zeros(self.n, device=device)   # (n,)
@@ -381,7 +381,7 @@ class MLPHeuristicTraining(nn.Module):
         self.linear1.weight.copy_(A_star)
         self.linear1.bias.copy_(mu_z_inv_pond - A_star @ mu_x_pond)
     
-        if verbose:
+        if self.verbose:
             print('norm of E_xxT: ', torch.norm(E_xxT, p='fro').item())
             print('norm of E_xzT: ', torch.norm(E_xzT, p='fro').item())
             print('ponderation moyenne: ', torch.mean(torch.cat(ponderations)).item(), end=' ')
@@ -497,7 +497,7 @@ class MLPHeuristicTraining(nn.Module):
             # Prepare for next iteration
             u = u_new
             v = v_new
-            # alpha = alpha_new  # don't forget to update alpha too!
+            alpha = alpha_new  
 
         return u_new  # final iterate is returned
         
