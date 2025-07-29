@@ -439,7 +439,7 @@ class LinearGrowingModule(GrowingModule):
                 torch.flatten(input_extended, 0, -2),
                 torch.flatten(input_extended, 0, -2),
             ),
-            torch.tensor(self.input.shape[:-1]).prod().int().item(),
+            self.input.shape[0],
         )
 
     def compute_m_update(
@@ -471,7 +471,7 @@ class LinearGrowingModule(GrowingModule):
                 torch.flatten(self.input_extended, 0, -2),
                 torch.flatten(desired_activation, 0, -2),
             ),
-            torch.tensor(self.input.shape[:-1]).prod().int().item(),
+            self.input.shape[0],
         )
 
     def compute_m_prev_update(
@@ -505,7 +505,7 @@ class LinearGrowingModule(GrowingModule):
                     torch.flatten(self.previous_module.input_extended, 0, -2),
                     torch.flatten(desired_activation, 0, -2),
                 ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
+                self.input.shape[0],
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             if self.previous_module.number_of_successors > 1:
@@ -546,7 +546,7 @@ class LinearGrowingModule(GrowingModule):
                     torch.flatten(self.previous_module.input_extended, 0, -2),
                     torch.flatten(self.input_extended, 0, -2),
                 ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
+                self.input.shape[0],
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             return (
@@ -563,30 +563,32 @@ class LinearGrowingModule(GrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
-    def compute_n_update(self) -> tuple[torch.Tensor, int]:
-        """
-        Compute the update of the tensor N.
-        With the input tensor X and V[+1] the projected desired update at the next layer
-        (V[+1] = dL/dA[+1] - dW[+1]* B), the update is U^{j k} = X^{i j} V[+1]^{i k}.
+    # TODO: The `compute_n_update` method is currently disabled because it is not used in the current implementation.
+    #       It may be re-enabled in the future if the functionality for computing the tensor N is required.
+    # def compute_n_update(self) -> tuple[torch.Tensor, int]:
+    #     """
+    #     Compute the update of the tensor N.
+    #     With the input tensor X and V[+1] the projected desired update at the next layer
+    #     (V[+1] = dL/dA[+1] - dW[+1]* B), the update is U^{j k} = X^{i j} V[+1]^{i k}.
 
-        Returns
-        -------
-        torch.Tensor
-            update of the tensor N
-        int
-            number of samples used to compute the update
-        """
-        if isinstance(self.next_module, LinearGrowingModule):
-            return (
-                torch.einsum(
-                    "ij,ik->jk",
-                    torch.flatten(self.input, 0, -2),
-                    torch.flatten(self.next_module.projected_desired_update(), 0, -2),
-                ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
-            )
-        else:
-            raise TypeError("The next module must be a LinearGrowingModule.")
+    #     Returns
+    #     -------
+    #     torch.Tensor
+    #         update of the tensor N
+    #     int
+    #         number of samples used to compute the update
+    #     """
+    #     if isinstance(self.next_module, LinearGrowingModule):
+    #         return (
+    #             torch.einsum(
+    #                 "ij,ik->jk",
+    #                 torch.flatten(self.input, 0, -2),
+    #                 torch.flatten(self.next_module.projected_desired_update(), 0, -2),
+    #             ),
+    #             self.input.shape[0],
+    #         )
+    #     else:
+    #         raise TypeError("The next module must be a LinearGrowingModule.")
 
     @property
     def tensor_s_growth(self):
