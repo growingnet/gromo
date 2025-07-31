@@ -172,6 +172,8 @@ cython_debug/
 .idea/
 # VSCode
 .vscode
+# Kilocode
+.kilocode/
 
 # Configuration files
 gromo.config
