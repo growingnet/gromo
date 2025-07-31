@@ -25,7 +25,7 @@ dependencies = [
     "numpy",
 ]
 [project.optional-dependencies]
-test = ["coverage"]
+test = ["coverage", "psutil"]
 doc = [
     "Sphinx",
     "sphinx-gallery",

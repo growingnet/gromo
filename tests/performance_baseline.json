@@ -1,0 +1,12 @@
+{
+  "GrowingResidualMLP_32_16_2": {
+    "training_time": 0.8,
+    "inference_time": 0.015,
+    "memory_usage": 65.0
+  },
+  "GrowingMLP_64_2": {
+    "training_time": 0.5,
+    "inference_time": 0.008,
+    "memory_usage": 55.0
+  }
+}

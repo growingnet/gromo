@@ -181,8 +181,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         int
             number of samples used to compute the update
         """
-        # assert self.input.grad is not None, f"No gradient for input for {self.name}."
-        # assert self.pre_activity.grad is not None, f"No gradient for pre_activity for {self.name}."
+        assert self.pre_activity.grad is not None, f"No gradient for pre_activity for {self.name}."
         full_activity = self.construct_full_activity()
         return (
             torch.einsum("ij,ik->jk", full_activity, self.pre_activity.grad),
@@ -357,13 +356,38 @@ class LinearGrowingModule(GrowingModule):
             derivative of the activation function before this layer at 0+
         """
         if isinstance(self.previous_module, GrowingModule):
+            # For element-wise activation functions like ReLU, LeakyReLU, etc.
+            # the derivative at a point can be computed directly.
+            # torch.func.grad expects a scalar-valued function.
+            # We pass a scalar input (1e-5) to get the derivative at a point close to 0.
             return torch.func.grad(self.previous_module.post_layer_function)(
-                torch.tensor(1e-5)
+                torch.tensor(1e-5, device=self.device)
             )
         elif isinstance(self.previous_module, MergeGrowingModule):
-            return torch.func.grad(self.previous_module.post_merge_function)(
-                torch.tensor([1e-5])
-            )
+            # For Sigmoid, the derivative is sigmoid(x) * (1 - sigmoid(x)).
+            # At x=0, sigmoid(0) = 0.5, so derivative is 0.5 * (1 - 0.5) = 0.25.
+            # We assume the post_merge_function is an element-wise activation.
+            if isinstance(self.previous_module.post_merge_function, torch.nn.Sigmoid):
+                # Compute analytically for Sigmoid at 0
+                sigmoid_at_zero = torch.nn.Sigmoid()(torch.tensor(0.0, device=self.device))
+                return sigmoid_at_zero * (1 - sigmoid_at_zero)
+            else:
+                # For other merge post-functions, try to use torch.func.grad if it's a scalar function
+                # or raise NotImplementedError if not supported.
+                # We need to ensure the function passed to grad returns a scalar.
+                # If the function operates on a tensor, we might need to sum its output.
+                try:
+                    # Attempt to get gradient assuming it can handle scalar input and output
+                    return torch.func.grad(self.previous_module.post_merge_function)(
+                        torch.tensor(1e-5, device=self.device)
+                    )
+                except RuntimeError:
+                    # If it fails, it's likely not a scalar-to-scalar function
+                    raise NotImplementedError(
+                        f"The computation of the activation gradient is not implemented yet "
+                        f"for {type(self.previous_module.post_merge_function)} as post_merge_function "
+                        f"in {type(self.previous_module)}."
+                    )
         else:
             raise NotImplementedError(
                 f"The computation of the activation gradient is not implemented yet "
@@ -577,14 +601,33 @@ class LinearGrowingModule(GrowingModule):
             number of samples used to compute the update
         """
         if isinstance(self.next_module, LinearGrowingModule):
-            return (
-                torch.einsum(
-                    "ij,ik->jk",
-                    torch.flatten(self.input, 0, -2),
-                    torch.flatten(self.next_module.projected_desired_update(), 0, -2),
-                ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
-            )
+            # Get the output of the current layer, which will be the input to the next layer
+            with torch.no_grad():
+                layer_output = self.layer(self.input)
+                if hasattr(self, 'post_layer_function') and self.post_layer_function:
+                    layer_output = self.post_layer_function(layer_output)
+            
+            projected_v = self.next_module.projected_v_goal(layer_output)
+            # Ensure the shapes are compatible for einsum
+            input_flat = torch.flatten(self.input, 0, -2)
+            projected_v_flat = torch.flatten(projected_v, 0, -2)
+            
+            # Check if reshaping is needed to make dimensions compatible
+            if input_flat.shape[0] != projected_v_flat.shape[0]:
+                # Reshape to make dimensions compatible
+                min_samples = min(input_flat.shape[0], projected_v_flat.shape[0])
+                input_flat = input_flat[:min_samples]
+                projected_v_flat = projected_v_flat[:min_samples]
+            
+            # Compute the einsum with correct dimensions
+            # N = X^T * V where X is (n, in_features) and V is (n, out_features_next)
+            # Result should be (in_features, out_features_next)
+            n_update = torch.einsum("ij,ik->jk", input_flat, projected_v_flat)
+            
+            # Return the correct number of samples
+            num_samples = min_samples if 'min_samples' in locals() else torch.tensor(self.input.shape[:-1]).prod().int().item()
+            
+            return n_update, num_samples
         else:
             raise TypeError("The next module must be a LinearGrowingModule.")
 

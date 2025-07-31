@@ -390,7 +390,7 @@ def batch_gradient_descent(
 
 def calculate_true_positives(
     actual: torch.Tensor, predicted: torch.Tensor, label: int
-) -> tuple[float, float, float]:
+) -> tuple[int, int, int]:
     """Calculate true positives, false positives and false negatives of a specific label
 
     Parameters
@@ -404,12 +404,12 @@ def calculate_true_positives(
 
     Returns
     -------
-    tuple[float, float, float]
+    tuple[int, int, int]
         true positives, false positives, false negatives
     """
-    true_positives = torch.sum((actual == label) & (predicted == label)).item()
-    false_positives = torch.sum((actual != label) & (predicted == label)).item()
-    false_negatives = torch.sum((predicted != label) & (actual == label)).item()
+    true_positives = int(torch.sum((actual == label) & (predicted == label)).item())
+    false_positives = int(torch.sum((actual != label) & (predicted == label)).item())
+    false_negatives = int(torch.sum((predicted != label) & (actual == label)).item())
 
     return true_positives, false_positives, false_negatives
 
@@ -433,10 +433,20 @@ def f1(actual: torch.Tensor, predicted: torch.Tensor, label: int) -> float:
     """
     # F1 = 2 * (precision * recall) / (precision + recall)
     tp, fp, fn = calculate_true_positives(actual, predicted, label)
-    precision = tp / (tp + fp)
-    recall = tp / (tp + fn)
-    f1 = 2 * (precision * recall) / (precision + recall)
-    return f1
+    if tp + fp == 0:
+        precision = 0.0
+    else:
+        precision = tp / (tp + fp)
+        
+    if tp + fn == 0:
+        recall = 0.0
+    else:
+        recall = tp / (tp + fn)
+        
+    if precision + recall == 0:
+        return 0.0
+    else:
+        return 2 * (precision * recall) / (precision + recall)
 
 
 def f1_micro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
@@ -465,12 +475,20 @@ def f1_micro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
     all_false_positives = np.sum(list(false_positives.values()))
     all_false_negatives = np.sum(list(false_negatives.values()))
 
-    micro_precision = all_true_positives / (all_true_positives + all_false_positives)
-    micro_recall = all_true_positives / (all_true_positives + all_false_negatives)
-
-    f1 = 2 * (micro_precision * micro_recall) / (micro_precision + micro_recall)
-
-    return f1
+    if all_true_positives + all_false_positives == 0:
+        micro_precision = 0.0
+    else:
+        micro_precision = all_true_positives / (all_true_positives + all_false_positives)
+        
+    if all_true_positives + all_false_negatives == 0:
+        micro_recall = 0.0
+    else:
+        micro_recall = all_true_positives / (all_true_positives + all_false_negatives)
+    
+    if micro_precision + micro_recall == 0:
+        return 0.0
+    else:
+        return 2 * (micro_precision * micro_recall) / (micro_precision + micro_recall)
 
 
 def f1_macro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
@@ -488,4 +506,7 @@ def f1_macro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
     float
         macro-average f1 score
     """
-    return float(np.mean([f1(actual, predicted, label) for label in np.unique(actual)]))
+    f1_scores = []
+    for label in np.unique(actual):
+        f1_scores.append(f1(actual, predicted, label))
+    return np.mean(f1_scores).item() if f1_scores else 0.0

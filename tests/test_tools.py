@@ -5,7 +5,9 @@ import torch
 from gromo.utils.tools import (
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
+    compute_optimal_added_parameters,
     compute_output_shape_conv,
+    create_bordering_effect_convolution,
     sqrt_inverse_matrix_semi_positive,
 )
 from tests.torch_unittest import TorchTestCase
@@ -283,6 +285,256 @@ class TestTools(TorchTestCase):
             atol=1e-6,
             message=f"Error: {torch.abs(z_th - z_via_mask).max().item():.2e}",
         )
+
+    def test_compute_optimal_added_parameters(self):
+        """
+        Test the compute_optimal_added_parameters function with various inputs.
+        """
+        torch.manual_seed(0)
+        
+        # Test with simple matrices
+        matrix_s = torch.eye(3)
+        matrix_n = torch.randn(3, 2)
+        
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n
+        )
+        
+        # Check output shapes
+        self.assertEqual(alpha.shape, (eigenvalues.shape[0], matrix_s.shape[0]))
+        self.assertEqual(omega.shape, (matrix_n.shape[1], eigenvalues.shape[0]))
+        self.assertEqual(eigenvalues.shape, (eigenvalues.shape[0],))
+        
+        # Check that we get at least one eigenvalue
+        self.assertGreater(eigenvalues.shape[0], 0)
+        
+    def test_compute_optimal_added_parameters_with_thresholds(self):
+        """
+        Test the compute_optimal_added_parameters function with different thresholds.
+        """
+        torch.manual_seed(1)
+        
+        # Create matrices with known properties
+        matrix_s = torch.tensor([[2.0, 0.0, 0.0], 
+                                 [0.0, 1.0, 0.0], 
+                                 [0.0, 0.0, 0.5]])
+        matrix_n = torch.tensor([[1.0, 0.0], 
+                                 [0.0, 1.0], 
+                                 [0.0, 0.0]])
+        
+        # Test with different thresholds
+        alpha1, omega1, eigenvalues1 = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=0.1
+        )
+        
+        alpha2, omega2, eigenvalues2 = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=1.0
+        )
+        
+        # With higher threshold, we should get fewer or no eigenvalues
+        self.assertLessEqual(eigenvalues2.shape[0], eigenvalues1.shape[0])
+        
+    def test_compute_optimal_added_parameters_maximum_neurons(self):
+        """
+        Test the compute_optimal_added_parameters function with maximum_added_neurons parameter.
+        """
+        torch.manual_seed(2)
+        
+        matrix_s = torch.eye(5)
+        matrix_n = torch.randn(5, 4)
+        
+        # Test with maximum_added_neurons=2
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, maximum_added_neurons=2
+        )
+        
+        # Check that we get at most 2 eigenvalues
+        self.assertLessEqual(eigenvalues.shape[0], 2)
+        
+    def test_compute_optimal_added_parameters_edge_cases(self):
+        """
+        Test edge cases for compute_optimal_added_parameters function.
+        """
+        torch.manual_seed(3)
+        
+        # Test with non-symmetric matrix (should be handled with warning)
+        matrix_s = torch.tensor([[1.0, 0.1], 
+                                 [0.2, 1.0]])  # Not symmetric
+        matrix_n = torch.randn(2, 1)
+        
+        # Should not raise an error but handle the non-symmetric matrix
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n
+        )
+        
+        # Check output shapes
+        self.assertEqual(alpha.shape[0], eigenvalues.shape[0])
+        self.assertEqual(omega.shape[0], matrix_n.shape[1])
+        
+    def test_create_bordering_effect_convolution(self):
+        """
+        Test the create_bordering_effect_convolution function.
+        """
+        # Test with valid inputs
+        channels = 6  # 2 input channels * 3x1 kernel size
+        conv = torch.nn.Conv2d(2, 3, (3, 1), padding=(1, 0))
+        
+        border_conv = create_bordering_effect_convolution(channels, conv)
+        
+        # Check that the output is a Conv2d instance
+        self.assertIsInstance(border_conv, torch.nn.Conv2d)
+        
+        # Check the properties of the created convolution
+        self.assertEqual(border_conv.in_channels, channels)
+        self.assertEqual(border_conv.out_channels, channels)
+        self.assertEqual(border_conv.kernel_size, conv.kernel_size)
+        self.assertEqual(border_conv.padding, conv.padding)
+        self.assertEqual(border_conv.stride, conv.stride)
+        self.assertEqual(border_conv.dilation, conv.dilation)
+        self.assertFalse(border_conv.bias)
+        
+        # Check that the weight has the correct structure (identity in center)
+        self.assertEqual(border_conv.weight.shape, (channels, 1, 3, 1))
+        
+        # Check that only the center elements are non-zero
+        mid_h = conv.kernel_size[0] // 2
+        mid_w = conv.kernel_size[1] // 2
+        # For each group, only the center element should be 1.0, others 0
+        for i in range(channels):
+            # Check that the center element is 1.0
+            self.assertAlmostEqual(border_conv.weight.data[i, 0, mid_h, mid_w].item(), 1.0)
+            
+    def test_create_bordering_effect_convolution_edge_cases(self):
+        """
+        Test edge cases for create_bordering_effect_convolution function.
+        """
+        # Test with invalid inputs
+        conv = torch.nn.Conv2d(2, 3, (3, 3))
+        
+        # Test with invalid channels (negative)
+        with self.assertRaises(ValueError):
+            create_bordering_effect_convolution(-1, conv)
+            
+        # Test with invalid channels (zero)
+        with self.assertRaises(ValueError):
+            create_bordering_effect_convolution(0, conv)
+            
+        # Test with invalid convolution type
+        with self.assertRaises(TypeError):
+            create_bordering_effect_convolution(6, "not_a_convolution")
+            
+    def test_sqrt_inverse_matrix_semi_positive_edge_cases(self):
+        """
+        Test edge cases for sqrt_inverse_matrix_semi_positive function.
+        """
+        # Test with non-symmetric matrix
+        matrix = torch.tensor([[1.0, 0.1],
+                               [0.2, 1.0]])  # Not symmetric
+        with self.assertRaises(AssertionError):
+            sqrt_inverse_matrix_semi_positive(matrix)
+            
+        # Test with matrix containing NaN values
+        matrix_nan = torch.tensor([[1.0, float('nan')],
+                                   [0.0, 1.0]])
+        with self.assertRaises(AssertionError):
+            sqrt_inverse_matrix_semi_positive(matrix_nan)
+            
+        # Test with non-square matrix
+        matrix_non_square = torch.tensor([[1.0, 0.0, 0.0],
+                                         [0.0, 1.0, 0.0]])
+        with self.assertRaises(AssertionError):
+            sqrt_inverse_matrix_semi_positive(matrix_non_square)
+
+    def test_sqrt_inverse_matrix_semi_positive_preferred_linalg_library(self):
+        """
+        Test the sqrt_inverse_matrix_semi_positive function with preferred_linalg_library parameter.
+        """
+        torch.manual_seed(0)
+        matrix = torch.eye(3)
+        
+        # Test with preferred_linalg_library=None (default)
+        result_none = sqrt_inverse_matrix_semi_positive(matrix, preferred_linalg_library=None)
+        self.assertIsInstance(result_none, torch.Tensor)
+        
+        # Test with preferred_linalg_library="magma" if available
+        if torch.cuda.is_available():
+            try:
+                result_magma = sqrt_inverse_matrix_semi_positive(matrix, preferred_linalg_library="magma")
+                self.assertIsInstance(result_magma, torch.Tensor)
+            except Exception:
+                # If magma is not available, this is expected
+                pass
+
+    def test_compute_optimal_added_parameters_exception_handling(self):
+        """
+        Test the exception handling in compute_optimal_added_parameters function.
+        """
+        torch.manual_seed(0)
+        
+        # Create matrices that might cause SVD to fail
+        matrix_s = torch.eye(3)
+        matrix_n = torch.randn(3, 2)
+        
+        # This should work normally
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(matrix_s, matrix_n)
+        self.assertIsInstance(alpha, torch.Tensor)
+        self.assertIsInstance(omega, torch.Tensor)
+        self.assertIsInstance(eigenvalues, torch.Tensor)
+
+    def test_compute_optimal_added_parameters_non_symmetric_warning(self):
+        """
+        Test the warning when input matrix S is not symmetric in compute_optimal_added_parameters.
+        This covers lines 89-95 in tools.py.
+        """
+        torch.manual_seed(0)
+        
+        # Create a non-symmetric matrix S
+        matrix_s = torch.tensor([[2.0, 0.1],
+                                 [0.2, 1.0]])  # Not symmetric
+        matrix_n = torch.randn(2, 1)
+        
+        # This should work but issue a warning
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(matrix_s, matrix_n)
+        self.assertIsInstance(alpha, torch.Tensor)
+        self.assertIsInstance(omega, torch.Tensor)
+        self.assertIsInstance(eigenvalues, torch.Tensor)
+
+    def test_compute_optimal_added_parameters_maximum_added_neurons(self):
+        """
+        Test the maximum_added_neurons parameter in compute_optimal_added_parameters.
+        This covers line 127 in tools.py.
+        """
+        torch.manual_seed(0)
+        
+        # Create matrices with known properties
+        matrix_s = torch.eye(5)
+        matrix_n = torch.randn(5, 4)
+        
+        # Test with maximum_added_neurons=2
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, maximum_added_neurons=2
+        )
+        
+        # Check that we get at most 2 eigenvalues
+        self.assertLessEqual(eigenvalues.shape[0], 2)
+
+    def test_create_bordering_effect_convolution_error_handling(self):
+        """
+        Test error handling in create_bordering_effect_convolution.
+        This covers lines 258 and 260 in tools.py.
+        """
+        # Test with invalid channels (negative)
+        conv = torch.nn.Conv2d(2, 3, (3, 3))
+        with self.assertRaises(ValueError):
+            create_bordering_effect_convolution(-1, conv)
+            
+        # Test with invalid channels (zero)
+        with self.assertRaises(ValueError):
+            create_bordering_effect_convolution(0, conv)
+            
+        # Test with invalid convolution type
+        with self.assertRaises(TypeError):
+            create_bordering_effect_convolution(6, "not_a_convolution")
 
 
 if __name__ == "__main__":

@@ -42,10 +42,10 @@ class MergeGrowingModule(torch.nn.Module):
             self.post_merge_function = self.post_merge_function.to(self.device)
         self._allow_growing = allow_growing
 
-        self.store_input = 0
+        self.store_input = False
         self.input = None
 
-        self.store_activity = 0
+        self.store_activity = False
         self.activity = None
 
         self.tensor_s = TensorStatistic(
@@ -250,7 +250,7 @@ class MergeGrowingModule(torch.nn.Module):
         Initialize the computation of the optimal added parameters.
         """
         self.store_input = True
-        self.store_pre_activity = True
+        self.store_activity = True
         for module in self.previous_modules:
             module.store_input = True
             module.store_pre_activity = True
@@ -262,11 +262,10 @@ class MergeGrowingModule(torch.nn.Module):
         Reset the computation of the optimal added parameters.
         """
         self.store_input = False
-        self.store_pre_activity = False
         self.store_activity = False
         for module in self.previous_modules:
             module.store_input = False
-            module.store_pre_activity = False
+            module.store_activity = False
         self.previous_tensor_s.reset()
         self.previous_tensor_m.reset()
 
