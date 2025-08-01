@@ -58,7 +58,6 @@ def get_correct_device(self, device: torch.device | str | None) -> torch.device:
         if device is not None
         else set_from_conf(self, "device", global_device(), setter=False)
     )
-    set_device(device)
     return device
 
 
