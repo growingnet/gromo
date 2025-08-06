@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Comprehensive test suite overhaul achieving 93% code coverage with 6,000+ lines of new tests across all modules. Added 5 new test files including integration testing, performance regression testing, and extensive error handling validation. Implemented numerical stability testing, device compatibility validation, and comprehensive edge case coverage (:gh:`112` by `Stéphane Rivaud`_).
 - Fix the `tensor_n` computation in `RestrictedConv2dGrowingModule` (:gh:`103` by `Théo Rudkiewicz`_).
 - Add `GrowingBatchNorm1d` and `GrowingBatchNorm2d` modules to support batch normalization in growing networks (:gh:`101` by `Théo Rudkiewicz`_).
 - Optimize RestrictedConv2dGrowingModule to fasten the simulation of the side effect of a convolution (:gh:`99` by `Théo Rudkiewicz`_).
@@ -47,6 +48,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Fix device management issues in `get_correct_device()` by removing problematic side effects. Fix bugs in `compute_m_prev_update()` method and enhance `add_parameters()` function reliability in LinearGrowingModule (:gh:`112` by `Stéphane Rivaud`_).
 - Delete leftover activity tensors (:gh:`78` by `Stella Douka`_)
 - Fix inconsistency with torch.empty not creating empty tensors (:gh:`78` by `Stella Douka`_)
 - Expansion of existing nodes not executed in GrowingDAG (:gh:`78` by `Stella Douka`_)
@@ -71,4 +73,4 @@ API changes
 .. _Sylvain Chevallier: https://github.com/sylvchev
 .. _Stella Douka: https://github.com/stelladk
 .. _Théo Rudkiewicz: https://github.com/TheoRudkiewicz
-.. _Stéphane Rivaud: https://github.com/streethagore
+.. _Stéphane Rivaud: https://github.com/stephane-rivaud
