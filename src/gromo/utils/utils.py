@@ -436,12 +436,12 @@ def f1(actual: torch.Tensor, predicted: torch.Tensor, label: int) -> float:
         precision = 0.0
     else:
         precision = tp / (tp + fp)
-        
+
     if tp + fn == 0:
         recall = 0.0
     else:
         recall = tp / (tp + fn)
-        
+
     if precision + recall == 0:
         return 0.0
     else:
@@ -478,12 +478,12 @@ def f1_micro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
         micro_precision = 0.0
     else:
         micro_precision = all_true_positives / (all_true_positives + all_false_positives)
-        
+
     if all_true_positives + all_false_negatives == 0:
         micro_recall = 0.0
     else:
         micro_recall = all_true_positives / (all_true_positives + all_false_negatives)
-    
+
     if micro_precision + micro_recall == 0:
         return 0.0
     else:

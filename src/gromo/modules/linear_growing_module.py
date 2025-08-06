@@ -181,7 +181,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         int
             number of samples used to compute the update
         """
-        assert self.pre_activity.grad is not None, f"No gradient for pre_activity for {self.name}."
+        assert (
+            self.pre_activity.grad is not None
+        ), f"No gradient for pre_activity for {self.name}."
         full_activity = self.construct_full_activity()
         return (
             torch.einsum("ij,ik->jk", full_activity, self.pre_activity.grad),
@@ -636,9 +638,9 @@ class LinearGrowingModule(GrowingModule):
             f"The shape of C should be (in_features, in_features) but "
             f"got {self.cross_covariance().shape}."
         )
-        assert self.delta_raw is not None, (
-            f"The optimal delta should be computed before computing N for {self.name}."
-        )
+        assert (
+            self.delta_raw is not None
+        ), f"The optimal delta should be computed before computing N for {self.name}."
         assert len(self.delta_raw.shape) == 2, (
             f"The shape of the optimal delta should be (out_features, in_features) but "
             f"got {self.delta_raw.shape}."
@@ -751,9 +753,9 @@ class LinearGrowingModule(GrowingModule):
             if bias_extension is None:
                 bias_extension = torch.zeros(added_out_features, device=self.device)
             else:
-                assert self.use_bias, (
-                    f"bias_extension should be None because {self.use_bias=}"
-                )
+                assert (
+                    self.use_bias
+                ), f"bias_extension should be None because {self.use_bias=}"
                 assert bias_extension.dim() == 1, (
                     f"bias_extension should have {(bias_extension.dim(),)}, "
                     f"but got {bias_extension.shape}."
@@ -916,7 +918,7 @@ class LinearGrowingModule(GrowingModule):
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
-        
+
         Parameters
         ----------
         numerical_threshold: float
@@ -945,7 +947,7 @@ class LinearGrowingModule(GrowingModule):
                     f"The computation of the optimal added parameters is not implemented "
                     f"yet for {type(self.previous_module)} as previous module."
                 )
-        
+
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
