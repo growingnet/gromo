@@ -181,8 +181,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         int
             number of samples used to compute the update
         """
-        # assert self.input.grad is not None, f"No gradient for input for {self.name}."
-        # assert self.pre_activity.grad is not None, f"No gradient for pre_activity for {self.name}."
+        assert (
+            self.pre_activity.grad is not None
+        ), f"No gradient for pre_activity for {self.name}."
         full_activity = self.construct_full_activity()
         return (
             torch.einsum("ij,ik->jk", full_activity, self.pre_activity.grad),
@@ -505,7 +506,7 @@ class LinearGrowingModule(GrowingModule):
                     torch.flatten(self.previous_module.input_extended, 0, -2),
                     torch.flatten(desired_activation, 0, -2),
                 ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
+                torch.tensor(desired_activation.shape[:-1]).prod().int().item(),
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             if self.previous_module.number_of_successors > 1:
@@ -516,7 +517,7 @@ class LinearGrowingModule(GrowingModule):
                     self.previous_module.construct_full_activity(),
                     desired_activation,
                 ),
-                self.input.shape[0],
+                desired_activation.shape[0],
             )
         else:
             raise NotImplementedError(
@@ -642,10 +643,10 @@ class LinearGrowingModule(GrowingModule):
         ), f"The optimal delta should be computed before computing N for {self.name}."
         assert len(self.delta_raw.shape) == 2, (
             f"The shape of the optimal delta should be (out_features, in_features) but "
-            f"got {self.optimal_delta().shape}."
+            f"got {self.delta_raw.shape}."
         )
         assert self.tensor_m_prev().shape[1] == self.out_features, (
-            f"The number of output features of M_-2 should be equal to the number of"
+            f"The number of output features of M_-2 should be equal to the number of "
             f"output features of the layer but "
             f"got {self.tensor_m_prev().shape[1]} and {self.out_features}."
         )
@@ -705,9 +706,9 @@ class LinearGrowingModule(GrowingModule):
             extension of the weight matrix of the layer if None,
             the layer is extended with zeros
             should be of shape:
-            - (out_features, in_features + added_in_features) if added_in_features > 0
-            - (out_features + added_out_features, in_features) if added_out_features > 0
-        bias_extension: torch.Tensor of shape (out_features + added_out_features,)
+            - (out_features, added_in_features) if added_in_features > 0
+            - (added_out_features, in_features) if added_out_features > 0
+        bias_extension: torch.Tensor of shape (added_out_features,)
             extension of the bias vector of the layer if None,
             the layer is extended with zeros
         added_in_features: int >= 0
@@ -736,9 +737,7 @@ class LinearGrowingModule(GrowingModule):
                     f"{(self.out_features, added_in_features)}, "
                     f"but got {matrix_extension.shape}"
                 )
-            self.layer_in_extension(
-                weight=torch.cat((self.weight, matrix_extension), dim=1)
-            )
+            self.layer_in_extension(weight=matrix_extension)
 
         if added_out_features > 0:
             if matrix_extension is None:
@@ -754,16 +753,17 @@ class LinearGrowingModule(GrowingModule):
             if bias_extension is None:
                 bias_extension = torch.zeros(added_out_features, device=self.device)
             else:
-                assert bias_extension.shape == (
-                    self.out_features + added_out_features,
-                ), (
-                    f"bias_extension should have shape {(self.out_features + added_out_features,)}, "
-                    f"but got {bias_extension.shape}"
+                assert (
+                    self.use_bias
+                ), f"bias_extension should be None because {self.use_bias=}"
+                assert bias_extension.dim() == 1, (
+                    f"bias_extension should have {(bias_extension.dim(),)}, "
+                    f"but got {bias_extension.shape}."
                 )
 
             self.layer_out_extension(
-                torch.cat((self.weight, matrix_extension), dim=0),
-                bias=torch.cat((self.bias, bias_extension), dim=0),
+                weight=matrix_extension,
+                bias=bias_extension,
             )
 
         warn(
@@ -937,6 +937,17 @@ class LinearGrowingModule(GrowingModule):
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
             optimal added weights alpha weights, alpha bias, omega and eigenvalues lambda
         """
+        if update_previous:
+            if isinstance(self.previous_module, LinearGrowingModule):
+                pass
+            elif isinstance(self.previous_module, LinearMergeGrowingModule):
+                raise NotImplementedError
+            else:
+                raise NotImplementedError(
+                    f"The computation of the optimal added parameters is not implemented "
+                    f"yet for {type(self.previous_module)} as previous module."
+                )
+
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
@@ -972,16 +983,8 @@ class LinearGrowingModule(GrowingModule):
         )
 
         if update_previous:
-            if isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module.extended_output_layer = self.layer_of_tensor(
-                    alpha_weight, alpha_bias
-                )
-            elif isinstance(self.previous_module, LinearMergeGrowingModule):
-                raise NotImplementedError
-            else:
-                raise NotImplementedError(
-                    f"The computation of the optimal added parameters is not implemented "
-                    f"yet for {type(self.previous_module)} as previous module."
-                )
+            self.previous_module.extended_output_layer = self.layer_of_tensor(
+                alpha_weight, alpha_bias
+            )
 
         return alpha_weight, alpha_bias, omega, self.eigenvalues_extension

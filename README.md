@@ -36,3 +36,25 @@ pip install -e .
 ```
 
 You may also need to install `build` with `pip install build`.
+
+## Running Tests
+
+To run the standard unit tests:
+
+```bash
+python -m pytest tests/
+```
+
+To run the performance regression tests (requires psutil):
+
+```bash
+python -m pytest tests/test_performance_regression.py
+```
+
+The performance regression tests measure execution time and memory usage for key operations
+to ensure that enhancements to the library don't negatively impact performance.
+These tests compare performance against baseline benchmarks and validate that
+performance remains within acceptable thresholds.
+
+Note: The first time you run the performance tests, baseline performance data will be created.
+Subsequent runs will compare against this baseline to detect performance regressions.
