@@ -205,7 +205,7 @@ class TestLinearGrowingModule(TorchTestCase):
         # Update statistics after first pass
         layer.tensor_s.update()  # Update input statistics
         output_module.tensor_s.update()  # Update output statistics
-        output_module.previous_tensor_s.update()
+        output_module.previous_tensor_s.update()  # Update merge module's view of previous layer
 
         # Verify S tensors after first pass
         # 1. Check that the input S tensor matches the theoretical value
@@ -1129,7 +1129,7 @@ class TestLinearGrowingModule(TorchTestCase):
         demo_layers = self.demo_layers[bias]
         demo_layers[0].store_input = True  # Enable input storage in the first layer
         demo_layers[1].init_computation()  # Initialize computation in the second layer
-        demo_layers[1].tensor_s_growth.init()  # Initialize growth statistics
+        # demo_layers[1].tensor_s_growth.init()  # Initialize growth statistics
 
         # --- Step 2: Forward and backward pass to accumulate gradients/statistics ---
         # Pass input through the network and compute loss
@@ -1140,7 +1140,7 @@ class TestLinearGrowingModule(TorchTestCase):
 
         # --- Step 3: Update computation and tensor statistics ---
         demo_layers[1].update_computation()  # Update layer computations
-        demo_layers[1].tensor_s_growth.update()  # Update growth statistics
+        # demo_layers[1].tensor_s_growth.update()  # Update growth statistics
 
         # --- Step 4: Compute optimal delta and added parameters ---
         demo_layers[1].compute_optimal_delta()  # Compute optimal weight updates
@@ -1188,519 +1188,7 @@ class TestLinearGrowingModule(TorchTestCase):
         
         # Verify that the output layer's extended dimensions are updated
         self.assertEqual(demo_layers[0].extended_output_layer.out_features, num_selected)
-
-    @unittest_parametrize(({"bias": True}, {"bias": False}))
-    def test_tensor_s_growth(self, bias: bool):
-        """
-        Test the initialization and updating of tensor growth statistics.
-        
-        This test verifies that:
-        1. The tensor_s_growth object is properly initialized and updated.
-        2. The number of samples tracked matches the input batch size.
-        3. The shape of the computed tensor matches the expected dimensions.
-        
-        The test performs the following steps:
-        1. Sets up the test environment with the specified bias configuration.
-        2. Performs a forward and backward pass through the network.
-        3. Updates the tensor growth statistics.
-        4. Verifies the statistics match the expected values.
-        
-        Args:
-            bias: Whether to test with bias enabled or disabled.
-        """
-        # --- Step 1: Setup test environment ---
-        demo_layers = self.demo_layers[bias]
-        demo_layers[0].store_input = True  # Enable input storage in the first layer
-        demo_layers[1].tensor_s_growth.init()  # Initialize growth statistics
-
-        # --- Step 2: Perform forward and backward pass ---
-        # Pass input through the network and compute loss
-        y = demo_layers[0](self.input_x)  # Forward pass through first layer
-        y = demo_layers[1](y)  # Forward pass through second layer
-        loss = torch.norm(y)  # Compute loss
-        loss.backward()  # Backpropagate gradients
-
-        # --- Step 3: Update growth statistics ---
-        demo_layers[1].tensor_s_growth.update()
-
-        # --- Step 4: Verify statistics ---
-        # Check that the number of samples matches the input batch size
-        self.assertEqual(
-            demo_layers[1].tensor_s_growth.samples,
-            self.input_x.size(0),
-            "Number of samples in tensor_s_growth should match input batch size"
-        )
-        
-        # Calculate expected size: input features + 1 if bias is enabled
-        expected_size = demo_layers[0].in_features + demo_layers[0].use_bias
-        
-        # Verify the shape of the computed tensor
-        self.assertShapeEqual(
-            demo_layers[1].tensor_s_growth(), 
-            (expected_size, expected_size),
-            f"Expected square matrix of size {expected_size}x{expected_size}"
-        )
-
-    def test_tensor_s_growth_errors(self):
-        """
-        Test error conditions for tensor_s_growth property.
-        
-        This test verifies that:
-        1. Setting tensor_s_growth to an invalid value raises an AttributeError.
-        2. Accessing tensor_s_growth without initialization raises a ValueError.
-        """
-        # Test that setting tensor_s_growth to a non-TensorStatistics object raises an AttributeError
-        with self.assertRaises(AttributeError):
-            self.demo_layers[True][1].tensor_s_growth = 1
-
-        # Test that accessing tensor_s_growth without initialization raises a ValueError
-        with self.assertRaises(ValueError):
-            _ = self.demo_layers[True][0].tensor_s_growth
-
-    def test_compute_m_prev_update(self):
-        """
-        Test the computation of the tensor M_{-2} := B[-2]^T dA update.
-        
-        This test verifies that:
-        1. The compute_m_prev_update method correctly computes the M_{-2} tensor update
-        2. The method works with both LinearGrowingModule and LinearMergeGrowingModule as previous modules
-        3. The computed tensor has the correct shape and properties
-        4. The method raises appropriate errors when no previous module is present
-        """
-        # Test with LinearGrowingModule as previous module
-        for bias in (True, False):
-            with self.subTest(bias=bias):
-                demo_layers = self.demo_layers[bias]
-                
-                # Enable required storage for computation
-                demo_layers[0].store_input = True
-                demo_layers[1].store_pre_activity = True
-                demo_layers[1].store_input = True
-                
-                # Initialize tensor_m_prev
-                demo_layers[1].tensor_m_prev.init()
-                
-                # Forward and backward pass
-                y = demo_layers[0](self.input_x)
-                y = demo_layers[1](y)
-                loss = torch.norm(y)
-                loss.backward()
-                
-                # Compute M_{-2} update using a dummy desired_activation to avoid accessing input
-                # which requires storing input in the layer
-                dummy_desired_activation = torch.randn_like(demo_layers[1].pre_activity.grad)
-                update_result = demo_layers[1].compute_m_prev_update(desired_activation=dummy_desired_activation)
-                self.assertIsInstance(update_result, tuple)
-                self.assertEqual(len(update_result), 2)
-                
-                update_tensor, num_samples = update_result
-                self.assertIsInstance(update_tensor, torch.Tensor)
-                self.assertIsInstance(num_samples, int)
-                
-                # Check shape: (in_features_prev + bias, out_features_current)
-                expected_in_features = demo_layers[0].in_features + (1 if bias else 0)
-                expected_shape = (expected_in_features, demo_layers[1].out_features)
-                self.assertShapeEqual(update_tensor, expected_shape)
-        
-        # Test error case: no previous module
-        layer = LinearGrowingModule(5, 3, use_bias=True)
-        with self.assertRaises(ValueError):
-            layer.compute_m_prev_update()
-
-    def test_compute_m_prev_update_edge_cases(self):
-        """
-        Test edge cases for the computation of the tensor M_{-2} := B[-2]^T dA update.
-        
-        This test verifies that:
-        1. The compute_m_prev_update method correctly handles LinearMergeGrowingModule as previous module
-        2. The method works with different input shapes and special tensor values
-        3. The computed tensor has the correct shape and properties for edge cases
-        """
-        # Test with LinearMergeGrowingModule as previous module
-        for bias in (True, False):
-            with self.subTest(bias=bias, case="merge_module"):
-                # Create a merge module as previous module
-                merge_module = LinearMergeGrowingModule(
-                    in_features=3, name="merge_test", device=global_device()
-                )
-                
-                # Create previous layers that connect to the merge module
-                prev_layer_1 = LinearGrowingModule(
-                    2, 3, use_bias=bias, name="prev_1", next_module=merge_module,
-                    device=global_device()
-                )
-                prev_layer_2 = LinearGrowingModule(
-                    1, 3, use_bias=bias, name="prev_2", next_module=merge_module,
-                    device=global_device()
-                )
-                
-                # Set up the merge module with previous modules
-                merge_module.set_previous_modules([prev_layer_1, prev_layer_2])
-                
-                # Create current layer with merge module as previous
-                current_layer = LinearGrowingModule(
-                    3, 4, use_bias=bias, name="current", previous_module=merge_module,
-                    device=global_device()
-                )
-                
-                # Enable required storage for computation
-                prev_layer_1.store_input = True
-                prev_layer_2.store_input = True
-                current_layer.store_pre_activity = True
-                
-                # Initialize tensor_m_prev
-                current_layer.tensor_m_prev.init()
-                
-                # Create test inputs
-                x1 = torch.randn(5, 2, device=global_device())
-                x2 = torch.randn(5, 1, device=global_device())
-                
-                # Forward pass through the network
-                y1 = prev_layer_1(x1)
-                y2 = prev_layer_2(x2)
-                # Note: We can't directly call merge_module or current_layer without proper setup
-                # So we'll test the update computation directly with mock data
-                
-                # Test with special tensor values (zeros, ones, etc.)
-                with self.subTest(bias=bias, special_values="zeros"):
-                    # Create layers with zero inputs to test edge case
-                    prev_layer_zero = LinearGrowingModule(
-                        3, 2, use_bias=bias, name="prev_zero", device=global_device()
-                    )
-                    current_layer_zero = LinearGrowingModule(
-                        2, 4, use_bias=bias, name="current_zero", previous_module=prev_layer_zero,
-                        device=global_device()
-                    )
-                    
-                    # Enable storage
-                    prev_layer_zero.store_input = True
-                    current_layer_zero.store_input = True  # Enable input storage
-                    current_layer_zero.store_pre_activity = True
-                    current_layer_zero.tensor_m_prev.init()
-                    
-                    # Forward pass with zeros
-                    x_zero = torch.zeros(5, 3, device=global_device())
-                    _ = prev_layer_zero(x_zero)
-                    _ = current_layer_zero(prev_layer_zero(x_zero))  # This creates the input
-                    
-                    # Backward pass with zeros
-                    loss = torch.norm(current_layer_zero.pre_activity)
-                    loss.backward()
-                    
-                    # Compute M_{-2} update with zero gradients
-                    update_result = current_layer_zero.compute_m_prev_update()
-                    update_tensor, num_samples = update_result
-                    self.assertIsInstance(update_tensor, torch.Tensor)
-                    self.assertIsInstance(num_samples, int)
-                    
-                    # Check that update tensor is computed even with zero inputs
-                    self.assertShapeEqual(
-                        update_tensor, 
-                        (prev_layer_zero.in_features + (1 if bias else 0), current_layer_zero.out_features)
-                    )
-
-    def test_compute_cross_covariance_update(self):
-        """
-        Test the computation of the cross-covariance tensor P := B[-2]^T B[-1] update.
-        
-        This test verifies that:
-        1. The compute_cross_covariance_update method correctly computes the cross-covariance tensor update
-        2. The method works with both LinearGrowingModule and LinearMergeGrowingModule as previous modules
-        3. The computed tensor has the correct shape and properties
-        4. The method raises appropriate errors when no previous module is present
-        """
-        # Test with LinearGrowingModule as previous module
-        for bias in (True, False):
-            with self.subTest(bias=bias):
-                demo_layers = self.demo_layers[bias]
-                
-                # Enable required storage for computation
-                demo_layers[0].store_input = True
-                demo_layers[1].store_input = True
-                
-                # Initialize cross_covariance
-                demo_layers[1].cross_covariance.init()
-                
-                # Forward pass
-                y = demo_layers[0](self.input_x)
-                _ = demo_layers[1](y)
-                
-                # Compute cross-covariance update
-                update_result = demo_layers[1].compute_cross_covariance_update()
-                self.assertIsInstance(update_result, tuple)
-                self.assertEqual(len(update_result), 2)
-                
-                update_tensor, num_samples = update_result
-                self.assertIsInstance(update_tensor, torch.Tensor)
-                self.assertIsInstance(num_samples, int)
-                
-                # Check shape: (in_features_prev + bias, in_features_current + bias)
-                expected_in_features_prev = demo_layers[0].in_features + (1 if bias else 0)
-                expected_in_features_current = demo_layers[1].in_features + (1 if bias else 0)
-                expected_shape = (expected_in_features_prev, expected_in_features_current)
-                self.assertShapeEqual(update_tensor, expected_shape)
-        
-        # Test error case: no previous module
-        layer = LinearGrowingModule(5, 3, use_bias=True)
-        with self.assertRaises(ValueError):
-            layer.compute_cross_covariance_update()
-
-    def test_compute_cross_covariance_update_edge_cases(self):
-        """
-        Test edge cases for the computation of the cross-covariance tensor P := B[-2]^T B[-1] update.
-        
-        This test verifies that:
-        1. The compute_cross_covariance_update method correctly handles LinearMergeGrowingModule as previous module
-        2. The method works with different input shapes and special tensor values
-        3. The computed tensor has the correct shape and properties for edge cases
-        """
-        # Test with LinearMergeGrowingModule as previous module
-        for bias in (True, False):
-            with self.subTest(bias=bias, case="merge_module"):
-                # Create a merge module as previous module
-                merge_module = LinearMergeGrowingModule(
-                    in_features=3, name="merge_test", device=global_device()
-                )
-                
-                # Create previous layers that connect to the merge module
-                prev_layer_1 = LinearGrowingModule(
-                    2, 3, use_bias=bias, name="prev_1", next_module=merge_module,
-                    device=global_device()
-                )
-                prev_layer_2 = LinearGrowingModule(
-                    1, 3, use_bias=bias, name="prev_2", next_module=merge_module,
-                    device=global_device()
-                )
-                
-                # Set up the merge module with previous modules
-                merge_module.set_previous_modules([prev_layer_1, prev_layer_2])
-                
-                # Create current layer with merge module as previous
-                current_layer = LinearGrowingModule(
-                    3, 4, use_bias=bias, name="current", previous_module=merge_module,
-                    device=global_device()
-                )
-                
-                # Enable required storage for computation
-                prev_layer_1.store_input = True
-                prev_layer_2.store_input = True
-                current_layer.store_input = True
-                
-                # Initialize cross_covariance
-                current_layer.cross_covariance.init()
-                
-                # Create test inputs
-                x1 = torch.randn(5, 2, device=global_device())
-                x2 = torch.randn(5, 1, device=global_device())
-                
-                # Forward pass through the network
-                y1 = prev_layer_1(x1)
-                y2 = prev_layer_2(x2)
-                # Note: We can't directly call merge_module or current_layer without proper setup
-                # So we'll test the update computation directly with mock data
-                
-                # Test with special tensor values (zeros, ones, etc.)
-                with self.subTest(bias=bias, special_values="zeros"):
-                    # Create layers with zero inputs to test edge case
-                    prev_layer_zero = LinearGrowingModule(
-                        3, 2, use_bias=bias, name="prev_zero", device=global_device()
-                    )
-                    current_layer_zero = LinearGrowingModule(
-                        2, 4, use_bias=bias, name="current_zero", previous_module=prev_layer_zero,
-                        device=global_device()
-                    )
-                    
-                    # Enable storage
-                    prev_layer_zero.store_input = True
-                    current_layer_zero.store_input = True
-                    current_layer_zero.cross_covariance.init()
-                    
-                    # Forward pass with zeros
-                    x_zero = torch.zeros(5, 3, device=global_device())
-                    _ = prev_layer_zero(x_zero)
-                    _ = current_layer_zero(prev_layer_zero(x_zero))  # This creates the input
-                    
-                    # Compute cross-covariance update with zero inputs
-                    update_result = current_layer_zero.compute_cross_covariance_update()
-                    update_tensor, num_samples = update_result
-                    self.assertIsInstance(update_tensor, torch.Tensor)
-                    self.assertIsInstance(num_samples, int)
-                    
-                    # Check that update tensor is computed even with zero inputs
-                    expected_in_features_prev = prev_layer_zero.in_features + (1 if bias else 0)
-                    expected_in_features_current = current_layer_zero.in_features + (1 if bias else 0)
-                    expected_shape = (expected_in_features_prev, expected_in_features_current)
-                    self.assertShapeEqual(update_tensor, expected_shape)
-
-    def test_compute_n_update(self):
-        """
-        Test the computation of the tensor N update.
-        
-        This test verifies that:
-        1. The compute_n_update method correctly computes the N tensor update
-        2. The method works with LinearGrowingModule as next module
-        3. The computed tensor has the correct shape and properties
-        4. The method raises appropriate errors when next module is not LinearGrowingModule
-        """
-        # Test with LinearGrowingModule as next module
-        for bias in (True, False):
-            with self.subTest(bias=bias):
-                demo_layers = self.demo_layers[bias]
-                
-                # Create a proper next module for testing
-                next_module = LinearGrowingModule(7, 4, use_bias=bias, name="next_test")
-                demo_layers[1].next_module = next_module
-                
-                # Enable required storage for computation
-                demo_layers[0].store_input = True
-                demo_layers[1].store_input = True
-                next_module.store_input = True
-                next_module.store_pre_activity = True
-                
-                # Forward pass to initialize next module
-                y = demo_layers[0](self.input_x)
-                y = demo_layers[1](y)
-                _ = next_module(y)
-                
-                # Backward pass to compute gradients
-                # Get the output from the next module
-                output = next_module(next_module.input)
-                loss = torch.norm(output)
-                loss.backward()
-                
-                # Initialize and compute projected desired update for next module
-                next_module.init_computation()
-                next_module.update_computation()
-                next_module.compute_optimal_delta()
-                
-                # Compute N update
-                update_result = demo_layers[1].compute_n_update()
-                self.assertIsInstance(update_result, tuple)
-                self.assertEqual(len(update_result), 2)
-                
-                update_tensor, num_samples = update_result
-                self.assertIsInstance(update_tensor, torch.Tensor)
-                self.assertIsInstance(num_samples, int)
-                
-                # Check shape: (in_features_current, out_features_next)
-                expected_shape = (demo_layers[1].in_features, next_module.out_features)
-                self.assertShapeEqual(update_tensor, expected_shape)
-        
-        # Test error case: next module is not LinearGrowingModule
-        layer = LinearGrowingModule(5, 3, use_bias=True)
-        # Create a next module that is not LinearGrowingModule
-        layer.next_module = torch.nn.Linear(3, 7)
-        with self.assertRaises(TypeError):
-            layer.compute_n_update()
-
-    def test_compute_n_update_edge_cases(self):
-        """
-        Test edge cases for the computation of the tensor N update.
-        
-        This test verifies that:
-        1. The compute_n_update method works with different input shapes and special tensor values
-        2. The computed tensor has the correct shape and properties for edge cases
-        3. The method handles various tensor sizes correctly
-        """
-        # Test with special tensor values (zeros, ones, etc.)
-        for bias in (True, False):
-            with self.subTest(bias=bias, special_values="zeros"):
-                # Create layers with zero inputs to test edge case
-                prev_layer_zero = LinearGrowingModule(
-                    3, 2, use_bias=bias, name="prev_zero", device=global_device()
-                )
-                current_layer_zero = LinearGrowingModule(
-                    2, 4, use_bias=bias, name="current_zero", device=global_device()
-                )
-                next_module_zero = LinearGrowingModule(
-                    4, 6, use_bias=bias, name="next_zero", device=global_device()
-                )
-                
-                # Set up the chain of modules
-                current_layer_zero.next_module = next_module_zero
-                
-                # Enable required storage for computation
-                prev_layer_zero.store_input = True
-                current_layer_zero.store_input = True
-                next_module_zero.store_input = True
-                next_module_zero.store_pre_activity = True
-                
-                # Forward pass with zeros
-                x_zero = torch.zeros(5, 3, device=global_device())
-                y_zero = prev_layer_zero(x_zero)
-                y_zero = current_layer_zero(y_zero)
-                _ = next_module_zero(y_zero)
-                
-                # Backward pass with zeros
-                # Get the output from the next module
-                output = next_module_zero(next_module_zero.input)
-                loss = torch.norm(output)
-                loss.backward()
-                
-                # Initialize and compute projected desired update for next module
-                next_module_zero.init_computation()
-                next_module_zero.update_computation()
-                next_module_zero.compute_optimal_delta()
-                
-                # Compute N update with zero inputs
-                update_result = current_layer_zero.compute_n_update()
-                update_tensor, num_samples = update_result
-                self.assertIsInstance(update_tensor, torch.Tensor)
-                self.assertIsInstance(num_samples, int)
-                
-                # Check that update tensor is computed even with zero inputs
-                expected_shape = (current_layer_zero.in_features, next_module_zero.out_features)
-                self.assertShapeEqual(update_tensor, expected_shape)
-                
-            # Test with different tensor sizes
-            with self.subTest(bias=bias, special_values="different_sizes"):
-                # Create layers with different sizes
-                prev_layer_large = LinearGrowingModule(
-                    10, 5, use_bias=bias, name="prev_large", device=global_device()
-                )
-                current_layer_large = LinearGrowingModule(
-                    5, 8, use_bias=bias, name="current_large", device=global_device()
-                )
-                next_module_large = LinearGrowingModule(
-                    8, 12, use_bias=bias, name="next_large", device=global_device()
-                )
-                
-                # Set up the chain of modules
-                current_layer_large.next_module = next_module_large
-                
-                # Enable required storage for computation
-                prev_layer_large.store_input = True
-                current_layer_large.store_input = True
-                next_module_large.store_input = True
-                next_module_large.store_pre_activity = True
-                
-                # Forward pass with random inputs
-                x_large = torch.randn(20, 10, device=global_device())
-                y_large = prev_layer_large(x_large)
-                y_large = current_layer_large(y_large)
-                _ = next_module_large(y_large)
-                
-                # Backward pass
-                # Get the output from the next module
-                output = next_module_large(next_module_large.input)
-                loss = torch.norm(output)
-                loss.backward()
-                
-                # Initialize and compute projected desired update for next module
-                next_module_large.init_computation()
-                next_module_large.update_computation()
-                next_module_large.compute_optimal_delta()
-                
-                # Compute N update
-                update_result = current_layer_large.compute_n_update()
-                update_tensor, num_samples = update_result
-                self.assertIsInstance(update_tensor, torch.Tensor)
-                self.assertIsInstance(num_samples, int)
-                
-                # Check that update tensor has correct shape
-                expected_shape = (current_layer_large.in_features, next_module_large.out_features)
-                self.assertShapeEqual(update_tensor, expected_shape)
-
+    
     def test_compute_optimal_added_parameters_edge_cases(self):
         """
         Test edge cases for the computation of optimal added parameters.
@@ -1851,6 +1339,546 @@ class TestLinearGrowingModule(TorchTestCase):
                     self.assertEqual(omega.shape[1], max_neurons_limit)
                     if bias:
                         self.assertEqual(alpha_b.shape[0], max_neurons_limit)
+    
+    def test_compute_optimal_added_parameters_maximum_neurons(self):
+        """
+        Test compute_optimal_added_parameters with maximum_added_neurons limit.
+        
+        This test verifies that:
+        1. The method correctly limits the number of added neurons when maximum_added_neurons is specified
+        2. The computed parameters have the correct shapes according to the limit
+        3. The method works with both bias and no-bias configurations
+        4. The eigenvalues are properly sorted (largest first) when limited
+        """
+        # Test with bias enabled
+        with self.subTest(bias=True):
+            demo_layers = self.demo_layers[True]
+            demo_layers[0].store_input = True
+            demo_layers[1].init_computation()
+            demo_layers[1].tensor_s_growth.init()
+            
+            # Forward and backward pass
+            y = demo_layers[0](self.input_x)
+            y = demo_layers[1](y)
+            loss = torch.norm(y)
+            loss.backward()
+            
+            demo_layers[1].update_computation()
+            demo_layers[1].tensor_s_growth.update()
+            demo_layers[1].compute_optimal_delta()
+            
+            # First get the full set of parameters without limit
+            alpha_full, alpha_b_full, omega_full, eigenvalues_full = demo_layers[1].compute_optimal_added_parameters(
+                dtype=torch.float64
+            )
+            
+            # Get the total number of available neurons
+            total_neurons = eigenvalues_full.shape[0]
+            
+            # Test with different maximum_added_neurons limits
+            for max_neurons in [1, 2, total_neurons // 2, total_neurons]:
+                with self.subTest(max_neurons=max_neurons):
+                    alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
+                        maximum_added_neurons=max_neurons,
+                        dtype=torch.float64
+                    )
+                    
+                    # Check that results are computed without errors
+                    self.assertIsInstance(alpha, torch.Tensor)
+                    self.assertIsInstance(omega, torch.Tensor)
+                    self.assertIsInstance(eigenvalues, torch.Tensor)
+                    self.assertIsInstance(alpha_b, torch.Tensor)
+                    
+                    # Verify shapes according to the limit
+                    self.assertEqual(alpha.shape[0], max_neurons)
+                    self.assertEqual(alpha.shape[1], demo_layers[0].in_features)
+                    self.assertEqual(alpha_b.shape[0], max_neurons)
+                    self.assertEqual(omega.shape[0], demo_layers[1].out_features)
+                    self.assertEqual(omega.shape[1], max_neurons)
+                    self.assertEqual(eigenvalues.shape[0], max_neurons)
+                    
+                    # Check that eigenvalues are non-negative
+                    self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
+                    
+                    # Check that eigenvalues are sorted in descending order (largest first)
+                    self.assertTrue(torch.all(eigenvalues[:-1] >= eigenvalues[1:]), "Eigenvalues should be sorted in descending order")
+                    
+                    # Check that the selected eigenvalues are the largest ones from the full set
+                    # This assumes that the full set is also sorted
+                    if max_neurons < total_neurons:
+                        # Get the largest eigenvalues from the full set
+                        largest_eigenvalues = eigenvalues_full[:max_neurons]
+                        # Check that our limited set matches these
+                        self.assertAllClose(eigenvalues, largest_eigenvalues,
+                                          msg=f"Selected eigenvalues should be the largest {max_neurons} from the full set")
+        
+        # Test with bias disabled
+        with self.subTest(bias=False):
+            demo_layers = self.demo_layers[False]
+            demo_layers[0].store_input = True
+            demo_layers[1].init_computation()
+            demo_layers[1].tensor_s_growth.init()
+            
+            # Forward and backward pass
+            y = demo_layers[0](self.input_x)
+            y = demo_layers[1](y)
+            loss = torch.norm(y)
+            loss.backward()
+            
+            demo_layers[1].update_computation()
+            demo_layers[1].tensor_s_growth.update()
+            demo_layers[1].compute_optimal_delta()
+            
+            # First get the full set of parameters without limit
+            alpha_full, alpha_b_full, omega_full, eigenvalues_full = demo_layers[1].compute_optimal_added_parameters(
+                dtype=torch.float64
+            )
+            
+            # Get the total number of available neurons
+            total_neurons = eigenvalues_full.shape[0]
+            
+            # Test with different maximum_added_neurons limits
+            for max_neurons in [1, 2, total_neurons // 2, total_neurons]:
+                with self.subTest(max_neurons=max_neurons):
+                    alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
+                        maximum_added_neurons=max_neurons,
+                        dtype=torch.float64
+                    )
+                    
+                    # Check that results are computed without errors
+                    self.assertIsInstance(alpha, torch.Tensor)
+                    self.assertIsInstance(omega, torch.Tensor)
+                    self.assertIsInstance(eigenvalues, torch.Tensor)
+                    self.assertIsNone(alpha_b)  # No bias term when use_bias=False
+                    
+                    # Verify shapes according to the limit
+                    self.assertEqual(alpha.shape[0], max_neurons)
+                    self.assertEqual(alpha.shape[1], demo_layers[0].in_features)
+                    self.assertEqual(omega.shape[0], demo_layers[1].out_features)
+                    self.assertEqual(omega.shape[1], max_neurons)
+                    self.assertEqual(eigenvalues.shape[0], max_neurons)
+                    
+                    # Check that eigenvalues are non-negative
+                    self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
+                    
+                    # Check that eigenvalues are sorted in descending order (largest first)
+                    self.assertTrue(torch.all(eigenvalues[:-1] >= eigenvalues[1:]), "Eigenvalues should be sorted in descending order")
+                    
+                    # Check that the selected eigenvalues are the largest ones from the full set
+                    # This assumes that the full set is also sorted
+                    if max_neurons < total_neurons:
+                        # Get the largest eigenvalues from the full set
+                        largest_eigenvalues = eigenvalues_full[:max_neurons]
+                        # Check that our limited set matches these
+                        self.assertAllClose(eigenvalues, largest_eigenvalues,
+                                          msg=f"Selected eigenvalues should be the largest {max_neurons} from the full set")
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_tensor_s_growth(self, bias: bool):
+        """
+        Test the initialization and updating of tensor growth statistics.
+        
+        This test verifies that:
+        1. The tensor_s_growth object is properly initialized and updated.
+        2. The number of samples tracked matches the input batch size.
+        3. The shape of the computed tensor matches the expected dimensions.
+        
+        The test performs the following steps:
+        1. Sets up the test environment with the specified bias configuration.
+        2. Performs a forward and backward pass through the network.
+        3. Updates the tensor growth statistics.
+        4. Verifies the statistics match the expected values.
+        
+        Args:
+            bias: Whether to test with bias enabled or disabled.
+        """
+        # --- Step 1: Setup test environment ---
+        demo_layers = self.demo_layers[bias]
+        demo_layers[0].store_input = True  # Enable input storage in the first layer
+        demo_layers[1].tensor_s_growth.init()  # Initialize growth statistics
+
+        # --- Step 2: Perform forward and backward pass ---
+        # Pass input through the network and compute loss
+        y = demo_layers[0](self.input_x)  # Forward pass through first layer
+        y = demo_layers[1](y)  # Forward pass through second layer
+        loss = torch.norm(y)  # Compute loss
+        loss.backward()  # Backpropagate gradients
+
+        # --- Step 3: Update growth statistics ---
+        demo_layers[1].tensor_s_growth.update()
+
+        # --- Step 4: Verify statistics ---
+        # Check that the number of samples matches the input batch size
+        self.assertEqual(
+            demo_layers[1].tensor_s_growth.samples,
+            self.input_x.size(0),
+            "Number of samples in tensor_s_growth should match input batch size"
+        )
+        
+        # Calculate expected size: input features + 1 if bias is enabled
+        expected_size = demo_layers[0].in_features + demo_layers[0].use_bias
+        
+        # Verify the shape of the computed tensor
+        self.assertShapeEqual(
+            demo_layers[1].tensor_s_growth(), 
+            (expected_size, expected_size),
+            f"Expected square matrix of size {expected_size}x{expected_size}"
+        )
+
+    def test_tensor_s_growth_errors(self):
+        """
+        Test error conditions for tensor_s_growth property.
+        
+        This test verifies that:
+        1. Setting tensor_s_growth to an invalid value raises an AttributeError.
+        2. Accessing tensor_s_growth without initialization raises a ValueError.
+        """
+        # Test that setting tensor_s_growth to a non-TensorStatistics object raises an AttributeError
+        with self.assertRaises(AttributeError):
+            self.demo_layers[True][1].tensor_s_growth = 1
+
+        # Test that accessing tensor_s_growth without initialization raises a ValueError
+        with self.assertRaises(ValueError):
+            _ = self.demo_layers[True][0].tensor_s_growth
+
+    def test_compute_m_prev_update(self):
+        """
+        Test the computation of the tensor M_{-2} := B[-2]^T dA update.
+        
+        This test verifies that:
+        1. The compute_m_prev_update method correctly computes the M_{-2} tensor update
+        2. The computed tensor has the correct shape and properties
+        """
+        # Test with LinearGrowingModule as previous module
+        for bias in (True, False):
+            with self.subTest(bias=bias):
+                demo_layers = self.demo_layers[bias]
+                
+                # Enable required storage for computation
+                demo_layers[0].store_input = True
+                demo_layers[1].store_pre_activity = True
+                demo_layers[1].store_input = True
+                
+                # Initialize tensor_m_prev
+                demo_layers[1].tensor_m_prev.init()
+                
+                # Forward and backward pass
+                y = demo_layers[0](self.input_x)
+                y = demo_layers[1](y)
+                loss = torch.norm(y)
+                loss.backward()
+                
+                # Compute M_{-2} update using a dummy desired_activation to avoid accessing input
+                # which requires storing input in the layer
+                dummy_desired_activation = torch.randn_like(demo_layers[1].pre_activity.grad)
+                update_result = demo_layers[1].compute_m_prev_update(desired_activation=dummy_desired_activation)
+                self.assertIsInstance(update_result, tuple)
+                self.assertEqual(len(update_result), 2)
+                
+                update_tensor, num_samples = update_result
+                self.assertIsInstance(update_tensor, torch.Tensor)
+                self.assertIsInstance(num_samples, int)
+                
+                # Check shape: (in_features_prev + bias, out_features_current)
+                expected_in_features = demo_layers[0].in_features + (1 if bias else 0)
+                expected_shape = (expected_in_features, demo_layers[1].out_features)
+                self.assertShapeEqual(update_tensor, expected_shape)
+
+    def test_compute_m_prev_update_edge_cases(self):
+        """
+        Test edge cases for the computation of the tensor M_{-2} := B[-2]^T dA update.
+        
+        This test verifies that:
+        1. The compute_m_prev_update method correctly handles LinearMergeGrowingModule as previous module
+        2. The computed tensor has the correct shape and properties for edge cases
+        """
+        # Test with LinearMergeGrowingModule as previous module
+        for bias in (True, False):
+            with self.subTest(bias=bias, case="merge_module"):
+                # Create a merge module as previous module
+                merge_module = LinearMergeGrowingModule(
+                    in_features=3, name="merge_test", device=global_device()
+                )
+                
+                # Create previous layers that connect to the merge module
+                prev_layer_1 = LinearGrowingModule(
+                    2, 3, use_bias=bias, name="prev_1", next_module=merge_module,
+                    device=global_device()
+                )
+                prev_layer_2 = LinearGrowingModule(
+                    1, 3, use_bias=bias, name="prev_2", next_module=merge_module,
+                    device=global_device()
+                )
+                
+                # Set up the merge module with previous modules
+                merge_module.set_previous_modules([prev_layer_1, prev_layer_2])
+                
+                # Create current layer with merge module as previous
+                current_layer = LinearGrowingModule(
+                    3, 4, use_bias=bias, name="current", previous_module=merge_module,
+                    device=global_device()
+                )
+                
+                # Enable required storage for computation
+                prev_layer_1.store_input = True
+                prev_layer_2.store_input = True
+                current_layer.store_pre_activity = True
+                
+                # Initialize tensor_m_prev
+                current_layer.tensor_m_prev.init()
+                
+                # Create test inputs
+                x1 = torch.randn(5, 2, device=global_device())
+                x2 = torch.randn(5, 1, device=global_device())
+                
+                # Forward pass through the network
+                y1 = prev_layer_1(x1)
+                y2 = prev_layer_2(x2)
+                y_merge = merge_module(y1 + y2)  # Simulate merge operation
+                y_current = current_layer(y_merge)  # Forward pass through current layer
+                loss = torch.norm(y_current)
+
+                # Backward pass to compute gradients
+                loss.backward()
+
+                # Update computation
+                update_tensor, num_samples = current_layer.compute_m_prev_update()
+
+                self.assertIsInstance(update_tensor, torch.Tensor)
+                self.assertIsInstance(num_samples, int)
+                
+                # Check that update tensor is computed even with zero inputs
+                self.assertShapeEqual(
+                    update_tensor, 
+                    (merge_module.total_in_features, current_layer.out_features)
+                )
+    
+    def test_compute_m_prev_update_no_previous_module(self):
+        """
+        Test that compute_m_prev_update raises ValueError when no previous module is present.
+        
+        This test verifies that:
+        1. A ValueError is raised when compute_m_prev_update is called on a LinearGrowingModule
+           that has no previous module.
+        2. The error message correctly identifies the issue.
+        """
+        # Create a LinearGrowingModule without a previous module
+        layer = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
+        desired_activation = torch.randn(1, 3)
+        
+        # Test that ValueError is raised when trying to compute M_{-2} without previous module
+        with self.assertRaises(ValueError) as error_context:
+            layer.compute_m_prev_update(desired_activation=desired_activation)
+        
+        # Verify the error message
+        self.assertIn("No previous module", str(error_context.exception))
+        self.assertIn("M_-2 is not defined", str(error_context.exception))
+    
+    def test_compute_m_prev_update_with_special_tensor_values(self):
+        """
+        Test compute_m_prev_update with special tensor values (zeros, infinities, NaN).
+        
+        This test verifies that:
+        1. compute_m_prev_update works correctly with zero tensors
+        2. compute_m_prev_update handles infinite values appropriately
+        3. compute_m_prev_update handles NaN values appropriately
+        """
+        # Test with zero tensors
+        prev_layer = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
+        current_layer = LinearGrowingModule(
+            in_features=3, out_features=4, use_bias=True, previous_module=prev_layer
+        )
+        
+        # Enable required storage for computation
+        prev_layer.store_input = True
+        current_layer.store_pre_activity = True
+        current_layer.tensor_m_prev.init()
+        
+        # Forward pass with zero inputs
+        x_zero = torch.zeros(10, 5, device=global_device())
+        y = prev_layer(x_zero)
+        out = current_layer(y)
+        
+        # Backward pass with zero gradients
+        loss = torch.norm(out)
+        loss.backward(torch.tensor(0))
+        
+        # Compute M_{-2} update with zero inputs and gradients
+        update_result = current_layer.compute_m_prev_update()
+        update_tensor, num_samples = update_result
+        
+        # Verify that update tensor is computed even with zero inputs
+        self.assertIsInstance(update_tensor, torch.Tensor)
+        self.assertIsInstance(num_samples, int)
+        self.assertEqual(num_samples, 10)
+        
+        # Test with infinite values
+        prev_layer_inf = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
+        current_layer_inf = LinearGrowingModule(
+            in_features=3, out_features=4, use_bias=True, previous_module=prev_layer_inf
+        )
+        
+        # Enable required storage for computation
+        prev_layer_inf.store_input = True
+        current_layer_inf.store_pre_activity = True
+        current_layer_inf.tensor_m_prev.init()
+        
+        # Forward pass with infinite inputs
+        x_inf = torch.full((10, 5), float('inf'), device=global_device())
+        y_inf = prev_layer_inf(x_inf)
+        _ = current_layer_inf(y_inf)
+        
+        # Backward pass
+        loss_inf = torch.norm(current_layer_inf.pre_activity)
+        loss_inf.backward()
+        
+        # Compute M_{-2} update with infinite inputs
+        update_result_inf = current_layer_inf.compute_m_prev_update()
+        update_tensor_inf, num_samples_inf = update_result_inf
+        
+        # Verify that update tensor is computed with infinite inputs
+        self.assertIsInstance(update_tensor_inf, torch.Tensor)
+        self.assertIsInstance(num_samples_inf, int)
+        self.assertEqual(num_samples_inf, 10)
+        
+        # Test with NaN values
+        prev_layer_nan = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
+        current_layer_nan = LinearGrowingModule(
+            in_features=3, out_features=4, use_bias=True, previous_module=prev_layer_nan
+        )
+        
+        # Enable required storage for computation
+        prev_layer_nan.store_input = True
+        current_layer_nan.store_pre_activity = True
+        current_layer_nan.tensor_m_prev.init()
+        
+        # Forward pass with NaN inputs
+        x_nan = torch.full((10, 5), float('nan'), device=global_device())
+        y_nan = prev_layer_nan(x_nan)
+        _ = current_layer_nan(y_nan)
+        
+        # Backward pass
+        loss_nan = torch.norm(current_layer_nan.pre_activity)
+        loss_nan.backward()
+        
+        # Compute M_{-2} update with NaN inputs
+        update_result_nan = current_layer_nan.compute_m_prev_update()
+        update_tensor_nan, num_samples_nan = update_result_nan
+        
+        # Verify that update tensor is computed with NaN inputs
+        self.assertIsInstance(update_tensor_nan, torch.Tensor)
+        self.assertIsInstance(num_samples_nan, int)
+        self.assertEqual(num_samples_nan, 10)
+
+    def test_compute_cross_covariance_update(self):
+        """
+        Test the computation of the cross-covariance tensor P := B[-2]^T B[-1] update.
+        
+        This test verifies that:
+        1. The compute_cross_covariance_update method correctly computes the cross-covariance tensor update
+        2. The computed tensor has the correct shape and properties
+        3. The method raises appropriate errors when no previous module is present
+        """
+        # Test with LinearGrowingModule as previous module
+        for bias in (True, False):
+            with self.subTest(bias=bias):
+                demo_layers = self.demo_layers[bias]
+                
+                # Enable required storage for computation
+                demo_layers[0].store_input = True
+                demo_layers[1].store_input = True
+                
+                # Initialize cross_covariance
+                demo_layers[1].cross_covariance.init()
+                
+                # Forward pass
+                y = demo_layers[0](self.input_x)
+                _ = demo_layers[1](y)
+                
+                # Compute cross-covariance update
+                update_result = demo_layers[1].compute_cross_covariance_update()
+                self.assertIsInstance(update_result, tuple)
+                self.assertEqual(len(update_result), 2)
+                
+                update_tensor, num_samples = update_result
+                self.assertIsInstance(update_tensor, torch.Tensor)
+                self.assertIsInstance(num_samples, int)
+                
+                # Check shape: (in_features_prev + bias, in_features_current + bias)
+                expected_in_features_prev = demo_layers[0].in_features + (1 if bias else 0)
+                expected_in_features_current = demo_layers[1].in_features + (1 if bias else 0)
+                expected_shape = (expected_in_features_prev, expected_in_features_current)
+                self.assertShapeEqual(update_tensor, expected_shape)
+        
+        # Test error case: no previous module
+        layer = LinearGrowingModule(5, 3, use_bias=True)
+        with self.assertRaises(ValueError):
+            layer.compute_cross_covariance_update()
+
+    def test_compute_cross_covariance_update_edge_cases(self):
+        """
+        Test edge cases for the computation of the cross-covariance tensor P := B[-2]^T B[-1] update.
+        
+        This test verifies that:
+        1. The compute_cross_covariance_update method correctly handles LinearMergeGrowingModule as previous module
+        2. The computed tensor has the correct shape and properties for edge cases
+        """
+        # Test with LinearMergeGrowingModule as previous module
+        for bias in (True, False):
+            with self.subTest(bias=bias, case="merge_module"):
+                # Create a merge module as previous module
+                merge_module = LinearMergeGrowingModule(
+                    in_features=3, name="merge_test", device=global_device()
+                )
+                
+                # Create previous layers that connect to the merge module
+                prev_layer_1 = LinearGrowingModule(
+                    2, 3, use_bias=bias, name="prev_1", next_module=merge_module,
+                    device=global_device()
+                )
+                prev_layer_2 = LinearGrowingModule(
+                    1, 3, use_bias=bias, name="prev_2", next_module=merge_module,
+                    device=global_device()
+                )
+                
+                # Set up the merge module with previous modules
+                merge_module.set_previous_modules([prev_layer_1, prev_layer_2])
+                
+                # Create current layer with merge module as previous
+                current_layer = LinearGrowingModule(
+                    3, 4, use_bias=bias, name="current", previous_module=merge_module,
+                    device=global_device()
+                )
+                
+                # Enable required storage for computation
+                prev_layer_1.store_input = True
+                prev_layer_2.store_input = True
+                current_layer.store_input = True
+                
+                # Initialize cross_covariance
+                current_layer.cross_covariance.init()
+                
+                # Create test inputs
+                x1 = torch.randn(5, 2, device=global_device())
+                x2 = torch.randn(5, 1, device=global_device())
+                
+                # Forward pass through the network
+                y1 = prev_layer_1(x1)
+                y2 = prev_layer_2(x2)
+                y_merge = merge_module(y1 + y2)  # Simulate merge operation
+                _ = current_layer(y_merge)  # Forward pass through current layer
+
+                # Compute cross-covariance update
+                update_tensor, num_samples = current_layer.compute_cross_covariance_update()
+                self.assertIsInstance(update_tensor, torch.Tensor)
+                self.assertIsInstance(num_samples, int)
+
+                # Check shape: (merge_module.total_in_features, current_layer.in_features)
+                # TODO: check if shape is correct
+                expected_in_features_prev = merge_module.total_in_features  # takes bias into account
+                expected_in_features_current = current_layer.in_features
+                expected_shape = (expected_in_features_prev, expected_in_features_current)
+                self.assertShapeEqual(update_tensor, expected_shape)
 
     def test_linear_merge_growing_module_warning_scenarios(self):
         """
@@ -2082,56 +2110,6 @@ class TestLinearGrowingModule(TorchTestCase):
         with self.assertRaisesRegex(NotImplementedError, ""):
             growing_module.compute_optimal_added_parameters()
 
-
-    def test_activation_gradient_property(self):
-        """
-        Test the activation_gradient property for LinearGrowingModule,
-        covering both GrowingModule and MergeGrowingModule as previous_module types.
-        """
-        # Test with LinearGrowingModule as previous_module
-        prev_linear = LinearGrowingModule(5, 3, post_layer_function=torch.nn.ReLU(), name="prev_linear")
-        current_linear = LinearGrowingModule(3, 2, previous_module=prev_linear, name="current_linear")
-
-        # For ReLU, the gradient at 0+ is 1.0
-        expected_grad_relu = torch.tensor(1.0)
-        self.assertAllClose(current_linear.activation_gradient, expected_grad_relu)
-
-        # Test with LinearMergeGrowingModule as previous_module
-        prev_merge = LinearMergeGrowingModule(in_features=5, post_merge_function=torch.nn.Sigmoid(), name="prev_merge")
-        current_linear_with_merge_prev = LinearGrowingModule(
-            5, 3, previous_module=prev_merge, name="current_linear_with_merge_prev"
-        )
-
-        # For Sigmoid, the derivative is sigmoid(x) * (1 - sigmoid(x)).
-        # At x=1e-5 (close to 0), sigmoid(0) = 0.5, so derivative is 0.5 * (1 - 0.5) = 0.25
-        # Using torch.func.grad(torch.nn.Sigmoid())(torch.tensor([1e-5]))
-        # The actual value will be close to 0.25
-        expected_grad_sigmoid = (torch.nn.Sigmoid()(torch.tensor(1e-5, device=global_device())) * (1 - torch.nn.Sigmoid()(torch.tensor(1e-5, device=global_device())))).item()
-        self.assertAlmostEqual(current_linear_with_merge_prev.activation_gradient.item(), expected_grad_sigmoid, places=5)
-
-        # Test with a custom activation function (e.g., LeakyReLU)
-        prev_linear_leaky = LinearGrowingModule(5, 3, post_layer_function=torch.nn.LeakyReLU(negative_slope=0.1), name="prev_linear_leaky")
-        current_linear_leaky = LinearGrowingModule(3, 2, previous_module=prev_linear_leaky, name="current_linear_leaky")
-        
-        # For LeakyReLU, the gradient at 0+ is 1.0
-        expected_grad_leaky_relu = torch.tensor(1.0)
-        self.assertAllClose(current_linear_leaky.activation_gradient, expected_grad_leaky_relu)
-
-        # Test NotImplementedError for unsupported previous_module type
-        class UnsupportedModule(torch.nn.Module):
-            def forward(self, x):
-                return x
-        
-        # Test NotImplementedError for unsupported previous_module type
-        with self.assertRaisesRegex(TypeError, "Previous module must be a GrowingModule or MergeGrowingModule"):
-            unsupported_prev = UnsupportedModule()
-            current_linear_unsupported = LinearGrowingModule(5, 3, previous_module=unsupported_prev, name="unsupported_test")
-        
-        # The original test expected NotImplementedError, but TypeError is raised earlier.
-        # We keep the original intent of testing unsupported module types.
-        # If the TypeError is caught, the test passes.
-
-
     def test_add_parameters_simultaneous_input_output_error(self):
         """
         Test the assertion in add_parameters to ensure it correctly raises an error
@@ -2146,7 +2124,6 @@ class TestLinearGrowingModule(TorchTestCase):
                 added_in_features=2,
                 added_out_features=1
             )
-
 
     def test_tensor_n_property(self):
         """
@@ -2183,7 +2160,6 @@ class TestLinearGrowingModule(TorchTestCase):
         
         # Forward pass to populate the required tensors
         x_prev = torch.randn(batch_size, in_features_prev)
-        print(f"{current_module.device=}")
         x_current = prev_module(x_prev)
         loss = current_module(x_current).norm()
         loss.backward()
@@ -2278,7 +2254,6 @@ class TestLinearGrowingModule(TorchTestCase):
             _ = current_module.tensor_n
         current_module.cross_covariance._tensor = original_cross_covariance # Restore
 
-
     def test_linear_growing_module_not_implemented_errors_additional(self):
         """
         Test additional NotImplementedError paths in LinearGrowingModule:
@@ -2321,7 +2296,6 @@ class TestLinearGrowingModule(TorchTestCase):
         growing_module_sub_select_unsupported.eigenvalues_extension = torch.tensor([1.0, 0.5])
         with self.assertRaisesRegex(NotImplementedError, "The computation of the optimal added parameters is not implemented yet for <class '.*UnsupportedModule'> as previous module."):
             growing_module_sub_select_unsupported.sub_select_optimal_added_parameters(1)
-
 
     def test_numerical_stability_optimal_delta(self):
         """
@@ -2432,7 +2406,6 @@ class TestLinearGrowingModule(TorchTestCase):
             self.assertFalse(torch.any(torch.isnan(delta_b)))
             self.assertFalse(torch.any(torch.isinf(delta_b)))
 
-
     def test_input_shapes_and_batch_sizes(self):
         """
         Test LinearGrowingModule and LinearMergeGrowingModule with edge-case batch sizes
@@ -2503,7 +2476,6 @@ class TestLinearGrowingModule(TorchTestCase):
             self.assertEqual(layer.tensor_s().shape, expected_s_shape)
             self.assertEqual(layer.tensor_m().shape, expected_m_shape)
 
-
     def test_device_agnostic_functionality(self):
         """
         Verify functionality on both CPU and GPU (if available) to ensure no device-specific issues arise.
@@ -2565,7 +2537,6 @@ class TestLinearGrowingModule(TorchTestCase):
                 self.assertEqual(merge_module.previous_tensor_s().device, device)
                 self.assertEqual(merge_module.previous_tensor_m().device, device)
 
-
     def test_integration_with_base_classes(self):
         """
         Explore more complex integration tests with the abstract GrowingModule and MergeGrowingModule classes,
@@ -2621,7 +2592,7 @@ class TestLinearGrowingModule(TorchTestCase):
         # Test compute_previous_s_update and compute_previous_m_update (abstract methods implemented)
         prev_linear.store_input = True
         prev_linear._input = torch.randn(10, 5)
-        merge_module.store_pre_activity = True
+        merge_module.store_input = True
         merge_module.input = torch.randn(10, 5, requires_grad=True) # Simulate gradient for M
         torch.norm(merge_module.input).backward() # Perform backward pass to populate grad
         
@@ -2640,7 +2611,6 @@ class TestLinearGrowingModule(TorchTestCase):
         
         self.assertEqual(layer2.previous_module, layer1)
         self.assertEqual(layer1.next_module, layer2)
-
 
     def test_post_functions_impact(self):
         """
@@ -2798,94 +2768,6 @@ class TestLinearGrowingModule(TorchTestCase):
             
             self.assertAllClose(merge_sigmoid_real.tensor_s(), expected_s_from_activity_merge)
 
-
-    def test_warning_set_next_modules_with_non_empty_tensor_s(self):
-        """
-        Test that a warning is triggered when set_next_modules is called with non-empty tensor S.
-        
-        This test verifies that:
-        1. A UserWarning is raised when set_next_modules is called on a LinearMergeGrowingModule
-           that has non-empty tensor S samples.
-        2. The warning message correctly identifies the issue.
-        """
-        # Create a LinearMergeGrowingModule
-        merge_module = LinearMergeGrowingModule(in_features=5, name="test_merge_module")
-        
-        # Simulate some activity to make tensor_s non-empty
-        merge_module.store_activity = True
-        merge_module.tensor_s.init()
-        
-        # Run a forward pass to populate tensor_s
-        x = torch.randn(10, 5, requires_grad=True)
-        _ = merge_module(x)
-        merge_module.tensor_s.update()
-        
-        # Verify tensor_s has samples
-        self.assertGreater(merge_module.tensor_s.samples, 0)
-        
-        # Test that warning is triggered when setting next modules
-        with self.assertWarns(UserWarning) as warning_context:
-            merge_module.set_next_modules([LinearGrowingModule(5, 5, name="dummy_next")])
-        
-        # Verify the warning message
-        self.assertIn("You are setting the next modules", str(warning_context.warning))
-        self.assertIn("with a non-empty tensor S", str(warning_context.warning))
-
-
-    def test_warning_set_previous_modules_with_non_empty_tensors(self):
-        """
-        Test that warnings are triggered when set_previous_modules is called with non-empty
-        previous_tensor_s or previous_tensor_m.
-        
-        This test verifies that:
-        1. A UserWarning is raised when set_previous_modules is called on a LinearMergeGrowingModule
-           that has non-empty previous_tensor_s samples.
-        2. A UserWarning is raised when set_previous_modules is called on a LinearMergeGrowingModule
-           that has non-empty previous_tensor_m samples.
-        3. The warning messages correctly identify the issues.
-        """
-        # Create a LinearMergeGrowingModule
-        merge_module = LinearMergeGrowingModule(in_features=5, name="test_merge_module")
-        
-        # Create a dummy previous module to connect
-        prev_module = LinearGrowingModule(5, 5, name="dummy_prev")
-        
-        # Set previous modules first to initialize previous_tensor_s and previous_tensor_m
-        merge_module.set_previous_modules([prev_module])
-        
-        # Simulate some activity to make previous_tensor_s non-empty
-        prev_module.store_input = True
-        merge_module.store_input = True
-        merge_module.previous_tensor_s.init()
-        merge_module.previous_tensor_m.init()
-        
-        # Run forward passes to populate previous_tensor_s and previous_tensor_m
-        x = torch.randn(10, 5, requires_grad=True)
-        y = prev_module(x)
-        out = merge_module(y)
-        out.norm().backward()
-        
-        # Update previous_tensor statistics
-        merge_module.previous_tensor_s.update()
-        merge_module.previous_tensor_m.update()
-        
-        # Verify previous_tensor_s and previous_tensor_m have samples
-        self.assertGreater(merge_module.previous_tensor_s.samples, 0)
-        self.assertGreater(merge_module.previous_tensor_m.samples, 0)
-        
-        # Test that warning is triggered when setting previous modules with non-empty previous_tensor_s
-        with self.assertWarns(UserWarning) as warning_context:
-            merge_module.set_previous_modules([LinearGrowingModule(5, 5, name="another_dummy_prev")])
-        
-        # Verify the warning message for previous_tensor_s
-        self.assertIn("You are setting the previous modules", str(warning_context.warnings[0].message))
-        self.assertIn("with a non-empty previous tensor S", str(warning_context.warnings[0].message))
-        
-        # Verify the warning message for previous_tensor_m
-        self.assertIn("You are setting the previous modules", str(warning_context.warnings[1].message))
-        self.assertIn("with a non-empty previous tensor M", str(warning_context.warnings[1].message))
-
-
     def test_assertion_error_add_input_and_output_features_simultaneously(self):
         """
         Test that AssertionError is raised when trying to add input and output features simultaneously.
@@ -2909,28 +2791,6 @@ class TestLinearGrowingModule(TorchTestCase):
         
         # Verify the error message
         self.assertIn("cannot add input and output features at the same time", str(error_context.exception))
-
-
-    def test_compute_m_prev_update_no_previous_module(self):
-        """
-        Test that compute_m_prev_update raises ValueError when no previous module is present.
-        
-        This test verifies that:
-        1. A ValueError is raised when compute_m_prev_update is called on a LinearGrowingModule
-           that has no previous module.
-        2. The error message correctly identifies the issue.
-        """
-        # Create a LinearGrowingModule without a previous module
-        layer = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
-        desired_activation = torch.randn(1, 3)
-        
-        # Test that ValueError is raised when trying to compute M_{-2} without previous module
-        with self.assertRaises(ValueError) as error_context:
-            layer.compute_m_prev_update(desired_activation=desired_activation)
-        
-        # Verify the error message
-        self.assertIn("No previous module", str(error_context.exception))
-        self.assertIn("M_-2 is not defined", str(error_context.exception))
 
     def test_compute_cross_covariance_update_no_previous_module(self):
         """
@@ -2972,102 +2832,6 @@ class TestLinearGrowingModule(TorchTestCase):
         
         # Verify the error message
         self.assertIn("The next module must be a LinearGrowingModule", str(error_context.exception))
-
-    def test_compute_m_prev_update_with_special_tensor_values(self):
-        """
-        Test compute_m_prev_update with special tensor values (zeros, infinities, NaN).
-        
-        This test verifies that:
-        1. compute_m_prev_update works correctly with zero tensors
-        2. compute_m_prev_update handles infinite values appropriately
-        3. compute_m_prev_update handles NaN values appropriately
-        """
-        # Test with zero tensors
-        prev_layer = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
-        current_layer = LinearGrowingModule(
-            in_features=3, out_features=4, use_bias=True, previous_module=prev_layer
-        )
-        
-        # Enable required storage for computation
-        prev_layer.store_input = True
-        current_layer.store_pre_activity = True
-        current_layer.tensor_m_prev.init()
-        
-        # Forward pass with zero inputs
-        x_zero = torch.zeros(10, 5, device=global_device())
-        y = prev_layer(x_zero)
-        out = current_layer(y)
-        
-        # Backward pass with zero gradients
-        loss = torch.norm(out)
-        loss.backward(torch.tensor(0))
-        
-        # Compute M_{-2} update with zero inputs and gradients
-        update_result = current_layer.compute_m_prev_update()
-        update_tensor, num_samples = update_result
-        
-        # Verify that update tensor is computed even with zero inputs
-        self.assertIsInstance(update_tensor, torch.Tensor)
-        self.assertIsInstance(num_samples, int)
-        self.assertEqual(num_samples, 10)
-        
-        # Test with infinite values
-        prev_layer_inf = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
-        current_layer_inf = LinearGrowingModule(
-            in_features=3, out_features=4, use_bias=True, previous_module=prev_layer_inf
-        )
-        
-        # Enable required storage for computation
-        prev_layer_inf.store_input = True
-        current_layer_inf.store_pre_activity = True
-        current_layer_inf.tensor_m_prev.init()
-        
-        # Forward pass with infinite inputs
-        x_inf = torch.full((10, 5), float('inf'), device=global_device())
-        y_inf = prev_layer_inf(x_inf)
-        _ = current_layer_inf(y_inf)
-        
-        # Backward pass
-        loss_inf = torch.norm(current_layer_inf.pre_activity)
-        loss_inf.backward()
-        
-        # Compute M_{-2} update with infinite inputs
-        update_result_inf = current_layer_inf.compute_m_prev_update()
-        update_tensor_inf, num_samples_inf = update_result_inf
-        
-        # Verify that update tensor is computed with infinite inputs
-        self.assertIsInstance(update_tensor_inf, torch.Tensor)
-        self.assertIsInstance(num_samples_inf, int)
-        self.assertEqual(num_samples_inf, 10)
-        
-        # Test with NaN values
-        prev_layer_nan = LinearGrowingModule(in_features=5, out_features=3, use_bias=True)
-        current_layer_nan = LinearGrowingModule(
-            in_features=3, out_features=4, use_bias=True, previous_module=prev_layer_nan
-        )
-        
-        # Enable required storage for computation
-        prev_layer_nan.store_input = True
-        current_layer_nan.store_pre_activity = True
-        current_layer_nan.tensor_m_prev.init()
-        
-        # Forward pass with NaN inputs
-        x_nan = torch.full((10, 5), float('nan'), device=global_device())
-        y_nan = prev_layer_nan(x_nan)
-        _ = current_layer_nan(y_nan)
-        
-        # Backward pass
-        loss_nan = torch.norm(current_layer_nan.pre_activity)
-        loss_nan.backward()
-        
-        # Compute M_{-2} update with NaN inputs
-        update_result_nan = current_layer_nan.compute_m_prev_update()
-        update_tensor_nan, num_samples_nan = update_result_nan
-        
-        # Verify that update tensor is computed with NaN inputs
-        self.assertIsInstance(update_tensor_nan, torch.Tensor)
-        self.assertIsInstance(num_samples_nan, int)
-        self.assertEqual(num_samples_nan, 10)
 
     def test_compute_updates_assertion_error_when_store_flags_false(self):
         """
@@ -3328,458 +3092,6 @@ class TestLinearGrowingModule(TorchTestCase):
         expected_samples_2 = 5 * 7  # batch_size * sequence_length
         self.assertEqual(layer2.tensor_s.samples, expected_samples_2)
         self.assertEqual(layer2.tensor_m.samples, expected_samples_2)
-
-    # def test_compute_optimal_added_parameters_singular_matrix(self):
-    #     """
-    #     Test compute_optimal_added_parameters with a singular matrix that requires pseudo-inverse.
-        
-    #     This test verifies that:
-    #     1. The method correctly handles singular matrices by using pseudo-inverse
-    #     2. Appropriate warnings are raised when pseudo-inverse is used
-    #     3. The computed parameters have the correct shapes and properties
-    #     4. The method works with both bias and no-bias configurations
-    #     """
-    #     # Test with bias enabled
-    #     with self.subTest(bias=True):
-    #         demo_layers = self.demo_layers[True]
-    #         demo_layers[0].store_input = True
-    #         demo_layers[1].init_computation()
-    #         demo_layers[1].tensor_s_growth.init()
-            
-    #         # Create a singular input matrix (rank-deficient)
-    #         # All rows are identical, making the matrix singular
-    #         singular_input = torch.ones(10, self.c)  # All ones matrix
-            
-    #         # Forward and backward pass with singular input
-    #         y = demo_layers[0](singular_input)
-    #         y = demo_layers[1](y)
-    #         loss = torch.norm(y)
-    #         loss.backward()
-            
-    #         demo_layers[1].update_computation()
-    #         demo_layers[1].tensor_s_growth.update()
-    #         demo_layers[1].compute_optimal_delta()
-            
-    #         # Test with force_pseudo_inverse=True to ensure pseudo-inverse is used
-    #         with self.assertWarnsRegex(UserWarning, "S matrix is singular or ill-conditioned"):
-    #             alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
-    #                 force_pseudo_inverse=True,
-    #                 dtype=torch.float64  # Use higher precision for numerical stability
-    #             )
-                
-    #         # Check that results are computed without errors
-    #         self.assertIsInstance(alpha, torch.Tensor)
-    #         self.assertIsInstance(omega, torch.Tensor)
-    #         self.assertIsInstance(eigenvalues, torch.Tensor)
-    #         self.assertIsInstance(alpha_b, torch.Tensor)
-            
-    #         # Verify shapes
-    #         k = eigenvalues.shape[0]
-    #         self.assertEqual(alpha.shape, (k, demo_layers[0].in_features))
-    #         self.assertEqual(alpha_b.shape, (k,))
-    #         self.assertEqual(omega.shape, (demo_layers[1].out_features, k))
-    #         self.assertEqual(eigenvalues.shape, (k,))
-            
-    #         # Check that eigenvalues are non-negative
-    #         self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
-        
-    #     # Test with bias disabled
-    #     with self.subTest(bias=False):
-    #         demo_layers = self.demo_layers[False]
-    #         demo_layers[0].store_input = True
-    #         demo_layers[1].init_computation()
-    #         demo_layers[1].tensor_s_growth.init()
-            
-    #         # Create a singular input matrix (rank-deficient)
-    #         singular_input = torch.ones(10, self.c)  # All ones matrix
-            
-    #         # Forward and backward pass with singular input
-    #         y = demo_layers[0](singular_input)
-    #         y = demo_layers[1](y)
-    #         loss = torch.norm(y)
-    #         loss.backward()
-            
-    #         demo_layers[1].update_computation()
-    #         demo_layers[1].tensor_s_growth.update()
-    #         demo_layers[1].compute_optimal_delta()
-            
-    #         # Test with force_pseudo_inverse=True to ensure pseudo-inverse is used
-    #         with self.assertWarnsRegex(UserWarning, "S matrix is singular or ill-conditioned"):
-    #             alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
-    #                 force_pseudo_inverse=True,
-    #                 dtype=torch.float64  # Use higher precision for numerical stability
-    #             )
-                
-    #         # Check that results are computed without errors
-    #         self.assertIsInstance(alpha, torch.Tensor)
-    #         self.assertIsInstance(omega, torch.Tensor)
-    #         self.assertIsInstance(eigenvalues, torch.Tensor)
-    #         self.assertIsNone(alpha_b)  # No bias term when use_bias=False
-            
-    #         # Verify shapes
-    #         k = eigenvalues.shape[0]
-    #         self.assertEqual(alpha.shape, (k, demo_layers[0].in_features))
-    #         self.assertEqual(omega.shape, (demo_layers[1].out_features, k))
-    #         self.assertEqual(eigenvalues.shape, (k,))
-            
-    #         # Check that eigenvalues are non-negative
-    #         self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
-
-    # def test_compute_optimal_added_parameters_force_pseudo_inverse(self):
-    #     """
-    #     Test compute_optimal_added_parameters with force_pseudo_inverse=True parameter.
-        
-    #     This test verifies that:
-    #     1. The method correctly uses pseudo-inverse when force_pseudo_inverse=True
-    #     2. The computed parameters have the correct shapes and properties
-    #     3. The method works with both bias and no-bias configurations
-    #     4. Results are consistent with the standard computation when the matrix is well-conditioned
-    #     """
-    #     # Test with bias enabled
-    #     with self.subTest(bias=True):
-    #         demo_layers = self.demo_layers[True]
-    #         demo_layers[0].store_input = True
-    #         demo_layers[1].init_computation()
-    #         demo_layers[1].tensor_s_growth.init()
-            
-    #         # Forward and backward pass with normal input
-    #         y = demo_layers[0](self.input_x)
-    #         y = demo_layers[1](y)
-    #         loss = torch.norm(y)
-    #         loss.backward()
-            
-    #         demo_layers[1].update_computation()
-    #         demo_layers[1].tensor_s_growth.update()
-    #         demo_layers[1].compute_optimal_delta()
-            
-    #         # Test with force_pseudo_inverse=True
-    #         alpha_pseudo, alpha_b_pseudo, omega_pseudo, eigenvalues_pseudo = demo_layers[1].compute_optimal_added_parameters(
-    #             force_pseudo_inverse=True,
-    #             dtype=torch.float64  # Use higher precision for numerical stability
-    #         )
-                
-    #         # Check that results are computed without errors
-    #         self.assertIsInstance(alpha_pseudo, torch.Tensor)
-    #         self.assertIsInstance(omega_pseudo, torch.Tensor)
-    #         self.assertIsInstance(eigenvalues_pseudo, torch.Tensor)
-    #         self.assertIsInstance(alpha_b_pseudo, torch.Tensor)
-            
-    #         # Verify shapes
-    #         k_pseudo = eigenvalues_pseudo.shape[0]
-    #         self.assertEqual(alpha_pseudo.shape, (k_pseudo, demo_layers[0].in_features))
-    #         self.assertEqual(alpha_b_pseudo.shape, (k_pseudo,))
-    #         self.assertEqual(omega_pseudo.shape, (demo_layers[1].out_features, k_pseudo))
-    #         self.assertEqual(eigenvalues_pseudo.shape, (k_pseudo,))
-            
-    #         # Check that eigenvalues are non-negative
-    #         self.assertTrue(torch.all(eigenvalues_pseudo >= 0), "Eigenvalues should be non-negative")
-            
-    #         # Also test with force_pseudo_inverse=False for comparison
-    #         alpha_standard, alpha_b_standard, omega_standard, eigenvalues_standard = demo_layers[1].compute_optimal_added_parameters(
-    #             force_pseudo_inverse=False,
-    #             dtype=torch.float64
-    #         )
-            
-    #         # When the matrix is well-conditioned, results should be similar
-    #         # Note: Exact equality is not expected due to numerical differences between inverse and pseudo-inverse
-    #         k_standard = eigenvalues_standard.shape[0]
-    #         self.assertEqual(alpha_standard.shape, (k_standard, demo_layers[0].in_features))
-    #         self.assertEqual(alpha_b_standard.shape, (k_standard,))
-    #         self.assertEqual(omega_standard.shape, (demo_layers[1].out_features, k_standard))
-    #         self.assertEqual(eigenvalues_standard.shape, (k_standard,))
-        
-    #     # Test with bias disabled
-    #     with self.subTest(bias=False):
-    #         demo_layers = self.demo_layers[False]
-    #         demo_layers[0].store_input = True
-    #         demo_layers[1].init_computation()
-    #         demo_layers[1].tensor_s_growth.init()
-            
-    #         # Forward and backward pass with normal input
-    #         y = demo_layers[0](self.input_x)
-    #         y = demo_layers[1](y)
-    #         loss = torch.norm(y)
-    #         loss.backward()
-            
-    #         demo_layers[1].update_computation()
-    #         demo_layers[1].tensor_s_growth.update()
-    #         demo_layers[1].compute_optimal_delta()
-            
-    #         # Test with force_pseudo_inverse=True
-    #         alpha_pseudo, alpha_b_pseudo, omega_pseudo, eigenvalues_pseudo = demo_layers[1].compute_optimal_added_parameters(
-    #             force_pseudo_inverse=True,
-    #             dtype=torch.float64  # Use higher precision for numerical stability
-    #         )
-                
-    #         # Check that results are computed without errors
-    #         self.assertIsInstance(alpha_pseudo, torch.Tensor)
-    #         self.assertIsInstance(omega_pseudo, torch.Tensor)
-    #         self.assertIsInstance(eigenvalues_pseudo, torch.Tensor)
-    #         self.assertIsNone(alpha_b_pseudo)  # No bias term when use_bias=False
-            
-    #         # Verify shapes
-    #         k_pseudo = eigenvalues_pseudo.shape[0]
-    #         self.assertEqual(alpha_pseudo.shape, (k_pseudo, demo_layers[0].in_features))
-    #         self.assertEqual(omega_pseudo.shape, (demo_layers[1].out_features, k_pseudo))
-    #         self.assertEqual(eigenvalues_pseudo.shape, (k_pseudo,))
-            
-    #         # Check that eigenvalues are non-negative
-    #         self.assertTrue(torch.all(eigenvalues_pseudo >= 0), "Eigenvalues should be non-negative")
-
-    # def test_compute_optimal_added_parameters_numerical_thresholds(self):
-    #     """
-    #     Test compute_optimal_added_parameters with various numerical thresholds.
-        
-    #     This test verifies that:
-    #     1. The method correctly handles different numerical_threshold values
-    #     2. The method correctly handles different statistical_threshold values
-    #     3. The number of computed parameters varies appropriately with thresholds
-    #     4. The method works with both bias and no-bias configurations
-    #     """
-    #     # Test with different numerical thresholds
-    #     for bias in (True, False):
-    #         with self.subTest(bias=bias, case="numerical_thresholds"):
-    #             demo_layers = self.demo_layers[bias]
-    #             demo_layers[0].store_input = True
-    #             demo_layers[1].init_computation()
-    #             demo_layers[1].tensor_s_growth.init()
-                
-    #             # Forward and backward pass
-    #             y = demo_layers[0](self.input_x)
-    #             y = demo_layers[1](y)
-    #             loss = torch.norm(y)
-    #             loss.backward()
-                
-    #             demo_layers[1].update_computation()
-    #             demo_layers[1].tensor_s_growth.update()
-    #             demo_layers[1].compute_optimal_delta()
-                
-    #             # Test with different numerical thresholds
-    #             results = []
-    #             thresholds = [1e-15, 1e-10, 1e-5, 1e-2]
-    #             for threshold in thresholds:
-    #                 with self.subTest(threshold=threshold):
-    #                     alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
-    #                         numerical_threshold=threshold,
-    #                         dtype=torch.float64  # Use higher precision for numerical stability
-    #                     )
-                        
-    #                     # Check that results are computed without errors
-    #                     self.assertIsInstance(alpha, torch.Tensor)
-    #                     self.assertIsInstance(omega, torch.Tensor)
-    #                     self.assertIsInstance(eigenvalues, torch.Tensor)
-    #                     if bias:
-    #                         self.assertIsInstance(alpha_b, torch.Tensor)
-    #                     else:
-    #                         self.assertIsNone(alpha_b)
-                        
-    #                     # Add results for comparison
-    #                     results.append((alpha, alpha_b, omega, eigenvalues))
-                        
-    #                     # Check that eigenvalues are non-negative
-    #                     self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
-                        
-    #                     # Check that the number of returned neurons is consistent with the threshold
-    #                     k = eigenvalues.shape[0]
-    #                     self.assertTrue(
-    #                         k <= demo_layers[0].in_features,
-    #                         f"Number of added neurons ({k}) should not exceed input features ({demo_layers[0].in_features})"
-    #                         )
-                
-    #             # Test with different statistical thresholds
-    #             stat_results = []
-    #             stat_thresholds = [1e-15, 1e-10, 1e-5, 1e-2]
-    #             for stat_threshold in stat_thresholds:
-    #                 with self.subTest(statistical_threshold=stat_threshold):
-    #                     alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
-    #                         statistical_threshold=stat_threshold,
-    #                         dtype=torch.float64  # Use higher precision for numerical stability
-    #                     )
-                        
-    #                     # Check that results are computed without errors
-    #                     self.assertIsInstance(alpha, torch.Tensor)
-    #                     self.assertIsInstance(omega, torch.Tensor)
-    #                     self.assertIsInstance(eigenvalues, torch.Tensor)
-    #                     if bias:
-    #                         self.assertIsInstance(alpha_b, torch.Tensor)
-    #                     else:
-    #                         self.assertIsNone(alpha_b)
-                        
-    #                     # Add results for comparison
-    #                     stat_results.append((alpha, alpha_b, omega, eigenvalues))
-                        
-    #                     # Check that eigenvalues are non-negative
-    #                     self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
-                        
-    #                     # Check that the number of returned neurons is consistent with the threshold
-    #                     k = eigenvalues.shape[0]
-    #                     self.assertTrue(
-    #                         k <= demo_layers[0].in_features,
-    #                         f"Number of added neurons ({k}) should not exceed input features ({demo_layers[0].in_features})"
-    #                     )
-                
-    #             # Test with combined thresholds
-    #             combined_results = []
-    #             for num_threshold, stat_threshold in zip([1e-15, 1e-10, 1e-5], [1e-15, 1e-10, 1e-5]):
-    #                 with self.subTest(numerical_threshold=num_threshold, statistical_threshold=stat_threshold):
-    #                     alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
-    #                         numerical_threshold=num_threshold,
-    #                         statistical_threshold=stat_threshold,
-    #                         dtype=torch.float64  # Use higher precision for numerical stability
-    #                     )
-                        
-    #                     # Check that results are computed without errors
-    #                     self.assertIsInstance(alpha, torch.Tensor)
-    #                     self.assertIsInstance(omega, torch.Tensor)
-    #                     self.assertIsInstance(eigenvalues, torch.Tensor)
-    #                     if bias:
-    #                         self.assertIsInstance(alpha_b, torch.Tensor)
-    #                     else:
-    #                         self.assertIsNone(alpha_b)
-                        
-    #                     # Add results for comparison
-    #                     combined_results.append((alpha, alpha_b, omega, eigenvalues))
-                        
-    #                     # Check that eigenvalues are non-negative
-    #                     self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
-                        
-    #                     # Check that the number of returned neurons is consistent with the threshold
-    #                     k = eigenvalues.shape[0]
-    #                     self.assertTrue(k <= demo_layers[0].in_features, "Number of added neurons should not exceed input features")
-
-    def test_compute_optimal_added_parameters_maximum_neurons(self):
-        """
-        Test compute_optimal_added_parameters with maximum_added_neurons limit.
-        
-        This test verifies that:
-        1. The method correctly limits the number of added neurons when maximum_added_neurons is specified
-        2. The computed parameters have the correct shapes according to the limit
-        3. The method works with both bias and no-bias configurations
-        4. The eigenvalues are properly sorted (largest first) when limited
-        """
-        # Test with bias enabled
-        with self.subTest(bias=True):
-            demo_layers = self.demo_layers[True]
-            demo_layers[0].store_input = True
-            demo_layers[1].init_computation()
-            demo_layers[1].tensor_s_growth.init()
-            
-            # Forward and backward pass
-            y = demo_layers[0](self.input_x)
-            y = demo_layers[1](y)
-            loss = torch.norm(y)
-            loss.backward()
-            
-            demo_layers[1].update_computation()
-            demo_layers[1].tensor_s_growth.update()
-            demo_layers[1].compute_optimal_delta()
-            
-            # First get the full set of parameters without limit
-            alpha_full, alpha_b_full, omega_full, eigenvalues_full = demo_layers[1].compute_optimal_added_parameters(
-                dtype=torch.float64
-            )
-            
-            # Get the total number of available neurons
-            total_neurons = eigenvalues_full.shape[0]
-            
-            # Test with different maximum_added_neurons limits
-            for max_neurons in [1, 2, total_neurons // 2, total_neurons]:
-                with self.subTest(max_neurons=max_neurons):
-                    alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
-                        maximum_added_neurons=max_neurons,
-                        dtype=torch.float64
-                    )
-                    
-                    # Check that results are computed without errors
-                    self.assertIsInstance(alpha, torch.Tensor)
-                    self.assertIsInstance(omega, torch.Tensor)
-                    self.assertIsInstance(eigenvalues, torch.Tensor)
-                    self.assertIsInstance(alpha_b, torch.Tensor)
-                    
-                    # Verify shapes according to the limit
-                    self.assertEqual(alpha.shape[0], max_neurons)
-                    self.assertEqual(alpha.shape[1], demo_layers[0].in_features)
-                    self.assertEqual(alpha_b.shape[0], max_neurons)
-                    self.assertEqual(omega.shape[0], demo_layers[1].out_features)
-                    self.assertEqual(omega.shape[1], max_neurons)
-                    self.assertEqual(eigenvalues.shape[0], max_neurons)
-                    
-                    # Check that eigenvalues are non-negative
-                    self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
-                    
-                    # Check that eigenvalues are sorted in descending order (largest first)
-                    self.assertTrue(torch.all(eigenvalues[:-1] >= eigenvalues[1:]), "Eigenvalues should be sorted in descending order")
-                    
-                    # Check that the selected eigenvalues are the largest ones from the full set
-                    # This assumes that the full set is also sorted
-                    if max_neurons < total_neurons:
-                        # Get the largest eigenvalues from the full set
-                        largest_eigenvalues = eigenvalues_full[:max_neurons]
-                        # Check that our limited set matches these
-                        self.assertAllClose(eigenvalues, largest_eigenvalues,
-                                          msg=f"Selected eigenvalues should be the largest {max_neurons} from the full set")
-        
-        # Test with bias disabled
-        with self.subTest(bias=False):
-            demo_layers = self.demo_layers[False]
-            demo_layers[0].store_input = True
-            demo_layers[1].init_computation()
-            demo_layers[1].tensor_s_growth.init()
-            
-            # Forward and backward pass
-            y = demo_layers[0](self.input_x)
-            y = demo_layers[1](y)
-            loss = torch.norm(y)
-            loss.backward()
-            
-            demo_layers[1].update_computation()
-            demo_layers[1].tensor_s_growth.update()
-            demo_layers[1].compute_optimal_delta()
-            
-            # First get the full set of parameters without limit
-            alpha_full, alpha_b_full, omega_full, eigenvalues_full = demo_layers[1].compute_optimal_added_parameters(
-                dtype=torch.float64
-            )
-            
-            # Get the total number of available neurons
-            total_neurons = eigenvalues_full.shape[0]
-            
-            # Test with different maximum_added_neurons limits
-            for max_neurons in [1, 2, total_neurons // 2, total_neurons]:
-                with self.subTest(max_neurons=max_neurons):
-                    alpha, alpha_b, omega, eigenvalues = demo_layers[1].compute_optimal_added_parameters(
-                        maximum_added_neurons=max_neurons,
-                        dtype=torch.float64
-                    )
-                    
-                    # Check that results are computed without errors
-                    self.assertIsInstance(alpha, torch.Tensor)
-                    self.assertIsInstance(omega, torch.Tensor)
-                    self.assertIsInstance(eigenvalues, torch.Tensor)
-                    self.assertIsNone(alpha_b)  # No bias term when use_bias=False
-                    
-                    # Verify shapes according to the limit
-                    self.assertEqual(alpha.shape[0], max_neurons)
-                    self.assertEqual(alpha.shape[1], demo_layers[0].in_features)
-                    self.assertEqual(omega.shape[0], demo_layers[1].out_features)
-                    self.assertEqual(omega.shape[1], max_neurons)
-                    self.assertEqual(eigenvalues.shape[0], max_neurons)
-                    
-                    # Check that eigenvalues are non-negative
-                    self.assertTrue(torch.all(eigenvalues >= 0), "Eigenvalues should be non-negative")
-                    
-                    # Check that eigenvalues are sorted in descending order (largest first)
-                    self.assertTrue(torch.all(eigenvalues[:-1] >= eigenvalues[1:]), "Eigenvalues should be sorted in descending order")
-                    
-                    # Check that the selected eigenvalues are the largest ones from the full set
-                    # This assumes that the full set is also sorted
-                    if max_neurons < total_neurons:
-                        # Get the largest eigenvalues from the full set
-                        largest_eigenvalues = eigenvalues_full[:max_neurons]
-                        # Check that our limited set matches these
-                        self.assertAllClose(eigenvalues, largest_eigenvalues,
-                                          msg=f"Selected eigenvalues should be the largest {max_neurons} from the full set")
-
 
     def test_add_parameters_shape_mismatch_error(self):
         """

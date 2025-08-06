@@ -77,7 +77,6 @@ def compute_optimal_added_parameters(
     tuple[torch.Tensor, torch.Tensor, torch.Tensor] in (k, s) (t, k) (k,)
         optimal added weights alpha, omega and eigenvalues lambda
     """
-    # matrix_n = matrix_n.t()
     s_1, s_2 = matrix_s.shape
     assert s_1 == s_2, "The input matrix S must be square."
     n_1, n_2 = matrix_n.shape
@@ -93,8 +92,6 @@ def compute_optimal_added_parameters(
             f"% of non-zero elements: {100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
         )
         matrix_s = (matrix_s + matrix_s.t()) / 2
-
-    # assert torch.allclose(matrix_s, matrix_s.t()), "The input matrix S must be symmetric."
 
     # compute the square root of the inverse of S
     matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
