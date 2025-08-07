@@ -7,6 +7,10 @@ from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
 
 
+# Constants for gradient computation
+GRADIENT_COMPUTATION_EPSILON = 1e-5  # Small perturbation for gradient computation
+
+
 class LinearMergeGrowingModule(MergeGrowingModule):
     def __init__(
         self,
@@ -358,11 +362,11 @@ class LinearGrowingModule(GrowingModule):
         """
         if isinstance(self.previous_module, GrowingModule):
             return torch.func.grad(self.previous_module.post_layer_function)(
-                torch.tensor(1e-5)
+                torch.tensor(GRADIENT_COMPUTATION_EPSILON)
             )
         elif isinstance(self.previous_module, MergeGrowingModule):
             return torch.func.grad(self.previous_module.post_merge_function)(
-                torch.tensor([1e-5])
+                torch.tensor(GRADIENT_COMPUTATION_EPSILON)
             )
         else:
             raise NotImplementedError(
@@ -581,7 +585,9 @@ class LinearGrowingModule(GrowingModule):
                 torch.einsum(
                     "ij,ik->jk",
                     torch.flatten(self.input, 0, -2),
-                    torch.flatten(self.next_module.projected_desired_update(), 0, -2),
+                    torch.flatten(
+                        self.next_module.projected_v_goal(self.next_module.input), 0, -2
+                    ),
                 ),
                 torch.tensor(self.input.shape[:-1]).prod().int().item(),
             )
@@ -705,9 +711,9 @@ class LinearGrowingModule(GrowingModule):
             extension of the weight matrix of the layer if None,
             the layer is extended with zeros
             should be of shape:
-            - (out_features, in_features + added_in_features) if added_in_features > 0
-            - (out_features + added_out_features, in_features) if added_out_features > 0
-        bias_extension: torch.Tensor of shape (out_features + added_out_features,)
+            - (out_features, added_in_features) if added_in_features > 0
+            - (added_out_features, in_features) if added_out_features > 0
+        bias_extension: torch.Tensor of shape (added_out_features,)
             extension of the bias vector of the layer if None,
             the layer is extended with zeros
         added_in_features: int >= 0
@@ -737,7 +743,7 @@ class LinearGrowingModule(GrowingModule):
                     f"but got {matrix_extension.shape}"
                 )
             self.layer_in_extension(
-                weight=torch.cat((self.weight, matrix_extension), dim=1)
+                weight=matrix_extension,
             )
 
         if added_out_features > 0:
@@ -754,16 +760,14 @@ class LinearGrowingModule(GrowingModule):
             if bias_extension is None:
                 bias_extension = torch.zeros(added_out_features, device=self.device)
             else:
-                assert bias_extension.shape == (
-                    self.out_features + added_out_features,
-                ), (
-                    f"bias_extension should have shape {(self.out_features + added_out_features,)}, "
+                assert bias_extension.shape == (added_out_features,), (
+                    f"bias_extension should have shape {(added_out_features,)}, "
                     f"but got {bias_extension.shape}"
                 )
 
             self.layer_out_extension(
-                torch.cat((self.weight, matrix_extension), dim=0),
-                bias=torch.cat((self.bias, bias_extension), dim=0),
+                matrix_extension,
+                bias=bias_extension,
             )
 
         warn(

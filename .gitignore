@@ -193,3 +193,6 @@ my
 temp
 dataset
 logs
+
+# Local development tools
+.github/chatmodes/
