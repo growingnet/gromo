@@ -245,15 +245,98 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        return_deltas: bool = False,
+        force_pseudo_inverse: bool = False,
+    ) -> list[tuple[torch.Tensor, torch.Tensor]] | None:
+        """
+        Compute the optimal delta for each previous layer using current S and M tensors.
+
+        dW* = M S[-1]^-1 (if needed we use the pseudo-inverse)
+
+        Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
+
+        Parameters
+        ----------
+        update: bool
+            if True update the optimal delta layer attribute
+        return_deltas: bool
+            if True return the deltas
+        force_pseudo_inverse: bool
+            if True, use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible
+
+        Returns
+        -------
+        list[tuple[torch.Tensor, torch.Tensor]] | None
+            optimal delta for the weights and the biases if needed
+        """
+        assert (
+            self.previous_tensor_m is not None
+        ), f"No previous tensor M for {self.name}."
+        previous_tensor_s = self.previous_tensor_s()
+        previous_tensor_m = self.previous_tensor_m()
+        assert previous_tensor_s.shape[0] == self.total_in_features, (
+            f"The inverse of S should have the same number of features as the input "
+            f"of all previous modules. Expected {self.total_in_features}. Got {previous_tensor_s.shape[0]}."
+        )
+        assert previous_tensor_m.shape[0] == self.total_in_features, (
+            f"The tensor M should have the same number of features as the input of "
+            f"all previous modules. Expected {self.total_in_features}. Got {previous_tensor_m.shape[0]}."
+        )
+        assert previous_tensor_m.shape[1] == self.in_features, (
+            f"The tensor M should have the same number of output features as the layer. "
+            f"Expected {self.in_features}. Got {previous_tensor_m.shape[1]}."
+        )
+        if not force_pseudo_inverse:
+            try:
+                delta = torch.linalg.solve(previous_tensor_s, previous_tensor_m).t()
+            except torch.linalg.LinAlgError:
+                force_pseudo_inverse = True
+                # delta = torch.linalg.lstsq(tensor_s, previous_tensor_m).solution.t()
+                # do not use lstsq because it does not work with the GPU
+                warnings.warn(
+                    f"Using the pseudo-inverse for the computation of the optimal delta "
+                    f"for {self.name}."
+                )
+        if force_pseudo_inverse:
+            delta = (torch.linalg.pinv(previous_tensor_s) @ previous_tensor_m).t()
+
+        deltas = []
+        current_index = 0
+        for module in self.previous_modules:
+            delta_w = delta[:, current_index : current_index + module.in_features]
+            if module.use_bias:
+                delta_b = delta[:, current_index + module.in_features]
+            else:
+                delta_b = None
+
+            # change the shape of the delta_w and delta_b to match the layer
+            delta_w = delta_w.reshape(*module.weight.shape)
+            if update:
+                module.optimal_delta_layer = module.layer_of_tensor(delta_w, delta_b)
+            if return_deltas:
+                deltas.append((delta_w, delta_b))
+
+            current_index += module.in_features + module.use_bias
+
+        if return_deltas:
+            return deltas
+        else:
+            return None
+
     def init_computation(self) -> None:
         """
         Initialize the computation of the optimal added parameters.
         """
         self.store_input = True
         self.store_activity = True
+        self.tensor_s.init()
         for module in self.previous_modules:
             module.store_input = True
-        self.tensor_s.init()
+            module.store_pre_activity = True
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.init()
         if self.previous_tensor_m is not None:
@@ -275,9 +358,10 @@ class MergeGrowingModule(torch.nn.Module):
         """
         self.store_input = False
         self.store_activity = False
+        self.tensor_s.reset()
         for module in self.previous_modules:
             module.store_input = False
-        self.tensor_s.reset()
+            module.store_pre_activity = False
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.reset()
         if self.previous_tensor_m is not None:
@@ -293,7 +377,13 @@ class MergeGrowingModule(torch.nn.Module):
         self.eigenvalues_extension = None
         self.activity = None
         self.input = None
-        # TODO: include_previous
+
+        if include_previous:
+            for previous_module in self.previous_modules:
+                if isinstance(previous_module, GrowingModule):
+                    previous_module.delete_update(
+                        include_previous=False, include_output=True
+                    )
 
     def compute_optimal_delta(
         self,
@@ -1488,7 +1578,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.init()
             self.tensor_s_growth.init()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.init_computation()
         else:
             raise NotImplementedError
 
@@ -1505,7 +1595,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.update()
             self.tensor_s_growth.update()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.update_computation()
         else:
             raise NotImplementedError
 
@@ -1523,6 +1613,10 @@ class GrowingModule(torch.nn.Module):
             self.tensor_m_prev.reset()
             self.cross_covariance.reset()
             self.tensor_s_growth.reset()
+        elif isinstance(self.previous_module, MergeGrowingModule):
+            self.previous_module.reset_computation()
+        else:
+            raise NotImplementedError
 
     def delete_update(
         self,
