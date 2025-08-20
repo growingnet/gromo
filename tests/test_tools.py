@@ -1,6 +1,7 @@
 import contextlib
 import io
 import unittest.mock
+import warnings
 from unittest import TestCase, main
 
 import torch
@@ -11,6 +12,7 @@ from gromo.utils.tools import (
     compute_optimal_added_parameters,
     compute_output_shape_conv,
     create_bordering_effect_convolution,
+    optimal_delta,
     sqrt_inverse_matrix_semi_positive,
 )
 from tests.torch_unittest import TorchTestCase
@@ -552,6 +554,219 @@ class TestTools(TorchTestCase):
             self.assertIn("matrix_n.shape=", output)
             self.assertIn("matrix_s_inverse_sqrt.min()=", output)
             self.assertIn("matrix_p.min()=", output)
+
+    @unittest_parametrize(
+        ({"force_pseudo_inverse": False}, {"force_pseudo_inverse": True})
+    )
+    def test_compute_optimal_delta_basic_functionality(
+        self, force_pseudo_inverse: bool = False
+    ):
+        """Test basic functionality of compute_optimal_delta with normal and forced pseudo-inverse."""
+        # Create test matrices
+        tensor_s = torch.eye(3) * 2.0
+        tensor_m = torch.randn(3, 2)
+
+        # Test computation with either normal or forced pseudo-inverse
+        delta, decrease = optimal_delta(
+            tensor_s, tensor_m, force_pseudo_inverse=force_pseudo_inverse
+        )
+
+        # Verify output shapes
+        self.assertEqual(delta.shape, (2, 3))  # M.T shape
+        self.assertIsInstance(decrease, torch.Tensor)
+
+        # Verify numerical properties
+        self.assertFalse(torch.isnan(delta).any())
+        if not isinstance(decrease, torch.Tensor):
+            decrease = torch.tensor(decrease)
+        self.assertFalse(torch.isnan(decrease).any())
+
+    def test_compute_optimal_delta_dtype_conversion(self):
+        """Test dtype conversion in compute_optimal_delta."""
+        # Create test matrices with same dtype
+        tensor_s = torch.eye(3, dtype=torch.float64) * 2.0
+        tensor_m = torch.randn(3, 2, dtype=torch.float64)
+
+        # Test with specified dtype conversion
+        delta, decrease = optimal_delta(tensor_s, tensor_m, dtype=torch.float32)
+
+        # Should preserve original dtype in output
+        self.assertEqual(delta.dtype, torch.float64)  # Original tensor dtype
+        # parameter_update_decrease should also be converted back to original dtype
+        self.assertEqual(decrease.dtype, torch.float64)
+
+    def test_compute_optimal_delta_dtype_assertion(self):
+        """Test that compute_optimal_delta raises AssertionError for mismatched dtypes."""
+        # Create test matrices with different dtypes
+        tensor_s = torch.eye(3, dtype=torch.float32) * 2.0
+        tensor_m = torch.randn(3, 2, dtype=torch.float64)
+
+        # Should raise AssertionError
+        with self.assertRaises(AssertionError) as context:
+            optimal_delta(tensor_s, tensor_m)
+
+        # Verify the error message mentions dtype mismatch
+        self.assertIn("same dtype", str(context.exception))
+        self.assertIn("tensor_s.dtype", str(context.exception))
+        self.assertIn("tensor_m.dtype", str(context.exception))
+
+    def test_compute_optimal_delta_decrease_dtype_preservation(self):
+        """Test that parameter_update_decrease dtype is preserved."""
+        # Test with float32
+        tensor_s = torch.eye(3, dtype=torch.float32) * 2.0
+        tensor_m = torch.randn(3, 2, dtype=torch.float32)
+
+        delta, decrease = optimal_delta(tensor_s, tensor_m)
+
+        self.assertEqual(delta.dtype, torch.float32)
+        if isinstance(decrease, torch.Tensor):
+            self.assertEqual(decrease.dtype, torch.float32)
+
+        # Test with float64
+        tensor_s = torch.eye(3, dtype=torch.float64) * 2.0
+        tensor_m = torch.randn(3, 2, dtype=torch.float64)
+
+        delta, decrease = optimal_delta(tensor_s, tensor_m)
+
+        self.assertEqual(delta.dtype, torch.float64)
+        if isinstance(decrease, torch.Tensor):
+            self.assertEqual(decrease.dtype, torch.float64)
+
+    def test_compute_optimal_delta_linalg_error_fallback(self):
+        """Test LinAlgError fallback in compute_optimal_delta."""
+        tensor_s = torch.eye(3) * 2.0
+        tensor_m = torch.randn(3, 2)
+
+        with (
+            unittest.mock.patch(
+                "torch.linalg.solve", side_effect=torch.linalg.LinAlgError("Mocked error")
+            ),
+            unittest.mock.patch("gromo.utils.tools.warn") as mock_warn,
+        ):
+            delta, decrease = optimal_delta(tensor_s, tensor_m)
+
+            # Should have called warning about pseudo-inverse
+            mock_warn.assert_called()
+            warn_calls = [str(call) for call in mock_warn.call_args_list]
+            self.assertTrue(any("pseudo-inverse" in call for call in warn_calls))
+
+        # Should still produce valid results
+        self.assertEqual(delta.shape, (2, 3))
+        self.assertFalse(torch.isnan(delta).any())
+
+    def test_compute_optimal_delta_negative_decrease_warning(self):
+        """Test warning when parameter_update_decrease is negative.
+
+        Note: This is a defensive test for a theoretically rare case.
+        Due to the mathematical properties of the computation, negative decrease
+        should be very rare with well-conditioned positive definite matrices.
+        """
+        # Create matrices and force a scenario by mocking the trace computation
+        tensor_s = torch.eye(2, dtype=torch.float32)
+        tensor_m = torch.ones(2, 2, dtype=torch.float32)
+
+        # Mock torch.trace to return a negative value
+        with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
+            with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
+                delta, decrease = optimal_delta(tensor_s, tensor_m)
+
+                # The warning should be called
+                mock_warn.assert_called()
+
+                # Check that the specific warning about negative decrease was called
+                warning_calls = [
+                    call
+                    for call in mock_warn.call_args_list
+                    if len(call[0]) > 0
+                    and "parameter update decrease should be positive" in call[0][0]
+                ]
+                self.assertTrue(
+                    len(warning_calls) > 0, "Should warn about negative decrease"
+                )
+                warn_calls = [str(call) for call in mock_warn.call_args_list]
+                self.assertTrue(any("should be positive" in call for call in warn_calls))
+
+    def test_compute_optimal_delta_negative_decrease_float64_retry(self):
+        """Test retry with float64 when negative decrease occurs."""
+        tensor_s = torch.eye(2, dtype=torch.float32)
+        tensor_m = torch.ones(2, 2, dtype=torch.float32)
+
+        # Mock torch.trace to return negative value, triggering the retry mechanism
+        with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
+            with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
+                delta, decrease = optimal_delta(tensor_s, tensor_m)
+
+                # Should warn about negative decrease and trying float64
+                warn_calls = [str(call) for call in mock_warn.call_args_list]
+                self.assertTrue(
+                    any(
+                        "parameter update decrease should be positive" in call
+                        for call in warn_calls
+                    )
+                )
+                self.assertTrue(
+                    any(
+                        "Trying to use the pseudo-inverse with torch.float64" in call
+                        for call in warn_calls
+                    )
+                )
+
+    def test_compute_optimal_delta_negative_decrease_zero_fallback(self):
+        """Test zero fallback when pseudo-inverse also gives negative decrease."""
+        tensor_s = torch.eye(2) * 0.1
+        tensor_m = -torch.ones(2, 2) * 10.0
+
+        with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
+            with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
+                delta, decrease = optimal_delta(
+                    tensor_s, tensor_m, force_pseudo_inverse=True
+                )
+
+                # Should warn about setting delta to zero
+                warn_calls = [str(call) for call in mock_warn.call_args_list]
+                self.assertTrue(
+                    any("set" in call and "zero" in call for call in warn_calls)
+                )
+
+                # Delta should be all zeros
+                self.assertTrue(torch.allclose(delta, torch.zeros_like(delta)))
+
+    def test_compute_optimal_delta_assertion_checks(self):
+        """Test assertion checks in compute_optimal_delta."""
+        tensor_s = torch.eye(3)
+        tensor_m = torch.randn(3, 2)
+
+        # Test NaN assertion
+        with unittest.mock.patch(
+            "torch.linalg.solve", return_value=torch.full(tensor_m.shape, float("nan"))
+        ):
+            with self.assertRaises(AssertionError) as context:
+                optimal_delta(tensor_s, tensor_m)
+            self.assertIn("NaN values", str(context.exception))
+
+    def test_compute_optimal_delta_matrix_dimensions(self):
+        """Test compute_optimal_delta with various matrix dimensions."""
+        test_cases = [
+            (2, 3),  # Small matrices
+            (5, 4),  # Medium matrices
+            (1, 1),  # Minimal case
+            (3, 1),  # Single output
+        ]
+
+        for s_dim, m_cols in test_cases:
+            with self.subTest(s_dim=s_dim, m_cols=m_cols):
+                tensor_s = torch.eye(s_dim) + 0.1 * torch.randn(s_dim, s_dim)
+                tensor_s = tensor_s @ tensor_s.T  # Ensure positive definite
+                tensor_m = torch.randn(s_dim, m_cols)
+
+                delta, decrease = optimal_delta(tensor_s, tensor_m)
+
+                self.assertEqual(delta.shape, (m_cols, s_dim))
+                self.assertFalse(torch.isnan(delta).any())
+                if isinstance(decrease, torch.Tensor):
+                    self.assertFalse(torch.isnan(decrease).any())
+                else:
+                    self.assertFalse(torch.isnan(torch.tensor(decrease)))
 
 
 if __name__ == "__main__":

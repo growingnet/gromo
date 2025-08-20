@@ -1,3 +1,4 @@
+import unittest.mock
 import warnings
 from unittest import TestCase, main
 
@@ -873,6 +874,165 @@ class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
         prev_module.reset_computation()
 
         self.assertTrue(True)  # If we get here, the lines were executed
+
+
+class TestMergeGrowingModuleComputeOptimalDelta(TorchTestCase):
+    """Comprehensive tests for MergeGrowingModule.compute_optimal_delta method."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        torch.manual_seed(0)
+
+        # Create a simpler setup with only one previous module for easier testing
+        self.in_features = 3
+        self.out_features = 3
+        self.merge_module = LinearMergeGrowingModule(
+            in_features=self.in_features, device=global_device(), name="test_merge"
+        )
+
+        # Create one previous module for simpler setup
+        self.prev_module = LinearGrowingModule(
+            in_features=2,
+            out_features=self.in_features,  # Must match merge module in_features
+            device=global_device(),
+            name="prev1",
+        )
+
+        # Set up the merge module with previous modules
+        self.merge_module.set_previous_modules([self.prev_module])
+
+    def _setup_computation_with_data(self, num_passes=3):
+        """Helper to set up computation with actual data flow."""
+        # Initialize computations
+        self.prev_module.init_computation()
+        self.merge_module.init_computation()
+
+        # Run multiple forward/backward passes to build up statistics
+        for _ in range(num_passes):
+            # Clear gradients
+            for p in self.prev_module.parameters():
+                if p.grad is not None:
+                    p.grad.zero_()
+
+            # Generate test inputs
+            x = torch.randn(5, 2, device=global_device(), requires_grad=True)
+
+            # Forward pass through previous module
+            output = self.prev_module(x)
+
+            # Forward pass through merge module
+            merge_output = self.merge_module(output)
+
+            # Backward pass to create gradients
+            loss = torch.norm(merge_output)
+            loss.backward(retain_graph=True)
+
+            # Update statistics
+            self.prev_module.update_computation()
+            self.merge_module.update_computation()
+
+    def test_compute_optimal_delta_basic_functionality(self):
+        """Test basic compute_optimal_delta functionality."""
+        self._setup_computation_with_data()
+
+        # Test basic call - should return None by default
+        result = self.merge_module.compute_optimal_delta()
+        self.assertIsNone(result)
+
+        # Verify that previous modules now have optimal_delta_layer set
+        self.assertIsNotNone(self.prev_module.optimal_delta_layer)
+
+    def test_compute_optimal_delta_return_deltas(self):
+        """Test compute_optimal_delta with return_deltas=True."""
+        self._setup_computation_with_data()
+
+        # Test with return_deltas=True
+        deltas = self.merge_module.compute_optimal_delta(return_deltas=True)
+
+        # Should return list of tuples
+        self.assertIsInstance(deltas, list)
+        assert deltas is not None  # Type narrowing for mypy
+        self.assertEqual(len(deltas), 1)  # One previous module
+
+        # Check delta tuple
+        delta_w, delta_b = deltas[0]
+        prev_module = self.merge_module.previous_modules[0]
+
+        # Check weight delta shape
+        expected_shape = (prev_module.out_features, prev_module.in_features)
+        self.assertEqual(delta_w.shape, expected_shape)
+        self.assertIsInstance(delta_w, torch.Tensor)
+
+        # Check bias delta
+        if prev_module.use_bias:
+            self.assertIsNotNone(delta_b)
+            self.assertEqual(delta_b.shape, (prev_module.out_features,))
+        else:
+            self.assertIsNone(delta_b)
+
+    def test_compute_optimal_delta_no_update(self):
+        """Test compute_optimal_delta with update=False."""
+        self._setup_computation_with_data()
+
+        # Store original optimal_delta_layer state
+        orig_delta = self.prev_module.optimal_delta_layer
+
+        # Call with update=False
+        result = self.merge_module.compute_optimal_delta(update=False)
+
+        # Should not have updated the optimal_delta_layer
+        self.assertEqual(self.prev_module.optimal_delta_layer, orig_delta)
+
+    def test_compute_optimal_delta_force_pseudo_inverse(self):
+        """Test compute_optimal_delta with force_pseudo_inverse=True."""
+        self._setup_computation_with_data()
+
+        # Test with forced pseudo-inverse
+        deltas = self.merge_module.compute_optimal_delta(
+            return_deltas=True, force_pseudo_inverse=True
+        )
+
+        # Should still produce valid results
+        self.assertIsInstance(deltas, list)
+        assert deltas is not None  # Type narrowing for mypy
+        self.assertEqual(len(deltas), 1)
+
+        # Verify deltas are tensors with correct shapes
+        delta_w, delta_b = deltas[0]
+        self.assertIsInstance(delta_w, torch.Tensor)
+        self.assertFalse(torch.isnan(delta_w).any())
+
+    def test_compute_optimal_delta_assertions(self):
+        """Test assertion checks in compute_optimal_delta."""
+        # Test without proper setup (no tensor statistics)
+        with self.assertRaises((AssertionError, ValueError)) as context:
+            self.merge_module.compute_optimal_delta()
+        # Should get either "No previous tensor S" or "tensor statistic has not been computed"
+        self.assertTrue(
+            "No previous tensor S" in str(context.exception)
+            or "tensor statistic has not been computed" in str(context.exception)
+        )
+
+    def test_compute_optimal_delta_matrix_shape_assertions(self):
+        """Test matrix shape assertion checks."""
+        self._setup_computation_with_data()
+
+        # Test actual assertion error propagation by making tools.compute_optimal_delta fail
+        original_func = self.merge_module.compute_optimal_delta
+
+        def mock_method(*args, **kwargs):
+            # Call original but with modified tensor to trigger assertion
+            with unittest.mock.patch.object(
+                self.merge_module, "previous_tensor_s"
+            ) as mock_s:
+                mock_s.return_value = torch.randn(10, 10)  # Wrong size
+                return original_func(*args, **kwargs)
+
+        with unittest.mock.patch.object(
+            self.merge_module, "compute_optimal_delta", side_effect=mock_method
+        ):
+            with self.assertRaises(AssertionError):
+                self.merge_module.compute_optimal_delta()
 
 
 if __name__ == "__main__":
