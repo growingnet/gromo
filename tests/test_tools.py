@@ -1,3 +1,6 @@
+import contextlib
+import io
+import unittest.mock
 from unittest import TestCase, main
 
 import torch
@@ -5,7 +8,9 @@ import torch
 from gromo.utils.tools import (
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
+    compute_optimal_added_parameters,
     compute_output_shape_conv,
+    create_bordering_effect_convolution,
     sqrt_inverse_matrix_semi_positive,
 )
 from tests.torch_unittest import TorchTestCase
@@ -283,6 +288,270 @@ class TestTools(TorchTestCase):
             atol=1e-6,
             message=f"Error: {torch.abs(z_th - z_via_mask).max().item():.2e}",
         )
+
+    def test_compute_optimal_added_parameters(self):
+        """Test compute_optimal_added_parameters function comprehensively"""
+        torch.manual_seed(42)  # For reproducible tests
+
+        # Test case 1: Simple case with known solution
+        matrix_s = torch.eye(3) * 2.0  # Simple diagonal matrix
+        matrix_n = torch.randn(3, 2)
+
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, numerical_threshold=1e-10, statistical_threshold=1e-6
+        )
+
+        # Check output shapes
+        self.assertEqual(alpha.shape[1], matrix_s.shape[0])  # alpha: (k, s)
+        self.assertEqual(omega.shape[0], matrix_n.shape[1])  # omega: (t, k)
+        self.assertEqual(eigenvalues.shape[0], alpha.shape[0])  # lambda: (k,)
+        self.assertEqual(alpha.shape[0], omega.shape[1])  # k dimensions match
+
+        # Test case 2: Symmetric positive definite matrix
+        matrix_s = torch.tensor([[4.0, 1.0], [1.0, 3.0]])
+        matrix_n = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, numerical_threshold=1e-12, statistical_threshold=1e-8
+        )
+
+        # Eigenvalues should be positive (since we're dealing with SVD)
+        self.assertTrue(torch.all(eigenvalues >= 0))
+
+        # Test case 3: With maximum_added_neurons constraint
+        matrix_s = torch.eye(4) * 3.0
+        matrix_n = torch.randn(4, 5)
+        max_neurons = 2
+
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, maximum_added_neurons=max_neurons
+        )
+
+        # Should respect the maximum constraint
+        self.assertLessEqual(alpha.shape[0], max_neurons)
+        self.assertLessEqual(omega.shape[1], max_neurons)
+        self.assertLessEqual(eigenvalues.shape[0], max_neurons)
+
+        # Test case 4: Non-symmetric matrix (should trigger warning)
+        matrix_s_nonsym = torch.tensor([[1.0, 0.5], [0.3, 1.0]])
+        matrix_n = torch.tensor([[1.0], [1.0]])
+
+        with self.assertWarns(UserWarning):
+            alpha, omega, eigenvalues = compute_optimal_added_parameters(
+                matrix_s_nonsym, matrix_n
+            )
+
+        # Should still produce valid outputs
+        self.assertEqual(alpha.shape[1], matrix_s_nonsym.shape[0])
+        self.assertEqual(omega.shape[0], matrix_n.shape[1])
+
+        # Test case 5: Edge case with very small singular values
+        matrix_s = torch.eye(2) * 1e-8  # Very small values
+        matrix_n = torch.randn(2, 2)
+
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, numerical_threshold=1e-10, statistical_threshold=1e-6
+        )
+
+        # Should handle small values gracefully
+        self.assertFalse(torch.any(torch.isnan(alpha)))
+        self.assertFalse(torch.any(torch.isnan(omega)))
+        self.assertFalse(torch.any(torch.isnan(eigenvalues)))
+
+    def test_compute_optimal_added_parameters_error_cases(self):
+        """Test error handling in compute_optimal_added_parameters"""
+
+        # Test incompatible matrix shapes
+        matrix_s = torch.eye(3)
+        matrix_n = torch.randn(2, 4)  # Wrong shape
+
+        with self.assertRaises(AssertionError):
+            compute_optimal_added_parameters(matrix_s, matrix_n)
+
+        # Test non-square S matrix
+        matrix_s = torch.randn(3, 4)  # Not square
+        matrix_n = torch.randn(4, 2)
+
+        with self.assertRaises(AssertionError):
+            compute_optimal_added_parameters(matrix_s, matrix_n)
+
+    def test_create_bordering_effect_convolution(self):
+        """Test create_bordering_effect_convolution function"""
+        # Test basic functionality
+        channels = 12  # 2 * 3 * 2 (in_channels * kernel_h * kernel_w)
+        conv = torch.nn.Conv2d(2, 4, (3, 2), padding=(1, 0))
+
+        identity_conv = create_bordering_effect_convolution(channels, conv)
+
+        # Check properties
+        self.assertEqual(identity_conv.in_channels, channels)
+        self.assertEqual(identity_conv.out_channels, channels)
+        self.assertEqual(identity_conv.groups, channels)
+        self.assertEqual(identity_conv.kernel_size, conv.kernel_size)
+        self.assertEqual(identity_conv.padding, conv.padding)
+        self.assertEqual(identity_conv.stride, conv.stride)
+        self.assertEqual(identity_conv.dilation, conv.dilation)
+        self.assertIsNone(identity_conv.bias)
+
+        # Check weight initialization (should be identity in center)
+        mid_h, mid_w = conv.kernel_size[0] // 2, conv.kernel_size[1] // 2
+        center_weights = identity_conv.weight.data[:, 0, mid_h, mid_w]
+        self.assertTrue(torch.allclose(center_weights, torch.ones(channels)))
+
+        # Test error cases
+        with self.assertRaises(ValueError):
+            create_bordering_effect_convolution(-1, conv)  # Invalid channels
+
+        with self.assertRaises(ValueError):
+            create_bordering_effect_convolution(0, conv)  # Invalid channels
+
+        with self.assertRaises(TypeError):
+            create_bordering_effect_convolution(12, "not_a_conv")  # Wrong type
+
+    def test_sqrt_inverse_matrix_semi_positive_preferred_linalg(self):
+        """Test sqrt_inverse_matrix_semi_positive with preferred_linalg_library parameter (Line 35)"""
+        matrix = 4 * torch.eye(3)
+
+        # Test with preferred_linalg_library set to None (should work)
+        result = sqrt_inverse_matrix_semi_positive(matrix, preferred_linalg_library=None)
+        expected = sqrt_inverse_matrix_semi_positive(matrix)
+        self.assertTrue(torch.allclose(result, expected))
+
+        # Test with preferred_linalg_library set to "magma"
+        if torch.cuda.is_available():
+            matrix_cuda = matrix.cuda()
+            result_magma = sqrt_inverse_matrix_semi_positive(
+                matrix_cuda, preferred_linalg_library="magma"
+            )
+            # Should execute line: torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
+            self.assertIsNotNone(result_magma)
+            self.assertEqual(result_magma.device.type, "cuda")
+
+    def test_sqrt_inverse_matrix_semi_positive_linalg_error_cusolver(self):
+        """Test LinAlgError handling with cusolver (Lines 38-45)"""
+        # Create a simple test matrix
+        matrix = 2 * torch.eye(3)
+
+        # Mock the LinAlgError and the backend setting to test cusolver path
+        import unittest.mock
+
+        with unittest.mock.patch("torch.linalg.eigh") as mock_eigh:
+            with unittest.mock.patch.object(
+                torch.backends.cuda, "preferred_linalg_library"
+            ):
+                # Test cusolver specific error handling
+                mock_eigh.side_effect = torch.linalg.LinAlgError("Mocked error")
+
+                # Test cusolver specific error handling
+                with self.assertRaises(ValueError) as context:
+                    sqrt_inverse_matrix_semi_positive(
+                        matrix, preferred_linalg_library="cusolver"
+                    )
+
+                # Should trigger if cusolver, raise ValueError
+                error_msg = str(context.exception)
+                self.assertIn("CUDA < 12.1", error_msg)
+                self.assertIn("magma", error_msg)
+
+    def test_sqrt_inverse_matrix_semi_positive_linalg_error_fallback(self):
+        """Test LinAlgError handling fallback (Line 45)"""
+        # Create a matrix for testing
+        matrix = 2 * torch.eye(3)
+
+        # Mock the LinAlgError to test the fallback error handling path
+        import unittest.mock
+
+        with unittest.mock.patch("torch.linalg.eigh") as mock_eigh:
+            original_error = torch.linalg.LinAlgError("Mocked original error")
+            mock_eigh.side_effect = original_error
+
+            # Test the else branch in the exception handler
+            # We'll patch the preferred_linalg_library check to simulate non-cusolver
+            with unittest.mock.patch.object(
+                torch.backends.cuda, "preferred_linalg_library"
+            ):
+                with self.assertRaises(torch.linalg.LinAlgError) as context:
+                    sqrt_inverse_matrix_semi_positive(
+                        matrix, preferred_linalg_library="default"  # Not cusolver
+                    )
+                self.assertEqual(str(context.exception), "Mocked original error")
+
+    def test_compute_optimal_added_parameters_svd_error_handling(self):
+        """Test SVD LinAlgError handling and debug output"""
+        matrix_s = torch.eye(3) * 2.0
+        matrix_n = torch.randn(3, 2)
+
+        # Mock the SVD to trigger LinAlgError on first call, succeed on second
+        # Create a proper successful result with correct values by computing SVD on the actual matrix_p
+        # Replicate the computation of matrix_p as in compute_optimal_added_parameters
+        matrix_s_inverse_sqrt = torch.linalg.inv(torch.linalg.cholesky(matrix_s))
+        matrix_p = matrix_s_inverse_sqrt @ matrix_n
+        u_real, s_real, vt_real = torch.linalg.svd(matrix_p, full_matrices=False)
+        successful_result = (u_real, s_real, vt_real)
+
+        # Capture stdout to verify debug prints
+        captured_output = io.StringIO()
+
+        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
+            mock_svd.side_effect = [
+                torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
+                successful_result,  # Second call succeeds
+            ]
+
+            with unittest.mock.patch("sys.stdout", captured_output):
+                alpha, omega, eigenvalues = compute_optimal_added_parameters(
+                    matrix_s, matrix_n
+                )
+
+            # Verify debug output was printed
+            output = captured_output.getvalue()
+            self.assertIn("Warning: An error occurred during the SVD computation", output)
+            self.assertIn("matrix_s:", output)
+            self.assertIn("matrix_n:", output)
+            self.assertIn("matrix_s_inverse_sqrt:", output)
+            self.assertIn("matrix_p:", output)
+
+            # Verify the function still succeeded after retry
+            self.assertIsNotNone(alpha)
+            self.assertIsNotNone(omega)
+            self.assertIsNotNone(eigenvalues)
+
+            # Verify SVD was called twice (first failed, second succeeded)
+            self.assertEqual(mock_svd.call_count, 2)
+
+    def test_compute_optimal_added_parameters_matrix_shapes_in_error(self):
+        """Test that matrix information is correctly printed in SVD error scenario"""
+        matrix_s = torch.eye(2) * 3.0
+        matrix_n = torch.randn(2, 4)
+
+        # Create successful result BEFORE mocking
+        dummy_matrix = torch.randn(2, 4)  # Same shape as matrix_p would be
+        u_real, s_real, vt_real = torch.linalg.svd(dummy_matrix, full_matrices=False)
+        successful_result = (u_real, s_real, vt_real)
+
+        # Capture stdout to verify matrix information is printed
+        captured_output = io.StringIO()
+
+        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
+            mock_svd.side_effect = [
+                torch.linalg.LinAlgError("Test error"),
+                successful_result,
+            ]
+
+            with contextlib.redirect_stdout(captured_output):
+                compute_optimal_added_parameters(matrix_s, matrix_n)
+
+            output = captured_output.getvalue()
+
+            # Verify specific matrix information is printed
+            self.assertIn("matrix_s.min()=", output)
+            self.assertIn("matrix_s.max()=", output)
+            self.assertIn("matrix_s.shape=", output)
+            self.assertIn("matrix_n.min()=", output)
+            self.assertIn("matrix_n.max()=", output)
+            self.assertIn("matrix_n.shape=", output)
+            self.assertIn("matrix_s_inverse_sqrt.min()=", output)
+            self.assertIn("matrix_p.min()=", output)
 
 
 if __name__ == "__main__":

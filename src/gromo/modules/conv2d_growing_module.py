@@ -439,7 +439,6 @@ class Conv2dGrowingModule(GrowingModule):
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
-        s_growth_is_needed: bool = False,
     ) -> None:
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -470,11 +469,9 @@ class Conv2dGrowingModule(GrowingModule):
             ),
             device=device,
             name=name,
-            s_growth_is_needed=s_growth_is_needed,
         )
         self.kernel_size = self.layer.kernel_size
 
-        # TODO: update S_growth shape in layer_in_extension
         self.input_size: tuple[int, int] = input_size
         self.use_bias = use_bias
 
@@ -934,25 +931,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             allow_growing=allow_growing,
             device=device,
             name=name,
-            s_growth_is_needed=False,
         )
         self.bordering_convolution = None
-
-    @property
-    def tensor_s_growth(self):
-        """
-        Supercharge tensor_s_growth to redirect to the normal tensor_s as it is the same for Linear layers.
-        """
-        if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}. Thus S growth is not defined."
-            )
-        elif isinstance(self.previous_module, Conv2dGrowingModule):
-            return self.previous_module.tensor_s
-        else:
-            raise NotImplementedError(
-                f"S growth is not implemented yet for {type(self.previous_module)} as previous module."
-            )
 
     def linear_layer_of_tensor(
         self, weight: torch.Tensor, bias: torch.Tensor | None = None
@@ -1184,18 +1164,18 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             self.delta_raw, torch.Tensor
         ), f"The optimal delta should be a tensor for {self.name}, is {type(self.delta_raw)}."
         assert (
-            self.delta_raw.shape[0]
+            self.delta_raw.shape[1]
             == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
             + self.use_bias
         ), (
-            f"The delta should have shape ({self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, ...)"
-            f" but got {self.delta_raw.shape}."
+            f"Expected delta_raw.shape[1] == {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, "
+            f"but got {self.delta_raw.shape[1]} (full shape: {self.delta_raw.shape})."
         )
         assert (
-            self.delta_raw.shape[1] == self.out_channels
-        ), f"The delta should have shape ({self.out_channels}, ...) but got {self.delta_raw.shape}."
+            self.delta_raw.shape[0] == self.out_channels
+        ), f"Expected delta_raw.shape[0] == {self.out_channels}, but got {self.delta_raw.shape[0]}."
         return -self.tensor_m_prev() - torch.einsum(
-            "ab, bc -> ac", self.cross_covariance(), self.delta_raw
+            "ab, cb -> ac", self.cross_covariance(), self.delta_raw
         )
 
     def compute_optimal_added_parameters(
@@ -1205,6 +1185,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1221,6 +1202,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
@@ -1232,6 +1215,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
             dtype=dtype,
+            use_projected_gradient=use_projected_gradient,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -1341,9 +1325,14 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             allow_growing=allow_growing,
             device=device,
             name=name,
-            s_growth_is_needed=True,
         )
         self._mask_tensor_t: torch.Tensor | None = None
+        self._tensor_s_growth = TensorStatistic(
+            None,
+            update_function=self.compute_s_growth_update,
+            device=self.device,
+            name=f"S_growth({name})",
+        )
 
     @property
     def mask_tensor_t(self) -> torch.Tensor:
@@ -1433,7 +1422,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
                     "ixab, icx -> bca",
                     self.masked_unfolded_prev_input,
                     desired_activation,
-                ),
+                ).flatten(start_dim=-2),
                 desired_activation.shape[0],
             )
         elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
@@ -1506,6 +1495,13 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             )
 
     @property
+    def tensor_s_growth(self) -> TensorStatistic:
+        """
+        Override `tensor_s_growth` to redirect to `self._tensor_s_growth` instead of `self.previous_module.tensor_s`.
+        """
+        return self._tensor_s_growth
+
+    @property
     def tensor_n(self) -> torch.Tensor:
         """
         Compute the tensor N for the layer with the current M_-2, C and optimal delta.
@@ -1524,9 +1520,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.delta_raw is not None
         ), f"The optimal delta should be computed before the tensor N for {self.name}."
-        return (
-            -self.tensor_m_prev()
-            - torch.einsum("abe, ce -> bca", self.cross_covariance(), self.delta_raw)
+        return -self.tensor_m_prev() - torch.einsum(
+            "abe, ce -> bca", self.cross_covariance(), self.delta_raw
         ).flatten(start_dim=-2)
 
     def compute_optimal_added_parameters(
@@ -1536,6 +1531,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1552,6 +1548,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
@@ -1563,6 +1561,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
             dtype=dtype,
+            use_projected_gradient=use_projected_gradient,
         )
 
         k = self.eigenvalues_extension.shape[0]
