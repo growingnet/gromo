@@ -85,9 +85,9 @@ class GrowingBlock(GrowingContainer):
         self.device = device
         self.hidden_features = hidden_features
 
-        self.pre_activation = pre_activation
-        self.first_layer: None | GrowingModule = None
-        self.second_layer: None | GrowingModule = None
+        self.pre_activation: torch.nn.Module = pre_activation
+        self.first_layer: GrowingModule = None
+        self.second_layer: GrowingModule = None
         self.downsample = downsample
 
         self.enable_extended_forward = False
@@ -146,7 +146,7 @@ class GrowingBlock(GrowingContainer):
             output tensor
         """
         if self.hidden_features == 0:
-            return torch.zeros_like(x)
+            return x
         else:
             identity = self.downsample(x)
             x = self.pre_activation(x)
@@ -175,9 +175,11 @@ class GrowingBlock(GrowingContainer):
             assert isinstance(
                 self.downsample, torch.nn.Identity
             ), f"The downsample {self.downsample.name} should be identity."
-            self.first_layer._input = self.pre_activation(x).detach()
-            self.second_layer._pre_activity = x
-            self.second_layer._pre_activity.retain_grad()
+            if self.first_layer.store_input:
+                self.first_layer._input = self.pre_activation(x).detach()
+            if self.second_layer.store_pre_activity:
+                self.second_layer._pre_activity = x
+                self.second_layer._pre_activity.retain_grad()
             self.second_layer.tensor_s_growth.updated = False
             self.second_layer.tensor_m_prev.updated = False
             self.second_layer.cross_covariance.updated = False
