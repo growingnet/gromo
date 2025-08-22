@@ -145,17 +145,28 @@ class GrowingBlock(GrowingContainer):
         torch.Tensor
             output tensor
         """
-        if self.hidden_features == 0:
-            return x
-        else:
-            identity = self.downsample(x)
-            x = self.pre_activation(x)
+        identity = self.downsample(x)
+        x = self.pre_activation(x)
+        if self.hidden_features > 0:
             x, x_ext = self.first_layer.extended_forward(x)
             x, _ = self.second_layer.extended_forward(x, x_ext)
             assert (
                 _ is None
             ), f"The output of layer 2 {self.second_layer.name} should not be extended."
+
             return x + identity
+        elif self.first_layer.extended_output_layer is not None:
+            x = self.scaling_factor * self.first_layer.extended_output_layer(x)
+            x = self.first_layer.extended_post_layer_function(x)
+            assert (
+                self.second_layer.extended_input_layer is not None
+            ), f"Second layer {self.second_layer.name} should have an extended output layer."
+            x = self.second_layer.extended_input_layer(x)
+            x = self.second_layer.extended_post_layer_function(x)
+
+            return x + identity
+        else:
+            return identity
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
