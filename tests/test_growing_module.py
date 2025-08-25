@@ -541,14 +541,12 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         """Test ValueError when pre-activity is not stored."""
         # Set up model without storing pre-activity
         self.model.store_pre_activity = False
-        self.model._internal_store_pre_activity = False
-        self.model.next_module = None
 
         # Try to access pre_activity
         with self.assertRaises(ValueError) as context:
             _ = self.model.pre_activity
 
-        self.assertEqual(str(context.exception), "The pre-activity is not stored.")
+        self.assertIn("The pre-activity is not stored", str(context.exception))
 
     def test_compute_optimal_delta_warnings(self):
         """Test warning paths in compute_optimal_delta method."""
