@@ -23,12 +23,12 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         input_size: int | tuple[int, int],
         next_kernel_size: int | tuple[int, int],
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list[GrowingModule | MergeGrowingModule] = None,
-        next_modules: list[GrowingModule | MergeGrowingModule] = None,
+        previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         allow_growing: bool = False,
-        input_volume: int = None,
+        input_volume: int | None = None,
         device: torch.device | None = None,
-        name: str = None,
+        name: str | None = None,
     ) -> None:
         self.use_bias = True
         self.in_channels = in_channels

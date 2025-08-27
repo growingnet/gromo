@@ -192,6 +192,173 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         with self.assertRaises(AssertionError):
             self.merge.set_next_modules([LinearGrowingModule(1, 1)])
 
+    def test_out_channels_and_in_features_warning(self):
+        # out_channels proxies in_channels
+        self.assertEqual(self.merge.out_channels, self.merge.in_channels)
+        # accessing in_features should warn and return in_channels
+        with self.assertWarns(UserWarning):
+            self.assertEqual(self.merge.in_features, self.merge.in_channels)
+
+    def test_output_size_property(self):
+        # output_size should equal input_size after init
+        self.assertEqual(self.merge.output_size, self.merge.input_size)
+
+    def test_padding_stride_dilation_notimplemented_for_invalid_next(self):
+        # create fresh merge instances and directly assign invalid next_modules
+        for prop in ("padding", "stride", "dilation"):
+            merge_fresh = Conv2dMergeGrowingModule(
+                in_channels=self.hidden_channels,
+                input_size=self.prev.out_width,
+                next_kernel_size=self.kernel_size,
+                device=self.device,
+                name=f"merge_{prop}",
+            )
+            # assign a next module that is neither Conv2dGrowingModule nor LinearGrowingModule
+            merge_fresh.next_modules = [torch.nn.ReLU()]
+            with self.assertRaises(NotImplementedError):
+                _ = getattr(merge_fresh, prop)
+
+    def test_unfolded_extended_activity_has_bias_column(self):
+        # conv branch: last channel along dim=1 should be ones when use_bias
+        unfolded = self.merge.unfolded_extended_activity
+        self.assertEqual(unfolded.shape[0], self.batch_size)
+        # bias column appended as last index along dim=1
+        self.assertTrue((unfolded[:, -1, :] == 1).all())
+
+        # linear branch: flattened activity -> last column equals ones
+        self.merge.set_next_modules([LinearGrowingModule(self.merge.out_features, 1)])
+        # ensure activity is flattened as expected by the linear branch
+        self.merge.activity = self.merge.activity.flatten(1)
+        unfolded_lin = self.merge.unfolded_extended_activity
+        self.assertEqual(unfolded_lin.shape[0], self.batch_size)
+        self.assertEqual(
+            unfolded_lin.shape[1], self.merge.out_features + self.merge.use_bias
+        )
+        self.assertTrue((unfolded_lin[:, -1] == 1).all())
+
+    def test_set_next_modules_updates_input_size_and_warns_when_already_sampled(self):
+        # valid conv next should adopt merge.output_size
+        new_next = Conv2dGrowingModule(
+            in_channels=self.merge.out_channels,
+            out_channels=1,
+            kernel_size=self.kernel_size,
+            input_size=(1, 1),
+            device=self.device,
+            name="new_next",
+        )
+        self.merge.set_next_modules([new_next])
+        self.assertEqual(new_next.input_size, self.merge.output_size)
+
+        # simulate non-empty tensor_s to trigger a warning on re-setting next modules
+        if self.merge.tensor_s is not None:
+            self.merge.tensor_s.samples = 1
+        with self.assertWarns(UserWarning):
+            self.merge.set_next_modules([new_next])
+
+    def test_set_previous_modules_warns_on_existing_prev_stats_and_handles_empty(self):
+        # ensure previous statistics show non-zero samples to trigger warnings
+        if self.merge.previous_tensor_s is not None:
+            self.merge.previous_tensor_s.samples = 1
+        if self.merge.previous_tensor_m is not None:
+            self.merge.previous_tensor_m.samples = 1
+        with self.assertWarns(UserWarning):
+            self.merge.set_previous_modules([self.prev])
+
+        # empty previous modules should clear previous tensors
+        self.merge.set_previous_modules([])
+        self.assertIsNone(self.merge.previous_tensor_s)
+        self.assertIsNone(self.merge.previous_tensor_m)
+
+    def test_construct_full_activity_with_two_prev_modules(self):
+        # create a second previous module identical to self.prev
+        prev2 = Conv2dGrowingModule(
+            in_channels=self.prev.in_channels,
+            out_channels=self.prev.out_channels,
+            kernel_size=self.kernel_size,
+            input_size=(self.prev.out_width, self.prev.out_height),
+            device=self.device,
+            name="prev2",
+        )
+        # copy stored input from self.prev so unfolded_extended_input is available
+        prev2.store_input = True
+        prev2._internal_store_input = True
+        prev2._input = self.prev._input
+        self.merge.set_previous_modules([self.prev, prev2])
+        full = self.merge.construct_full_activity()
+        expected_dim = (self.prev.in_features + self.prev.use_bias) * 2
+        L = int(self.prev.out_features / self.merge.in_channels)
+        self.assertEqual(full.shape, (self.batch_size, expected_dim, L))
+        # check concatenation order: first block equals first prev unfolded_extended_input
+        first_block = full[:, : self.prev.in_features + self.prev.use_bias, :]
+        self.assertTrue(torch.allclose(first_block, self.prev.unfolded_extended_input))
+
+    def test_compute_previous_s_update_symmetry(self):
+        S, n = self.merge.compute_previous_s_update()
+        self.assertEqual(n, self.batch_size)
+        # S should be symmetric
+        self.assertTrue(torch.allclose(S, S.transpose(0, 1), atol=1e-6))
+
+    def test_compute_s_update_invalid_next_raises(self):
+        # fresh merge with activity stored but invalid next module assigned directly
+        merge_bad = Conv2dMergeGrowingModule(
+            in_channels=self.hidden_channels,
+            input_size=self.prev.out_width,
+            next_kernel_size=self.kernel_size,
+            device=self.device,
+            name="merge_bad",
+        )
+        merge_bad.store_activity = True
+        # provide flattened activity (batch, D) so unfolded_extended_activity can concatenate bias
+        D = self.hidden_channels * self.kernel_size * self.kernel_size
+        merge_bad.activity = torch.randn(self.batch_size, D, device=self.device)
+        # assign a next module that is not handled by the code paths
+        merge_bad.next_modules = [torch.nn.ReLU()]
+        with self.assertRaises(NotImplementedError):
+            merge_bad.compute_s_update()
+
+    def test_update_size_reallocates_previous_stats(self):
+        # start with one previous
+        self.merge.set_previous_modules([self.prev])
+        s_shape_before = None
+        m_shape_before = None
+        if self.merge.previous_tensor_s is not None:
+            s_shape_before = self.merge.previous_tensor_s._shape
+        if self.merge.previous_tensor_m is not None:
+            m_shape_before = self.merge.previous_tensor_m._shape
+
+        # add a second previous and update size
+        prev2 = Conv2dGrowingModule(
+            in_channels=self.prev.in_channels,
+            out_channels=self.prev.out_channels,
+            kernel_size=self.kernel_size,
+            input_size=(self.prev.out_width, self.prev.out_height),
+            device=self.device,
+            name="prev2",
+        )
+        # ensure prev2 reports stored input so unfolded_extended_input can be computed
+        prev2.store_input = True
+        prev2._internal_store_input = True
+        prev2._input = self.x
+        self.merge.set_previous_modules([self.prev, prev2])
+        self.merge.update_size()
+
+        expected_total_in = (self.prev.in_features + self.prev.use_bias) * 2
+        self.assertEqual(self.merge.total_in_features, expected_total_in)
+        self.assertEqual(self.merge.in_channels, self.prev.out_channels)
+        self.assertEqual(
+            self.merge.previous_tensor_s._shape, (expected_total_in, expected_total_in)
+        )
+        self.assertEqual(
+            self.merge.previous_tensor_m._shape,
+            (expected_total_in, self.merge.in_channels),
+        )
+
+        # removing previous modules should clear previous tensors
+        self.merge.set_previous_modules([])
+        self.merge.update_size()
+        self.assertIsNone(self.merge.previous_tensor_s)
+        self.assertIsNone(self.merge.previous_tensor_m)
+
 
 class TestConv2dGrowingModule(TorchTestCase):
     _tested_class = Conv2dGrowingModule
