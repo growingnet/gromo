@@ -11,6 +11,18 @@ from .unittest_tools import unittest_parametrize
 
 
 class TestUtils(unittest.TestCase):
+    def setUp(self) -> None:
+        """Save original device to restore after each test to avoid cross-talk."""
+        self._original_device = global_device()
+
+    def tearDown(self) -> None:
+        """Restore original device to ensure test isolation."""
+        try:
+            set_device(self._original_device)
+        except Exception:
+            # Best-effort restore; ignore if device became unavailable during test
+            pass
+
     @classmethod
     def setUpClass(cls):
         """Set up available devices for testing"""
