@@ -174,6 +174,22 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 f"You are setting the next modules of {self.name} with a non-empty tensor S."
             )
         self.next_modules = next_modules if next_modules else []
+
+        # Assertions: all next modules must be Conv2dGrowingModule (or subclasses)
+        # and all must share the same kernel_size (and match this module's kernel_size).
+        next_list = next_modules if next_modules else []
+        assert all(
+            isinstance(m, Conv2dGrowingModule) for m in next_list
+        ), f"All next modules must be instances of Conv2dGrowingModule or subclasses (error in {self.name})."
+        if len(next_list) > 0:
+            first_ks = tuple(next_list[0].kernel_size)
+            assert all(
+                tuple(m.kernel_size) == first_ks for m in next_list
+            ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
+            assert (
+                tuple(self.kernel_size) == first_ks
+            ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        self.next_modules = next_list
         for module in self.next_modules:
             if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
                 assert module.in_channels == self.out_channels
@@ -201,6 +217,22 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             )
 
         self.previous_modules = previous_modules if previous_modules else []
+
+        # Assertions: all previous modules must be Conv2dGrowingModule (or subclasses)
+        # and all must share the same kernel_size (and match this module's kernel_size).
+        prev_list = previous_modules if previous_modules else []
+        assert all(
+            isinstance(m, Conv2dGrowingModule) for m in prev_list
+        ), f"All previous modules must be instances of Conv2dGrowingModule or subclasses (error in {self.name})."
+        if len(prev_list) > 0:
+            first_ks = tuple(prev_list[0].kernel_size)
+            assert all(
+                tuple(m.kernel_size) == first_ks for m in prev_list
+            ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+            assert (
+                tuple(self.kernel_size) == first_ks
+            ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        self.previous_modules = prev_list
         self.total_in_features = 0
         self.total_out_features = 0
         for module in self.previous_modules:
