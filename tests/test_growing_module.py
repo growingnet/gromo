@@ -1,6 +1,5 @@
 import unittest.mock
 import warnings
-from unittest import TestCase, main
 
 import torch
 
@@ -11,7 +10,7 @@ from gromo.modules.linear_growing_module import (
 )
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
-from tests.torch_unittest import TorchTestCase
+from tests.torch_unittest import SizedIdentity, TorchTestCase
 from tests.unittest_tools import unittest_parametrize
 
 
@@ -30,6 +29,33 @@ class TestGrowingModule(TorchTestCase):
         self.model = GrowingModule(
             self.layer, tensor_s_shape=(3, 3), tensor_m_shape=(3, 5), allow_growing=False
         )
+        self.first_layer = torch.nn.Linear(3, 2, device=global_device())
+        self.second_layer = torch.nn.Linear(2, 5, device=global_device())
+        self.first_layer_ext = torch.nn.Linear(3, 7, device=global_device())
+        self.second_layer_ext = torch.nn.Linear(7, 5, device=global_device(), bias=False)
+
+    def test_extended_forward_with_sized_post_layer_function(self):
+        """
+        Test extended forward with sized post layer function.
+
+        - with fixed post layer size (crash)
+        - with variable post layer size (no crash)
+        """
+        model = GrowingModule(
+            self.first_layer, post_layer_function=SizedIdentity(2), allow_growing=False
+        )
+        model.extended_output_layer = self.first_layer_ext
+        with self.assertRaises(ValueError):
+            model.extended_forward(self.x)
+
+        model = GrowingModule(
+            self.first_layer,
+            post_layer_function=SizedIdentity(2),
+            extended_post_layer_function=torch.nn.Identity(),
+            allow_growing=False,
+        )
+        model.extended_output_layer = self.first_layer_ext
+        model.extended_forward(self.x)
 
     def test_weight(self):
         self.assertTrue(torch.equal(self.model.weight, self.layer.weight))
@@ -79,6 +105,22 @@ class TestGrowingModule(TorchTestCase):
         self.assertIsInstance(repr(self.model), str)
 
     def test_init(self):
+        with self.assertWarns(UserWarning):
+            GrowingModule(
+                self.layer,
+                extended_post_layer_function=SizedIdentity(2),
+                allow_growing=False,
+            )
+
+        with self.assertWarns(UserWarning):
+            GrowingModule(
+                self.layer,
+                extended_post_layer_function=torch.nn.Sequential(
+                    torch.nn.Identity(), SizedIdentity(2)
+                ),
+                allow_growing=False,
+            )
+
         with self.assertRaises(AssertionError):
             l1 = GrowingModule(
                 torch.nn.Linear(3, 5, bias=False, device=global_device()),
@@ -541,14 +583,12 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         """Test ValueError when pre-activity is not stored."""
         # Set up model without storing pre-activity
         self.model.store_pre_activity = False
-        self.model._internal_store_pre_activity = False
-        self.model.next_module = None
 
         # Try to access pre_activity
         with self.assertRaises(ValueError) as context:
             _ = self.model.pre_activity
 
-        self.assertEqual(str(context.exception), "The pre-activity is not stored.")
+        self.assertIn("The pre-activity is not stored", str(context.exception))
 
     def test_compute_optimal_delta_warnings(self):
         """Test warning paths in compute_optimal_delta method."""
@@ -1036,4 +1076,6 @@ class TestMergeGrowingModuleComputeOptimalDelta(TorchTestCase):
 
 
 if __name__ == "__main__":
+    from unittest import main
+
     main()
