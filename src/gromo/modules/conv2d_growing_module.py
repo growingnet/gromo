@@ -264,7 +264,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             # self.total_out_features += module.use_bias
         if self.total_in_features > 0:
             if self.input_size is None:
-                self.input_size = (self.previous_module[0].out_width, self.previous_module[0].out_height)
+                self.input_size = (
+                    self.previous_module[0].out_width,
+                    self.previous_module[0].out_height,
+                )
             self.previous_tensor_s = TensorStatistic(
                 (
                     self.total_in_features,
