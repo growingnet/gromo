@@ -535,7 +535,7 @@ class Conv2dGrowingModule(GrowingModule):
     def stride(self) -> tuple[int, int]:
         return self.layer.stride
 
-    def __out_dimention(self, dim: int) -> int:
+    def __out_dimension(self, dim: int) -> int:
         return (
             int(
                 (self.input_size[dim] - self.kernel_size[dim] + 2 * self.padding[dim])
@@ -546,11 +546,11 @@ class Conv2dGrowingModule(GrowingModule):
 
     @property
     def out_width(self) -> int:
-        return self.__out_dimention(0)
+        return self.__out_dimension(0)
 
     @property
     def out_height(self) -> int:
-        return self.__out_dimention(1)
+        return self.__out_dimension(1)
 
     @property
     def input_volume(self) -> int:
