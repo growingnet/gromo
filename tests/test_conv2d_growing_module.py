@@ -504,6 +504,97 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         with self.assertRaises(AssertionError):
             _ = m.compute_s_update()
 
+    def test_unfolded_extended_activity_conv_without_bias(self):
+        """Test unfolded_extended_activity for Conv2d path without bias - covers line 159."""
+        m = Conv2dMergeGrowingModule(
+            in_channels=self.merge_in_channels,
+            input_size=self.merge.input_size,
+            next_kernel_size=self.kernel_size,
+            device=global_device(),
+        )
+        m.use_bias = False
+        m.set_previous_modules([self.prev])
+        m.set_next_modules([self.next])  # Conv2d next module
+
+        # Set activity and test unfolded path without bias
+        m.store_activity = True
+        m.activity = torch.randn(
+            self.batch, self.merge_in_channels, 6, 6, device=global_device()
+        )
+
+        unfolded = m.unfolded_extended_activity
+        expected_d = (
+            self.merge_in_channels * self.kernel_size[0] * self.kernel_size[1]
+        )  # No +1 for bias
+        self.assertEqual(unfolded.shape[1], expected_d)
+
+    def test_unfolded_extended_activity_linear_without_bias(self):
+        """Test unfolded_extended_activity for Linear path without bias - covers line 167."""
+        m = Conv2dMergeGrowingModule(
+            in_channels=self.merge_in_channels,
+            input_size=self.merge.input_size,
+            next_kernel_size=self.kernel_size,
+            device=global_device(),
+        )
+        m.use_bias = False
+        m.set_previous_modules([self.prev])
+
+        # Create linear next module with correct in_features
+        linear_next = LinearGrowingModule(m.out_features, 10, device=global_device())
+        m.set_next_modules([linear_next])
+
+        # Set activity and test linear path without bias
+        m.store_activity = True
+        m.activity = torch.randn(self.batch, m.out_features, device=global_device())
+
+        unfolded = m.unfolded_extended_activity
+        # Should return self.activity directly when use_bias=False and next is linear
+        self.assertTrue(torch.equal(unfolded, m.activity))
+
+    def test_update_size_tensor_shape_mismatch(self):
+        """Test update_size when tensor shapes don't match - covers lines 414, 427."""
+        m = Conv2dMergeGrowingModule(
+            in_channels=self.merge_in_channels,
+            input_size=self.merge.input_size,
+            next_kernel_size=self.kernel_size,
+            device=global_device(),
+        )
+
+        # Set up with previous modules to ensure total_in_features > 0
+        m.set_previous_modules([self.prev])
+
+        # Force initial update to create tensors with correct shapes
+        m.update_size()
+
+        # Verify tensors were created and get their shapes
+        self.assertIsNotNone(m.previous_tensor_s)
+        self.assertIsNotNone(m.previous_tensor_m)
+
+        # Manually create tensors with wrong shapes to force reallocation
+        wrong_shape_s = (5, 5)  # Different from expected shape
+        wrong_shape_m = (5, 2)  # Different from expected shape
+
+        m.previous_tensor_s = TensorStatistic(
+            wrong_shape_s,
+            device=m.device,
+            name=f"S[-1]({m.name})",
+            update_function=m.compute_previous_s_update,
+        )
+        m.previous_tensor_m = TensorStatistic(
+            wrong_shape_m,
+            device=m.device,
+            name=f"M[-1]({m.name})",
+            update_function=m.compute_previous_m_update,
+        )
+
+        # Call update_size - should trigger tensor reallocation due to shape mismatch
+        m.update_size()
+
+        # Verify new tensors were created with correct shapes
+        expected_tif = m.total_in_features
+        self.assertEqual(m.previous_tensor_s._shape, (expected_tif, expected_tif))
+        self.assertEqual(m.previous_tensor_m._shape, (expected_tif, m.in_channels))
+
 
 class TestConv2dGrowingModule(TorchTestCase):
     _tested_class = Conv2dGrowingModule
