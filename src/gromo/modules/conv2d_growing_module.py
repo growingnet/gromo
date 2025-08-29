@@ -420,7 +420,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                     name=f"S[-1]({self.name})",
                     update_function=self.compute_previous_s_update,
                 )
-            if self.previous_tensor_m._shape != (
+            if self.previous_tensor_m is None or self.previous_tensor_m._shape != (
                 self.total_in_features,
                 self.in_channels,
             ):
