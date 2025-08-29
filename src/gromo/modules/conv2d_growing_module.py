@@ -175,20 +175,33 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             )
         self.next_modules = next_modules if next_modules else []
 
-        # Assertions: all next modules must be Conv2dGrowingModule (or subclasses)
-        # and all must share the same kernel_size (and match this module's kernel_size).
+        # Assertions: all next modules must be either Conv2dGrowingModule or LinearGrowingModule
+        # (no merge modules allowed), and all must be of the same type.
+        # For Conv2d modules, kernel sizes must match.
         next_list = next_modules if next_modules else []
+
+        # Check that all modules are allowed types (no merge modules)
         assert all(
-            isinstance(m, Conv2dGrowingModule) for m in next_list
-        ), f"All next modules must be instances of Conv2dGrowingModule or subclasses (error in {self.name})."
+            isinstance(m, (Conv2dGrowingModule, LinearGrowingModule)) for m in next_list
+        ), f"All next modules must be instances of Conv2dGrowingModule or LinearGrowingModule (error in {self.name})."
+
+        # Check that all modules are of the same type
         if len(next_list) > 0:
-            first_ks = tuple(next_list[0].kernel_size)
+            first_type = type(next_list[0])
             assert all(
-                tuple(m.kernel_size) == first_ks for m in next_list
-            ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
-            assert (
-                tuple(self.kernel_size) == first_ks
-            ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+                type(m) == first_type for m in next_list
+            ), f"All next modules must be of the same type (error in {self.name}). Got {[type(m).__name__ for m in next_list]}"
+
+            # For Conv2d modules, check kernel size compatibility
+            if isinstance(next_list[0], Conv2dGrowingModule):
+                first_ks = tuple(next_list[0].kernel_size)
+                assert all(
+                    tuple(m.kernel_size) == first_ks for m in next_list
+                ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
+                assert (
+                    tuple(self.kernel_size) == first_ks
+                ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+
         self.next_modules = next_list
         for module in self.next_modules:
             if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
@@ -218,12 +231,17 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
         self.previous_modules = previous_modules if previous_modules else []
 
-        # Assertions: all previous modules must be Conv2dGrowingModule (or subclasses)
+        # Assertions: all previous modules must be Conv2dGrowingModule (not merge modules)
         # and all must share the same kernel_size (and match this module's kernel_size).
         prev_list = previous_modules if previous_modules else []
-        assert all(
-            isinstance(m, Conv2dGrowingModule) for m in prev_list
-        ), f"All previous modules must be instances of Conv2dGrowingModule or subclasses (error in {self.name})."
+
+        # First check type compatibility - should raise TypeError for incompatible types
+        # A merge module cannot be preceded by another merge module
+        for module in prev_list:
+            if not isinstance(module, Conv2dGrowingModule):
+                raise TypeError("The previous modules must be Conv2dGrowingModule.")
+
+        # Then check kernel size constraints for all Conv2d modules
         if len(prev_list) > 0:
             first_ks = tuple(prev_list[0].kernel_size)
             assert all(
@@ -236,14 +254,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = 0
         self.total_out_features = 0
         for module in self.previous_modules:
-            if not isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
-                raise TypeError(
-                    "The previous modules must be Conv2dGrowingModule or Conv2dMergeGrowingModule."
-                )
-            # if module.out_features != self.in_features:
-            #     raise ValueError(
-            #         "The input features must match the output features of the previous modules."
-            #     )
+            # Type compatibility already checked above - all are Conv2dGrowingModule
             if module.out_channels != self.in_channels:
                 raise ValueError(
                     "The input channels must match the output channels of the previous modules."
