@@ -220,7 +220,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         # ), f"The output features must match the input features of the next modules."
 
     def set_previous_modules(
-        self, previous_modules: list[MergeGrowingModule | GrowingModule]
+        self, previous_modules: list[GrowingModule]
     ) -> None:
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
