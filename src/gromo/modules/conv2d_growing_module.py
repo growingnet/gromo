@@ -14,11 +14,430 @@ from gromo.utils.tools import (
     compute_output_shape_conv,
     create_bordering_effect_convolution,
 )
-from gromo.utils.utils import global_device
 
 
 class Conv2dMergeGrowingModule(MergeGrowingModule):
-    pass
+    def __init__(
+        self,
+        in_channels: int,
+        input_size: int | tuple[int, int],
+        next_kernel_size: int | tuple[int, int],
+        post_merge_function: torch.nn.Module = torch.nn.Identity(),
+        previous_modules: list[GrowingModule] | None = None,
+        next_modules: list[GrowingModule] | None = None,
+        allow_growing: bool = False,
+        input_volume: int | None = None,
+        device: torch.device | None = None,
+        name: str | None = None,
+    ) -> None:
+        self.use_bias = True
+        self.in_channels = in_channels
+        self._input_volume = input_volume
+        if isinstance(input_size, int):
+            input_size = (input_size, input_size)
+        self.input_size = input_size
+        if isinstance(next_kernel_size, int):
+            next_kernel_size = (next_kernel_size, next_kernel_size)
+        self.kernel_size = next_kernel_size
+        super(Conv2dMergeGrowingModule, self).__init__(
+            post_merge_function=post_merge_function,
+            previous_modules=previous_modules,
+            next_modules=next_modules,
+            allow_growing=allow_growing,
+            tensor_s_shape=(
+                in_channels * next_kernel_size[0] * next_kernel_size[1]
+                + int(self.use_bias),
+                in_channels * next_kernel_size[0] * next_kernel_size[1]
+                + int(self.use_bias),
+            ),
+            device=device,
+            name=name,
+        )
+
+    @property
+    def input_volume(self) -> int:
+        if self._input_volume is not None:
+            return self._input_volume
+        if len(self.previous_modules) <= 0:
+            warn(
+                f"Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
+            )
+            return -1
+        return self.previous_modules[0].out_features
+
+    @property
+    def out_channels(self) -> int:
+        return self.in_channels
+
+    @property
+    def in_features(self) -> int:
+        warn(f"Using property in_features in {self}")
+        return self.in_channels
+
+    @property
+    def out_features(self) -> int:
+        return self.input_volume
+
+    @property
+    def output_size(self) -> tuple[int, int]:
+        return self.input_size  # TODO: check for exceptions!
+
+    @property
+    def padding(self) -> tuple[int, int]:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the padding of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return (0, 0)
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.padding
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            return (0, 0)
+        else:
+            raise NotImplementedError
+
+    @property
+    def stride(self) -> tuple[int, int]:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the stride of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return (1, 1)
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.stride
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            return (1, 1)
+        else:
+            raise NotImplementedError
+
+    @property
+    def dilation(self) -> tuple[int, int]:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the dilation of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return (1, 1)
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.dilation
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            return (1, 1)
+        else:
+            raise NotImplementedError
+
+    @property
+    def unfolded_extended_activity(self) -> torch.Tensor:
+        """
+        Return the unfolded activity extended with a channel of ones if the bias is used.
+
+        Returns
+        -------
+        torch.Tensor
+            unfolded activity extended
+        """
+        if len(self.next_modules) <= 0 or isinstance(
+            self.next_modules[0], Conv2dGrowingModule
+        ):
+            unfolded_activity = torch.nn.functional.unfold(
+                self.activity,
+                self.kernel_size,
+                padding=self.padding,
+                stride=self.stride,
+                dilation=self.dilation,
+            )
+            if self.use_bias:
+                return torch.cat(
+                    (
+                        unfolded_activity,
+                        torch.ones(
+                            unfolded_activity.shape[0],
+                            1,
+                            unfolded_activity.shape[2],
+                            device=self.device,
+                        ),
+                    ),
+                    dim=1,
+                )
+            else:
+                return unfolded_activity
+        else:
+            if self.use_bias:
+                batch_size = self.activity.shape[0]
+                ones = torch.ones(batch_size, 1, device=self.activity.device)
+                activity_extended = torch.cat((self.activity, ones), dim=1)
+                return activity_extended
+            else:
+                return self.activity
+
+    def set_next_modules(
+        self, next_modules: list[GrowingModule]
+    ) -> None:
+        if self.tensor_s is not None and self.tensor_s.samples > 0:
+            warn(
+                f"You are setting the next modules of {self.name} with a non-empty tensor S."
+            )
+        self.next_modules = next_modules if next_modules else []
+
+        # Assertions: all next modules must be either Conv2dGrowingModule or LinearGrowingModule
+        # (no merge modules allowed), and all must be of the same type.
+        # For Conv2d modules, kernel sizes must match.
+        next_list = next_modules if next_modules else []
+
+        # Check that all modules are allowed types (no merge modules)
+        assert all(
+            isinstance(m, (Conv2dGrowingModule, LinearGrowingModule)) for m in next_list
+        ), f"All next modules must be instances of Conv2dGrowingModule or LinearGrowingModule (error in {self.name})."
+
+        # Check that all modules are of the same type
+        if len(next_list) > 0:
+            first_type = type(next_list[0])
+            assert all(
+                type(m) == first_type for m in next_list
+            ), f"All next modules must be of the same type (error in {self.name}). Got {[type(m).__name__ for m in next_list]}"
+
+            # For Conv2d modules, check kernel size compatibility
+            if isinstance(next_list[0], Conv2dGrowingModule):
+                first_ks = tuple(next_list[0].kernel_size)
+                assert all(
+                    tuple(m.kernel_size) == first_ks for m in next_list
+                ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
+                assert (
+                    tuple(self.kernel_size) == first_ks
+                ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+
+        self.next_modules = next_list
+        for module in self.next_modules:
+            if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
+                assert module.in_channels == self.out_channels
+                module.input_size = self.output_size
+            elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
+                assert module.in_features == self.out_features
+            else:
+                raise NotImplementedError(
+                    "The next modules must be either Linear or Convolution."
+                )
+        # assert all(
+        #     modules.in_features == self.out_features for modules in self.next_modules
+        # ), f"The output features must match the input features of the next modules."
+
+    def set_previous_modules(
+        self, previous_modules: list[GrowingModule]
+    ) -> None:
+        if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."
+            )
+        if self.previous_tensor_m is not None and self.previous_tensor_m.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor M."
+            )
+
+        self.previous_modules = previous_modules if previous_modules else []
+
+        # Assertions: all previous modules must be Conv2dGrowingModule (not merge modules)
+        # and all must share the same kernel_size (and match this module's kernel_size).
+        prev_list = previous_modules if previous_modules else []
+
+        # First check type compatibility - should raise TypeError for incompatible types
+        # A merge module cannot be preceded by another merge module
+        for module in prev_list:
+            if not isinstance(module, Conv2dGrowingModule):
+                raise TypeError("The previous modules must be Conv2dGrowingModule.")
+
+        # Then check kernel size constraints for all Conv2d modules
+        if len(prev_list) > 0:
+            first_ks = tuple(prev_list[0].kernel_size)
+            assert all(
+                tuple(m.kernel_size) == first_ks for m in prev_list
+            ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+            assert (
+                tuple(self.kernel_size) == first_ks
+            ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        self.previous_modules = prev_list
+        self.total_in_features = 0
+        self.total_out_features = 0
+        for module in self.previous_modules:
+            # Type compatibility already checked above - all are Conv2dGrowingModule
+            if module.out_channels != self.in_channels:
+                raise ValueError(
+                    "The input channels must match the output channels of the previous modules."
+                )
+            self.total_in_features += module.in_features + module.use_bias
+            self.total_out_features += module.out_features
+            # self.total_out_features += module.use_bias
+        if self.total_in_features > 0:
+            if self.input_size is None:
+                self.input_size = (
+                    self.previous_modules[0].out_width,
+                    self.previous_modules[0].out_height,
+                )
+            self.previous_tensor_s = TensorStatistic(
+                (
+                    self.total_in_features,
+                    self.total_in_features,
+                ),
+                device=self.device,
+                name=f"S[-1]({self.name})",
+                update_function=self.compute_previous_s_update,
+            )
+            self.previous_tensor_m = TensorStatistic(
+                (self.total_in_features, self.in_channels),
+                device=self.device,
+                name=f"M[-1]({self.name})",
+                update_function=self.compute_previous_m_update,
+            )
+        else:
+            self.previous_tensor_s = None
+            self.previous_tensor_m = None
+
+    def construct_full_activity(self) -> torch.Tensor:
+        """Construct the full activity tensor B from the input of all previous modules.
+        B = (B_1, B_2, ..., B_k) in (n, )
+
+        Returns
+        -------
+        torch.Tensor
+            _description_
+        """
+        assert self.previous_modules, f"No previous modules for {self.name}."
+        n = self.previous_modules[0].input.shape[0]
+        L = int(self.previous_modules[0].out_features / self.in_channels)
+        full_activity = torch.ones(
+            (
+                n,
+                self.total_in_features,
+                L,
+            ),
+            device=self.device,
+        )
+        current_index = 0
+        for module in self.previous_modules:
+            full_activity[
+                :, current_index : current_index + module.in_features + module.use_bias, :
+            ] = (
+                module.unfolded_extended_input  # (n, in_channels*ks0*ks1+bias, w_out*h_out)
+            )
+            current_index += module.in_features + module.use_bias
+        return full_activity
+
+    def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+        full_activity = self.construct_full_activity()
+        return (
+            torch.einsum(
+                "iam, ibm -> ab",
+                full_activity,
+                full_activity,
+            ),
+            full_activity.shape[0],
+        )
+
+    def compute_previous_m_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor M for the input of all previous modules.
+        B: full activity tensor
+        M = dLoss/dA^T B
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor M
+        int
+            number of samples used to compute the update
+        """
+        full_activity = (
+            self.construct_full_activity()
+        )  # (n, total_in_parameters, W_out*H_out)
+        desired_activation = self.pre_activity.grad.flatten(start_dim=-2)
+        return (
+            torch.einsum("iam, icm -> ac", full_activity, desired_activation),
+            self.input.shape[0],
+        )
+
+    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of tensor S based on the unfolded activity tensor.
+
+        This method captures the second-order statistics from the output activity of the previous
+        convolutional layers, formatted as an unfolded tensor.
+
+        Depending on the type of the following (next) module, the tensor S is computed as follows:
+
+        - If the next module is a `Conv2dGrowingModule`:
+            The unfolded activity tensor is 3D: (batch_size, D, L), where
+                - D = output_channels * kernel_size^2 [+1 if bias]
+                - L = number of output spatial locations (e.g., H × W)
+            Then S is computed via:
+                S = ∑_{i,m} A[i,:,m] A[i,:,m]^T = einsum("iam, ibm -> ab", A, A)
+
+        - If the next module is a `LinearGrowingModule`:
+            The unfolded activity is treated as a flattened matrix of shape (batch_size, D),
+            and S is computed via:
+                S = ∑_{i} A[i]^T A[i] = einsum("ij, ik -> jk", A, A)
+
+        Returns
+        -------
+        torch.Tensor
+            second-order update matrix S of shape (D, D), where D depends on whether
+            the next module is convolutional or linear.
+        int
+            batch size used in the computation.
+
+        Raises
+        ------
+        NotImplementedError
+            ff the type of the next module is unsupported for S computation.
+        """
+        assert (
+            self.store_activity
+        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
+        assert (
+            self.activity is not None
+        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
+
+        batch_size = self.activity.shape[0]
+        unfolded_activity = self.unfolded_extended_activity
+
+        if isinstance(self.next_modules[0], Conv2dGrowingModule):
+            update = torch.einsum("iam, ibm -> ab", unfolded_activity, unfolded_activity)
+        elif isinstance(self.next_modules[0], LinearGrowingModule):
+            update = torch.einsum("ij,ik->jk", unfolded_activity, unfolded_activity)
+        else:
+            raise NotImplementedError
+
+        return update, batch_size
+
+    def update_size(self) -> None:
+        if len(self.previous_modules) > 0:
+            new_channels = self.previous_modules[0].out_channels
+            self.in_channels = new_channels
+        self.total_in_features = self.sum_in_features(with_bias=True)
+
+        if self.total_in_features > 0:
+            if self.previous_tensor_s is None or self.previous_tensor_s._shape != (
+                self.total_in_features,
+                self.total_in_features,
+            ):
+                self.previous_tensor_s = TensorStatistic(
+                    (
+                        self.total_in_features,
+                        self.total_in_features,
+                    ),
+                    device=self.device,
+                    name=f"S[-1]({self.name})",
+                    update_function=self.compute_previous_s_update,
+                )
+            if self.previous_tensor_m is None or self.previous_tensor_m._shape != (
+                self.total_in_features,
+                self.in_channels,
+            ):
+                self.previous_tensor_m = TensorStatistic(
+                    (self.total_in_features, self.in_channels),
+                    device=self.device,
+                    name=f"M[-1]({self.name})",
+                    update_function=self.compute_previous_m_update,
+                )
+        else:
+            self.previous_tensor_s = None
+            self.previous_tensor_m = None
 
 
 class Conv2dGrowingModule(GrowingModule):
@@ -69,7 +488,6 @@ class Conv2dGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        device = device if device is not None else global_device()
         self.in_channels = in_channels
         self.out_channels = out_channels
         if isinstance(kernel_size, int):
@@ -117,6 +535,39 @@ class Conv2dGrowingModule(GrowingModule):
     @padding.setter
     def padding(self, value):
         self.layer.padding = value
+
+    @property
+    def stride(self) -> tuple[int, int]:
+        return self.layer.stride
+
+    def __out_dimension(self, dim: int) -> int:
+        return (
+            int(
+                (self.input_size[dim] - self.kernel_size[dim] + 2 * self.padding[dim])
+                / self.stride[dim]
+            )
+            + 1
+        )
+
+    @property
+    def out_width(self) -> int:
+        return self.__out_dimension(0)
+
+    @property
+    def out_height(self) -> int:
+        return self.__out_dimension(1)
+
+    @property
+    def input_volume(self) -> int:
+        return self.in_channels * self.input_size[0] * self.input_size[1]
+
+    @property
+    def out_features(self) -> int:
+        return self.out_channels * self.out_width * self.out_height
+
+    @property
+    def in_features(self) -> int:
+        return self.in_channels * self.kernel_size[0] * self.kernel_size[1]
 
     @property
     def unfolded_extended_input(self) -> torch.Tensor:
