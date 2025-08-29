@@ -964,6 +964,20 @@ class TestConv2dGrowingModule(TorchTestCase):
 
         self.assertEqual(demo_layer.input_size, (7, 7))
 
+    def test_input_volume_property(self):
+        """Test the input_volume property calculation for Conv2dGrowingModule - covers line 557."""
+        demo = Conv2dGrowingModule(
+            in_channels=3,
+            out_channels=5,
+            kernel_size=(3, 3),
+            input_size=(8, 8),
+            device=global_device(),
+        )
+
+        # Test input_volume calculation
+        expected_volume = 3 * 8 * 8  # in_channels * input_size[0] * input_size[1]
+        self.assertEqual(demo.input_volume, expected_volume)
+
 
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = FullConv2dGrowingModule
