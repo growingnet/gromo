@@ -45,8 +45,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             next_modules=next_modules,
             allow_growing=allow_growing,
             tensor_s_shape=(
-                in_channels * next_kernel_size[0] * next_kernel_size[1] + self.use_bias,
-                in_channels * next_kernel_size[0] * next_kernel_size[1] + self.use_bias,
+                in_channels * next_kernel_size[0] * next_kernel_size[1]
+                + int(self.use_bias),
+                in_channels * next_kernel_size[0] * next_kernel_size[1]
+                + int(self.use_bias),
             ),
             device=device,
             name=name,
@@ -81,44 +83,44 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         return self.input_size  # TODO: check for exceptions!
 
     @property
-    def padding(self) -> int:
+    def padding(self) -> tuple[int, int]:
         if len(self.next_modules) <= 0:
             warn(
                 f"Cannot derive the padding of Conv2dMergeGrowingModule without setting at least one next module"
             )
-            return 0
+            return (0, 0)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.padding
         elif isinstance(self.next_modules[0], LinearGrowingModule):
-            return 0
+            return (0, 0)
         else:
             raise NotImplementedError
 
     @property
-    def stride(self) -> int:
+    def stride(self) -> tuple[int, int]:
         if len(self.next_modules) <= 0:
             warn(
                 f"Cannot derive the stride of Conv2dMergeGrowingModule without setting at least one next module"
             )
-            return 1
+            return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.stride
         elif isinstance(self.next_modules[0], LinearGrowingModule):
-            return 1
+            return (1, 1)
         else:
             raise NotImplementedError
 
     @property
-    def dilation(self) -> int:
+    def dilation(self) -> tuple[int, int]:
         if len(self.next_modules) <= 0:
             warn(
                 f"Cannot derive the dilation of Conv2dMergeGrowingModule without setting at least one next module"
             )
-            return 1
+            return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.dilation
         elif isinstance(self.next_modules[0], LinearGrowingModule):
-            return 1
+            return (1, 1)
         else:
             raise NotImplementedError
 

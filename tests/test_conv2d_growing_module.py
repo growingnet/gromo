@@ -140,18 +140,18 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # Without next modules -> warnings and defaults
         m.set_next_modules([])
         with self.assertWarns(UserWarning):
-            self.assertEqual(m.padding, 0)
+            self.assertEqual(m.padding, (0, 0))
         with self.assertWarns(UserWarning):
-            self.assertEqual(m.stride, 1)
+            self.assertEqual(m.stride, (1, 1))
         with self.assertWarns(UserWarning):
-            self.assertEqual(m.dilation, 1)
+            self.assertEqual(m.dilation, (1, 1))
 
         # With LinearGrowingModule next
         linear_next = LinearGrowingModule(m.out_features, 10, device=global_device())
         m.set_next_modules([linear_next])
-        self.assertEqual(m.padding, 0)
-        self.assertEqual(m.stride, 1)
-        self.assertEqual(m.dilation, 1)
+        self.assertEqual(m.padding, (0, 0))
+        self.assertEqual(m.stride, (1, 1))
+        self.assertEqual(m.dilation, (1, 1))
 
     def test_set_previous_modules_and_shapes(self):
         """Test set_previous_modules happy path and shape bookkeeping with multiple previous nodes."""
@@ -355,9 +355,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         m = self.merge
         # Set up valid activity - use 2D to avoid tensor concatenation issues in unfolded_extended_activity
         m.store_activity = True
-        m.activity = torch.randn(
-            self.batch, self.merge.out_features, device=global_device()
-        )
+        m.activity = torch.randn(self.batch, m.out_features, device=global_device())
 
         # Create unsupported module type by bypassing type checks
         class UnsupportedNextModule:
