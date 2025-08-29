@@ -169,7 +169,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 return self.activity
 
     def set_next_modules(
-        self, next_modules: list[MergeGrowingModule | GrowingModule]
+        self, next_modules: list[GrowingModule]
     ) -> None:
         if self.tensor_s is not None and self.tensor_s.samples > 0:
             warn(
