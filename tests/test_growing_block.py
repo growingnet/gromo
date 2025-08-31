@@ -1,9 +1,8 @@
 import torch
-from matplotlib.pylab import block
 
 from gromo.containers.growing_block import GrowingBlock, LinearGrowingBlock
 from gromo.utils.utils import global_device
-from tests.torch_unittest import TorchTestCase, indicator_batch
+from tests.torch_unittest import TorchTestCase
 
 
 class TestGrowingBlock(TorchTestCase):
@@ -433,3 +432,155 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertIsNotNone(x.grad)
         for param in block.parameters():
             self.assertIsNotNone(param.grad)
+
+    def test_pre_activity_storage_zero_features_no_downsample(self):
+        """Test pre-activity storage with 0 hidden features and no downsample."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=0,
+            device=self.device,
+        )
+
+        # Enable pre-activity storage directly
+        block.second_layer.store_pre_activity = True
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        x.requires_grad_(True)
+
+        # Forward pass
+        output = block(x)
+
+        # For zero features, the block stores identity (downsample(x)) as pre_activity
+        # Since downsample is Identity, it should be x
+        expected_stored_pre_activity = x
+
+        # Check that pre-activity is stored correctly
+        self.assertAllClose(block.second_layer.pre_activity, expected_stored_pre_activity)
+
+        # Backward pass to compute gradients
+        loss = torch.norm(output)
+        loss.backward()
+
+        # Check that pre-activity gradient can be accessed
+        pre_activity_grad = block.second_layer.pre_activity.grad
+        self.assertIsNotNone(pre_activity_grad)
+        self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
+
+    def test_pre_activity_storage_zero_features_with_downsample(self):
+        """Test pre-activity storage with 0 hidden features and downsample."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=0,
+            downsample=self.downsample,
+            device=self.device,
+        )
+
+        # Enable pre-activity storage directly
+        block.second_layer.store_pre_activity = True
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        x.requires_grad_(True)
+
+        # Forward pass
+        output = block(x)
+
+        # For zero features with downsample, pre_activity should be downsample(x)
+        expected_stored_pre_activity = self.downsample(x)
+
+        # Check that pre-activity is stored correctly
+        self.assertAllClose(block.second_layer.pre_activity, expected_stored_pre_activity)
+
+        # Backward pass to compute gradients
+        loss = torch.norm(output)
+        loss.backward()
+
+        # Check that pre-activity gradient can be accessed
+        pre_activity_grad = block.second_layer.pre_activity.grad
+        self.assertIsNotNone(pre_activity_grad)
+        self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
+
+    def test_pre_activity_storage_positive_features_no_downsample(self):
+        """Test pre-activity storage with >0 hidden features and no downsample."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+
+        # Enable pre-activity storage directly
+        block.second_layer.store_pre_activity = True
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        x.requires_grad_(True)
+
+        # Forward pass
+        output = block(x)
+
+        # For positive features, pre_activity should be the output of first_layer
+        pre_activated = block.pre_activation(x)
+        expected_stored_pre_activity = block.second_layer.layer(
+            block.first_layer(pre_activated)
+        )
+
+        # Check that pre-activity is stored correctly
+        self.assertAllClose(block.second_layer.pre_activity, expected_stored_pre_activity)
+
+        # Check that pre-activity has been processed correctly
+        self.assertIsNotNone(block.second_layer.pre_activity)
+
+        # Backward pass to compute gradients
+        loss = torch.norm(output)
+        loss.backward()
+
+        # Check that pre-activity gradient can be accessed
+        pre_activity_grad = block.second_layer.pre_activity.grad
+        self.assertIsNotNone(pre_activity_grad)
+        self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
+
+        # Verify gradient shape matches the output of first_layer
+        expected_shape = (self.batch_size, self.in_features)
+        self.assertShapeEqual(pre_activity_grad, expected_shape)
+
+    def test_pre_activity_storage_positive_features_with_downsample(self):
+        """Test pre-activity storage with >0 hidden features and downsample."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=self.hidden_features,
+            downsample=self.downsample,
+            device=self.device,
+        )
+
+        # Enable pre-activity storage directly
+        block.second_layer.store_pre_activity = True
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        x.requires_grad_(True)
+
+        # Forward pass
+        output = block(x)
+
+        # For positive features with downsample, pre_activity should be output of first_layer
+        pre_activated = block.pre_activation(x)
+        expected_stored_pre_activity = block.second_layer.layer(
+            block.first_layer(pre_activated)
+        )
+
+        # Check that pre-activity is stored correctly
+        self.assertAllClose(block.second_layer.pre_activity, expected_stored_pre_activity)
+
+        # Backward pass to compute gradients
+        loss = torch.norm(output)
+        loss.backward()
+
+        # Check that pre-activity gradient can be accessed
+        pre_activity_grad = block.second_layer.pre_activity.grad
+        self.assertIsNotNone(pre_activity_grad)
+        self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
+
+        # Verify gradient shape matches the output of first_layer
+        expected_shape = (self.batch_size, self.out_features)
+        self.assertShapeEqual(pre_activity_grad, expected_shape)
