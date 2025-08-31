@@ -113,7 +113,7 @@ class GrowingBlock(GrowingContainer):
 
     @staticmethod
     def set_default_values(
-        activation: torch.nn.Module = torch.nn.Identity(),
+        activation: torch.nn.Module | None = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
         kwargs_layer: dict | None = None,
