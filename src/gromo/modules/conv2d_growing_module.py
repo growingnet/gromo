@@ -23,8 +23,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         input_size: int | tuple[int, int],
         next_kernel_size: int | tuple[int, int],
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
-        next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        previous_modules: list[GrowingModule] | None = None,
+        next_modules: list[GrowingModule] | None = None,
         allow_growing: bool = False,
         input_volume: int | None = None,
         device: torch.device | None = None,
@@ -166,9 +166,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             else:
                 return self.activity
 
-    def set_next_modules(
-        self, next_modules: list[MergeGrowingModule | GrowingModule]
-    ) -> None:
+    def set_next_modules(self, next_modules: list[GrowingModule]) -> None:
         if self.tensor_s is not None and self.tensor_s.samples > 0:
             warn(
                 f"You are setting the next modules of {self.name} with a non-empty tensor S."
@@ -217,9 +215,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         #     modules.in_features == self.out_features for modules in self.next_modules
         # ), f"The output features must match the input features of the next modules."
 
-    def set_previous_modules(
-        self, previous_modules: list[MergeGrowingModule | GrowingModule]
-    ) -> None:
+    def set_previous_modules(self, previous_modules: list[GrowingModule]) -> None:
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
                 f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."

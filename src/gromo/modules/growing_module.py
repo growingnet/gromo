@@ -19,8 +19,8 @@ class MergeGrowingModule(torch.nn.Module):
     def __init__(
         self,
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list["MergeGrowingModule | GrowingModule"] | None = None,
-        next_modules: list["MergeGrowingModule | GrowingModule"] | None = None,
+        previous_modules: list["GrowingModule"] | None = None,
+        next_modules: list["GrowingModule"] | None = None,
         allow_growing: bool = False,
         tensor_s_shape: tuple[int, int] | None = None,
         device: torch.device | None = None,
@@ -58,10 +58,11 @@ class MergeGrowingModule(torch.nn.Module):
         self.previous_tensor_s: TensorStatistic | None = None
         self.previous_tensor_m: TensorStatistic | None = None
 
-        self.previous_modules: list[MergeGrowingModule | GrowingModule] = []
-        self.set_previous_modules(previous_modules)
-        self.next_modules: list[MergeGrowingModule | GrowingModule] = []
-        self.set_next_modules(next_modules)
+        # previous_modules / next_modules are lists of regular GrowingModule instances
+        self.previous_modules: list["GrowingModule"] = []
+        self.set_previous_modules(previous_modules if previous_modules else [])
+        self.next_modules: list["GrowingModule"] = []
+        self.set_next_modules(next_modules if next_modules else [])
 
     @property
     def number_of_successors(self):
@@ -79,7 +80,7 @@ class MergeGrowingModule(torch.nn.Module):
         self.set_next_modules(self.next_modules)
         self.set_previous_modules(self.previous_modules)
 
-    def add_next_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
+    def add_next_module(self, module: "GrowingModule") -> None:
         """
         Add a module to the next modules of the current module.
 
@@ -93,7 +94,7 @@ class MergeGrowingModule(torch.nn.Module):
             self.next_modules
         )  # TODO: maybe it is possible to avoid this
 
-    def add_previous_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
+    def add_previous_module(self, module: "GrowingModule") -> None:
         """
         Add a module to the previous modules of the current module.
 
@@ -105,9 +106,7 @@ class MergeGrowingModule(torch.nn.Module):
         self.previous_modules.append(module)
         self.set_previous_modules(self.previous_modules)
 
-    def set_next_modules(
-        self, next_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_next_modules(self, next_modules: list["GrowingModule"]) -> None:
         """
         Set the next modules of the current module.
 
@@ -118,9 +117,7 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def set_previous_modules(
-        self, previous_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_previous_modules(self, previous_modules: list["GrowingModule"]) -> None:
         """
         Set the previous modules of the current module.
 
