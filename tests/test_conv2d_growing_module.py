@@ -86,10 +86,6 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # output_size echoes provided input_size
         self.assertEqual(m.output_size, m.input_size)
 
-        # in_features property warns and returns in_channels
-        with self.assertWarns(UserWarning):
-            self.assertEqual(m.in_features, self.merge_in_channels)
-
         # input_volume with previous modules present delegates to previous.out_features
         self.assertEqual(m.input_volume, self.prev.out_features)
 

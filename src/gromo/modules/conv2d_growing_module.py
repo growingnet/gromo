@@ -68,11 +68,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         return self.in_channels
 
     @property
-    def in_features(self) -> int:
-        warn(f"Using property in_features in {self}")
-        return self.in_channels
-
-    @property
     def out_features(self) -> int:
         return self.input_volume
 
@@ -257,7 +252,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 )
             self.total_in_features += module.in_features + module.use_bias
             self.total_out_features += module.out_features
-            # self.total_out_features += module.use_bias
         if self.total_in_features > 0:
             if self.input_size is None:
                 self.input_size = (
