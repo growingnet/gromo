@@ -36,7 +36,6 @@ class GrowingBlock(GrowingContainer):
         out_features: int,
         hidden_features: int = 0,
         layer_type: str = "linear",
-        activation: torch.nn.Module = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
         name: str = "block",
@@ -77,6 +76,9 @@ class GrowingBlock(GrowingContainer):
             operation to apply on the residual stream
         """
         assert layer_type in all_layer_types, f"Layer type {layer_type} not supported."
+        assert (
+            in_features == out_features or downsample is not None
+        ), "Incompatible dimensions: in_features must match out_features or downsample must be provided."
         super(GrowingBlock, self).__init__(
             in_features=in_features,
             out_features=out_features,
@@ -117,14 +119,18 @@ class GrowingBlock(GrowingContainer):
         kwargs_layer: dict | None = None,
         kwargs_first_layer: dict | None = None,
         kwargs_second_layer: dict | None = None,
-    ) -> tuple[torch.nn.Module | None, torch.nn.Module | None, dict | None, dict | None]:
+    ) -> tuple[torch.nn.Module, torch.nn.Module, dict, dict]:
         """
         Set default values for the block.
         """
+        if activation is None:
+            activation = torch.nn.Identity()
         if pre_activation is None:
             pre_activation = activation
         if mid_activation is None:
             mid_activation = activation
+        if kwargs_layer is None:
+            kwargs_layer = dict()
         if kwargs_first_layer is None:
             kwargs_first_layer = kwargs_layer
         if kwargs_second_layer is None:
@@ -145,7 +151,7 @@ class GrowingBlock(GrowingContainer):
         torch.Tensor
             output tensor
         """
-        identity = self.downsample(x)
+        identity: torch.Tensor = self.downsample(x)
         x = self.pre_activation(x)
         if self.hidden_features > 0:
             x, x_ext = self.first_layer.extended_forward(x)
@@ -182,50 +188,48 @@ class GrowingBlock(GrowingContainer):
         torch.Tensor
             output tensor
         """
+        identity: torch.Tensor = self.downsample(x)
         if self.hidden_features == 0:
-            assert isinstance(
-                self.downsample, torch.nn.Identity
-            ), f"The downsample {self.downsample.name} should be identity."
             if self.first_layer.store_input:
                 self.first_layer._input = self.pre_activation(x).detach()
             if self.second_layer.store_pre_activity:
-                self.second_layer._pre_activity = x
+                self.second_layer._pre_activity = identity
                 self.second_layer._pre_activity.retain_grad()
             self.second_layer.tensor_s_growth.updated = False
             self.second_layer.tensor_m_prev.updated = False
             self.second_layer.cross_covariance.updated = False
-            return x
+            return identity
         else:
-            identity = self.downsample(x)
+
             out = self.pre_activation(x)
             out = self.first_layer(out)
             out = self.second_layer(out)
             return out + identity
 
-    @property
-    def in_activity(self) -> torch.Tensor:
-        """
-        Get the input activity of the block.
-
-        Returns
-        -------
-        torch.Tensor
-            input activity
-        """
-        return self.first_layer.input
-
-    def set_store_in_activity(self, value: bool):
-        """
-        Set the store_in_activity parameter of the block.
-        If True, the block will store the activity after the first activation
-        function.
-
-        Parameters
-        ----------
-        value: bool
-            value to set
-        """
-        self.first_layer.store_input = True
+    # @property
+    # def in_activity(self) -> torch.Tensor:
+    #     """
+    #     Get the input activity of the block.
+    #
+    #     Returns
+    #     -------
+    #     torch.Tensor
+    #         input activity
+    #     """
+    #     return self.first_layer.input
+    #
+    # def set_store_in_activity(self, value: bool):
+    #     """
+    #     Set the store_in_activity parameter of the block.
+    #     If True, the block will store the activity after the first activation
+    #     function.
+    #
+    #     Parameters
+    #     ----------
+    #     value: bool
+    #         value to set
+    #     """
+    #     self.first_layer.store_input = True
 
     def init_computation(self):
         """
@@ -320,6 +324,7 @@ class GrowingBlock(GrowingContainer):
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
+        assert self.eigenvalues is not None, "No optimal added parameters computed."
         self.first_layer.apply_change()
         self.second_layer.apply_change()
         self.hidden_features += self.eigenvalues.shape[0]
@@ -336,6 +341,7 @@ class GrowingBlock(GrowingContainer):
         keep_neurons: int
             number of neurons to keep
         """
+        assert self.eigenvalues is not None, "No optimal added parameters computed."
         self.eigenvalues = self.eigenvalues[:keep_neurons]
         self.second_layer.sub_select_optimal_added_parameters(keep_neurons)
 
@@ -349,6 +355,7 @@ class GrowingBlock(GrowingContainer):
         torch.Tensor
             first order improvement
         """
+        assert self.eigenvalues is not None, "No optimal added parameters computed."
         return (
             self.parameter_update_decrease
             + self.activation_derivative * (self.eigenvalues**2).sum()
@@ -362,7 +369,7 @@ class LinearGrowingBlock(GrowingBlock):
         out_features: int,
         hidden_features: int = 0,
         layer_type: str = "linear",
-        activation: torch.nn.Module | None = None,
+        activation: torch.nn.Module | None = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
         name: str = "block",
@@ -403,7 +410,6 @@ class LinearGrowingBlock(GrowingBlock):
             out_features=out_features,
             hidden_features=hidden_features,
             layer_type=layer_type,
-            activation=activation,
             pre_activation=pre_activation,
             mid_activation=mid_activation,
             name=name,
@@ -423,7 +429,6 @@ class LinearGrowingBlock(GrowingBlock):
                 kwargs_second_layer=kwargs_second_layer,
             )
         )
-
         self.first_layer = LinearGrowingModule(
             in_features=in_features,
             out_features=hidden_features,
@@ -497,7 +502,6 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             out_features=out_channels,
             hidden_features=hidden_channels,
             layer_type="conv",  # This would need to be added to all_layer_types
-            activation=activation,
             pre_activation=pre_activation,
             mid_activation=mid_activation,
             name=name,
