@@ -23,8 +23,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         input_size: int | tuple[int, int],
         next_kernel_size: int | tuple[int, int],
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list[GrowingModule] | None = None,
-        next_modules: list[GrowingModule] | None = None,
+        previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         allow_growing: bool = False,
         input_volume: int | None = None,
         device: torch.device | None = None,
@@ -45,10 +45,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             next_modules=next_modules,
             allow_growing=allow_growing,
             tensor_s_shape=(
-                in_channels * next_kernel_size[0] * next_kernel_size[1]
-                + int(self.use_bias),
-                in_channels * next_kernel_size[0] * next_kernel_size[1]
-                + int(self.use_bias),
+                in_channels * next_kernel_size[0] * next_kernel_size[1] + self.use_bias,
+                in_channels * next_kernel_size[0] * next_kernel_size[1] + self.use_bias,
             ),
             device=device,
             name=name,
@@ -169,7 +167,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 return self.activity
 
     def set_next_modules(
-        self, next_modules: list[GrowingModule]
+        self, next_modules: list[MergeGrowingModule | GrowingModule]
     ) -> None:
         if self.tensor_s is not None and self.tensor_s.samples > 0:
             warn(
@@ -220,7 +218,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         # ), f"The output features must match the input features of the next modules."
 
     def set_previous_modules(
-        self, previous_modules: list[GrowingModule]
+        self, previous_modules: list[MergeGrowingModule | GrowingModule]
     ) -> None:
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
@@ -567,6 +565,19 @@ class Conv2dGrowingModule(GrowingModule):
 
     @property
     def in_features(self) -> int:
+        """
+        Return the number of input features (fan-in) of this convolutional layer when
+        cast as a linear layer.
+
+        Concretely, this integer equals:
+
+            in_channels * kernel_height * kernel_width
+
+        It represents the size of the input vector obtained by unfolding the convolutional
+        input (i.e. the 'fan_in' for a flattened convolution). We use the name
+        ``in_features`` (instead of ``fan_in``) to remain consistent with the naming
+        conventions used in :class:`LinearGrowingModule`.
+        """
         return self.in_channels * self.kernel_size[0] * self.kernel_size[1]
 
     @property
