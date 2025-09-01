@@ -23,8 +23,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         input_size: int | tuple[int, int],
         next_kernel_size: int | tuple[int, int],
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list[GrowingModule] | None = None,
-        next_modules: list[GrowingModule] | None = None,
+        previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         allow_growing: bool = False,
         input_volume: int | None = None,
         device: torch.device | None = None,
@@ -161,21 +161,31 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             else:
                 return self.activity
 
-    def set_next_modules(self, next_modules: list[GrowingModule]) -> None:
+    def set_next_modules(
+        self, next_modules: list[GrowingModule | MergeGrowingModule]
+    ) -> None:
         if self.tensor_s is not None and self.tensor_s.samples > 0:
             warn(
                 f"You are setting the next modules of {self.name} with a non-empty tensor S."
             )
         self.next_modules = next_modules if next_modules else []
 
-        # Assertions: all next modules must be either Conv2dGrowingModule or LinearGrowingModule
-        # (no merge modules allowed), and all must be of the same type.
+        # Assertions: all next modules must be either Conv2d or Linear growing modules.
         # For Conv2d modules, kernel sizes must match.
         next_list = next_modules if next_modules else []
 
-        # Check that all modules are allowed types (no merge modules)
+        # Check that all modules are allowed types
         assert all(
-            isinstance(m, (Conv2dGrowingModule, LinearGrowingModule)) for m in next_list
+            isinstance(
+                m,
+                (
+                    Conv2dGrowingModule,
+                    Conv2dMergeGrowingModule,
+                    LinearGrowingModule,
+                    LinearMergeGrowingModule,
+                ),
+            )
+            for m in next_list
         ), f"All next modules must be instances of Conv2dGrowingModule or LinearGrowingModule (error in {self.name})."
 
         # Check that all modules are of the same type
@@ -210,7 +220,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         #     modules.in_features == self.out_features for modules in self.next_modules
         # ), f"The output features must match the input features of the next modules."
 
-    def set_previous_modules(self, previous_modules: list[GrowingModule]) -> None:
+    def set_previous_modules(
+        self, previous_modules: list[MergeGrowingModule | GrowingModule]
+    ) -> None:
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
                 f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."
@@ -245,8 +257,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = 0
         self.total_out_features = 0
         for module in self.previous_modules:
-            # Type compatibility already checked above - all are Conv2dGrowingModule
-            if module.out_channels != self.in_channels:
+            if (
+                isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule))
+                and module.out_channels != self.in_channels
+            ):
                 raise ValueError(
                     "The input channels must match the output channels of the previous modules."
                 )
