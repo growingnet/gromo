@@ -49,6 +49,87 @@ def sqrt_inverse_matrix_semi_positive(
     return eigenvectors @ torch.diag(eigenvalues) @ eigenvectors.t()
 
 
+def optimal_delta(
+    tensor_s: torch.Tensor,
+    tensor_m: torch.Tensor,
+    dtype: torch.dtype = torch.float32,
+    force_pseudo_inverse: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Compute the optimal delta for the layer using current S and M tensors.
+
+    dW* = S[-1]^-1 M (if needed we use the pseudo-inverse)
+
+    Compute dW* (and dBias* if needed).
+    L(A + gamma * B * dW) = L(A) - gamma * d + o(gamma)
+    where d is the first order decrease and gamma the scaling factor.
+
+    Parameters
+    ----------
+    tensor_s: torch.Tensor, of shape [total_in_features, total_in_features]
+        S tensor from calling layer, shape
+    tensor_m: torch.Tensor, of shape [total_in_features, in_features]
+        M tensor from calling layer
+    dtype: torch.dtype, default torch.float32
+        dtype for S and M during the computation
+    force_pseudo_inverse: bool, default False
+        if True, use the pseudo-inverse to compute the optimal delta even if the
+        matrix is invertible
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor]
+        the optimal delta weights and the first order decrease
+    """
+    # Ensure both tensors have the same dtype initially
+    assert tensor_s.dtype == tensor_m.dtype, (
+        f"Both input tensors must have the same dtype, "
+        f"got tensor_s.dtype={tensor_s.dtype} and tensor_m.dtype={tensor_m.dtype}"
+    )
+
+    saved_dtype = tensor_s.dtype
+    if tensor_s.dtype != dtype:
+        tensor_s = tensor_s.to(dtype=dtype)
+    if tensor_m.dtype != dtype:
+        tensor_m = tensor_m.to(dtype=dtype)
+
+    if not force_pseudo_inverse:
+        try:
+            delta_raw = torch.linalg.solve(tensor_s, tensor_m).t()
+        except torch.linalg.LinAlgError:
+            force_pseudo_inverse = True
+            # self.delta_raw = torch.linalg.lstsq(tensor_s, tensor_m).solution.t()
+            # do not use lstsq because it does not work with the GPU
+            warn(f"Using the pseudo-inverse for the computation of the optimal delta.")
+    if force_pseudo_inverse:
+        delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
+
+    assert delta_raw is not None, "delta_raw should be computed by now."
+    assert (
+        delta_raw.isnan().sum() == 0
+    ), f"The optimal delta should not contain NaN values."
+    parameter_update_decrease = torch.trace(tensor_m @ delta_raw)
+    if parameter_update_decrease < 0:
+        warn(
+            f"The parameter update decrease should be positive, "
+            f"but got {parameter_update_decrease=} for layer."
+        )
+        if not force_pseudo_inverse:
+            warn(f"Trying to use the pseudo-inverse with torch.float64.")
+            return optimal_delta(
+                tensor_s, tensor_m, dtype=torch.float64, force_pseudo_inverse=True
+            )
+        else:
+            warn("Failed to compute the optimal delta, set delta to zero.")
+            delta_raw.fill_(0)
+            parameter_update_decrease.fill_(0)
+    delta_raw = delta_raw.to(dtype=saved_dtype)
+    if isinstance(parameter_update_decrease, torch.Tensor):
+        parameter_update_decrease = parameter_update_decrease.to(dtype=saved_dtype)
+
+    return delta_raw, parameter_update_decrease
+
+
 def compute_optimal_added_parameters(
     matrix_s: torch.Tensor,
     matrix_n: torch.Tensor,
