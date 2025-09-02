@@ -35,6 +35,48 @@ class TestGrowingBlock(TorchTestCase):
         self.assertEqual(kwargs_first, kwargs_layer)
         self.assertEqual(kwargs_second, kwargs_layer)
 
+        # Test with explicit kwargs_first_layer and kwargs_second_layer (covers lines 116 and 126)
+        kwargs_first_explicit = {"use_bias": True, "device": "cpu"}
+        kwargs_second_explicit = {"use_bias": False, "device": "cuda"}
+
+        pre_act, mid_act, kwargs_first, kwargs_second = GrowingBlock.set_default_values(
+            activation=activation,
+            pre_activation=pre_activation,
+            kwargs_layer=kwargs_layer,
+            kwargs_first_layer=kwargs_first_explicit,
+            kwargs_second_layer=kwargs_second_explicit,
+        )
+        self.assertEqual(pre_act, pre_activation)
+        self.assertEqual(mid_act, activation)
+        self.assertEqual(
+            kwargs_first, kwargs_first_explicit
+        )  # Should use explicit value, not kwargs_layer
+        self.assertEqual(
+            kwargs_second, kwargs_second_explicit
+        )  # Should use explicit value, not kwargs_layer
+
+        # Test with only kwargs_first_layer provided (covers line 116)
+        pre_act, mid_act, kwargs_first, kwargs_second = GrowingBlock.set_default_values(
+            activation=None,
+            kwargs_layer=kwargs_layer,
+            kwargs_first_layer=kwargs_first_explicit,
+        )
+        self.assertIsInstance(pre_act, torch.nn.Identity)  # Should fallback to identity
+        self.assertIsInstance(mid_act, torch.nn.Identity)  # Should fallback to identity
+        self.assertEqual(kwargs_first, kwargs_first_explicit)  # Should use explicit value
+        self.assertEqual(kwargs_second, kwargs_layer)  # Should fallback to kwargs_layer
+
+        # Test with only kwargs_second_layer provided (covers line 126)
+        pre_act, mid_act, kwargs_first, kwargs_second = GrowingBlock.set_default_values(
+            activation=activation,
+            kwargs_layer=kwargs_layer,
+            kwargs_second_layer=kwargs_second_explicit,
+        )
+        self.assertEqual(kwargs_first, kwargs_layer)  # Should fallback to kwargs_layer
+        self.assertEqual(
+            kwargs_second, kwargs_second_explicit
+        )  # Should use explicit value
+
 
 class ScalingModule(torch.nn.Module):
     def __init__(self, scaling_factor: float = 1.0):
