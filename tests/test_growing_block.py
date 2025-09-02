@@ -36,6 +36,15 @@ class TestGrowingBlock(TorchTestCase):
         self.assertEqual(kwargs_second, kwargs_layer)
 
 
+class ScalingModule(torch.nn.Module):
+    def __init__(self, scaling_factor: float = 1.0):
+        super(ScalingModule, self).__init__()
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.scaling_factor * x
+
+
 class TestLinearGrowingBlock(TorchTestCase):
     """Test LinearGrowingBlock functionality."""
 
@@ -43,11 +52,22 @@ class TestLinearGrowingBlock(TorchTestCase):
         torch.manual_seed(0)
         self.device = global_device()
         self.batch_size = 4
-        self.in_features = 6
-        self.out_features = 8
-        self.hidden_features = 5
+        self.in_features = 2
+        self.out_features = 5
+        self.hidden_features = 3
+        self.added_features = 7
+        self.scaling_factor = 0.9
         self.downsample = torch.nn.Linear(
             self.in_features, self.out_features, device=self.device
+        )
+        self.first_layer_extension = torch.nn.Linear(
+            self.in_features, self.added_features, device=self.device
+        )
+        self.second_layer_extension = torch.nn.Linear(
+            self.added_features, self.out_features, device=self.device
+        )
+        self.second_layer_extension_no_downsample = torch.nn.Linear(
+            self.added_features, self.in_features, device=self.device
         )
 
     def test_init_with_zero_features(self):
@@ -371,7 +391,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Second layer should use kwargs_layer
         self.assertFalse(block.second_layer.use_bias)
 
-    def test_extended_forward_zero_features(self):
+    def test_extended_forward_zero_features_no_downsample(self):
         """Test extended_forward with zero hidden features."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
@@ -382,11 +402,162 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
 
-        # With zero features and no extended_output_layer, should return identity
-        output = block.extended_forward(x)
-        expected_output = block.downsample(x)
+        with self.subTest("No extension"):
+            # With zero features and no extension, should return identity
+            output = block.extended_forward(x)
 
-        self.assertAllClose(output, expected_output)
+            self.assertAllClose(output, x)
+
+        with self.subTest("With extension"):
+            # With zero features and an extension
+            block.scaling_factor = self.scaling_factor
+            block.first_layer.extended_output_layer = self.first_layer_extension
+            block.second_layer.extended_input_layer = (
+                self.second_layer_extension_no_downsample
+            )
+            output = block.extended_forward(x)
+            expected_output = (
+                torch.nn.Sequential(
+                    block.pre_activation,
+                    self.first_layer_extension,
+                    ScalingModule(self.scaling_factor),
+                    block.first_layer.extended_post_layer_function,
+                    self.second_layer_extension_no_downsample,
+                    ScalingModule(self.scaling_factor),
+                )(x)
+                + x
+            )  # identity downsample
+
+            self.assertAllClose(output, expected_output)
+
+    def test_extended_forward_zero_features_with_downsample(self):
+        """Test extended_forward with zero hidden features and downsample."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=0,
+            downsample=self.downsample,
+            device=self.device,
+        )
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+
+        with self.subTest("No extension"):
+            # With zero features and no extension, should return downsample(x)
+            output = block.extended_forward(x)
+            expected_output = self.downsample(x)
+
+            self.assertAllClose(output, expected_output)
+
+        with self.subTest("With extension"):
+            # With zero features and an extension
+            block.scaling_factor = self.scaling_factor
+            block.first_layer.extended_output_layer = self.first_layer_extension
+            block.second_layer.extended_input_layer = self.second_layer_extension
+            output = block.extended_forward(x)
+            expected_output = torch.nn.Sequential(
+                block.pre_activation,
+                self.first_layer_extension,
+                ScalingModule(self.scaling_factor),
+                block.first_layer.extended_post_layer_function,
+                self.second_layer_extension,
+                ScalingModule(self.scaling_factor),
+            )(x) + self.downsample(x)
+
+            self.assertAllClose(output, expected_output)
+
+    def test_extended_forward_positive_features_no_downsample(self):
+        """Test extended_forward with positive hidden features and no downsample."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+
+        with self.subTest("No extension"):
+            # With positive features and no extension, should use normal forward through layers
+            output = block.extended_forward(x)
+            # Use the already tested forward method
+            expected_output = block(x)
+
+            self.assertAllClose(output, expected_output)
+
+        with self.subTest("With extension"):
+            # With positive features and extension, should use extended_forward method
+            block.scaling_factor = self.scaling_factor
+            # Set up extensions for both layers
+            block.first_layer.extended_output_layer = self.first_layer_extension
+            block.second_layer.extended_input_layer = (
+                self.second_layer_extension_no_downsample
+            )
+
+            # The extended forward for positive features should call the layers' extended_forward methods
+            output = block.extended_forward(x)
+
+            # For positive features, the block should call first_layer.extended_forward and second_layer.extended_forward
+            # This is complex to replicate exactly, so we'll just verify the shape and that it runs without error
+            self.assertShapeEqual(output, (self.batch_size, self.in_features))
+
+            # Now test exact computation by manually calling the layers' extended_forward methods
+            identity = x  # identity downsample
+            pre_activated = block.pre_activation(x)
+            first_out, first_ext = block.first_layer.extended_forward(pre_activated)
+            second_out, second_ext = block.second_layer.extended_forward(
+                first_out, first_ext
+            )
+            expected_output = second_out + identity
+
+            self.assertAllClose(output, expected_output)
+            self.assertIsNone(second_ext)
+
+    def test_extended_forward_positive_features_with_downsample(self):
+        """Test extended_forward with positive hidden features and downsample."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=self.hidden_features,
+            downsample=self.downsample,
+            device=self.device,
+        )
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+
+        with self.subTest("No extension"):
+            # With positive features and no extension, should use normal forward through layers
+            output = block.extended_forward(x)
+            # Use the already tested forward method
+            expected_output = block(x)
+
+            self.assertAllClose(output, expected_output)
+
+        with self.subTest("With extension"):
+            # With positive features and extension, should use extended_forward method
+            block.scaling_factor = self.scaling_factor
+            # Set up extensions for both layers
+            block.first_layer.extended_output_layer = self.first_layer_extension
+            block.second_layer.extended_input_layer = self.second_layer_extension
+
+            # The extended forward for positive features should call the layers' extended_forward methods
+            output = block.extended_forward(x)
+
+            # For positive features, the block should call first_layer.extended_forward and second_layer.extended_forward
+            # This is complex to replicate exactly, so we'll just verify the shape and that it runs without error
+            self.assertShapeEqual(output, (self.batch_size, self.out_features))
+
+            # Now test exact computation by manually calling the layers' extended_forward methods
+            identity = self.downsample(x)
+            pre_activated = block.pre_activation(x)
+            first_out, first_ext = block.first_layer.extended_forward(pre_activated)
+            second_out, second_ext = block.second_layer.extended_forward(
+                first_out, first_ext
+            )
+            expected_output = second_out + identity
+
+            self.assertAllClose(output, expected_output)
+            self.assertIsNone(second_ext)
 
     def test_reset_computation(self):
         """Test reset of computation."""
@@ -576,6 +747,14 @@ class TestLinearGrowingBlock(TorchTestCase):
         loss = torch.norm(output)
         loss.backward()
 
+        # Check that pre-activity gradient can be accessed
+        pre_activity_grad = block.second_layer.pre_activity.grad
+        self.assertIsNotNone(pre_activity_grad)
+        self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
+
+        # Verify gradient shape matches the output of first_layer
+        expected_shape = (self.batch_size, self.out_features)
+        self.assertShapeEqual(pre_activity_grad, expected_shape)
         # Check that pre-activity gradient can be accessed
         pre_activity_grad = block.second_layer.pre_activity.grad
         self.assertIsNotNone(pre_activity_grad)
