@@ -167,7 +167,7 @@ class GrowingBlock(GrowingContainer):
             assert (
                 self.second_layer.extended_input_layer is not None
             ), f"Second layer {self.second_layer.name} should have an extended output layer."
-            x = self.second_layer.extended_input_layer(x)
+            x = self.scaling_factor * self.second_layer.extended_input_layer(x)
             x = self.second_layer.extended_post_layer_function(x)
 
             return x + identity
