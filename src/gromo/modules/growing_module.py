@@ -1377,7 +1377,7 @@ class GrowingModule(torch.nn.Module):
         if use_projected_gradient:
             matrix_n = self.tensor_n
         else:
-            matrix_n = self.tensor_m_prev()
+            matrix_n = -self.tensor_m_prev()
         # It seems that sometimes the tensor N is not accessible.
         # I have no idea why this occurs sometimes.
 
