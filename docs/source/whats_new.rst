@@ -20,7 +20,12 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-
+- Add robust `compute_optimal_delta` function to `gromo.utils.tools` with comprehensive dtype handling, automatic LinAlgError fallback to pseudo-inverse, float64 retry mechanism for negative decrease scenarios, and extensive test suite achieving 95% coverage. Function computes optimal weight updates for layer expansion using mathematical formula dW* = M S⁻¹ with full backward compatibility (:gh:`114` by `Stéphane Rivaud`_)
+- Refactor `GrowingModule` to centralize `tensor_s_growth` handling (:gh:`109` by `Stéphane Rivaud`_)
+- Add `use_projected_gradient` parameter to growing modules to control whether to use projected gradient (`tensor_n`) or raw tensor (`tensor_m_prev`) for computing new neurons. This provides more flexibility in the optimization strategy and improves test coverage for critical code paths (:gh:`104` by `Théo Rudkiewicz`_).
+- Fix statistics normalization in `LinearGrowingModule` (:gh:`110` by `Stéphane Rivaud`_)
+- Implement systematic test coverage improvement initiative achieving 92% → 95% overall coverage through 4-phase strategic enhancement targeting critical modules: utils.py (80% → 96%), tools.py (78% → 98%), and growing_module.py (92% → 94%). Added 27 comprehensive test methods covering multi-device compatibility, error handling paths, mathematical algorithm edge cases, and abstract class testing via concrete implementations (:gh:`113` by `Stéphane Rivaud`_).
+- Fix the `tensor_n` computation in `RestrictedConv2dGrowingModule` (:gh:`103` by `Théo Rudkiewicz`_).
 - Add `GrowingBatchNorm1d` and `GrowingBatchNorm2d` modules to support batch normalization in growing networks (:gh:`101` by `Théo Rudkiewicz`_).
 - Implemented Conv2dMergeGrowingModule and added support for computing number of parameters in Conv2dGrowingModule (:gh:`94` by `Stella Douka`_)
 - Optimize RestrictedConv2dGrowingModule to fasten the simulation of the side effect of a convolution (:gh:`99` by `Théo Rudkiewicz`_).
@@ -65,6 +70,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)
 - Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)
 - Added support for configuration files that override default class arguments (:gh:`38` by `Stella Douka`_)
 

@@ -6,7 +6,7 @@ import torch
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import compute_optimal_added_parameters
+from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
 from gromo.utils.utils import get_correct_device
 
 
@@ -19,12 +19,12 @@ class MergeGrowingModule(torch.nn.Module):
     def __init__(
         self,
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list["MergeGrowingModule | GrowingModule"] = None,
-        next_modules: list["MergeGrowingModule | GrowingModule"] = None,
+        previous_modules: list["GrowingModule"] | None = None,
+        next_modules: list["GrowingModule"] | None = None,
         allow_growing: bool = False,
-        tensor_s_shape: tuple[int, int] = None,
+        tensor_s_shape: tuple[int, int] | None = None,
         device: torch.device | None = None,
-        name: str = None,
+        name: str | None = None,
     ) -> None:
 
         super(MergeGrowingModule, self).__init__()
@@ -58,10 +58,11 @@ class MergeGrowingModule(torch.nn.Module):
         self.previous_tensor_s: TensorStatistic | None = None
         self.previous_tensor_m: TensorStatistic | None = None
 
-        self.previous_modules: list[MergeGrowingModule | GrowingModule] = []
-        self.set_previous_modules(previous_modules)
-        self.next_modules: list[MergeGrowingModule | GrowingModule] = []
-        self.set_next_modules(next_modules)
+        # previous_modules / next_modules are lists of regular GrowingModule instances
+        self.previous_modules: list["GrowingModule"] = []
+        self.set_previous_modules(previous_modules if previous_modules else [])
+        self.next_modules: list["GrowingModule"] = []
+        self.set_next_modules(next_modules if next_modules else [])
 
     @property
     def number_of_successors(self):
@@ -79,7 +80,7 @@ class MergeGrowingModule(torch.nn.Module):
         self.set_next_modules(self.next_modules)
         self.set_previous_modules(self.previous_modules)
 
-    def add_next_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
+    def add_next_module(self, module: "GrowingModule") -> None:
         """
         Add a module to the next modules of the current module.
 
@@ -93,7 +94,7 @@ class MergeGrowingModule(torch.nn.Module):
             self.next_modules
         )  # TODO: maybe it is possible to avoid this
 
-    def add_previous_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
+    def add_previous_module(self, module: "GrowingModule") -> None:
         """
         Add a module to the previous modules of the current module.
 
@@ -105,9 +106,7 @@ class MergeGrowingModule(torch.nn.Module):
         self.previous_modules.append(module)
         self.set_previous_modules(self.previous_modules)
 
-    def set_next_modules(
-        self, next_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_next_modules(self, next_modules: list["GrowingModule"]) -> None:
         """
         Set the next modules of the current module.
 
@@ -118,9 +117,7 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def set_previous_modules(
-        self, previous_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_previous_modules(self, previous_modules: list["GrowingModule"]) -> None:
         """
         Set the previous modules of the current module.
 
@@ -245,34 +242,94 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def init_computation(self) -> None:
+        """
+        Initialize the computation of the optimal added parameters.
+        """
+        self.store_input = True
+        self.store_activity = True
+        self.tensor_s.init()
+        for module in self.previous_modules:
+            module.store_input = True
+            module.store_pre_activity = True
+        if self.previous_tensor_s is not None:
+            self.previous_tensor_s.init()
+        if self.previous_tensor_m is not None:
+            self.previous_tensor_m.init()
+
+    def update_computation(self) -> None:
+        """
+        Update the computation of the optimal added parameters.
+        """
+        self.tensor_s.update()
+        if self.previous_tensor_s is not None:
+            self.previous_tensor_s.update()
+        if self.previous_tensor_m is not None:
+            self.previous_tensor_m.update()
+
+    def reset_computation(self) -> None:
+        """
+        Reset the computation of the optimal added parameters.
+        """
+        self.store_input = False
+        self.store_activity = False
+        self.tensor_s.reset()
+        for module in self.previous_modules:
+            module.store_input = False
+            module.store_pre_activity = False
+        if self.previous_tensor_s is not None:
+            self.previous_tensor_s.reset()
+        if self.previous_tensor_m is not None:
+            self.previous_tensor_m.reset()
+
+    def delete_update(self, include_previous: bool = False) -> None:
+        """
+        Delete the update of the optimal added parameters.
+        """
+        self.optimal_delta_layer = None
+        self.extended_input_layer = None
+        self.parameter_update_decrease = None
+        self.eigenvalues_extension = None
+        self.activity = None
+        self.input = None
+
+        if include_previous:
+            for previous_module in self.previous_modules:
+                if isinstance(previous_module, GrowingModule):
+                    previous_module.delete_update(
+                        include_previous=False, include_output=True
+                    )
+
     def compute_optimal_delta(
         self,
         update: bool = True,
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
+        dtype: torch.dtype = torch.float32,
     ) -> list[tuple[torch.Tensor, torch.Tensor]] | None:
         """
         Compute the optimal delta for each previous layer using current S and M tensors.
-
         dW* = M S[-1]^-1 (if needed we use the pseudo-inverse)
-
         Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
-
         Parameters
         ----------
-        update: bool
+        update: bool, default True
             if True update the optimal delta layer attribute
-        return_deltas: bool
+        return_deltas: bool, default False
             if True return the deltas
-        force_pseudo_inverse: bool
+        force_pseudo_inverse: bool, default False
             if True, use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible
-
+        dtype: torch.dtype
+            dtype for S and M during the computation
         Returns
         -------
         list[tuple[torch.Tensor, torch.Tensor]] | None
             optimal delta for the weights and the biases if needed
         """
+        assert (
+            self.previous_tensor_s is not None
+        ), f"No previous tensor S for {self.name}."
         assert (
             self.previous_tensor_m is not None
         ), f"No previous tensor M for {self.name}."
@@ -282,27 +339,16 @@ class MergeGrowingModule(torch.nn.Module):
             f"The inverse of S should have the same number of features as the input "
             f"of all previous modules. Expected {self.total_in_features}. Got {previous_tensor_s.shape[0]}."
         )
-        assert previous_tensor_m.shape[0] == self.total_in_features, (
-            f"The tensor M should have the same number of features as the input of "
-            f"all previous modules. Expected {self.total_in_features}. Got {previous_tensor_m.shape[0]}."
+        assert previous_tensor_m.shape == (self.total_in_features, self.in_features), (
+            f"The tensor M should have shape ({self.total_in_features}, {self.in_features}). "
+            f"Got {previous_tensor_m.shape}."
         )
-        assert previous_tensor_m.shape[1] == self.in_features, (
-            f"The tensor M should have the same number of output features as the layer. "
-            f"Expected {self.in_features}. Got {previous_tensor_m.shape[1]}."
+        delta, _ = optimal_delta(
+            previous_tensor_s,
+            previous_tensor_m,
+            dtype=dtype,
+            force_pseudo_inverse=force_pseudo_inverse,
         )
-        if not force_pseudo_inverse:
-            try:
-                delta = torch.linalg.solve(previous_tensor_s, previous_tensor_m).t()
-            except torch.linalg.LinAlgError:
-                force_pseudo_inverse = True
-                # delta = torch.linalg.lstsq(tensor_s, previous_tensor_m).solution.t()
-                # do not use lstsq because it does not work with the GPU
-                warnings.warn(
-                    f"Using the pseudo-inverse for the computation of the optimal delta "
-                    f"for {self.name}."
-                )
-        if force_pseudo_inverse:
-            delta = (torch.linalg.pinv(previous_tensor_s) @ previous_tensor_m).t()
 
         deltas = []
         current_index = 0
@@ -326,55 +372,6 @@ class MergeGrowingModule(torch.nn.Module):
             return deltas
         else:
             return None
-
-    def init_computation(self) -> None:
-        """
-        Initialize the computation of the optimal added parameters.
-        """
-        self.store_input = True
-        self.store_pre_activity = True
-        for module in self.previous_modules:
-            module.store_input = True
-            module.store_pre_activity = True
-        if self.previous_tensor_s is not None:
-            self.previous_tensor_s.init()
-            self.previous_tensor_m.init()
-
-    def update_computation(self) -> None:
-        self.previous_tensor_s.update()
-        self.previous_tensor_m.update()
-
-    def reset_computation(self) -> None:
-        """
-        Reset the computation of the optimal added parameters.
-        """
-        self.store_input = False
-        self.store_pre_activity = False
-        self.store_activity = False
-        for module in self.previous_modules:
-            module.store_input = False
-            module.store_pre_activity = False
-        if self.previous_tensor_s is not None:
-            self.previous_tensor_s.reset()
-            self.previous_tensor_m.reset()
-
-    def delete_update(self, include_previous: bool = False) -> None:
-        """
-        Delete the update of the optimal added parameters.
-        """
-        self.optimal_delta_layer = None
-        self.extended_input_layer = None
-        self.parameter_update_decrease = None
-        self.eigenvalues_extension = None
-        self.activity = None
-        self.input = None
-
-        if include_previous:
-            for previous_module in self.previous_modules:
-                if isinstance(previous_module, GrowingModule):
-                    previous_module.delete_update(
-                        include_previous=False, include_output=True
-                    )
 
     def update_size(self) -> None:
         """
@@ -486,7 +483,6 @@ class GrowingModule(torch.nn.Module):
         next_module: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str | None = None,
-        s_growth_is_needed: bool = True,
     ) -> None:
         """
         Initialize a GrowingModule.
@@ -511,9 +507,6 @@ class GrowingModule(torch.nn.Module):
             device to use
         name: str | None
             name of the module
-        s_growth_is_needed: bool
-            if True, the tensor S growth is needed, otherwise it is not computed
-            (this used for example in the case of linear layers where S = S growth)
         """
         if tensor_s_shape is None:
             warnings.warn(
@@ -614,15 +607,6 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"C({self.name})",
         )
-
-        self.s_growth_is_needed = s_growth_is_needed
-        if s_growth_is_needed:
-            self.tensor_s_growth = TensorStatistic(
-                None,
-                update_function=self.compute_s_growth_update,
-                device=self.device,
-                name=f"S_growth({name})",
-            )
 
     # Information functions
     @property
@@ -776,7 +760,8 @@ class GrowingModule(torch.nn.Module):
         self.tensor_m.updated = False
         self.tensor_m_prev.updated = False
         self.cross_covariance.updated = False
-        if self.s_growth_is_needed:
+        if isinstance(self.previous_module, GrowingModule):
+            # TODO: change this condition by using self._allow_growing
             self.tensor_s_growth.updated = False
 
         if self._internal_store_input:
@@ -952,6 +937,37 @@ class GrowingModule(torch.nn.Module):
         else:
             return self._tensor_s
 
+    @property
+    def tensor_s_growth(self):
+        """
+        Redirect to the tensor S of the previous module.
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus S growth is not defined."
+            )
+        elif isinstance(self.previous_module, GrowingModule):
+            return self.previous_module.tensor_s
+        elif isinstance(self.previous_module, MergeGrowingModule):
+            raise NotImplementedError(
+                f"S growth is not implemented for module preceded by an MergeGrowingModule."
+                " (error in {self.name})"
+            )
+        else:
+            raise NotImplementedError(
+                f"S growth is not implemented yet for {type(self.previous_module)} as previous module."
+            )
+
+    @tensor_s_growth.setter
+    def tensor_s_growth(self, value) -> None:
+        """
+        Allow to set the tensor_s_growth but has no effect.
+        """
+        raise AttributeError(
+            f"You tried to set tensor_s_growth of a GrowingModule (name={self.name})."
+            "This is not allowed because tensor_s_growth refers to the previous module's tensor_s, not the current module's tensor_s."
+        )
+
     def compute_m_update(
         self, desired_activation: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, int]:
@@ -1000,19 +1016,6 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             update of the tensor C
-        int
-            number of samples used to compute the update
-        """
-        raise NotImplementedError
-
-    def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
-        """
-        Compute the update of the tensor S_growth.
-
-        Returns
-        -------
-        torch.Tensor
-            update of the tensor S_growth
         int
             number of samples used to compute the update
         """
@@ -1288,50 +1291,9 @@ class GrowingModule(torch.nn.Module):
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
 
-        saved_dtype = tensor_s.dtype
-        if tensor_s.dtype != dtype:
-            tensor_s = tensor_s.to(dtype=dtype)
-        if tensor_m.dtype != dtype:
-            tensor_m = tensor_m.to(dtype=dtype)
-
-        if not force_pseudo_inverse:
-            try:
-                self.delta_raw = torch.linalg.solve(tensor_s, tensor_m).t()
-            except torch.linalg.LinAlgError:
-                force_pseudo_inverse = True
-                # self.delta_raw = torch.linalg.lstsq(tensor_s, tensor_m).solution.t()
-                # do not use lstsq because it does not work with the GPU
-                warnings.warn(
-                    f"Using the pseudo-inverse for the computation of the optimal delta "
-                    f"for {self.name}."
-                )
-        if force_pseudo_inverse:
-            self.delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
-
-        assert self.delta_raw is not None, "self.delta_raw should be computed by now."
-        assert (
-            self.delta_raw.isnan().sum() == 0
-        ), f"The optimal delta should not contain NaN values for {self.name}."
-        self.parameter_update_decrease = torch.trace(tensor_m @ self.delta_raw)
-        if self.parameter_update_decrease < 0:
-            warnings.warn(
-                f"The parameter update decrease should be positive, "
-                f"but got {self.parameter_update_decrease=} for layer {self.name}."
-            )
-            if not force_pseudo_inverse:
-                warnings.warn(
-                    f"Trying to use the pseudo-inverse for {self.name} with torch.float64."
-                )
-                return self.compute_optimal_delta(
-                    update=update, dtype=torch.float64, force_pseudo_inverse=True
-                )
-            else:
-                warnings.warn(
-                    f"Failed to compute the optimal delta for {self.name}, set"
-                    f"delta to zero."
-                )
-                self.delta_raw = torch.zeros_like(self.delta_raw)
-        self.delta_raw = self.delta_raw.to(dtype=saved_dtype)
+        self.delta_raw, self.parameter_update_decrease = optimal_delta(
+            tensor_s, tensor_m, dtype=dtype, force_pseudo_inverse=force_pseudo_inverse
+        )
 
         if self.use_bias:
             delta_weight = self.delta_raw[:, :-1]
@@ -1352,6 +1314,7 @@ class GrowingModule(torch.nn.Module):
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Auxiliary function to compute the optimal added parameters (alpha, omega, k)
@@ -1366,13 +1329,18 @@ class GrowingModule(torch.nn.Module):
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
             dtype for S and N during the computation
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
             optimal added weights alpha, omega and eigenvalues lambda
         """
-        matrix_n = self.tensor_n
+        if use_projected_gradient:
+            matrix_n = self.tensor_n
+        else:
+            matrix_n = self.tensor_m_prev()
         # It seems that sometimes the tensor N is not accessible.
         # I have no idea why this occurs sometimes.
 
@@ -1408,6 +1376,7 @@ class GrowingModule(torch.nn.Module):
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1425,6 +1394,8 @@ class GrowingModule(torch.nn.Module):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
@@ -1461,8 +1432,8 @@ class GrowingModule(torch.nn.Module):
         statistical_threshold: float = 1e-5,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
-        zero_delta: bool = False,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Compute the optimal update  and additional neurons.
@@ -1477,10 +1448,10 @@ class GrowingModule(torch.nn.Module):
             maximum number of added neurons, if None all significant neurons are kept
         update_previous: bool
             whether to change the previous layer extended_output_layer
-        zero_delta: bool
-            if True, compute the optimal added neurons without performing the natural gradient step.
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
@@ -1488,12 +1459,6 @@ class GrowingModule(torch.nn.Module):
             optimal extension for the previous layer (weights and biases)
         """
         self.compute_optimal_delta(dtype=dtype)
-        if zero_delta:
-            if self.optimal_delta_layer is not None:
-                self.optimal_delta_layer.weight.data.zero_()
-                if self.optimal_delta_layer.bias is not None:
-                    self.optimal_delta_layer.bias.data.zero_()
-            self.delta_raw.zero_()
 
         if self.previous_module is None:
             return  # FIXME: change the definition of the function
@@ -1504,6 +1469,7 @@ class GrowingModule(torch.nn.Module):
                 maximum_added_neurons=maximum_added_neurons,
                 update_previous=update_previous,
                 dtype=dtype,
+                use_projected_gradient=use_projected_gradient,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):
