@@ -11,7 +11,7 @@ from gromo.modules.linear_growing_module import (
 )
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
-from tests.torch_unittest import TorchTestCase
+from tests.torch_unittest import GrowableIdentity, SizedIdentity, TorchTestCase
 from tests.unittest_tools import unittest_parametrize
 
 
@@ -384,6 +384,40 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         """Create MSE loss function with specified reduction."""
         return torch.nn.MSELoss(reduction=reduction)
 
+    def create_demo_layers_with_extension(
+        self,
+        first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
+        first_layer_extended_post_layer: torch.nn.Module | None = None,
+        include_eigenvalues: bool = False,
+    ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
+        """Create demo layers with extension for testing."""
+        layer_in = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            name="layer_in",
+            post_layer_function=first_layer_post_layer,
+            extended_post_layer_function=first_layer_extended_post_layer,
+            device=global_device(),
+        )
+        layer_out = LinearGrowingModule(
+            in_features=3,
+            out_features=7,
+            name="layer_out",
+            previous_module=layer_in,
+            device=global_device(),
+        )
+
+        first_layer_ext = torch.nn.Linear(5, 2, device=global_device())
+        second_layer_ext = torch.nn.Linear(2, 7, device=global_device(), bias=False)
+
+        layer_in.extended_output_layer = first_layer_ext
+        layer_out.extended_input_layer = second_layer_ext
+
+        if include_eigenvalues:
+            layer_out.eigenvalues_extension = torch.empty(2, device=global_device())
+
+        return layer_in, layer_out
+
 
 class TestLinearGrowingModule(TestLinearGrowingModuleBase):
     """Optimized test class for LinearGrowingModule with improved structure."""
@@ -399,6 +433,64 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.demo_layers = {}
         for bias in (True, False):
             self.demo_layers[bias] = self.create_demo_layers(bias)
+
+    def test_apply_change_with_sized_post_layer_function(self):
+        """
+        Test apply change with sized post layer function.
+        - with correct extension_size (works)
+        - with correct extension_size but with a non growable post_layer function (crash on forward)
+        - with incorrect extension_size (crash on forward)
+        - without extension_size but with self.eigenvalues_extension (works)
+        - without extension_size and without self.eigenvalues_extension (error on apply change)
+        """
+        with self.subTest("Growable post layer function"):
+            first_module, second_module = self.create_demo_layers_with_extension(
+                first_layer_post_layer=GrowableIdentity(3)
+            )
+            second_module.apply_change(apply_previous=True, extension_size=2)
+            y = second_module(first_module(self.input_x))
+            self.assertIsInstance(y, torch.Tensor)
+
+        with self.subTest("Growable post layer function in a Sequential"):
+            first_module, second_module = self.create_demo_layers_with_extension(
+                first_layer_post_layer=torch.nn.Sequential(
+                    torch.nn.Identity(), GrowableIdentity(3)
+                )
+            )
+            second_module.apply_change(apply_previous=True, extension_size=2)
+            y = second_module(first_module(self.input_x))
+            self.assertIsInstance(y, torch.Tensor)
+
+        with self.subTest("Non-growable post layer function"):
+            first_module, second_module = self.create_demo_layers_with_extension(
+                first_layer_post_layer=SizedIdentity(3)
+            )
+            second_module.apply_change(apply_previous=True, extension_size=2)
+            with self.assertRaises(ValueError):
+                first_module(self.input_x)
+
+        with self.subTest("Incorrect extension size"):
+            first_module, second_module = self.create_demo_layers_with_extension(
+                first_layer_post_layer=GrowableIdentity(3)
+            )
+            second_module.apply_change(apply_previous=True, extension_size=3)
+            with self.assertRaises(ValueError):
+                first_module(self.input_x)
+
+        with self.subTest("No extension size but eigenvalues_extension set"):
+            first_module, second_module = self.create_demo_layers_with_extension(
+                first_layer_post_layer=GrowableIdentity(3), include_eigenvalues=True
+            )
+            second_module.apply_change(apply_previous=True)
+            y = second_module(first_module(self.input_x))
+            self.assertIsInstance(y, torch.Tensor)
+
+        with self.subTest("No extension size and no eigenvalues_extension"):
+            first_module, second_module = self.create_demo_layers_with_extension(
+                first_layer_post_layer=GrowableIdentity(3)
+            )
+            with self.assertRaises(AssertionError):
+                second_module.apply_change(apply_previous=True)
 
     def test_compute_s(self):
         """Test S tensor computation with optimized setup and helper methods."""
