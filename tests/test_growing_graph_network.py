@@ -270,10 +270,12 @@ class TestGrowingGraphNetwork(unittest.TestCase):
     def test_restrict_action_space(self) -> None:
         self.assertEqual(len(self.actions), 4)
 
+        # Not specifying chosen_inputs or chosen_outputs should raise a warning and return all actions
         with self.assertWarns(UserWarning):
             gens = self.net.restrict_action_space(self.actions)
         self.assertListEqual(gens, self.actions)
 
+        # Restricting based on outputs
         gens = self.net.restrict_action_space(self.actions, chosen_outputs=["end"])
         self.assertEqual(len(gens), 3)
 
@@ -283,11 +285,13 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         gens = self.net.restrict_action_space(self.actions, chosen_outputs=["start"])
         self.assertEqual(len(gens), 0)
 
+        # Restricting based on both inputs and outputs should raise NotImplementedError
         with self.assertRaises(NotImplementedError):
             self.net.restrict_action_space(
                 self.actions, chosen_outputs=["end"], chosen_inputs=["start"]
             )
 
+        # Restricting based on inputs
         gens = self.net.restrict_action_space(self.actions, chosen_inputs=["start"])
         self.assertEqual(len(gens), 3)
 
@@ -296,14 +300,6 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
         gens = self.net.restrict_action_space(self.actions, chosen_inputs=["end"])
         self.assertEqual(len(gens), 0)
-
-        with self.assertRaises(NotImplementedError):
-            self.net.restrict_action_space(
-                self.actions, chosen_outputs=["end"], chosen_inputs=["start"]
-            )
-
-        with self.assertWarns(UserWarning):
-            self.net.restrict_action_space(self.actions)
 
     def test_grow_step(self) -> None:
         pass
