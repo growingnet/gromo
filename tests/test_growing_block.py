@@ -2,7 +2,7 @@ import torch
 
 from gromo.containers.growing_block import GrowingBlock, LinearGrowingBlock
 from gromo.utils.utils import global_device
-from tests.torch_unittest import TorchTestCase
+from tests.torch_unittest import TorchTestCase, indicator_batch
 from tests.unittest_tools import unittest_parametrize
 
 
@@ -803,3 +803,160 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check that gradients were computed
         for param in block.parameters():
             self.assertIsNotNone(param.grad)
+
+    def test_full_addition_loop_with_indicator_batch(self):
+        """Test complete addition loop starting with 0 features using indicator batch data."""
+
+        # Step 1: Create the block with no downsampling, no activation
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,  # Same dimensions for identity mapping
+            hidden_features=0,  # Start with 0 features
+            activation=torch.nn.Identity(),
+            device=self.device,
+            name="test_block",
+        )
+
+        # Step 2: Init the computation
+        block.init_computation()
+
+        # Step 3: Forward/backward with loss ||.||^2 / 2 using indicator batch
+        x_batch = indicator_batch((self.in_features,), device=self.device)
+
+        block.zero_grad()
+        output = block(x_batch)
+
+        # Loss: ||output||^2 / 2
+        # loss = 0.5 * torch.nn.functional.mse_loss(output, torch.zeros_like(output))
+        loss = (output**2).sum() / 2
+        loss.backward()
+
+        # Verify gradients exist
+        self.assertIsNotNone(block.second_layer.pre_activity.grad)
+
+        # Update computation
+        block.update_computation()
+
+        # Step 4: Compute updates (with max neurons = input features)
+        block.compute_optimal_updates(maximum_added_neurons=self.in_features)
+
+        # Verify updates were computed
+        self.assertIsNotNone(block.first_layer.extended_output_layer)
+        self.assertIsNotNone(block.second_layer.extended_input_layer)
+        self.assertIsNotNone(block.eigenvalues)
+        assert isinstance(block.first_layer.extended_output_layer, torch.nn.Linear)
+        assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
+        assert isinstance(block.eigenvalues, torch.Tensor)
+
+        # Step 5: Reset computation
+        block.reset_computation()
+
+        # Verify reset
+        self.assertFalse(block.first_layer.store_input)
+        self.assertFalse(block.second_layer.store_pre_activity)
+
+        # Step 6: Set scaling factor to 1
+        block.scaling_factor = 1
+
+        # Step 7: Check that the identity mapping was correctly learned
+        # The extended forward should approximate identity mapping
+        with torch.no_grad():
+            extended_output = block.extended_forward(x_batch)
+            # For identity mapping, output should be close to input
+            # Since we started with 0 features, the extension should learn the identity
+            self.assertShapeEqual(extended_output, x_batch.shape)
+            self.assertAllClose(extended_output, torch.zeros_like(x_batch), atol=1e-5)
+
+        # Step 8: Check that `first_order_improvement` returns a value
+        original_improvement = block.first_order_improvement
+        self.assertIsInstance(original_improvement, torch.Tensor)
+        self.assertTrue(
+            original_improvement.item() >= 0
+        )  # Should be positive improvement
+
+        # Step 9: Sub select new neurons
+        num_neurons_to_keep = min(1, block.eigenvalues.shape[0])
+
+        block.sub_select_optimal_added_parameters(num_neurons_to_keep)
+
+        # Verify sub-selection
+        self.assertEqual(block.eigenvalues.shape[0], num_neurons_to_keep)
+        self.assertEqual(
+            block.first_layer.extended_output_layer.out_features,
+            num_neurons_to_keep,
+        )
+        self.assertEqual(
+            block.second_layer.extended_input_layer.in_features, num_neurons_to_keep
+        )
+
+        # Step 10: Check that `first_order_improvement` returns lower or equal value
+        reduced_improvement = block.first_order_improvement
+        self.assertIsInstance(reduced_improvement, torch.Tensor)
+        self.assertLessEqual(
+            reduced_improvement.item(),
+            original_improvement.item(),
+            "Reduced improvement should be <= original improvement",
+        )
+
+        # Step 11: Apply change
+        # Store original weights for comparison
+        expected_first_weight = (
+            block.first_layer.extended_output_layer.weight.data.clone()
+        )
+        expected_second_weight = (
+            block.second_layer.extended_input_layer.weight.data.clone()
+        )
+
+        original_first_out_features = block.first_layer.out_features
+        original_second_in_features = block.second_layer.in_features
+
+        block.apply_change()
+
+        # Step 12: Check that the change was correctly applied
+        # Verify dimensions changed
+        self.assertEqual(
+            block.first_layer.out_features,
+            original_first_out_features + num_neurons_to_keep,
+        )
+        self.assertEqual(
+            block.second_layer.in_features,
+            original_second_in_features + num_neurons_to_keep,
+        )
+        self.assertEqual(block.hidden_features, num_neurons_to_keep)  # Was 0 before
+
+        # Verify weights were extended properly
+        self.assertShapeEqual(
+            block.first_layer.weight,
+            (original_first_out_features + num_neurons_to_keep, self.in_features),
+        )
+        # Easy to check for equality as there was no neurons before
+        self.assertAllClose(
+            block.first_layer.weight,
+            expected_first_weight,
+        )
+        self.assertShapeEqual(
+            block.second_layer.weight,
+            (self.in_features, original_second_in_features + num_neurons_to_keep),
+        )
+        # Easy to check for equality as there was no neurons before
+        self.assertAllClose(
+            block.second_layer.weight,
+            expected_second_weight,
+        )
+
+        # Test that the extended layer behaves as expected
+        with torch.no_grad():
+            block(x_batch)
+
+        # Step 13: Delete update
+        block.delete_update()
+
+        # Step 14: Check that the update was deleted
+        self.assertIsNone(block.second_layer.optimal_delta_layer)
+        self.assertIsNone(block.second_layer.extended_input_layer)
+        self.assertIsNone(block.second_layer.extended_output_layer)
+
+        self.assertIsNone(block.first_layer.optimal_delta_layer)
+        self.assertIsNone(block.first_layer.extended_output_layer)
+        self.assertIsNone(block.first_layer.extended_input_layer)
+        self.assertIsNone(block.eigenvalues)
