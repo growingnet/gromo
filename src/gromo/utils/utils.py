@@ -39,7 +39,7 @@ def global_device() -> torch.device:
 
 
 def get_correct_device(self, device: torch.device | str | None) -> torch.device:
-    """Get and set the correct device as global
+    """Get the correct device based on precedence order
     Precedence works as follows:
         argument > config file > global_device
 
@@ -58,7 +58,6 @@ def get_correct_device(self, device: torch.device | str | None) -> torch.device:
         if device is not None
         else set_from_conf(self, "device", global_device(), setter=False)
     )
-    set_device(device)
     return device
 
 
