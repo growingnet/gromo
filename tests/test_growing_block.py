@@ -3,6 +3,7 @@ import torch
 from gromo.containers.growing_block import GrowingBlock, LinearGrowingBlock
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase
+from tests.unittest_tools import unittest_parametrize
 
 
 class TestGrowingBlock(TorchTestCase):
@@ -368,71 +369,6 @@ class TestLinearGrowingBlock(TorchTestCase):
         expected_stored_input = block.pre_activation(x).detach()
         self.assertAllClose(block.first_layer.input, expected_stored_input)
 
-    def test_scaling_factor_property(self):
-        """Test scaling factor property getter and setter."""
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            hidden_features=self.hidden_features,
-            device=self.device,
-        )
-
-        # Test getter
-        original_scaling_factor = block.scaling_factor
-        self.assertEqual(original_scaling_factor, block.second_layer.scaling_factor)
-
-        # Test setter
-        new_scaling_factor = 0.5
-        block.scaling_factor = new_scaling_factor
-        self.assertEqual(block.scaling_factor, new_scaling_factor)
-        self.assertEqual(block.second_layer.scaling_factor, new_scaling_factor)
-
-    def test_init_computation(self):
-        """Test initialization of computation."""
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            hidden_features=self.hidden_features,
-            device=self.device,
-        )
-
-        # Initialize computation
-        block.init_computation()
-
-        # Check that required storage flags are set
-        self.assertTrue(block.first_layer.store_input)
-        self.assertTrue(block.second_layer.store_pre_activity)
-
-        # Check that tensor statistics are initialized
-        self.assertIsNotNone(block.second_layer.tensor_m_prev)
-        self.assertIsNotNone(block.second_layer.tensor_s_growth)
-
-        # For hidden_features > 0, additional statistics should be initialized
-        if block.hidden_features > 0:
-            self.assertTrue(block.second_layer.store_input)
-            self.assertIsNotNone(block.second_layer.cross_covariance)
-            self.assertIsNotNone(block.second_layer.tensor_s)
-            self.assertIsNotNone(block.second_layer.tensor_m)
-
-    def test_with_custom_kwargs(self):
-        """Test initialization with custom layer kwargs."""
-        kwargs_layer = {"use_bias": False}
-        kwargs_first_layer = {"use_bias": True}
-
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            hidden_features=self.hidden_features,
-            kwargs_layer=kwargs_layer,
-            kwargs_first_layer=kwargs_first_layer,
-            device=self.device,
-        )
-
-        # First layer should use kwargs_first_layer
-        self.assertTrue(block.first_layer.use_bias)
-        # Second layer should use kwargs_layer
-        self.assertFalse(block.second_layer.use_bias)
-
     def test_extended_forward_zero_features_no_downsample(self):
         """Test extended_forward with zero hidden features."""
         block = LinearGrowingBlock(
@@ -601,51 +537,6 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.assertAllClose(output, expected_output)
             self.assertIsNone(second_ext)
 
-    def test_reset_computation(self):
-        """Test reset of computation."""
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            hidden_features=self.hidden_features,
-            device=self.device,
-        )
-
-        # Initialize and then reset
-        block.init_computation()
-        block.reset_computation()
-
-        # Check that storage flags are reset
-        self.assertFalse(block.first_layer.store_input)
-        self.assertFalse(block.second_layer.store_input)
-        self.assertFalse(block.second_layer.store_pre_activity)
-
-    def test_forward_backward_compatibility(self):
-        """Test that forward and backward passes work correctly."""
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            hidden_features=self.hidden_features,
-            device=self.device,
-            downsample=self.downsample,
-        )
-
-        x = torch.randn(self.batch_size, self.in_features, device=self.device)
-        x.requires_grad_(True)
-
-        output = block(x)
-        loss = torch.norm(output)
-
-        # Should be able to backward without errors
-        loss.backward()
-
-        # Check that gradients were computed
-        self.assertIsNotNone(x.grad)
-        for param in block.parameters():
-            self.assertIsNotNone(param.grad)
-        self.assertIsNotNone(x.grad)
-        for param in block.parameters():
-            self.assertIsNotNone(param.grad)
-
     def test_pre_activity_storage_zero_features_no_downsample(self):
         """Test pre-activity storage with 0 hidden features and no downsample."""
         block = LinearGrowingBlock(
@@ -805,3 +696,114 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Verify gradient shape matches the output of first_layer
         expected_shape = (self.batch_size, self.out_features)
         self.assertShapeEqual(pre_activity_grad, expected_shape)
+
+    def test_scaling_factor_property(self):
+        """Test scaling factor property getter and setter."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+
+        # Test getter
+        original_scaling_factor = block.scaling_factor
+        self.assertEqual(original_scaling_factor, block.second_layer.scaling_factor)
+
+        # Test setter
+        new_scaling_factor = 0.5
+        block.scaling_factor = new_scaling_factor
+        self.assertEqual(block.scaling_factor, new_scaling_factor)
+        self.assertEqual(block.second_layer.scaling_factor, new_scaling_factor)
+
+    @unittest_parametrize({"hidden_features": (0, 3)})
+    def test_init_computation(self, hidden_features: int = 0):
+        """Test initialization of computation."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=hidden_features,
+            device=self.device,
+        )
+
+        # Initialize computation
+        block.init_computation()
+
+        # Check that required storage flags are set
+        self.assertTrue(block.first_layer.store_input)
+        self.assertTrue(block.second_layer.store_pre_activity)
+
+        # Check that tensor statistics are initialized
+        self.assertIsNotNone(block.second_layer.tensor_m_prev)
+        self.assertIsNotNone(block.second_layer.tensor_s_growth)
+
+        # For hidden_features > 0, additional statistics should be initialized
+        if hidden_features > 0:
+            self.assertTrue(block.second_layer.store_input)
+            self.assertIsNotNone(block.second_layer.cross_covariance)
+            self.assertIsNotNone(block.second_layer.tensor_s)
+            self.assertIsNotNone(block.second_layer.tensor_m)
+
+    def test_with_custom_kwargs(self):
+        """Test initialization with custom layer kwargs."""
+        kwargs_layer = {"use_bias": False}
+        kwargs_first_layer = {"use_bias": True}
+
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=self.hidden_features,
+            kwargs_layer=kwargs_layer,
+            kwargs_first_layer=kwargs_first_layer,
+            device=self.device,
+        )
+
+        # First layer should use kwargs_first_layer
+        self.assertTrue(block.first_layer.use_bias)
+        # Second layer should use kwargs_layer
+        self.assertFalse(block.second_layer.use_bias)
+
+    def test_reset_computation(self):
+        """Test reset of computation."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+
+        # Initialize and then reset
+        block.init_computation()
+        block.reset_computation()
+
+        # Check that storage flags are reset
+        self.assertFalse(block.first_layer.store_input)
+        self.assertFalse(block.second_layer.store_input)
+        self.assertFalse(block.second_layer.store_pre_activity)
+
+    def test_forward_backward_compatibility(self):
+        """Test that forward and backward passes work correctly."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+            downsample=self.downsample,
+        )
+
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        x.requires_grad_(True)
+
+        output = block(x)
+        loss = torch.norm(output)
+
+        # Should be able to backward without errors
+        loss.backward()
+
+        # Check that gradients were computed
+        self.assertIsNotNone(x.grad)
+        for param in block.parameters():
+            self.assertIsNotNone(param.grad)
+        self.assertIsNotNone(x.grad)
+        for param in block.parameters():
+            self.assertIsNotNone(param.grad)
