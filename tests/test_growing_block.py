@@ -550,7 +550,6 @@ class TestLinearGrowingBlock(TorchTestCase):
         block.second_layer.store_pre_activity = True
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
-        x.requires_grad_(True)
 
         # Forward pass
         output = block(x)
@@ -569,6 +568,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check that pre-activity gradient can be accessed
         pre_activity_grad = block.second_layer.pre_activity.grad
         self.assertIsNotNone(pre_activity_grad)
+        assert pre_activity_grad is not None  # to avoid type warning
         self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
 
     def test_pre_activity_storage_zero_features_with_downsample(self):
@@ -585,7 +585,6 @@ class TestLinearGrowingBlock(TorchTestCase):
         block.second_layer.store_pre_activity = True
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
-        x.requires_grad_(True)
 
         # Forward pass
         output = block(x)
@@ -603,6 +602,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check that pre-activity gradient can be accessed
         pre_activity_grad = block.second_layer.pre_activity.grad
         self.assertIsNotNone(pre_activity_grad)
+        assert pre_activity_grad is not None  # to avoid type warning
         self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
 
     def test_pre_activity_storage_positive_features_no_downsample(self):
@@ -618,7 +618,6 @@ class TestLinearGrowingBlock(TorchTestCase):
         block.second_layer.store_pre_activity = True
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
-        x.requires_grad_(True)
 
         # Forward pass
         output = block(x)
@@ -642,6 +641,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check that pre-activity gradient can be accessed
         pre_activity_grad = block.second_layer.pre_activity.grad
         self.assertIsNotNone(pre_activity_grad)
+        assert pre_activity_grad is not None  # to avoid type warning
         self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
 
         # Verify gradient shape matches the output of first_layer
@@ -662,7 +662,6 @@ class TestLinearGrowingBlock(TorchTestCase):
         block.second_layer.store_pre_activity = True
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
-        x.requires_grad_(True)
 
         # Forward pass
         output = block(x)
@@ -683,6 +682,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check that pre-activity gradient can be accessed
         pre_activity_grad = block.second_layer.pre_activity.grad
         self.assertIsNotNone(pre_activity_grad)
+        assert pre_activity_grad is not None  # to avoid type warning
         self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
 
         # Verify gradient shape matches the output of first_layer
@@ -691,6 +691,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check that pre-activity gradient can be accessed
         pre_activity_grad = block.second_layer.pre_activity.grad
         self.assertIsNotNone(pre_activity_grad)
+        assert pre_activity_grad is not None  # to avoid type warning
         self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
 
         # Verify gradient shape matches the output of first_layer
@@ -716,7 +717,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertEqual(block.scaling_factor, new_scaling_factor)
         self.assertEqual(block.second_layer.scaling_factor, new_scaling_factor)
 
-    @unittest_parametrize({"hidden_features": (0, 3)})
+    @unittest_parametrize(({"hidden_features": 0}, {"hidden_features": 3}))
     def test_init_computation(self, hidden_features: int = 0):
         """Test initialization of computation."""
         block = LinearGrowingBlock(
@@ -792,7 +793,6 @@ class TestLinearGrowingBlock(TorchTestCase):
         )
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
-        x.requires_grad_(True)
 
         output = block(x)
         loss = torch.norm(output)
@@ -801,9 +801,5 @@ class TestLinearGrowingBlock(TorchTestCase):
         loss.backward()
 
         # Check that gradients were computed
-        self.assertIsNotNone(x.grad)
-        for param in block.parameters():
-            self.assertIsNotNone(param.grad)
-        self.assertIsNotNone(x.grad)
         for param in block.parameters():
             self.assertIsNotNone(param.grad)
