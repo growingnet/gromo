@@ -99,7 +99,7 @@ class GrowingBlock(GrowingContainer):
         """
         Set the scaling factor for the second layer.
         """
-        self.second_layer.scaling_factor = value
+        self.second_layer.scaling_factor = value  # type: ignore
 
     @staticmethod
     def set_default_values(
@@ -184,6 +184,7 @@ class GrowingBlock(GrowingContainer):
                 self.first_layer._input = self.pre_activation(x).detach()
             if self.second_layer.store_pre_activity:
                 self.second_layer._pre_activity = identity
+                self.second_layer._pre_activity.requires_grad_(True)
                 self.second_layer._pre_activity.retain_grad()
             self.second_layer.tensor_s_growth.updated = False
             self.second_layer.tensor_m_prev.updated = False
@@ -248,7 +249,8 @@ class GrowingBlock(GrowingContainer):
         """
         self.second_layer.optimal_delta_layer = None
         self.second_layer.extended_input_layer = None
-        self.first_layer.extended_input_layer = None
+        self.first_layer.extended_output_layer = None
+        self.eigenvalues = None
 
     def compute_optimal_updates(
         self,
@@ -272,6 +274,8 @@ class GrowingBlock(GrowingContainer):
             _, _, self.parameter_update_decrease = (
                 self.second_layer.compute_optimal_delta()
             )
+        else:
+            self.parameter_update_decrease = 0
         alpha, alpha_bias, _, self.eigenvalues = (
             self.second_layer.compute_optimal_added_parameters(
                 numerical_threshold=numerical_threshold,
