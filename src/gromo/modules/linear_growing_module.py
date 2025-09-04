@@ -866,8 +866,8 @@ class LinearGrowingModule(GrowingModule):
 
         if update_previous:
             if isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module.extended_output_layer = self.layer_of_tensor(
-                    alpha_weight, alpha_bias
+                self.previous_module.extended_output_layer = (
+                    self.previous_module.layer_of_tensor(alpha_weight, alpha_bias)
                 )
             elif isinstance(self.previous_module, LinearMergeGrowingModule):
                 raise NotImplementedError
