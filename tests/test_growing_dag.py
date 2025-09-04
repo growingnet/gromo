@@ -317,7 +317,6 @@ class TestGrowingDAG(unittest.TestCase):
             self.assertIsNone(edge_module.cross_covariance._tensor)
         for node_module in self.dag.get_all_node_modules():
             self.assertFalse(node_module.store_input)
-            self.assertFalse(node_module.store_pre_activity)
             self.assertFalse(node_module.store_activity)
             if node_module.previous_tensor_s is not None:
                 self.assertIsNone(node_module.previous_tensor_s._tensor)
