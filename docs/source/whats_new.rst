@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Makes flattening of input optional in GrowingMLP. Default value is True for backward compatibility (:gh:`108` by `Stéphane Rivaud`_).
 - Add the option to handle post layer function that need to grow like BatchNorm (:gh:`105` by `Théo Rudkiewicz`_).
 - Add robust `compute_optimal_delta` function to `gromo.utils.tools` with comprehensive dtype handling, automatic LinAlgError fallback to pseudo-inverse, float64 retry mechanism for negative decrease scenarios, and extensive test suite achieving 95% coverage. Function computes optimal weight updates for layer expansion using mathematical formula dW* = M S⁻¹ with full backward compatibility (:gh:`114` by `Stéphane Rivaud`_)
 - Refactor `GrowingModule` to centralize `tensor_s_growth` handling (:gh:`109` by `Stéphane Rivaud`_)
