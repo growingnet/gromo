@@ -14,12 +14,13 @@ class GrowingMLP(GrowingContainer):
 
     def __init__(
         self,
-        in_features: int,
+        in_features: int | list[int] | tuple[int],
         out_features: int,
         hidden_size: int,
         number_hidden_layers: int,
         activation: nn.Module = nn.SELU(),
         use_bias: bool = True,
+        flatten: bool = True,
         device: Optional[torch.device] = None,
     ) -> None:
         """
@@ -27,7 +28,7 @@ class GrowingMLP(GrowingContainer):
 
         Parameters
         ----------
-        in_features : int
+        in_features : int | list | tuple
             Number of input features.
         out_features : int
             Number of output features.
@@ -39,6 +40,8 @@ class GrowingMLP(GrowingContainer):
             Activation function.
         use_bias : bool
             Whether to use bias in layers.
+        flatten : bool
+            Whether to flatten the input before passing it through the network.
         device : Optional[torch.device]
             Device to use for computation.
         """
@@ -46,10 +49,20 @@ class GrowingMLP(GrowingContainer):
             in_features=in_features, out_features=out_features, device=device
         )
 
-        self.num_features = torch.tensor(self.in_features).prod().int().item()
+        if isinstance(self.in_features, int):
+            self.num_features = self.in_features
+        elif isinstance(self.in_features, (list, tuple)):
+            if flatten:
+                self.num_features = int(torch.tensor(self.in_features).prod().item())
+            else:
+                self.num_features = self.in_features[-1]
+        else:
+            raise TypeError(
+                f"Expected in_features to be int, list, or tuple, got {type(self.in_features)}"
+            )
 
         # Flatten input
-        self.flatten = nn.Flatten(start_dim=1)
+        self.flatten = nn.Flatten(start_dim=1) if flatten else nn.Identity()
         self.layers = nn.ModuleList()
         self.layers.append(
             LinearGrowingModule(
@@ -214,6 +227,7 @@ class Perceptron(GrowingMLP):
         out_features: int,
         activation: nn.Module = nn.Sigmoid(),
         use_bias: bool = True,
+        flatten: bool = True,
         device: Optional[torch.device] = None,
     ) -> None:
         super().__init__(
@@ -223,6 +237,7 @@ class Perceptron(GrowingMLP):
             number_hidden_layers=1,
             activation=activation,
             use_bias=use_bias,
+            flatten=flatten,
             device=device,
         )
 
