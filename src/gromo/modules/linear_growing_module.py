@@ -383,6 +383,7 @@ class LinearGrowingModule(GrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
+        assert desired_activation is not None
         return (
             torch.einsum(
                 "ij,ik->jk",
@@ -412,6 +413,7 @@ class LinearGrowingModule(GrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
+        assert desired_activation is not None
         if self.previous_module is None:
             raise ValueError(
                 f"No previous module for {self.name}. Thus M_{-2} is not defined."
@@ -423,7 +425,7 @@ class LinearGrowingModule(GrowingModule):
                     torch.flatten(self.previous_module.input_extended, 0, -2),
                     torch.flatten(desired_activation, 0, -2),
                 ),
-                self.input.shape[0],
+                desired_activation.size(0),
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             if self.previous_module.number_of_successors > 1:
@@ -434,7 +436,7 @@ class LinearGrowingModule(GrowingModule):
                     self.previous_module.construct_full_activity(),
                     desired_activation,
                 ),
-                self.input.shape[0],
+                desired_activation.size(0),
             )
         else:
             raise NotImplementedError(
