@@ -36,8 +36,8 @@ def slow_gaussian_kernel(X, sigma_sq=None):
 def center_kernel_matrix(K):
     """Centers the kernel matrix using the centering matrix H."""
     n = K.shape[0]  # Number of samples
-    H = torch.eye(n, device=global_device()) - (1 / n) * torch.ones(
-        (n, n), device=global_device()
+    H = torch.eye(n, device=K.device) - (1 / n) * torch.ones(
+        (n, n), device=K.device
     )  # Centering matrix
     K_centered = H @ K @ H  # Centered kernel matrix
     return K_centered
