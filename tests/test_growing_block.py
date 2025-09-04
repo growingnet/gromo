@@ -2,8 +2,14 @@ import torch
 
 from gromo.containers.growing_block import GrowingBlock, LinearGrowingBlock
 from gromo.utils.utils import global_device
-from tests.torch_unittest import TorchTestCase, indicator_batch
-from tests.unittest_tools import unittest_parametrize
+
+
+try:
+    from tests.torch_unittest import TorchTestCase, indicator_batch
+    from tests.unittest_tools import unittest_parametrize
+except ImportError:
+    from torch_unittest import TorchTestCase, indicator_batch
+    from unittest_tools import unittest_parametrize
 
 
 class TestGrowingBlock(TorchTestCase):
@@ -62,8 +68,8 @@ class TestGrowingBlock(TorchTestCase):
             kwargs_layer=kwargs_layer,
             kwargs_first_layer=kwargs_first_explicit,
         )
-        self.assertIsInstance(pre_act, torch.nn.Identity)  # Should fallback to identity
-        self.assertIsInstance(mid_act, torch.nn.Identity)  # Should fallback to identity
+        self.assertIsInstance(pre_act, torch.nn.Identity)  # Should fall back to identity
+        self.assertIsInstance(mid_act, torch.nn.Identity)  # Should fall back to identity
         self.assertEqual(kwargs_first, kwargs_first_explicit)  # Should use explicit value
         self.assertEqual(kwargs_second, kwargs_layer)  # Should fallback to kwargs_layer
 
@@ -95,9 +101,9 @@ class TestLinearGrowingBlock(TorchTestCase):
         torch.manual_seed(0)
         self.device = global_device()
         self.batch_size = 4
-        self.in_features = 2
+        self.in_features = 3
         self.out_features = 5
-        self.hidden_features = 3
+        self.hidden_features = 2
         self.added_features = 7
         self.scaling_factor = 0.9
         self.downsample = torch.nn.Linear(
@@ -912,8 +918,7 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         block.apply_change()
 
-        # Step 12: Check that the change was correctly applied
-        # Verify dimensions changed
+        # Step 12: Check that the change was correctly done
         self.assertEqual(
             block.first_layer.out_features,
             original_first_out_features + num_neurons_to_keep,
@@ -952,11 +957,131 @@ class TestLinearGrowingBlock(TorchTestCase):
         block.delete_update()
 
         # Step 14: Check that the update was deleted
-        self.assertIsNone(block.second_layer.optimal_delta_layer)
-        self.assertIsNone(block.second_layer.extended_input_layer)
-        self.assertIsNone(block.second_layer.extended_output_layer)
+        deleted_objects = [
+            block.second_layer.optimal_delta_layer,
+            block.second_layer.extended_input_layer,
+            block.second_layer.extended_output_layer,
+            block.first_layer.optimal_delta_layer,
+            block.first_layer.extended_output_layer,
+            block.first_layer.extended_input_layer,
+            block.eigenvalues,
+        ]
+        for obj in deleted_objects:
+            self.assertIsNone(obj)
 
-        self.assertIsNone(block.first_layer.optimal_delta_layer)
-        self.assertIsNone(block.first_layer.extended_output_layer)
-        self.assertIsNone(block.first_layer.extended_input_layer)
-        self.assertIsNone(block.eigenvalues)
+    def test_full_addition_loop_with_features_identity_initialization(
+        self, bias: bool = False
+    ):
+        """Test complete addition loop starting with features and identity initialization."""
+
+        # Step 1: Create the block with features, no downsampling, no activation
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,  # Same dimensions for identity mapping
+            hidden_features=self.in_features,  # Start with features
+            activation=torch.nn.Identity(),
+            device=self.device,
+            name="test_block_with_features",
+            kwargs_layer={"use_bias": bias},
+        )
+
+        # Step 2: Initialize first layer with identity and second layer with zeros
+        with torch.no_grad():
+            # First layer: identity transformation
+            block.first_layer.weight.data = torch.eye(
+                self.in_features, self.in_features, device=self.device
+            )
+            if block.first_layer.use_bias:
+                block.first_layer.bias.data.zero_()
+
+            # Second layer: zero transformation (to make the whole block identity when added to residual)
+            block.second_layer.weight.data.zero_()
+            if block.second_layer.use_bias:
+                block.second_layer.bias.data.zero_()
+
+        # Verify the block performs identity mapping
+        x_test = torch.randn(self.batch_size, self.in_features, device=self.device)
+        with torch.no_grad():
+            output_test = block(x_test)
+            self.assertAllClose(output_test, x_test, atol=1e-6)
+
+        # Step 3: Init the computation
+        block.init_computation()
+
+        # Verify initialization
+        self.assertTrue(block.first_layer.store_input)
+        self.assertTrue(block.second_layer.store_pre_activity)
+        self.assertTrue(
+            block.second_layer.store_input
+        )  # Should be True for positive features
+
+        # Step 4: Forward/backward with loss ||output||^2 / 2 using indicator batch
+        x_batch = indicator_batch((self.in_features,), device=self.device)
+
+        block.zero_grad()
+        output = block(x_batch)
+
+        # Loss: ||output||^2 / 2
+        loss = (output**2).sum() / 2
+        loss.backward()
+
+        # Verify gradients exist
+        self.assertIsNotNone(block.second_layer.pre_activity.grad)
+
+        block.update_computation()
+
+        block.compute_optimal_updates(maximum_added_neurons=self.in_features)
+
+        block.reset_computation()
+
+        # Step 6: Check that the optimal delta layer is exactly the identity (negative)
+        self.assertIsNotNone(block.second_layer.optimal_delta_layer)
+        assert isinstance(block.second_layer.optimal_delta_layer, torch.nn.Linear)
+
+        if not bias:
+            expected_delta_weight = torch.eye(
+                self.in_features, self.in_features, device=self.device
+            )
+            self.assertAllClose(
+                block.second_layer.optimal_delta_layer.weight,
+                expected_delta_weight,
+                atol=1e-5,
+                msg="Optimal delta weight should be approximately zero for already optimal layer",
+            )
+
+        # Step 7: Check that no new neurons are proposed
+        # Since the block is already optimal (identity), eigenvalues should be very small or zero
+        self.assertIsNotNone(block.eigenvalues)
+        assert isinstance(block.eigenvalues, torch.Tensor)
+
+        # All eigenvalues should be very small (ideally zero) since no improvement is possible
+        self.assertTrue(
+            torch.all(torch.abs(block.eigenvalues) < 1e-3),
+            f"Eigenvalues should be very small for optimal block, got {block.eigenvalues}",
+        )
+
+        # Step 9: Set scaling factor to 1
+        block.scaling_factor = 1.0
+
+        # Step 10: Check that first_order_improvement is correct
+        improvement = block.first_order_improvement
+        self.assertIsInstance(improvement, torch.Tensor)
+        self.assertAlmostEqual(
+            improvement.item(), 1, msg=f"First order improvement should be 1"
+        )
+
+        # Step 13: Delete update
+        block.delete_update()
+
+        # Step 14: Check that the update was deleted
+        deleted_objects = [
+            block.second_layer.optimal_delta_layer,
+            block.second_layer.extended_input_layer,
+            block.second_layer.extended_output_layer,
+            block.first_layer.optimal_delta_layer,
+            block.first_layer.extended_output_layer,
+            block.first_layer.extended_input_layer,
+            block.eigenvalues,
+        ]
+        for obj in deleted_objects:
+            self.assertIsNone(obj)
