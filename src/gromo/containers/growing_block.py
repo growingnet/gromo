@@ -82,13 +82,13 @@ class GrowingBlock(GrowingContainer):
         self.second_layer: GrowingModule = second_layer
         self.downsample = downsample
 
-        self.enable_extended_forward = False
-        self.eigenvalues = None
-        self.parameter_update_decrease = None
-
         # self.activation_derivative = torch.func.grad(mid_activation)(torch.tensor(1e-5))
         # TODO: FIX this
         self.activation_derivative = 1
+
+    @property
+    def eigenvalues(self):
+        return self.second_layer.eigenvalues_extension
 
     @property
     def scaling_factor(self):
@@ -247,10 +247,7 @@ class GrowingBlock(GrowingContainer):
         """
         Delete the update of the block.
         """
-        self.second_layer.optimal_delta_layer = None
-        self.second_layer.extended_input_layer = None
-        self.first_layer.extended_output_layer = None
-        self.eigenvalues = None
+        self.second_layer.delete_update()
 
     def compute_optimal_updates(
         self,
@@ -271,18 +268,14 @@ class GrowingBlock(GrowingContainer):
             maximum number of added neurons, if None all significant neurons are kept
         """
         if self.hidden_features > 0:
-            _, _, self.parameter_update_decrease = (
-                self.second_layer.compute_optimal_delta()
-            )
+            _, _, _ = self.second_layer.compute_optimal_delta()
         else:
-            self.parameter_update_decrease = 0
-        alpha, alpha_bias, _, self.eigenvalues = (
-            self.second_layer.compute_optimal_added_parameters(
-                numerical_threshold=numerical_threshold,
-                statistical_threshold=statistical_threshold,
-                maximum_added_neurons=maximum_added_neurons,
-                use_projected_gradient=self.hidden_features > 0,
-            )
+            self.second_layer.parameter_update_decrease = 0
+        alpha, alpha_bias, _, _ = self.second_layer.compute_optimal_added_parameters(
+            numerical_threshold=numerical_threshold,
+            statistical_threshold=statistical_threshold,
+            maximum_added_neurons=maximum_added_neurons,
+            use_projected_gradient=self.hidden_features > 0,
         )
         self.first_layer.extended_output_layer = self.first_layer.layer_of_tensor(
             alpha, alpha_bias
@@ -311,7 +304,6 @@ class GrowingBlock(GrowingContainer):
             number of neurons to keep
         """
         assert self.eigenvalues is not None, "No optimal added parameters computed."
-        self.eigenvalues = self.eigenvalues[:keep_neurons]
         self.second_layer.sub_select_optimal_added_parameters(keep_neurons)
 
     @property
@@ -324,11 +316,7 @@ class GrowingBlock(GrowingContainer):
         torch.Tensor
             first order improvement
         """
-        assert self.eigenvalues is not None, "No optimal added parameters computed."
-        return (
-            self.parameter_update_decrease
-            + self.activation_derivative * (self.eigenvalues**2).sum()
-        )
+        return self.second_layer.first_order_improvement
 
 
 class LinearGrowingBlock(GrowingBlock):
@@ -337,7 +325,6 @@ class LinearGrowingBlock(GrowingBlock):
         in_features: int,
         out_features: int,
         hidden_features: int = 0,
-        layer_type: str = "linear",
         activation: torch.nn.Module | None = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
@@ -353,12 +340,12 @@ class LinearGrowingBlock(GrowingBlock):
 
         Parameters
         ----------
-        in_out_features: int
-            number of input and output features, in cas of convolutional layer, the number of channels
+        in_features: int
+            number of input channels
+        out_features: int
+            number of output channels
         hidden_features: int
             number of hidden features, if zero the block is the zero function
-        layer_type: str
-            type of layer to use either "linear" or "conv"
         activation: torch.nn.Module | None
             activation function to use, if None use the identity function
         pre_activation: torch.nn.Module | None
@@ -368,7 +355,7 @@ class LinearGrowingBlock(GrowingBlock):
         name: str
             name of the block
         kwargs_layer: dict | None
-            dictionary of arguments for the layers (eg bias, ...)
+            dictionary of arguments for the layers (e.g. bias, ...)
         kwargs_first_layer: dict | None
             dictionary of arguments for the first layer, if None use kwargs_layer
         kwargs_second_layer: dict | None
