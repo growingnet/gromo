@@ -277,6 +277,7 @@ class MergeGrowingModule(torch.nn.Module):
         self.store_activity = False
         for module in self.previous_modules:
             module.store_input = False
+            module.store_pre_activity = False
         self.tensor_s.reset()
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.reset()
