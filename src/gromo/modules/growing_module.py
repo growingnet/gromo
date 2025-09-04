@@ -19,12 +19,12 @@ class MergeGrowingModule(torch.nn.Module):
     def __init__(
         self,
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list["MergeGrowingModule | GrowingModule"] = None,
-        next_modules: list["MergeGrowingModule | GrowingModule"] = None,
+        previous_modules: list["GrowingModule"] | None = None,
+        next_modules: list["GrowingModule"] | None = None,
         allow_growing: bool = False,
-        tensor_s_shape: tuple[int, int] = None,
+        tensor_s_shape: tuple[int, int] | None = None,
         device: torch.device | None = None,
-        name: str = None,
+        name: str | None = None,
     ) -> None:
 
         super(MergeGrowingModule, self).__init__()
@@ -58,10 +58,11 @@ class MergeGrowingModule(torch.nn.Module):
         self.previous_tensor_s: TensorStatistic | None = None
         self.previous_tensor_m: TensorStatistic | None = None
 
-        self.previous_modules: list[MergeGrowingModule | GrowingModule] = []
-        self.set_previous_modules(previous_modules)
-        self.next_modules: list[MergeGrowingModule | GrowingModule] = []
-        self.set_next_modules(next_modules)
+        # previous_modules / next_modules are lists of regular GrowingModule instances
+        self.previous_modules: list["GrowingModule"] = []
+        self.set_previous_modules(previous_modules if previous_modules else [])
+        self.next_modules: list["GrowingModule"] = []
+        self.set_next_modules(next_modules if next_modules else [])
 
     @property
     def number_of_successors(self):
@@ -79,7 +80,7 @@ class MergeGrowingModule(torch.nn.Module):
         self.set_next_modules(self.next_modules)
         self.set_previous_modules(self.previous_modules)
 
-    def add_next_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
+    def add_next_module(self, module: "GrowingModule") -> None:
         """
         Add a module to the next modules of the current module.
 
@@ -93,7 +94,7 @@ class MergeGrowingModule(torch.nn.Module):
             self.next_modules
         )  # TODO: maybe it is possible to avoid this
 
-    def add_previous_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
+    def add_previous_module(self, module: "GrowingModule") -> None:
         """
         Add a module to the previous modules of the current module.
 
@@ -105,9 +106,7 @@ class MergeGrowingModule(torch.nn.Module):
         self.previous_modules.append(module)
         self.set_previous_modules(self.previous_modules)
 
-    def set_next_modules(
-        self, next_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_next_modules(self, next_modules: list["GrowingModule"]) -> None:
         """
         Set the next modules of the current module.
 
@@ -118,9 +117,7 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def set_previous_modules(
-        self, previous_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_previous_modules(self, previous_modules: list["GrowingModule"]) -> None:
         """
         Set the previous modules of the current module.
 
@@ -251,9 +248,10 @@ class MergeGrowingModule(torch.nn.Module):
         """
         self.store_input = True
         self.store_activity = True
+        self.tensor_s.init()
         for module in self.previous_modules:
             module.store_input = True
-        self.tensor_s.init()
+            module.store_pre_activity = True
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.init()
         if self.previous_tensor_m is not None:
@@ -275,9 +273,10 @@ class MergeGrowingModule(torch.nn.Module):
         """
         self.store_input = False
         self.store_activity = False
+        self.tensor_s.reset()
         for module in self.previous_modules:
             module.store_input = False
-        self.tensor_s.reset()
+            module.store_pre_activity = False
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.reset()
         if self.previous_tensor_m is not None:
@@ -293,7 +292,13 @@ class MergeGrowingModule(torch.nn.Module):
         self.eigenvalues_extension = None
         self.activity = None
         self.input = None
-        # TODO: include_previous
+
+        if include_previous:
+            for previous_module in self.previous_modules:
+                if isinstance(previous_module, GrowingModule):
+                    previous_module.delete_update(
+                        include_previous=False, include_output=True
+                    )
 
     def compute_optimal_delta(
         self,
@@ -1530,7 +1535,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.init()
             self.tensor_s_growth.init()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.init_computation()
         else:
             raise NotImplementedError
 
@@ -1547,7 +1552,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.update()
             self.tensor_s_growth.update()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.update_computation()
         else:
             raise NotImplementedError
 
@@ -1565,6 +1570,10 @@ class GrowingModule(torch.nn.Module):
             self.tensor_m_prev.reset()
             self.cross_covariance.reset()
             self.tensor_s_growth.reset()
+        elif isinstance(self.previous_module, MergeGrowingModule):
+            self.previous_module.reset_computation()
+        else:
+            raise NotImplementedError
 
     def delete_update(
         self,

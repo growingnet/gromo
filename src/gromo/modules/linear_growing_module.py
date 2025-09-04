@@ -15,14 +15,13 @@ class LinearMergeGrowingModule(MergeGrowingModule):
     def __init__(
         self,
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules=None,
-        next_modules=None,
+        previous_modules: list[GrowingModule] | None = None,
+        next_modules: list[GrowingModule] | None = None,
         allow_growing: bool = False,
         in_features: int = None,
         device: torch.device | None = None,
         name: str = None,
     ) -> None:
-        device = device if device is not None else global_device()
         self.use_bias = True
         self.total_in_features: int = -1
         self.in_features = in_features
@@ -41,9 +40,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             name=name,
         )
 
-    def set_next_modules(
-        self, next_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_next_modules(self, next_modules: list[GrowingModule]) -> None:
         """
         Set the next modules of the current module.
 
@@ -62,9 +59,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             modules.in_features == self.out_features for modules in self.next_modules
         ), f"The output features must match the input features of the next modules."
 
-    def set_previous_modules(
-        self, previous_modules: list["MergeGrowingModule | GrowingModule"]
-    ) -> None:
+    def set_previous_modules(self, previous_modules: list[GrowingModule]) -> None:
         """
         Set the previous modules of the current module.
 
@@ -85,8 +80,11 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         self.previous_modules = previous_modules if previous_modules else []
         self.total_in_features = 0
         for module in self.previous_modules:
-            if not isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
-                raise TypeError("The previous modules must be LinearGrowingModule.")
+            # Merge modules are not allowed inside previous_modules; only regular growing modules
+            if not isinstance(module, LinearGrowingModule):
+                raise TypeError(
+                    "The previous modules must be LinearGrowingModule instances (no MergeGrowingModule allowed)."
+                )
             if module.out_features != self.in_features:
                 raise ValueError(
                     "The input features must match the output features of the previous modules."
@@ -244,7 +242,6 @@ class LinearGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        device = device if device is not None else global_device()
         super(LinearGrowingModule, self).__init__(
             layer=torch.nn.Linear(
                 in_features, out_features, bias=use_bias, device=device
