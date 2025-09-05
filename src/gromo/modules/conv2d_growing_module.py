@@ -1123,7 +1123,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.delta_raw is not None
         ), f"The optimal delta should be computed before the tensor N for {self.name}."
-        return -self.tensor_m_prev() - torch.einsum(
+        return -self.tensor_m_prev() + torch.einsum(
             "abe, ce -> bca", self.cross_covariance(), self.delta_raw
         ).flatten(start_dim=-2)
 
