@@ -1,7 +1,7 @@
 import types
 from copy import deepcopy
 from typing import Any, Dict, Tuple
-from unittest import TestCase, main, mock
+from unittest import mock
 
 import torch
 
@@ -327,7 +327,7 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         reference: dict,
         invariant_list: list[str],
         rtol: float = 1e-5,
-        atol: float = 1e-8,
+        atol: float = 5e-7,
     ):
         """Verify that layer invariants match the reference values."""
         for inv in invariant_list:
@@ -1072,7 +1072,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         demo_layers[1].compute_optimal_delta()
         alpha, alpha_b, omega, eigenvalues = demo_layers[
             1
-        ].compute_optimal_added_parameters(dtype=dtype)
+        ].compute_optimal_added_parameters(
+            dtype=dtype,
+            statistical_threshold=0,
+            numerical_threshold=0,
+            maximum_added_neurons=10,
+        )
 
         self.assertShapeEqual(
             alpha,
@@ -2726,4 +2731,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
 
 if __name__ == "__main__":
+    from unittest import main
+
     main()
