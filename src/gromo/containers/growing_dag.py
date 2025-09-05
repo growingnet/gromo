@@ -772,8 +772,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         direct_edges = []
         for prev_node, successors in direct_successors.items():
             for next_node in successors:
-                if len(list(self.predecessors(next_node))) >= 2:
-                    continue
+                # if len(list(self.predecessors(next_node))) >= 2:
+                #     continue
                 direct_edges.append(
                     {
                         "previous_node": prev_node,
@@ -809,8 +809,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for prev_node, succ in successors.items():
             for next_node in succ:
                 if not self._indirect_connection_exists(prev_node, next_node):
-                    if len(list(self.predecessors(next_node))) >= 2:
-                        continue
+                    # if len(list(self.predecessors(next_node))) >= 2:
+                    #     continue
                     one_hop_edges.append(
                         {
                             "previous_node": prev_node,
@@ -1305,8 +1305,8 @@ class Expansion:
 
     def expand(self) -> None:
         """Create new edge or node on a copy of the enclosed GrowingDAG"""
-        if not self.check_available_memory():
-            return False
+        # if not self.check_available_memory():
+        #     return False
         # Deep copy the dag to avoid modifying the original one
         self.dag = copy.deepcopy(self.dag)
         if self.type == "new edge":
