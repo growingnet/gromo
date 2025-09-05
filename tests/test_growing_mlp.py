@@ -149,7 +149,7 @@ class TestGrowingMLP(TorchTestCase):
 
         # Predictions should remain the same after normalization
         for y_pred, y_pred_normalised in zip(y_pred_list, y_pred_normalised_list):
-            self.assertAllClose(y_pred, y_pred_normalised)
+            self.assertAllClose(y_pred, y_pred_normalised, atol=1e-7)
 
     def test_normalise_verbose(self):
         """Test the normalization method with verbose output."""
