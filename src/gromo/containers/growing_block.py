@@ -328,6 +328,7 @@ class LinearGrowingBlock(GrowingBlock):
         activation: torch.nn.Module | None = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
+        extended_mid_activation: torch.nn.Module | None = None,
         name: str = "block",
         kwargs_layer: dict | None = None,
         kwargs_first_layer: dict | None = None,
@@ -352,6 +353,8 @@ class LinearGrowingBlock(GrowingBlock):
             activation function to use before the first layer, if None use the activation function
         mid_activation: torch.nn.Module | None
             activation function to use between the two layers, if None use the activation function
+        extended_mid_activation: torch.nn.Module | None
+            activation function to use between the two layers in the extended forward, if None use the mid_activation
         name: str
             name of the block
         kwargs_layer: dict | None
@@ -376,6 +379,7 @@ class LinearGrowingBlock(GrowingBlock):
             out_features=hidden_features,
             name=f"{name}(first_layer)",
             post_layer_function=mid_activation,
+            extended_post_layer_function=extended_mid_activation,
             **kwargs_first_layer,
         )
         second_layer = LinearGrowingModule(
@@ -410,6 +414,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         self,
         in_channels: int,
         out_channels: int,
+        kernel_size: int | tuple[int, int] | None = 3,
         hidden_channels: int = 0,
         activation: torch.nn.Module | None = None,
         pre_activation: torch.nn.Module | None = None,
@@ -431,6 +436,8 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             number of input channels
         out_channels: int
             number of output channels
+        kernel_size: int | tuple[int, int] | None
+            size of the convolutional kernel
         hidden_channels: int
             number of hidden channels, if zero the block is the zero function
         activation: torch.nn.Module | None
@@ -460,6 +467,21 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
                 kwargs_second_layer=kwargs_second_layer,
             )
         )
+
+        if (
+            ("kernel_size" not in kwargs_first_layer)
+            or ("kernel_size" not in kwargs_second_layer)
+        ) and (kernel_size is None):
+            raise ValueError(f"kernel_size must be specified for {name}.")
+
+        for kwargs in (kwargs_first_layer, kwargs_second_layer):
+            if "kernel_size" not in kwargs:
+                kwargs["kernel_size"] = kernel_size
+            assert kwargs["kernel_size"] == kernel_size, (
+                f"Inconsistent kernel size between kwargs "
+                f"dictionary ({kwargs['kernel_size']}) and "
+                f"argument ({kernel_size}) for {name}."
+            )
 
         first_layer = RestrictedConv2dGrowingModule(
             in_channels=in_channels,
