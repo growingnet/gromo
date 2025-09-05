@@ -1414,8 +1414,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         # learning the identity
         loss = torch.norm(y - input_x) ** 2 / 2
         loss.backward()
-        print(f"{layer2.pre_activity.grad=}")
-
         layer2.tensor_m_prev.update()
         layer2.tensor_s_growth.update()
         layer2.compute_optimal_added_parameters(
