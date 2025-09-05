@@ -11,7 +11,12 @@ from gromo.modules.linear_growing_module import (
 )
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
-from tests.torch_unittest import GrowableIdentity, SizedIdentity, TorchTestCase
+from tests.torch_unittest import (
+    GrowableIdentity,
+    SizedIdentity,
+    TorchTestCase,
+    indicator_batch,
+)
 from tests.unittest_tools import unittest_parametrize
 
 
@@ -1294,6 +1299,43 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             except Exception:
                 # If computation fails, that's still testing the error paths
                 self.assertTrue(True)  # Error paths exercised
+
+    def test_zero_bottleneck(self):
+        """Test behavior when bottleneck is fully resolved
+        with parameter change."""
+        demo_layer_1, demo_layer_2 = self.demo_layers[False]
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.init_computation()
+
+        input_x = indicator_batch((demo_layer_1.in_features,), device=global_device())
+        y = net(input_x)
+        loss = torch.norm(y) ** 2 / 2
+        loss.backward()
+        demo_layer_2.update_computation()
+        demo_layer_2.compute_optimal_updates()
+
+        self.assertAllClose(
+            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-7
+        )
+        self.assertAllClose(
+            demo_layer_2.eigenvalues_extension,
+            torch.zeros_like(demo_layer_2.eigenvalues_extension),
+            atol=1e-7,
+        )
+
+    def test_compute_m_prev_without_intermediate_input(self):
+        """Check that the batch size is computed using stored variables"""
+        demo_layer_1, demo_layer_2 = self.demo_layers[False]
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.store_pre_activity = True
+        demo_layer_1.store_input = True
+        demo_layer_2.tensor_m_prev.init()
+
+        loss = net(self.input_x).sum()
+        loss.backward()
+
+        demo_layer_2.tensor_m_prev.update()
+        self.assertEqual(demo_layer_2.tensor_m_prev.samples, self.input_x.size(0))
 
 
 class TestLinearMergeGrowingModule(TorchTestCase):
