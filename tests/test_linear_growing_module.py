@@ -1386,6 +1386,51 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertIsNotNone(y)
         self.assertIsInstance(y, torch.Tensor)
 
+    def test_compute_optimal_added_parameters_with_no_projection(self):
+        """Test compute_optimal_added_parameters with no projection"""
+        layer1: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.C_FEATURES,
+            out_features=self.config.C_FEATURES,
+            bias=False,
+        )
+        layer2: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.C_FEATURES,
+            out_features=self.config.C_FEATURES,
+            bias=False,
+        )
+        layer2.previous_module = layer1
+
+        layer1.weight.data.fill_(0.0)
+        layer2.weight.data.fill_(0.0)
+
+        layer1.store_input = True
+        layer2.store_pre_activity = True
+        layer2.tensor_m_prev.init()
+        layer2.tensor_s_growth.init()
+
+        input_x = indicator_batch((layer1.in_features,), device=global_device())
+        y = layer2(layer1(input_x))
+
+        # learning the identity
+        loss = torch.norm(y - input_x) ** 2 / 2
+        loss.backward()
+        print(f"{layer2.pre_activity.grad=}")
+
+        layer2.tensor_m_prev.update()
+        layer2.tensor_s_growth.update()
+        layer2.compute_optimal_added_parameters(
+            use_projected_gradient=False, maximum_added_neurons=self.config.C_FEATURES
+        )
+        self.assertIsInstance(layer1.extended_output_layer, torch.nn.Linear)
+        assert isinstance(layer1.extended_output_layer, torch.nn.Linear)
+        self.assertIsInstance(layer2.extended_input_layer, torch.nn.Linear)
+        assert isinstance(layer2.extended_input_layer, torch.nn.Linear)
+        layer2.apply_change(scaling_factor=1.0)
+        y = layer2(layer1(input_x))
+
+        # check if we learned the identity
+        self.assertAllClose(y, input_x, atol=1e-5)
+
 
 class TestLinearMergeGrowingModule(TorchTestCase):
     def setUp(self):
