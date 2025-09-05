@@ -593,7 +593,9 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_couple[1].compute_optimal_delta()
         alpha, alpha_b, omega, eigenvalues = demo_couple[
             1
-        ].compute_optimal_added_parameters()
+        ].compute_optimal_added_parameters(
+            numerical_threshold=0, statistical_threshold=0, maximum_added_neurons=10
+        )
 
         self.assertShapeEqual(
             alpha,
