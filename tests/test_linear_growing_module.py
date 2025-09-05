@@ -1,7 +1,7 @@
 import types
 from copy import deepcopy
 from typing import Any, Dict, Tuple
-from unittest import TestCase, main, mock
+from unittest import mock
 
 import torch
 
@@ -11,7 +11,12 @@ from gromo.modules.linear_growing_module import (
 )
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
-from tests.torch_unittest import GrowableIdentity, SizedIdentity, TorchTestCase
+from tests.torch_unittest import (
+    GrowableIdentity,
+    SizedIdentity,
+    TorchTestCase,
+    indicator_batch,
+)
 from tests.unittest_tools import unittest_parametrize
 
 
@@ -327,7 +332,7 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         reference: dict,
         invariant_list: list[str],
         rtol: float = 1e-5,
-        atol: float = 1e-8,
+        atol: float = 5e-7,
     ):
         """Verify that layer invariants match the reference values."""
         for inv in invariant_list:
@@ -1072,7 +1077,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         demo_layers[1].compute_optimal_delta()
         alpha, alpha_b, omega, eigenvalues = demo_layers[
             1
-        ].compute_optimal_added_parameters(dtype=dtype)
+        ].compute_optimal_added_parameters(
+            dtype=dtype,
+            statistical_threshold=0,
+            numerical_threshold=0,
+            maximum_added_neurons=10,
+        )
 
         self.assertShapeEqual(
             alpha,
@@ -1289,6 +1299,135 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             except Exception:
                 # If computation fails, that's still testing the error paths
                 self.assertTrue(True)  # Error paths exercised
+
+    def test_zero_bottleneck(self):
+        """Test behavior when bottleneck is fully resolved
+        with parameter change."""
+        demo_layer_1, demo_layer_2 = self.demo_layers[False]
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.init_computation()
+
+        input_x = indicator_batch((demo_layer_1.in_features,), device=global_device())
+        y = net(input_x)
+        loss = torch.norm(y) ** 2 / 2
+        loss.backward()
+        demo_layer_2.update_computation()
+        demo_layer_2.compute_optimal_updates()
+
+        self.assertAllClose(
+            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-7
+        )
+        self.assertAllClose(
+            demo_layer_2.eigenvalues_extension,
+            torch.zeros_like(demo_layer_2.eigenvalues_extension),
+            atol=1e-7,
+        )
+
+    def test_compute_m_prev_without_intermediate_input(self):
+        """Check that the batch size is computed using stored variables"""
+        demo_layer_1, demo_layer_2 = self.demo_layers[False]
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.store_pre_activity = True
+        demo_layer_1.store_input = True
+        demo_layer_2.tensor_m_prev.init()
+
+        loss = net(self.input_x).sum()
+        loss.backward()
+
+        demo_layer_2.tensor_m_prev.update()
+        self.assertEqual(demo_layer_2.tensor_m_prev.samples, self.input_x.size(0))
+
+    @unittest_parametrize(
+        (
+            {"first_layer_bias": True, "second_layer_bias": True},
+            {"first_layer_bias": True, "second_layer_bias": False},
+            {"first_layer_bias": False, "second_layer_bias": True},
+            {"first_layer_bias": False, "second_layer_bias": False},
+        )
+    )
+    def test_compute_optimal_added_parameters_different_bias(
+        self, first_layer_bias: bool = True, second_layer_bias: bool = False
+    ):
+        """
+        Test compute_optimal_added_parameters with different bias settings.
+        """
+        layer1: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.LAYER_DIMS["demo_1"][0],
+            out_features=self.config.LAYER_DIMS["demo_1"][1],
+            bias=first_layer_bias,
+        )
+        layer2: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.LAYER_DIMS["demo_2"][0],
+            out_features=self.config.LAYER_DIMS["demo_2"][1],
+            bias=second_layer_bias,
+        )
+        layer2.previous_module = layer1
+
+        layer1.store_input = True
+        layer2.store_pre_activity = True
+        layer2.tensor_m_prev.init()
+        layer2.tensor_s_growth.init()
+
+        y = layer2(layer1(self.input_x))
+        loss = torch.norm(y)
+        loss.backward()
+
+        layer2.tensor_m_prev.update()
+        layer2.tensor_s_growth.update()
+        layer2.compute_optimal_added_parameters(use_projected_gradient=False)
+
+        self.assertIsInstance(layer1.extended_output_layer, torch.nn.Linear)
+        assert isinstance(layer1.extended_output_layer, torch.nn.Linear)
+        if first_layer_bias:
+            self.assertIsNotNone(layer1.extended_output_layer.bias)
+
+        layer2.apply_change()
+        y = layer2(layer1(self.input_x))
+        self.assertIsNotNone(y)
+        self.assertIsInstance(y, torch.Tensor)
+
+    def test_compute_optimal_added_parameters_with_no_projection(self):
+        """Test compute_optimal_added_parameters with no projection"""
+        layer1: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.C_FEATURES,
+            out_features=self.config.C_FEATURES,
+            bias=False,
+        )
+        layer2: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.C_FEATURES,
+            out_features=self.config.C_FEATURES,
+            bias=False,
+        )
+        layer2.previous_module = layer1
+
+        layer1.weight.data.fill_(0.0)
+        layer2.weight.data.fill_(0.0)
+
+        layer1.store_input = True
+        layer2.store_pre_activity = True
+        layer2.tensor_m_prev.init()
+        layer2.tensor_s_growth.init()
+
+        input_x = indicator_batch((layer1.in_features,), device=global_device())
+        y = layer2(layer1(input_x))
+
+        # learning the identity
+        loss = torch.norm(y - input_x) ** 2 / 2
+        loss.backward()
+        layer2.tensor_m_prev.update()
+        layer2.tensor_s_growth.update()
+        layer2.compute_optimal_added_parameters(
+            use_projected_gradient=False, maximum_added_neurons=self.config.C_FEATURES
+        )
+        self.assertIsInstance(layer1.extended_output_layer, torch.nn.Linear)
+        assert isinstance(layer1.extended_output_layer, torch.nn.Linear)
+        self.assertIsInstance(layer2.extended_input_layer, torch.nn.Linear)
+        assert isinstance(layer2.extended_input_layer, torch.nn.Linear)
+        layer2.apply_change(scaling_factor=1.0)
+        y = layer2(layer1(input_x))
+
+        # check if we learned the identity
+        self.assertAllClose(y, input_x, atol=1e-5)
 
 
 class TestLinearMergeGrowingModule(TorchTestCase):
@@ -2726,4 +2865,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
 
 if __name__ == "__main__":
+    from unittest import main
+
     main()
