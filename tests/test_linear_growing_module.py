@@ -1337,6 +1337,55 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         demo_layer_2.tensor_m_prev.update()
         self.assertEqual(demo_layer_2.tensor_m_prev.samples, self.input_x.size(0))
 
+    @unittest_parametrize(
+        (
+            {"first_layer_bias": True, "second_layer_bias": True},
+            {"first_layer_bias": True, "second_layer_bias": False},
+            {"first_layer_bias": False, "second_layer_bias": True},
+            {"first_layer_bias": False, "second_layer_bias": False},
+        )
+    )
+    def test_compute_optimal_added_parameters_different_bias(
+        self, first_layer_bias: bool = True, second_layer_bias: bool = False
+    ):
+        """
+        Test compute_optimal_added_parameters with different bias settings.
+        """
+        layer1: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.LAYER_DIMS["demo_1"][0],
+            out_features=self.config.LAYER_DIMS["demo_1"][1],
+            bias=first_layer_bias,
+        )
+        layer2: LinearGrowingModule = self.create_linear_layer(
+            in_features=self.config.LAYER_DIMS["demo_2"][0],
+            out_features=self.config.LAYER_DIMS["demo_2"][1],
+            bias=second_layer_bias,
+        )
+        layer2.previous_module = layer1
+
+        layer1.store_input = True
+        layer2.store_pre_activity = True
+        layer2.tensor_m_prev.init()
+        layer2.tensor_s_growth.init()
+
+        y = layer2(layer1(self.input_x))
+        loss = torch.norm(y)
+        loss.backward()
+
+        layer2.tensor_m_prev.update()
+        layer2.tensor_s_growth.update()
+        layer2.compute_optimal_added_parameters(use_projected_gradient=False)
+
+        self.assertIsInstance(layer1.extended_output_layer, torch.nn.Linear)
+        assert isinstance(layer1.extended_output_layer, torch.nn.Linear)
+        if first_layer_bias:
+            self.assertIsNotNone(layer1.extended_output_layer.bias)
+
+        layer2.apply_change()
+        y = layer2(layer1(self.input_x))
+        self.assertIsNotNone(y)
+        self.assertIsInstance(y, torch.Tensor)
+
 
 class TestLinearMergeGrowingModule(TorchTestCase):
     def setUp(self):
