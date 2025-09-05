@@ -669,6 +669,8 @@ class GrowingGraphNetwork(GrowingContainer):
         X_val: torch.Tensor,
         Y_val: torch.Tensor,
         amplitude_factor: bool,
+        discard_underperforming: bool = False,
+        discard_metric: str = "loss_val",
         verbose: bool = False,
     ) -> None:
         """Execute all DAG expansions and save statistics
@@ -699,7 +701,9 @@ class GrowingGraphNetwork(GrowingContainer):
             print info, by default False
         """
         # Execute all graph growth options
-        for expansion in actions:
+        best_metric_value = np.inf
+        best_metric_index = -1
+        for i, expansion in enumerate(actions):
             # Create a new edge
             if expansion.type == "new edge":
                 if verbose:
@@ -762,6 +766,27 @@ class GrowingGraphNetwork(GrowingContainer):
             expansion.metrics["acc_val"] = acc_val
             expansion.metrics["nb_params"] = expansion.dag.count_parameters_all()
             expansion.metrics["BIC"] = self.BIC(expansion.dag, loss_val, n=len(X_val))
+
+            if discard_underperforming and len(actions) > 1:
+                if expansion.metrics[discard_metric] <= best_metric_value:
+                    if verbose:
+                        if best_metric_index >= 0:
+                            print(
+                                f"Discarding expansion with {discard_metric} = {best_metric_value:.4f} > {expansion.metrics[discard_metric]:.4f}"
+                            )
+                        print(
+                            f"New best expansion with {discard_metric} = {expansion.metrics[discard_metric]:.4f}"
+                        )
+                    if i != 0:
+                        actions[best_metric_index].discard()
+                    best_metric_value = expansion.metrics[discard_metric]
+                    best_metric_index = i
+                else:
+                    if verbose:
+                        print(
+                            f"Discarding expansion with {discard_metric} = {expansion.metrics[discard_metric]:.4f} > {best_metric_value:.4f}"
+                        )
+                    del expansion
 
     def restrict_action_space(
         self, actions: list[Expansion], chosen_position: str
