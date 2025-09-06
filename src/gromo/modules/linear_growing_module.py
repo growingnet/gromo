@@ -546,7 +546,7 @@ class LinearGrowingModule(GrowingModule):
             f"and {self.in_features + self.use_bias}."
             f"{self.name=}, {self.cross_covariance().shape=}"
         )
-        return -self.tensor_m_prev() - self.cross_covariance() @ self.delta_raw.T
+        return -self.tensor_m_prev() + self.cross_covariance() @ self.delta_raw.T
 
     # Layer edition
     def layer_of_tensor(
