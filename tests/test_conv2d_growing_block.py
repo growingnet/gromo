@@ -26,6 +26,16 @@ class TestConv2dGrowingBlock(TorchTestCase):
 
     def test_init(self):
         """Test initialization of RestrictedConv2dGrowingBlock."""
+        with self.assertRaises(ValueError):
+            # kernel_size must be specified
+            RestrictedConv2dGrowingBlock(
+                in_channels=self.in_channels,
+                out_channels=self.out_channels,
+                kernel_size=None,
+                hidden_channels=0,
+                device=self.device,
+            )
+
         block = RestrictedConv2dGrowingBlock(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
