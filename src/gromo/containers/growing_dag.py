@@ -1087,8 +1087,8 @@ class Expansion:
                 f"The expansion type should be one of {expansion_types}. Found {type}."
             )
         self.type = type
-        self.dag = copy.deepcopy(dag)
-        self.growth_history = growth_history
+        self.dag = dag  # reference to the original dag
+        self.growth_history = copy.deepcopy(growth_history)
         self.metrics = {}
 
         self.expanding_node = expanding_node
@@ -1166,7 +1166,9 @@ class Expansion:
             return new_edges
 
     def expand(self) -> None:
-        """Create new edge or node on the enclosed GrowingDAG"""
+        """Create new edge or node on a copy of the enclosed GrowingDAG"""
+        # Deep copy the dag to avoid modifying the original one
+        self.dag = copy.deepcopy(self.dag)
         if self.type == "new edge":
             self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
         elif self.type == "new node":

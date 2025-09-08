@@ -236,6 +236,7 @@ class LinearGrowingModule(GrowingModule):
         out_features: int,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
+        extended_post_layer_function: torch.nn.Module | None = None,
         previous_module: GrowingModule | MergeGrowingModule | None = None,
         next_module: GrowingModule | MergeGrowingModule | None = None,
         allow_growing: bool = False,
@@ -247,6 +248,7 @@ class LinearGrowingModule(GrowingModule):
                 in_features, out_features, bias=use_bias, device=device
             ),
             post_layer_function=post_layer_function,
+            extended_post_layer_function=extended_post_layer_function,
             previous_module=previous_module,
             next_module=next_module,
             allow_growing=allow_growing,
@@ -379,6 +381,7 @@ class LinearGrowingModule(GrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
+        assert desired_activation is not None
         return (
             torch.einsum(
                 "ij,ik->jk",
@@ -408,6 +411,7 @@ class LinearGrowingModule(GrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
+        assert desired_activation is not None
         if self.previous_module is None:
             raise ValueError(
                 f"No previous module for {self.name}. Thus M_{-2} is not defined."
@@ -419,7 +423,7 @@ class LinearGrowingModule(GrowingModule):
                     torch.flatten(self.previous_module.input_extended, 0, -2),
                     torch.flatten(desired_activation, 0, -2),
                 ),
-                self.input.shape[0],
+                desired_activation.size(0),
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             if self.previous_module.number_of_successors > 1:
@@ -430,7 +434,7 @@ class LinearGrowingModule(GrowingModule):
                     self.previous_module.construct_full_activity(),
                     desired_activation,
                 ),
-                self.input.shape[0],
+                desired_activation.size(0),
             )
         else:
             raise NotImplementedError(
@@ -860,8 +864,8 @@ class LinearGrowingModule(GrowingModule):
 
         if update_previous:
             if isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module.extended_output_layer = self.layer_of_tensor(
-                    alpha_weight, alpha_bias
+                self.previous_module.extended_output_layer = (
+                    self.previous_module.layer_of_tensor(alpha_weight, alpha_bias)
                 )
             elif isinstance(self.previous_module, LinearMergeGrowingModule):
                 raise NotImplementedError
