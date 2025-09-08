@@ -114,10 +114,11 @@ class TestUtils(unittest.TestCase):
     def test_activation_fn(self) -> None:
         self.assertIsInstance(activation_fn(None), nn.Identity)
         self.assertIsInstance(activation_fn("Id"), nn.Identity)
-        self.assertIsInstance(activation_fn("Test"), nn.Identity)
         self.assertIsInstance(activation_fn("Softmax"), nn.Softmax)
         self.assertIsInstance(activation_fn("SELU"), nn.SELU)
         self.assertIsInstance(activation_fn("RELU"), nn.ReLU)
+        with self.assertRaises(ValueError):
+            activation_fn("UnknownActivation")
 
     def test_mini_batch_gradient_descent(self) -> None:
         # Test on each available device
