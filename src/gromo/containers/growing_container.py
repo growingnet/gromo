@@ -151,3 +151,9 @@ class GrowingContainer(torch.nn.Module):
             Number of parameters.
         """
         return sum(p.numel() for p in self.parameters())
+
+    def update_size(self):
+        """Update sizes of the individual modules"""
+        for layer in self._growing_layers:
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
+                layer.update_size()
