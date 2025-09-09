@@ -79,10 +79,25 @@ class GrowingContainer(torch.nn.Module):
             if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.reset_computation()
 
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        return_deltas: bool = False,
+        force_pseudo_inverse: bool = False,
+    ):
+        """Compute optimal delta for growth procedure"""
+        for layer in self._growing_layers:
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
+                layer.compute_optimal_delta(
+                    update=update,
+                    return_deltas=return_deltas,
+                    force_pseudo_inverse=force_pseudo_inverse,
+                )
+
     def compute_optimal_updates(self, *args, **kwargs):
         """Compute optimal updates for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.compute_optimal_updates(*args, **kwargs)
 
     def select_best_update(self):
