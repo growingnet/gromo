@@ -31,14 +31,14 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         name: str | None = None,
     ) -> None:
         self.use_bias = True
-        self.in_channels = in_channels
+        self.in_channels: int = in_channels
         self._input_volume = input_volume
         if isinstance(input_size, int):
             input_size = (input_size, input_size)
         self.input_size = input_size
         if isinstance(next_kernel_size, int):
             next_kernel_size = (next_kernel_size, next_kernel_size)
-        self.kernel_size = next_kernel_size
+        self.kernel_size: tuple[int, int] = next_kernel_size
         super(Conv2dMergeGrowingModule, self).__init__(
             post_merge_function=post_merge_function,
             previous_modules=previous_modules,
@@ -121,6 +121,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def unfolded_extended_activity(self) -> torch.Tensor:
         """
         Return the unfolded activity extended with a channel of ones if the bias is used.
+        Shape := (batch_size, D, L) where
+        D = in_channels * kernel_size[0] * kernel_size[1] [+1 if bias]
+        L = number of output spatial locations (e.g., H x W)
 
         Returns
         -------
@@ -555,18 +558,46 @@ class Conv2dGrowingModule(GrowingModule):
 
     @property
     def out_width(self) -> int:
+        """Compute the width of the output feature map.
+
+        Returns
+        -------
+        int
+            output feature map width
+        """
         return self.__out_dimension(0)
 
     @property
     def out_height(self) -> int:
+        """Compute the height of the output feature map.
+
+        Returns
+        -------
+        int
+            output feature map height
+        """
         return self.__out_dimension(1)
 
     @property
     def input_volume(self) -> int:
+        """Calculate total number of elements in the input tensor.
+
+        Returns
+        -------
+        int
+            total number of input elements
+        """
         return self.in_channels * self.input_size[0] * self.input_size[1]
 
     @property
     def out_features(self) -> int:
+        """Compute total number of elements in the output tensor
+
+        Returns
+        -------
+        int
+            total number of output elements
+        """
         return self.out_channels * self.out_width * self.out_height
 
     @property
@@ -583,6 +614,11 @@ class Conv2dGrowingModule(GrowingModule):
         input (i.e. the 'fan_in' for a flattened convolution). We use the name
         ``in_features`` (instead of ``fan_in``) to remain consistent with the naming
         conventions used in :class:`LinearGrowingModule`.
+
+        Returns
+        -------
+        int
+            number of input features (fan-in)
         """
         return self.in_channels * self.kernel_size[0] * self.kernel_size[1]
 
