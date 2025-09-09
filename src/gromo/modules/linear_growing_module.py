@@ -296,14 +296,15 @@ class LinearGrowingModule(GrowingModule):
         torch.Tensor
             input extended
         """
+        _input = torch.flatten(self.input, 1)
         if self.use_bias:
             # TODO (optimize this): we could directly store the extended input
             return torch.cat(
-                (self.input, torch.ones(*self.input.shape[:-1], 1, device=self.device)),
+                (_input, torch.ones(*_input.shape[:-1], 1, device=self.device)),
                 dim=-1,
             )
         else:
-            return self.input
+            return _input
 
     def number_of_parameters(self) -> int:
         """
