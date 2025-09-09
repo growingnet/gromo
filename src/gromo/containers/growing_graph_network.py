@@ -84,8 +84,20 @@ class GrowingGraphNetwork(GrowingContainer):
     def reset_computation(self):
         self.dag.reset_computation()
 
-    def compute_optimal_updates(self, *args, **kwargs):
-        self.dag.compute_optimal_updates(*args, **kwargs)
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        return_deltas: bool = False,
+        force_pseudo_inverse: bool = False,
+    ):
+        self.dag.compute_optimal_delta(
+            update=update,
+            return_deltas=return_deltas,
+            force_pseudo_inverse=force_pseudo_inverse,
+        )
+
+    def delete_update(self) -> None:
+        self.dag.delete_update()
 
     def init_empty_graph(self) -> None:
         """Create empty DAG with start and end nodes"""
