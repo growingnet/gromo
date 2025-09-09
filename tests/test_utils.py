@@ -4,10 +4,25 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import torch
+import torch.nn as nn
 
-from gromo.utils.utils import *
-
-from .unittest_tools import unittest_parametrize
+from gromo.utils.utils import (
+    activation_fn,
+    batch_gradient_descent,
+    calculate_true_positives,
+    f1,
+    f1_macro,
+    f1_micro,
+    get_correct_device,
+    global_device,
+    line_search,
+    mini_batch_gradient_descent,
+    reset_device,
+    set_device,
+    set_from_conf,
+    torch_ones,
+    torch_zeros,
+)
 
 
 class TestUtils(unittest.TestCase):
@@ -112,7 +127,7 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(var, 1)
 
     def test_activation_fn(self) -> None:
-        self.assertIsInstance(activation_fn(None), nn.Identity)
+        self.assertIsInstance(activation_fn(None), nn.Identity)  # type: ignore
         self.assertIsInstance(activation_fn("Id"), nn.Identity)
         self.assertIsInstance(activation_fn("Softmax"), nn.Softmax)
         self.assertIsInstance(activation_fn("SELU"), nn.SELU)
