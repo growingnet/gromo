@@ -409,6 +409,22 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = self.sum_in_features(with_bias=True)
 
         if self.total_in_features > 0:
+            if self.tensor_s is None or self.tensor_s._shape != (
+                self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                + self.use_bias,
+                self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                + self.use_bias,
+            ):
+                self.tensor_s = TensorStatistic(
+                    (
+                        self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                        + self.use_bias,
+                        self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                        + self.use_bias,
+                    ),
+                    update_function=self.compute_s_update,
+                    name=f"S({self.name})",
+                )
             if self.previous_tensor_s is None or self.previous_tensor_s._shape != (
                 self.total_in_features,
                 self.total_in_features,
