@@ -1182,6 +1182,30 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         return accuracy, loss.item()
 
+    def __str__(self) -> str:
+        nodes = list(self.nodes)
+        edges = list(self.edges)
+        lines = [f"GrowingDAG("]
+        lines.append(f"\tNodes ({len(nodes)}):")
+        for i, n in enumerate(nodes):
+            attrs = {
+                "layer type": self.nodes[n]["type"],
+                "hidden size": self.nodes[n]["size"],
+            }
+            attr_str = ", ".join(f"{k}: {v}" for k, v in list(attrs.items()))
+            lines.append(f"\t\t{n} ({attr_str if attr_str else '{}'})")
+
+        lines.append(f"\tEdges ({len(edges)}):")
+        edge_str = ", ".join(f"{u}->{v}" for u, v in edges)
+        lines.append(f"\t\t{edge_str}")
+
+        lines.append(")")
+
+        return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 expansion_types = ["new edge", "new node", "expanded node"]
 
