@@ -84,8 +84,11 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         self.previous_modules = previous_modules if previous_modules else []
         self.total_in_features = 0
         for module in self.previous_modules:
-            if not isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
-                raise TypeError("The previous modules must be LinearGrowingModule.")
+            # Merge modules are not allowed inside previous_modules; only regular growing modules
+            if not isinstance(module, (LinearGrowingModule, MergeGrowingModule)):
+                raise TypeError(
+                    "The previous modules must be LinearGrowingModule instances or MergeGrowingModule)."
+                )
             if module.out_features != self.in_features:
                 raise ValueError(
                     "The input features must match the output features of the previous modules."
