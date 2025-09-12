@@ -88,7 +88,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (0, 0)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.padding
-        elif isinstance(self.next_modules[0], MergeGrowingModule):
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
             return (0, 0)
         else:
             raise NotImplementedError
@@ -102,7 +104,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.stride
-        elif isinstance(self.next_modules[0], MergeGrowingModule):
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
             return (1, 1)
         else:
             raise NotImplementedError
@@ -116,7 +120,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.dilation
-        elif isinstance(self.next_modules[0], MergeGrowingModule):
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
             return (1, 1)
         else:
             raise NotImplementedError
@@ -172,20 +178,18 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
         # Check that all modules are allowed types
         assert all(
-            isinstance(m, (Conv2dGrowingModule, MergeGrowingModule)) for m in next_list
-        ), f"All next modules must be instances of Conv2dGrowingModule or MergeGrowingModule (error in {self.name})."
+            isinstance(
+                m, (Conv2dGrowingModule, LinearGrowingModule, LinearMergeGrowingModule)
+            )
+            for m in next_list
+        ), f"All next modules must be instances of Conv2dGrowingModule, LinearGrowingModule or LinearMergeGrowingModule (error in {self.name})."
 
-        # Check that all modules are of the same type
-        # if len(next_list) > 0:
-        #     # For Conv2d modules, check kernel size compatibility
-        #     if isinstance(next_list[0], Conv2dGrowingModule):
-        #         first_ks = tuple(next_list[0].kernel_size)
-        # assert all(
-        #     tuple(m.kernel_size) == first_ks for m in next_list
-        # ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
-        # assert (
-        #     tuple(self.kernel_size) == first_ks
-        # ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        # For Conv2d modules, check kernel size compatibility
+        for module in next_list:
+            if isinstance(module, Conv2dGrowingModule):
+                assert tuple(module.kernel_size) == tuple(
+                    self.kernel_size
+                ), f"Kernel size of next Conv2d modules {module.kernel_size} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
 
         self.next_modules = next_list
         self.total_out_features = 0
@@ -194,7 +198,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 assert module.in_channels == self.out_channels
                 module.input_size = self.output_size
                 self.total_out_features += module.out_features
-            elif isinstance(module, (LinearMergeGrowingModule)):
+            elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
                 assert (
                     module.in_features == self.out_features
                 ), f"Next module input features {module.in_features} should match {self.out_features=}"
@@ -203,9 +207,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 raise NotImplementedError(
                     "The next modules must be either Linear or Convolution."
                 )
-        # assert all(
-        #     modules.in_features == self.out_features for modules in self.next_modules
-        # ), f"The output features must match the input features of the next modules."
 
     def set_previous_modules(
         self, previous_modules: list[MergeGrowingModule | GrowingModule]
@@ -226,20 +227,19 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         prev_list = previous_modules if previous_modules else []
 
         # First check type compatibility - should raise TypeError for incompatible types
-        # A merge module cannot be preceded by another merge module
         for module in prev_list:
             if not isinstance(module, Conv2dGrowingModule):
                 raise TypeError("The previous modules must be Conv2dGrowingModule.")
 
         # Then check kernel size constraints for all Conv2d modules
-        # if len(prev_list) > 0:
-        # first_ks = tuple(prev_list[0].kernel_size)
-        # assert all(
-        #     tuple(m.kernel_size) == first_ks for m in prev_list
-        # ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
-        # assert (
-        #     tuple(self.kernel_size) == first_ks
-        # ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        if len(prev_list) > 0:
+            first_ks = tuple(prev_list[0].kernel_size)
+            assert all(
+                tuple(m.kernel_size) == first_ks for m in prev_list
+            ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+            assert (
+                tuple(self.kernel_size) == first_ks
+            ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
         self.previous_modules = prev_list
         self.total_in_features = 0
         self.total_out_features = 0
