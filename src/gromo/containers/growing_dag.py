@@ -87,16 +87,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 continue
-            node_module.previous_tensor_s.update()
-            node_module.previous_tensor_m.update()
+            # node_module.previous_tensor_s.update()
+            # node_module.previous_tensor_m.update()
+            node_module.update_computation()
 
     def reset_computation(self):
         for node_module in self.get_all_node_modules():
             node_module.reset_computation()
 
     def compute_optimal_updates(self, *args, **kwargs):
-        for node_module in self.get_all_node_modules():
-            node_module.compute_optimal_updates(*args, **kwargs)
+        self.compute_optimal_delta(*args, **kwargs)
 
     def compute_optimal_delta(
         self,
