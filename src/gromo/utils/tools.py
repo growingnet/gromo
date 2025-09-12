@@ -18,8 +18,8 @@ def sqrt_inverse_matrix_semi_positive(
     threshold: float
         threshold to consider an eigenvalue as zero
     preferred_linalg_library: None | str in ("magma", "cusolver")
-        linalg library to use, "cusolver" may failed
-        for non positive definite matrix if CUDA < 12.1 is used
+        linalg library to use, "cusolver" may fail
+        for non-positive definite matrix if CUDA < 12.1 is used
         see: https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html
 
     Returns
