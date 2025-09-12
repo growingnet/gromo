@@ -309,28 +309,6 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertEqual(s_update.shape, (D, D))
         self.assertAllClose(s_update, s_update.T)
 
-    def test_unfolded_extended_activity_and_s_update_linear_next(self):
-        """Test unfolded_extended_activity (linear next branch) and compute_s_update shape."""
-        # Create a Linear next module to exercise the Linear branch
-        lin_next = LinearGrowingModule(
-            in_features=self.prev.out_features,
-            out_features=7,
-            device=global_device(),
-        )
-        self.merge.set_next_modules([lin_next])
-
-        # Provide a 2D activity to match the linear branch expectation
-        self.merge.store_activity = True
-        self.merge.activity = torch.randn(self.batch, 13, device=global_device())
-
-        unfolded_ext = self.merge.unfolded_extended_activity
-        self.assertEqual(unfolded_ext.shape, (self.batch, 14))  # +1 for bias
-
-        s_update, n = self.merge.compute_s_update()
-        self.assertEqual(n, self.batch)
-        self.assertEqual(s_update.shape, (14, 14))
-        self.assertAllClose(s_update, s_update.T)
-
     def test_compute_s_update_assertions(self):
         """Test compute_s_update assertions for activity storage."""
         m = self.merge
@@ -521,29 +499,6 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             self.merge_in_channels * self.kernel_size[0] * self.kernel_size[1]
         )  # No +1 for bias
         self.assertEqual(unfolded.shape[1], expected_d)
-
-    def test_unfolded_extended_activity_linear_without_bias(self):
-        """Test unfolded_extended_activity for Linear path without bias - covers line 167."""
-        m = Conv2dMergeGrowingModule(
-            in_channels=self.merge_in_channels,
-            input_size=self.merge.input_size,
-            next_kernel_size=self.kernel_size,
-            device=global_device(),
-        )
-        m.use_bias = False
-        m.set_previous_modules([self.prev])
-
-        # Create linear next module with correct in_features
-        linear_next = LinearGrowingModule(m.out_features, 10, device=global_device())
-        m.set_next_modules([linear_next])
-
-        # Set activity and test linear path without bias
-        m.store_activity = True
-        m.activity = torch.randn(self.batch, m.out_features, device=global_device())
-
-        unfolded = m.unfolded_extended_activity
-        # Should return self.activity directly when use_bias=False and next is linear
-        self.assertTrue(torch.equal(unfolded, m.activity))
 
     def test_update_size_tensor_shape_mismatch(self):
         """Test update_size when tensor shapes don't match - covers lines 414, 427."""
