@@ -535,6 +535,7 @@ class GrowingModule(torch.nn.Module):
         self.device = get_correct_device(self, device)
 
         self.layer: torch.nn.Module = layer.to(self.device)
+        # TODO: don't allow non-linearity if prev module is merge
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
         if extended_post_layer_function is None:
             self.extended_post_layer_function = self.post_layer_function

@@ -81,9 +81,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = 0
         for module in self.previous_modules:
             # Merge modules are not allowed inside previous_modules; only regular growing modules
-            if not isinstance(module, LinearGrowingModule):
+            if not isinstance(module, (LinearGrowingModule, MergeGrowingModule)):
                 raise TypeError(
-                    "The previous modules must be LinearGrowingModule instances (no MergeGrowingModule allowed)."
+                    "The previous modules must be LinearGrowingModule instances or MergeGrowingModule)."
                 )
             if module.out_features != self.in_features:
                 raise ValueError(

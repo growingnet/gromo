@@ -90,7 +90,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (0, 0)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.padding
-        elif isinstance(self.next_modules[0], LinearGrowingModule):
+        elif isinstance(self.next_modules[0], MergeGrowingModule):
             return (0, 0)
         else:
             raise NotImplementedError
@@ -104,7 +104,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.stride
-        elif isinstance(self.next_modules[0], LinearGrowingModule):
+        elif isinstance(self.next_modules[0], MergeGrowingModule):
             return (1, 1)
         else:
             raise NotImplementedError
@@ -118,7 +118,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.dilation
-        elif isinstance(self.next_modules[0], LinearGrowingModule):
+        elif isinstance(self.next_modules[0], MergeGrowingModule):
             return (1, 1)
         else:
             raise NotImplementedError
@@ -184,33 +184,33 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
         # Check that all modules are allowed types (no merge modules)
         assert all(
-            isinstance(m, (Conv2dGrowingModule, LinearGrowingModule)) for m in next_list
-        ), f"All next modules must be instances of Conv2dGrowingModule or LinearGrowingModule (error in {self.name})."
+            isinstance(m, (Conv2dGrowingModule, MergeGrowingModule)) for m in next_list
+        ), f"All next modules must be instances of Conv2dGrowingModule or MergeGrowingModule (error in {self.name})."
 
         # Check that all modules are of the same type
-        if len(next_list) > 0:
-            first_type = type(next_list[0])
-            assert all(
-                type(m) == first_type for m in next_list
-            ), f"All next modules must be of the same type (error in {self.name}). Got {[type(m).__name__ for m in next_list]}"
-
-            # For Conv2d modules, check kernel size compatibility
-            if isinstance(next_list[0], Conv2dGrowingModule):
-                first_ks = tuple(next_list[0].kernel_size)
-                assert all(
-                    tuple(m.kernel_size) == first_ks for m in next_list
-                ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
-                assert (
-                    tuple(self.kernel_size) == first_ks
-                ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        # if len(next_list) > 0:
+        #     # For Conv2d modules, check kernel size compatibility
+        #     if isinstance(next_list[0], Conv2dGrowingModule):
+        #         first_ks = tuple(next_list[0].kernel_size)
+        # assert all(
+        #     tuple(m.kernel_size) == first_ks for m in next_list
+        # ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
+        # assert (
+        #     tuple(self.kernel_size) == first_ks
+        # ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
 
         self.next_modules = next_list
+        self.total_out_features = 0
         for module in self.next_modules:
             if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
                 assert module.in_channels == self.out_channels
                 module.input_size = self.output_size
-            elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
-                assert module.in_features == self.out_features
+                self.total_out_features += module.out_features
+            elif isinstance(module, (LinearMergeGrowingModule)):
+                assert (
+                    module.in_features == self.out_features
+                ), f"Next module input features {module.in_features} should match {self.out_features=}"
+                self.total_out_features += module.out_features
             else:
                 raise NotImplementedError(
                     "The next modules must be either Linear or Convolution."
@@ -242,14 +242,14 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 raise TypeError("The previous modules must be Conv2dGrowingModule.")
 
         # Then check kernel size constraints for all Conv2d modules
-        if len(prev_list) > 0:
-            first_ks = tuple(prev_list[0].kernel_size)
-            assert all(
-                tuple(m.kernel_size) == first_ks for m in prev_list
-            ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
-            assert (
-                tuple(self.kernel_size) == first_ks
-            ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        # if len(prev_list) > 0:
+        # first_ks = tuple(prev_list[0].kernel_size)
+        # assert all(
+        #     tuple(m.kernel_size) == first_ks for m in prev_list
+        # ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+        # assert (
+        #     tuple(self.kernel_size) == first_ks
+        # ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
         self.previous_modules = prev_list
         self.total_in_features = 0
         self.total_out_features = 0
