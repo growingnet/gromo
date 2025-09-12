@@ -202,6 +202,7 @@ class GrowingResidualMLP(GrowingContainer):
                     hidden_features,
                     activation=activation,
                     name=f"block {i}",
+                    kwargs_layer={"device": device},
                 )
                 for i in range(num_blocks)
             ]
