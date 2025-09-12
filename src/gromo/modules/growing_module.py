@@ -968,7 +968,7 @@ class GrowingModule(torch.nn.Module):
         elif isinstance(self.previous_module, MergeGrowingModule):
             raise NotImplementedError(
                 f"S growth is not implemented for module preceded by an MergeGrowingModule."
-                " (error in {self.name})"
+                f" (error in {self.name})"
             )
         else:
             raise NotImplementedError(
