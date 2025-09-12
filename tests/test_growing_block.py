@@ -694,15 +694,6 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Verify gradient shape matches the output of first_layer
         expected_shape = (self.batch_size, self.out_features)
         self.assertShapeEqual(pre_activity_grad, expected_shape)
-        # Check that pre-activity gradient can be accessed
-        pre_activity_grad = block.second_layer.pre_activity.grad
-        self.assertIsNotNone(pre_activity_grad)
-        assert pre_activity_grad is not None  # to avoid type warning
-        self.assertShapeEqual(pre_activity_grad, block.second_layer.pre_activity.shape)
-
-        # Verify gradient shape matches the output of first_layer
-        expected_shape = (self.batch_size, self.out_features)
-        self.assertShapeEqual(pre_activity_grad, expected_shape)
 
     def test_scaling_factor_property(self):
         """Test scaling factor property getter and setter."""

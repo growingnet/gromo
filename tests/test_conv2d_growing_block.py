@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 
 from gromo.containers.growing_block import RestrictedConv2dGrowingBlock
 from gromo.utils.utils import global_device
