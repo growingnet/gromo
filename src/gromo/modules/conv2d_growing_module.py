@@ -136,39 +136,28 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         torch.Tensor
             unfolded activity extended
         """
-        if len(self.next_modules) <= 0 or isinstance(
-            self.next_modules[0], Conv2dGrowingModule
-        ):
-            unfolded_activity = torch.nn.functional.unfold(
-                self.activity,
-                self.kernel_size,
-                padding=self.padding,
-                stride=self.stride,
-                dilation=self.dilation,
-            )
-            if self.use_bias:
-                return torch.cat(
-                    (
-                        unfolded_activity,
-                        torch.ones(
-                            unfolded_activity.shape[0],
-                            1,
-                            unfolded_activity.shape[2],
-                            device=self.device,
-                        ),
+        unfolded_activity = torch.nn.functional.unfold(
+            self.activity,
+            self.kernel_size,
+            padding=self.padding,
+            stride=self.stride,
+            dilation=self.dilation,
+        )
+        if self.use_bias:
+            return torch.cat(
+                (
+                    unfolded_activity,
+                    torch.ones(
+                        unfolded_activity.shape[0],
+                        1,
+                        unfolded_activity.shape[2],
+                        device=self.device,
                     ),
-                    dim=1,
-                )
-            else:
-                return unfolded_activity
+                ),
+                dim=1,
+            )
         else:
-            if self.use_bias:
-                batch_size = self.activity.shape[0]
-                ones = torch.ones(batch_size, 1, device=self.activity.device)
-                activity_extended = torch.cat((self.activity, ones), dim=1)
-                return activity_extended
-            else:
-                return self.activity
+            return unfolded_activity
 
     def set_next_modules(self, next_modules: list[GrowingModule]) -> None:
         if self.tensor_s is not None and self.tensor_s.samples > 0:
@@ -393,12 +382,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         batch_size = self.activity.shape[0]
         unfolded_activity = self.unfolded_extended_activity
 
-        if isinstance(self.next_modules[0], Conv2dGrowingModule):
-            update = torch.einsum("iam, ibm -> ab", unfolded_activity, unfolded_activity)
-        elif isinstance(self.next_modules[0], LinearGrowingModule):
-            update = torch.einsum("ij,ik->jk", unfolded_activity, unfolded_activity)
-        else:
-            raise NotImplementedError
+        update = torch.einsum("iam, ibm -> ab", unfolded_activity, unfolded_activity)
 
         return update, batch_size
 

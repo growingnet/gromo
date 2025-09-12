@@ -89,8 +89,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
                 raise ValueError(
                     "The input features must match the output features of the previous modules."
                 )
-            self.total_in_features += module.in_features
-            self.total_in_features += module.use_bias
+            if isinstance(module, LinearGrowingModule):
+                self.total_in_features += module.in_features
+                self.total_in_features += module.use_bias
         if self.total_in_features > 0:
             self.previous_tensor_s = TensorStatistic(
                 (
@@ -138,17 +139,21 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         for (
             module
         ) in self.previous_modules:  # FIXME: what if a previous module is a merge
+            if isinstance(module, MergeGrowingModule):
+                continue
+                # module_input = torch.flatten(module.construct_full_activity(), 1)
+            module_input = torch.flatten(module.input, 1)
+            module_features = module_input.shape[1]
             if module.use_bias:
-                full_activity[:, current_index : current_index + module.in_features] = (
-                    module.input
+                full_activity[:, current_index : current_index + module_features] = (
+                    module_input
                 )
-                # full_activity[:, current_index + module.in_features] = 1
-                current_index += module.in_features + 1
+                current_index += module_features + 1
             else:
-                full_activity[:, current_index : current_index + module.in_features] = (
-                    module.input
+                full_activity[:, current_index : current_index + module_features] = (
+                    module_input
                 )
-                current_index += module.in_features
+                current_index += module_features
         return full_activity
 
     def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:

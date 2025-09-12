@@ -353,6 +353,8 @@ class MergeGrowingModule(torch.nn.Module):
         deltas = []
         current_index = 0
         for module in self.previous_modules:
+            if isinstance(module, MergeGrowingModule):
+                continue
             delta_w = delta[:, current_index : current_index + module.in_features]
             if module.use_bias:
                 delta_b = delta[:, current_index + module.in_features]
@@ -363,6 +365,17 @@ class MergeGrowingModule(torch.nn.Module):
             delta_w = delta_w.reshape(*module.weight.shape)
             if update:
                 module.optimal_delta_layer = module.layer_of_tensor(delta_w, delta_b)
+            # elif isinstance(module, MergeGrowingModule):
+            #     if update:
+            #         if module.post_merge_function.is_non_linear():
+            #             warnings.warn(
+            #                 f"The previous module {module.name} is a MergeGrowingModule with a non-linear post merge function. "
+            #                 f"The optimal delta may not be accurate.",
+            #                 UserWarning,
+            #             )
+            #         else:
+            #             module.set_optimal_delta_layers(delta_w, delta_b)
+
             if return_deltas:
                 deltas.append((delta_w, delta_b))
 
@@ -428,9 +441,19 @@ class MergeGrowingModule(torch.nn.Module):
         """
         if with_bias:
             return np.sum(
-                [module.in_features + module.use_bias for module in self.previous_modules]
+                [
+                    module.in_features + module.use_bias
+                    for module in self.previous_modules
+                    if not isinstance(module, MergeGrowingModule)
+                ]
             )
-        return np.sum([module.in_features for module in self.previous_modules])
+        return np.sum(
+            [
+                module.in_features
+                for module in self.previous_modules
+                if not isinstance(module, MergeGrowingModule)
+            ]
+        )
 
     def sum_out_features(self) -> int:
         """Count total out_features of next modules
