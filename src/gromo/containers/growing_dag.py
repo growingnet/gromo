@@ -1119,7 +1119,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             pred = self(x)
             loss = loss_fn(pred, y)
 
-        if self.out_features > 1:
+        if self.out_features > 1 and y.dim() == 1:
             final_pred = pred.argmax(axis=1)
             correct = (final_pred == y).int().sum()
             accuracy = (correct / pred.shape[0]).item()
