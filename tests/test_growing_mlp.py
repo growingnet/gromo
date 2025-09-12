@@ -15,9 +15,10 @@ import torch.nn as nn
 
 from gromo.containers.growing_mlp import GrowingMLP, Perceptron
 from tests.test_growing_container import create_synthetic_data, gather_statistics
+from tests.torch_unittest import TorchTestCase
 
 
-class TestGrowingMLP(unittest.TestCase):
+class TestGrowingMLP(TorchTestCase):
     """
     Test class for GrowingMLP functionality.
 
@@ -67,13 +68,13 @@ class TestGrowingMLP(unittest.TestCase):
         """Test the forward pass of the GrowingMLP model."""
         x = torch.randn(1, self.in_features)
         y = self.model.forward(x)
-        self.assertEqual(y.shape, (1, self.out_features))
+        self.assertShapeEqual(y, (1, self.out_features))
 
     def test_extended_forward(self):
         """Test the extended forward pass with current modifications."""
         x = torch.randn(1, self.in_features)
         y = self.model.extended_forward(x)
-        self.assertEqual(y.shape, (1, self.out_features))
+        self.assertShapeEqual(y, (1, self.out_features))
 
     def test_tensor_statistics(self):
         """Test computation of tensor statistics (min, max, mean, std)."""
@@ -148,7 +149,7 @@ class TestGrowingMLP(unittest.TestCase):
 
         # Predictions should remain the same after normalization
         for y_pred, y_pred_normalised in zip(y_pred_list, y_pred_normalised_list):
-            self.assertTrue(torch.allclose(y_pred, y_pred_normalised))
+            self.assertAllClose(y_pred, y_pred_normalised, atol=1e-7)
 
     def test_normalise_verbose(self):
         """Test the normalization method with verbose output."""
@@ -181,14 +182,12 @@ class TestGrowingMLP(unittest.TestCase):
         """Test computation of normalization factors."""
         values = torch.tensor([1.0, 2.0, 3.0])
         factors = self.model.normalisation_factor(values)
-        self.assertEqual(factors.shape, values.shape)
+        self.assertShapeEqual(factors, values.shape)
 
         # Test mathematical property: factors should normalize the geometric mean
         geometric_mean = values.prod().pow(1 / values.numel())
         normalized_values = values * factors
-        self.assertTrue(
-            torch.allclose(normalized_values, geometric_mean.repeat(values.shape))
-        )
+        self.assertAllClose(normalized_values, geometric_mean.repeat(values.shape))
 
     def test_invalid_in_features_type(self):
         """Test error handling for invalid in_features type."""
@@ -249,7 +248,7 @@ class TestGrowingMLP(unittest.TestCase):
         )
         x = torch.randn(1, *in_features)
         y = model.forward(x)
-        self.assertEqual(y.shape, (1, *in_features[:-1], self.out_features))
+        self.assertShapeEqual(y, (1, *in_features[:-1], self.out_features))
 
     def test_tuple_in_features_with_flatten(self):
         """Test model with tuple in_features and flatten=True."""
@@ -270,10 +269,10 @@ class TestGrowingMLP(unittest.TestCase):
         # Test forward pass
         x = torch.randn(1, *in_features)
         y = model.forward(x)
-        self.assertEqual(y.shape, (1, self.out_features))
+        self.assertShapeEqual(y, (1, self.out_features))
 
 
-class TestPerceptron(unittest.TestCase):
+class TestPerceptron(TorchTestCase):
     """
     Test class for Perceptron functionality.
 
@@ -306,7 +305,7 @@ class TestPerceptron(unittest.TestCase):
         # Test forward pass
         x = torch.randn(1, self.in_features)
         y = perceptron.forward(x)
-        self.assertEqual(y.shape, (1, self.out_features))
+        self.assertShapeEqual(y, (1, self.out_features))
 
 
 if __name__ == "__main__":
