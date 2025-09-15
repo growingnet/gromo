@@ -802,7 +802,11 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.assertIsNotNone(param.grad)
 
     def test_full_addition_loop_with_indicator_batch(self):
-        """Test complete addition loop starting with 0 features using indicator batch data."""
+        """Test complete addition loop starting with 0 features using indicator batch data.
+
+        We start with 0 hidden features and no downsampling, and train the block to learn the zero function.
+        As the residual stream adds the identity, the optimal extension should learn the negative identity.
+        """
 
         # Step 1: Create the block with no downsampling, no activation
         block = LinearGrowingBlock(
@@ -824,7 +828,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         output = block(x_batch)
 
         # Loss: ||output||^2 / 2
-        # loss = 0.5 * torch.nn.functional.mse_loss(output, torch.zeros_like(output))
+        # to ensure that the gradient will be equal to x_batch
         loss = (output**2).sum() / 2
         loss.backward()
 
@@ -855,12 +859,10 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Step 6: Set scaling factor to 1
         block.scaling_factor = 1
 
-        # Step 7: Check that the identity mapping was correctly learned
-        # The extended forward should approximate identity mapping
+        # Step 7: Check that the negative identity mapping was correctly learned
+        # The extended forward should approximate the negative identity mapping
         with torch.no_grad():
             extended_output = block.extended_forward(x_batch)
-            # For identity mapping, output should be close to input
-            # Since we started with 0 features, the extension should learn the identity
             self.assertShapeEqual(extended_output, x_batch.shape)
             self.assertAllClose(extended_output, torch.zeros_like(x_batch), atol=1e-5)
 
@@ -963,7 +965,18 @@ class TestLinearGrowingBlock(TorchTestCase):
     def test_full_addition_loop_with_features_identity_initialization(
         self, bias: bool = False
     ):
-        """Test complete addition loop starting with features and identity initialization."""
+        """
+        Test complete addition loop starting with features and identity initialization.
+
+        We start with the following setup:
+        x -Id-> x -0-> 0 + x
+        and we aim to get zero output.
+        The optimal solution is to change the parameters to:
+        x -Id-> x -(-Id)-> -x + x = 0
+        which leads to a zero bottleneck.
+        We verify that the optimal update is indeed the negative identity and that any new
+        neuron proposed has a very small eigenvalues (no improvement possible).
+        """
 
         # Step 1: Create the block with features, no downsampling, no activation
         block = LinearGrowingBlock(
@@ -1058,7 +1071,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         improvement = block.first_order_improvement
         self.assertIsInstance(improvement, torch.Tensor)
         self.assertAlmostEqual(
-            improvement.item(), 1, msg=f"First order improvement should be 1"
+            improvement.item(), 1, msg="First order improvement should be 1"
         )
 
         # Step 13: Delete update
