@@ -182,20 +182,20 @@ class GrowingBlock(GrowingContainer):
         if self.hidden_features == 0:
             if self.first_layer.store_input:
                 self.first_layer._input = self.pre_activation(x).detach()
+
+            out = torch.zeros_like(identity)
             if self.second_layer.store_pre_activity:
-                self.second_layer._pre_activity = identity
+                self.second_layer._pre_activity = out
                 self.second_layer._pre_activity.requires_grad_(True)
                 self.second_layer._pre_activity.retain_grad()
             self.second_layer.tensor_s_growth.updated = False
             self.second_layer.tensor_m_prev.updated = False
             self.second_layer.cross_covariance.updated = False
-            return identity
         else:
-
             out = self.pre_activation(x)
             out = self.first_layer(out)
             out = self.second_layer(out)
-            return out + identity
+        return out + identity
 
     def init_computation(self):
         """

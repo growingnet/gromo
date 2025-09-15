@@ -561,8 +561,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         output = block(x)
 
         # For zero features, the block stores identity (downsample(x)) as pre_activity
-        # Since downsample is Identity, it should be x
-        expected_stored_pre_activity = x
+        # Since downsample is Identity, it should be zeros with same shape as x
+        expected_stored_pre_activity = torch.zeros_like(x)
 
         # Check that pre-activity is stored correctly
         self.assertAllClose(block.second_layer.pre_activity, expected_stored_pre_activity)
@@ -595,8 +595,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Forward pass
         output = block(x)
 
-        # For zero features with downsample, pre_activity should be downsample(x)
-        expected_stored_pre_activity = self.downsample(x)
+        # For zero features with downsample, pre_activity should be zeros with same shape as downsample(x)
+        expected_stored_pre_activity = torch.zeros_like(self.downsample(x))
 
         # Check that pre-activity is stored correctly
         self.assertAllClose(block.second_layer.pre_activity, expected_stored_pre_activity)
