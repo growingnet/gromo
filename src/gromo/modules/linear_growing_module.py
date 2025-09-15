@@ -15,8 +15,8 @@ class LinearMergeGrowingModule(MergeGrowingModule):
     def __init__(
         self,
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list[GrowingModule] | None = None,
-        next_modules: list[GrowingModule] | None = None,
+        previous_modules=None,
+        next_modules=None,
         allow_growing: bool = False,
         in_features: int = None,
         device: torch.device | None = None,
@@ -40,7 +40,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             name=name,
         )
 
-    def set_next_modules(self, next_modules: list[GrowingModule]) -> None:
+    def set_next_modules(
+        self, next_modules: list["MergeGrowingModule | GrowingModule"]
+    ) -> None:
         """
         Set the next modules of the current module.
 
@@ -59,7 +61,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             modules.in_features == self.out_features for modules in self.next_modules
         ), f"The output features must match the input features of the next modules."
 
-    def set_previous_modules(self, previous_modules: list[GrowingModule]) -> None:
+    def set_previous_modules(
+        self, previous_modules: list["MergeGrowingModule | GrowingModule"]
+    ) -> None:
         """
         Set the previous modules of the current module.
 
@@ -549,7 +553,7 @@ class LinearGrowingModule(GrowingModule):
             f"and {self.in_features + self.use_bias}."
             f"{self.name=}, {self.cross_covariance().shape=}"
         )
-        return -self.tensor_m_prev() - self.cross_covariance() @ self.delta_raw.T
+        return -self.tensor_m_prev() + self.cross_covariance() @ self.delta_raw.T
 
     # Layer edition
     def layer_of_tensor(
@@ -869,8 +873,8 @@ class LinearGrowingModule(GrowingModule):
 
         if update_previous:
             if isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module.extended_output_layer = self.layer_of_tensor(
-                    alpha_weight, alpha_bias
+                self.previous_module.extended_output_layer = (
+                    self.previous_module.layer_of_tensor(alpha_weight, alpha_bias)
                 )
             elif isinstance(self.previous_module, LinearMergeGrowingModule):
                 raise NotImplementedError

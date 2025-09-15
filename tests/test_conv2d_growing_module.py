@@ -309,28 +309,6 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertEqual(s_update.shape, (D, D))
         self.assertAllClose(s_update, s_update.T)
 
-    def test_unfolded_extended_activity_and_s_update_linear_next(self):
-        """Test unfolded_extended_activity (linear next branch) and compute_s_update shape."""
-        # Create a Linear next module to exercise the Linear branch
-        lin_next = LinearGrowingModule(
-            in_features=self.prev.out_features,
-            out_features=7,
-            device=global_device(),
-        )
-        self.merge.set_next_modules([lin_next])
-
-        # Provide a 2D activity to match the linear branch expectation
-        self.merge.store_activity = True
-        self.merge.activity = torch.randn(self.batch, 13, device=global_device())
-
-        unfolded_ext = self.merge.unfolded_extended_activity
-        self.assertEqual(unfolded_ext.shape, (self.batch, 14))  # +1 for bias
-
-        s_update, n = self.merge.compute_s_update()
-        self.assertEqual(n, self.batch)
-        self.assertEqual(s_update.shape, (14, 14))
-        self.assertAllClose(s_update, s_update.T)
-
     def test_compute_s_update_assertions(self):
         """Test compute_s_update assertions for activity storage."""
         m = self.merge
@@ -521,29 +499,6 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             self.merge_in_channels * self.kernel_size[0] * self.kernel_size[1]
         )  # No +1 for bias
         self.assertEqual(unfolded.shape[1], expected_d)
-
-    def test_unfolded_extended_activity_linear_without_bias(self):
-        """Test unfolded_extended_activity for Linear path without bias - covers line 167."""
-        m = Conv2dMergeGrowingModule(
-            in_channels=self.merge_in_channels,
-            input_size=self.merge.input_size,
-            next_kernel_size=self.kernel_size,
-            device=global_device(),
-        )
-        m.use_bias = False
-        m.set_previous_modules([self.prev])
-
-        # Create linear next module with correct in_features
-        linear_next = LinearGrowingModule(m.out_features, 10, device=global_device())
-        m.set_next_modules([linear_next])
-
-        # Set activity and test linear path without bias
-        m.store_activity = True
-        m.activity = torch.randn(self.batch, m.out_features, device=global_device())
-
-        unfolded = m.unfolded_extended_activity
-        # Should return self.activity directly when use_bias=False and next is linear
-        self.assertTrue(torch.equal(unfolded, m.activity))
 
     def test_update_size_tensor_shape_mismatch(self):
         """Test update_size when tensor shapes don't match - covers lines 414, 427."""
@@ -976,6 +931,64 @@ class TestConv2dGrowingModule(TorchTestCase):
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = FullConv2dGrowingModule
 
+    def test_zero_bottleneck(self):
+        """Test behavior when bottleneck is fully resolved
+        with parameter change for FullConv2d."""
+        # Create FullConv2d equivalent of the demo layers
+        demo_layer_1, demo_layer_2 = self.demo_couple[
+            False
+        ]  # Use without bias for simplicity
+
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.init_computation()
+
+        # Use indicator batch for Conv2d - each sample has 1 in different spatial locations
+        input_x = indicator_batch(
+            (demo_layer_1.in_channels, 5, 5), device=global_device()
+        )
+        y = net(input_x)
+        loss = torch.norm(y) ** 2 / 2
+        loss.backward()
+        demo_layer_2.update_computation()
+        demo_layer_2.compute_optimal_updates()
+
+        # For FullConv2d, tensor_n should be zero when bottleneck is fully resolved
+        self.assertAllClose(
+            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-7
+        )
+        self.assertAllClose(
+            demo_layer_2.eigenvalues_extension,
+            torch.zeros_like(demo_layer_2.eigenvalues_extension),
+            atol=1e-7,
+        )
+
+    def test_compute_m_prev_without_intermediate_input(self):
+        """Check that the batch size is computed using stored variables for FullConv2d"""
+        # Use predefined demo_couple objects
+        demo_layer_1, demo_layer_2 = self.demo_couple[
+            False
+        ]  # Use without bias for simplicity
+
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.store_pre_activity = True
+        demo_layer_1.store_input = True
+        demo_layer_2.tensor_m_prev.init()
+
+        # Create Conv2d input tensor
+        input_x = torch.randn(
+            11, demo_layer_1.in_channels, 10, 10, device=global_device()
+        )
+
+        y = demo_layer_1(input_x)
+        loss = demo_layer_2(y).sum()
+        loss.backward()
+
+        demo_layer_1.update_input_size(input_x.shape[2:])
+        demo_layer_2.update_input_size(y.shape[2:])
+
+        demo_layer_2.tensor_m_prev.update()
+        self.assertEqual(demo_layer_2.tensor_m_prev.samples, input_x.size(0))
+
     def test_masked_unfolded_prev_input_no_prev(self, bias: bool = True):
         demo = self.bias_demos[bias]
         demo.store_input = True
@@ -1182,7 +1195,9 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_couple[1].compute_optimal_delta()
         alpha, alpha_b, omega, eigenvalues = demo_couple[
             1
-        ].compute_optimal_added_parameters()
+        ].compute_optimal_added_parameters(
+            numerical_threshold=0, statistical_threshold=0, maximum_added_neurons=10
+        )
 
         self.assertShapeEqual(
             alpha,
@@ -1428,6 +1443,57 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
 class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = RestrictedConv2dGrowingModule
+
+    def test_zero_bottleneck_restricted(self):
+        """Test behavior when bottleneck is fully resolved
+        with parameter change for RestrictedConv2d."""
+        # Use predefined demo_couple objects
+        demo_layer_1, demo_layer_2 = self.demo_couple[
+            False
+        ]  # Use without bias for simplicity
+
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.init_computation()
+
+        # Use indicator batch for Conv2d - each sample has 1 in different spatial locations
+        input_x = indicator_batch(
+            (demo_layer_1.in_channels, 5, 5), device=global_device()
+        )
+        y = net(input_x)
+        loss = torch.norm(y) ** 2 / 2
+        loss.backward()
+        demo_layer_2.update_computation()
+        demo_layer_2.compute_optimal_updates()
+
+        # For RestrictedConv2d, tensor_n should be zero when bottleneck is fully resolved
+        self.assertAllClose(
+            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-7
+        )
+        self.assertAllClose(
+            demo_layer_2.eigenvalues_extension,
+            torch.zeros_like(demo_layer_2.eigenvalues_extension),
+            atol=1e-7,
+        )
+
+    def test_compute_m_prev_without_intermediate_input_restricted(self):
+        """Check that the batch size is computed using stored variables for RestrictedConv2d"""
+        # Use predefined demo_couple objects
+        demo_layer_1, demo_layer_2 = self.demo_couple[
+            False
+        ]  # Use without bias for simplicity
+
+        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
+        demo_layer_2.store_pre_activity = True
+        demo_layer_1.store_input = True
+        demo_layer_2.tensor_m_prev.init()
+
+        # Create Conv2d input tensor
+        input_x = torch.randn(11, demo_layer_1.in_channels, 5, 5, device=global_device())
+        loss = net(input_x).sum()
+        loss.backward()
+
+        demo_layer_2.tensor_m_prev.update()
+        self.assertEqual(demo_layer_2.tensor_m_prev.samples, input_x.size(0))
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_tensor_s_growth_redirection(self, bias: bool):

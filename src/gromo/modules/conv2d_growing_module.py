@@ -24,8 +24,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         input_size: int | tuple[int, int],
         next_kernel_size: int | tuple[int, int],
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list[GrowingModule] | None = None,
-        next_modules: list[GrowingModule] | None = None,
+        previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         allow_growing: bool = False,
         input_volume: int | None = None,
         device: torch.device | None = None,
@@ -78,6 +78,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         return self.input_volume
 
     @property
+    def in_features(self) -> int:
+        return self.in_channels
+
+    @property
     def output_size(self) -> tuple[int, int]:
         return self.input_size  # TODO: check for exceptions!
 
@@ -90,7 +94,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (0, 0)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.padding
-        elif isinstance(self.next_modules[0], MergeGrowingModule):
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
             return (0, 0)
         else:
             raise NotImplementedError
@@ -104,7 +110,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.stride
-        elif isinstance(self.next_modules[0], MergeGrowingModule):
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
             return (1, 1)
         else:
             raise NotImplementedError
@@ -118,7 +126,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.dilation
-        elif isinstance(self.next_modules[0], MergeGrowingModule):
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
             return (1, 1)
         else:
             raise NotImplementedError
@@ -159,34 +169,33 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         else:
             return unfolded_activity
 
-    def set_next_modules(self, next_modules: list[GrowingModule]) -> None:
+    def set_next_modules(
+        self, next_modules: list[GrowingModule | MergeGrowingModule]
+    ) -> None:
         if self.tensor_s is not None and self.tensor_s.samples > 0:
             warn(
                 f"You are setting the next modules of {self.name} with a non-empty tensor S."
             )
         self.next_modules = next_modules if next_modules else []
 
-        # Assertions: all next modules must be either Conv2dGrowingModule or LinearGrowingModule
-        # (no merge modules allowed), and all must be of the same type.
+        # Assertions: all next modules must be either Conv2d or Linear growing modules.
         # For Conv2d modules, kernel sizes must match.
         next_list = next_modules if next_modules else []
 
-        # Check that all modules are allowed types (no merge modules)
+        # Check that all modules are allowed types
         assert all(
-            isinstance(m, (Conv2dGrowingModule, MergeGrowingModule)) for m in next_list
-        ), f"All next modules must be instances of Conv2dGrowingModule or MergeGrowingModule (error in {self.name})."
+            isinstance(
+                m, (Conv2dGrowingModule, LinearGrowingModule, LinearMergeGrowingModule)
+            )
+            for m in next_list
+        ), f"All next modules must be instances of Conv2dGrowingModule, LinearGrowingModule or LinearMergeGrowingModule (error in {self.name})."
 
-        # Check that all modules are of the same type
-        # if len(next_list) > 0:
-        #     # For Conv2d modules, check kernel size compatibility
-        #     if isinstance(next_list[0], Conv2dGrowingModule):
-        #         first_ks = tuple(next_list[0].kernel_size)
-        # assert all(
-        #     tuple(m.kernel_size) == first_ks for m in next_list
-        # ), f"All next modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in next_list]}"
-        # assert (
-        #     tuple(self.kernel_size) == first_ks
-        # ), f"Kernel size of next modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        # For Conv2d modules, check kernel size compatibility
+        for module in next_list:
+            if isinstance(module, Conv2dGrowingModule):
+                assert tuple(module.kernel_size) == tuple(
+                    self.kernel_size
+                ), f"Kernel size of next Conv2d modules {module.kernel_size} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
 
         self.next_modules = next_list
         self.total_out_features = 0
@@ -195,7 +204,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 assert module.in_channels == self.out_channels
                 module.input_size = self.output_size
                 self.total_out_features += module.out_features
-            elif isinstance(module, (LinearMergeGrowingModule)):
+            elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
                 assert (
                     module.in_features == self.out_features
                 ), f"Next module input features {module.in_features} should match {self.out_features=}"
@@ -204,11 +213,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 raise NotImplementedError(
                     "The next modules must be either Linear or Convolution."
                 )
-        # assert all(
-        #     modules.in_features == self.out_features for modules in self.next_modules
-        # ), f"The output features must match the input features of the next modules."
 
-    def set_previous_modules(self, previous_modules: list[GrowingModule]) -> None:
+    def set_previous_modules(
+        self, previous_modules: list[MergeGrowingModule | GrowingModule]
+    ) -> None:
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
                 f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."
@@ -225,7 +233,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         prev_list = previous_modules if previous_modules else []
 
         # First check type compatibility - should raise TypeError for incompatible types
-        # A merge module cannot be preceded by another merge module
         for module in prev_list:
             if not isinstance(module, Conv2dGrowingModule):
                 raise TypeError("The previous modules must be Conv2dGrowingModule.")
@@ -243,8 +250,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = 0
         self.total_out_features = 0
         for module in self.previous_modules:
-            # Type compatibility already checked above - all are Conv2dGrowingModule
-            if module.out_channels != self.in_channels:
+            if (
+                isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule))
+                and module.out_channels != self.in_channels
+            ):
                 raise ValueError(
                     "The input channels must match the output channels of the previous modules."
                 )
@@ -1297,7 +1306,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.delta_raw.shape[0] == self.out_channels
         ), f"Expected delta_raw.shape[0] == {self.out_channels}, but got {self.delta_raw.shape[0]}."
-        return -self.tensor_m_prev() - torch.einsum(
+        return -self.tensor_m_prev() + torch.einsum(
             "ab, cb -> ac", self.cross_covariance(), self.delta_raw
         )
 
@@ -1645,7 +1654,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.delta_raw is not None
         ), f"The optimal delta should be computed before the tensor N for {self.name}."
-        return -self.tensor_m_prev() - torch.einsum(
+        return -self.tensor_m_prev() + torch.einsum(
             "abe, ce -> bca", self.cross_covariance(), self.delta_raw
         ).flatten(start_dim=-2)
 
