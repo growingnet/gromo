@@ -271,14 +271,12 @@ class GrowingBlock(GrowingContainer):
             _, _, _ = self.second_layer.compute_optimal_delta()
         else:
             self.second_layer.parameter_update_decrease = 0
-        alpha, alpha_bias, _, _ = self.second_layer.compute_optimal_added_parameters(
+        self.second_layer.compute_optimal_added_parameters(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
             use_projected_gradient=self.hidden_features > 0,
-        )
-        self.first_layer.extended_output_layer = self.first_layer.layer_of_tensor(
-            alpha, alpha_bias
+            update_previous=True,
         )
 
     def apply_change(self) -> None:
@@ -287,7 +285,6 @@ class GrowingBlock(GrowingContainer):
         optimal delta and layer extension with the current scaling factor.
         """
         assert self.eigenvalues is not None, "No optimal added parameters computed."
-        self.first_layer.apply_change()
         self.second_layer.apply_change()
         self.hidden_features += self.eigenvalues.shape[0]
 
