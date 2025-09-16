@@ -443,19 +443,15 @@ class MergeGrowingModule(torch.nn.Module):
             sum of previous in_features
         """
         if with_bias:
-            return np.sum(
-                [
-                    module.in_features + module.use_bias
-                    for module in self.previous_modules
-                    if not isinstance(module, MergeGrowingModule)
-                ]
-            )
-        return np.sum(
-            [
-                module.in_features
+            return sum(
+                module.in_features + module.use_bias
                 for module in self.previous_modules
                 if not isinstance(module, MergeGrowingModule)
-            ]
+            )
+        return sum(
+            module.in_features
+            for module in self.previous_modules
+            if not isinstance(module, MergeGrowingModule)
         )
 
     def sum_out_features(self) -> int:
