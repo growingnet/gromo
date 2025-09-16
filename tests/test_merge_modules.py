@@ -3,8 +3,8 @@ import unittest
 import torch
 
 from gromo.modules.conv2d_growing_module import (
-    Conv2dMergeGrowingModule,
     Conv2dGrowingModule,
+    Conv2dMergeGrowingModule,
 )
 from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
