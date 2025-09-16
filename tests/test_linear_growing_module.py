@@ -194,8 +194,8 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         )
         return demo_layer_1, demo_layer_2
 
+    @staticmethod
     def create_linear_layer(
-        self,
         in_features: int,
         out_features: int,
         bias: bool = True,
@@ -210,8 +210,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
             device=global_device(),
         )
 
+    @staticmethod
     def create_merge_layer(
-        self, in_features: int, name: str | None = None
+        in_features: int, name: str | None = None
     ) -> LinearMergeGrowingModule:
         """Helper to create a LinearMergeGrowingModule with common settings."""
         return LinearMergeGrowingModule(
@@ -220,16 +221,18 @@ class TestLinearGrowingModuleBase(TorchTestCase):
             device=global_device(),
         )
 
+    @staticmethod
     def create_standard_nn_linear(
-        self, in_features: int, out_features: int, bias: bool = True
+        in_features: int, out_features: int, bias: bool = True
     ) -> torch.nn.Linear:
         """Helper to create a standard nn.Linear layer."""
         return torch.nn.Linear(
             in_features, out_features, bias=bias, device=global_device()
         )
 
+    @staticmethod
     def setup_network_with_merge(
-        self, layer: LinearGrowingModule, output_module: LinearMergeGrowingModule
+        layer: LinearGrowingModule, output_module: LinearMergeGrowingModule
     ):
         """Set up a network with merge module and initialize computation."""
         layer.next_module = output_module
@@ -268,7 +271,12 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         )
 
     def assert_exception_with_message(
-        self, exception_type: type, expected_message: str, callable_func, *args, **kwargs
+        self,
+        exception_type: type[BaseException] | tuple[type[BaseException], ...],
+        expected_message: str,
+        callable_func,
+        *args,
+        **kwargs,
     ):
         """Helper to assert exception type and message content."""
         with self.assertRaises(exception_type) as context:
@@ -283,8 +291,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         torch.manual_seed(self.config.RANDOM_SEED)
         return torch.randn(shape, device=global_device())
 
+    @staticmethod
     def run_forward_and_backward(
-        self, network: torch.nn.Module, input_data: torch.Tensor
+        network: torch.nn.Module, input_data: torch.Tensor
     ) -> torch.Tensor:
         """Run forward pass and backward pass, returning output."""
         output = network(input_data)
@@ -292,8 +301,8 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         loss.backward()
         return output
 
+    @staticmethod
     def assert_linear_layer_equality(
-        self,
         layer1: torch.nn.Linear,
         layer2: torch.nn.Linear,
         rtol: float = 1e-5,
@@ -308,8 +317,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         )
         return weights_equal and bias_equal
 
+    @staticmethod
     def capture_layer_invariants(
-        self, layer: LinearGrowingModule, invariant_list: list[str]
+        layer: LinearGrowingModule, invariant_list: list[str]
     ) -> dict:
         """Capture the current state of specified layer invariants."""
         reference = {}
@@ -384,12 +394,13 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         net = torch.nn.Sequential(layer_in, layer_out)
         return layer_in, layer_out, net
 
-    def create_mse_loss_function(self, reduction: str = "sum") -> torch.nn.MSELoss:
+    @staticmethod
+    def create_mse_loss_function(reduction: str = "sum") -> torch.nn.MSELoss:
         """Create MSE loss function with specified reduction."""
         return torch.nn.MSELoss(reduction=reduction)
 
+    @staticmethod
     def create_demo_layers_with_extension(
-        self,
         first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
         first_layer_extended_post_layer: torch.nn.Module | None = None,
         include_eigenvalues: bool = False,
@@ -442,7 +453,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         """
         Test apply change with sized post layer function.
         - with correct extension_size (works)
-        - with correct extension_size but with a non growable post_layer function (crash on forward)
+        - with correct extension_size but with a non-growable post_layer function (crash on forward)
         - with incorrect extension_size (crash on forward)
         - without extension_size but with self.eigenvalues_extension (works)
         - without extension_size and without self.eigenvalues_extension (error on apply change)
@@ -771,7 +782,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_extended_forward_in(self, bias):
-        torch.manual_seed(0)
+        torch.manual_seed(self.config.RANDOM_SEED)
         # fixed layers
         l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
         l_ext = torch.nn.Linear(5, 1, bias=bias, device=global_device())
@@ -811,7 +822,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertAllClose(
             y,
             l0(x) - gamma**2 * l_delta(x) + gamma * l_ext(x_ext),
-            message=("Error in applying change"),
+            message="Error in applying change",
         )
 
     def test_number_of_parameters(self):
@@ -883,7 +894,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_apply_change_delta_layer(self, bias: bool = False):
-        torch.manual_seed(0)
+        torch.manual_seed(self.config.RANDOM_SEED)
         l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
         l_delta = torch.nn.Linear(3, 1, bias=bias, device=global_device())
         layer = LinearGrowingModule(
@@ -905,7 +916,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_apply_change_out_extension(self, bias: bool = False):
-        torch.manual_seed(0)
+        torch.manual_seed(self.config.RANDOM_SEED)
         l0 = torch.nn.Linear(5, 1, bias=bias, device=global_device())
         l_ext = torch.nn.Linear(5, 2, bias=bias, device=global_device())
         layer = LinearGrowingModule(
@@ -935,7 +946,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_apply_change_in_extension(self, bias):
-        torch.manual_seed(0)
+        torch.manual_seed(self.config.RANDOM_SEED)
         l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
         l_ext = torch.nn.Linear(5, 1, bias=bias, device=global_device())
         if bias:
@@ -1461,7 +1472,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
 class TestLinearMergeGrowingModule(TorchTestCase):
     def setUp(self):
-        torch.manual_seed(0)
+        self.seed = 0
+        torch.manual_seed(self.seed)
         self.demo_modules = dict()
         for bias in (True, False):
             demo_merge = LinearMergeGrowingModule(
