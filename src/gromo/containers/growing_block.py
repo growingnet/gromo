@@ -463,14 +463,10 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             )
         )
 
-        if (
-            ("kernel_size" not in kwargs_first_layer)
-            or ("kernel_size" not in kwargs_second_layer)
-        ) and (kernel_size is None):
-            raise ValueError(f"kernel_size must be specified for {name}.")
-
         for kwargs in (kwargs_first_layer, kwargs_second_layer):
             if "kernel_size" not in kwargs:
+                if kernel_size is None:
+                    raise ValueError(f"kernel_size must be specified for {name}.")
                 kwargs["kernel_size"] = kernel_size
             elif kernel_size is not None:
                 warn(

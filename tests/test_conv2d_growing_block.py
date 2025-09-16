@@ -35,6 +35,19 @@ class TestConv2dGrowingBlock(TorchTestCase):
                 device=self.device,
             )
 
+        # Init with kwargs dictionaries
+        block = RestrictedConv2dGrowingBlock(
+            in_channels=self.in_channels,
+            out_channels=self.out_channels,
+            hidden_channels=0,
+            device=self.device,
+            kwargs_layer={"kernel_size": 3, "padding": 1},
+        )
+        self.assertEqual(block.first_layer.kernel_size, (3, 3))
+        self.assertEqual(block.first_layer.padding, (1, 1))
+        self.assertEqual(block.second_layer.kernel_size, (3, 3))
+        self.assertEqual(block.second_layer.padding, (1, 1))
+
         block = RestrictedConv2dGrowingBlock(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
