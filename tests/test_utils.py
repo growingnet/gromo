@@ -2,7 +2,6 @@ import random
 import unittest
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -228,7 +227,7 @@ class TestUtils(unittest.TestCase):
         self.assertGreater(len(factors), 0)
 
         # Test that minimum is reasonable for quadratic function
-        min_idx = np.argmin(losses)
+        min_idx = int(torch.argmin(torch.tensor(losses)).item())
         best_factor = factors[min_idx]
         best_loss = losses[min_idx]
         # For quadratic function, should find factor close to 2
