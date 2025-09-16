@@ -121,7 +121,7 @@ class TestUtils(unittest.TestCase):
         setattr(obj, "_config_data", {"var": 1})
         set_from_conf(obj, "variable", 0)
         self.assertTrue(hasattr(obj, "variable"))
-        self.assertEqual(obj.variable, 0)
+        self.assertEqual(obj.variable, 0)  # type: ignore
         var = set_from_conf(obj, "var", 0, setter=False)
         self.assertFalse(hasattr(obj, "var"))
         self.assertEqual(var, 1)
@@ -141,8 +141,8 @@ class TestUtils(unittest.TestCase):
             with self.subTest(device=device_name):
                 set_device(device_name)
 
-                callable_forward = lambda x: x**2 + 1
-                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)
+                callable_forward = lambda x: x**2 + 1  # noqa: E731
+                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)  # noqa: E731
                 x = torch.rand((5, 2), requires_grad=True, device=global_device())
                 y = torch.rand((5, 1), device=global_device())
                 lrate = 1e-3
@@ -189,7 +189,7 @@ class TestUtils(unittest.TestCase):
 
                 # Test with model
                 model = nn.Linear(2, 1, device=global_device())
-                eval_fn = lambda: None
+                eval_fn = lambda: None  # noqa: E731
                 mini_batch_gradient_descent(
                     model,
                     cost_fn,
@@ -213,6 +213,8 @@ class TestUtils(unittest.TestCase):
         factor, min_loss = line_search(quadratic_cost, return_history=False)
         self.assertIsInstance(factor, float)
         self.assertIsInstance(min_loss, float)
+        assert isinstance(factor, float)
+        assert isinstance(min_loss, float)
         self.assertGreater(min_loss, 1.0)  # Minimum value should be close to 1
         self.assertGreater(factor, 0.0)  # Factor should be positive
 
@@ -220,6 +222,8 @@ class TestUtils(unittest.TestCase):
         factors, losses = line_search(quadratic_cost, return_history=True)
         self.assertIsInstance(factors, list)
         self.assertIsInstance(losses, list)
+        assert isinstance(factors, list)
+        assert isinstance(losses, list)
         self.assertEqual(len(factors), len(losses))
         self.assertGreater(len(factors), 0)
 
