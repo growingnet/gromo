@@ -55,6 +55,7 @@ class TestGrowingMLP(TorchTestCase):
             hidden_size=self.hidden_size,
             number_hidden_layers=self.number_hidden_layers,
             activation=nn.ReLU(),
+            device=torch.device("cpu"),
         )
 
         # Create a loss function for testing
@@ -245,6 +246,7 @@ class TestGrowingMLP(TorchTestCase):
             number_hidden_layers=self.number_hidden_layers,
             activation=nn.ReLU(),
             flatten=False,
+            device=torch.device("cpu"),
         )
         x = torch.randn(1, *in_features)
         y = model.forward(x)
@@ -260,6 +262,7 @@ class TestGrowingMLP(TorchTestCase):
             number_hidden_layers=self.number_hidden_layers,
             activation=nn.ReLU(),
             flatten=True,  # This will flatten the input
+            device=torch.device("cpu"),
         )
 
         # Test that the model correctly computes num_features as product
@@ -296,6 +299,7 @@ class TestPerceptron(TorchTestCase):
             activation=nn.Sigmoid(),
             use_bias=True,
             flatten=True,
+            device=torch.device("cpu"),
         )
 
         # Test that it's properly initialized as a GrowingMLP

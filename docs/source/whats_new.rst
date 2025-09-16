@@ -55,6 +55,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Device handling in GrowingMLP, GrowingMLPMixer, and GrowingResidualMLP (:gh:`129` by `Stella Douka`_)
 - Delete leftover activity tensors (:gh:`78` by `Stella Douka`_)
 - Fix inconsistency with torch.empty not creating empty tensors (:gh:`78` by `Stella Douka`_)
 - Expansion of existing nodes not executed in GrowingDAG (:gh:`78` by `Stella Douka`_)
