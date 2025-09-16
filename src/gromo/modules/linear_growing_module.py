@@ -148,16 +148,10 @@ class LinearMergeGrowingModule(MergeGrowingModule):
                 # module_input = torch.flatten(module.construct_full_activity(), 1)
             module_input = torch.flatten(module.input, 1)
             module_features = module_input.shape[1]
-            if module.use_bias:
-                full_activity[:, current_index : current_index + module_features] = (
-                    module_input
-                )
-                current_index += module_features + 1
-            else:
-                full_activity[:, current_index : current_index + module_features] = (
-                    module_input
-                )
-                current_index += module_features
+            full_activity[:, current_index : current_index + module_features] = (
+                module_input
+            )
+            current_index += module_features + int(module.use_bias)
         return full_activity
 
     def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
