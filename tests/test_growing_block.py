@@ -123,7 +123,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test initialization with 0 hidden features."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=0,
             device=self.device,
             name="zero_block",
@@ -131,7 +131,7 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         # Check basic properties
         self.assertEqual(block.in_features, self.in_features)
-        self.assertEqual(block.out_features, self.out_features)
+        self.assertEqual(block.out_features, self.in_features)
         self.assertEqual(block.hidden_features, 0)
         self.assertEqual(block.name, "zero_block")
 
@@ -139,7 +139,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertEqual(block.first_layer.in_features, self.in_features)
         self.assertEqual(block.first_layer.out_features, 0)  # hidden_features = 0
         self.assertEqual(block.second_layer.in_features, 0)
-        self.assertEqual(block.second_layer.out_features, self.out_features)
+        self.assertEqual(block.second_layer.out_features, self.in_features)
 
         # Check that layers are connected
         self.assertIs(block.second_layer.previous_module, block.first_layer)
@@ -148,7 +148,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test initialization with >0 hidden features."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=self.hidden_features,
             device=self.device,
             name="positive_block",
@@ -156,14 +156,14 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         # Check basic properties
         self.assertEqual(block.in_features, self.in_features)
-        self.assertEqual(block.out_features, self.out_features)
+        self.assertEqual(block.out_features, self.in_features)
         self.assertEqual(block.hidden_features, self.hidden_features)
 
         # Check layer configurations
         self.assertEqual(block.first_layer.in_features, self.in_features)
         self.assertEqual(block.first_layer.out_features, self.hidden_features)
         self.assertEqual(block.second_layer.in_features, self.hidden_features)
-        self.assertEqual(block.second_layer.out_features, self.out_features)
+        self.assertEqual(block.second_layer.out_features, self.in_features)
 
     def test_init_with_custom_activations(self):
         """Test initialization with custom activation functions."""
@@ -173,7 +173,7 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=self.hidden_features,
             activation=activation,
             pre_activation=pre_activation,
@@ -189,7 +189,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test forward pass with 0 hidden features and no downsample."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=0,
             device=self.device,
         )
@@ -280,7 +280,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test input and pre-activity storage with 0 hidden features and no downsample."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=0,
             device=self.device,
         )
@@ -379,7 +379,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test extended_forward with zero hidden features."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=0,
             device=self.device,
         )
@@ -547,7 +547,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test pre-activity storage with 0 hidden features and no downsample."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=0,
             device=self.device,
         )
@@ -699,7 +699,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test scaling factor property getter and setter."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=self.hidden_features,
             device=self.device,
         )
@@ -719,7 +719,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test initialization of computation."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=hidden_features,
             device=self.device,
         )
@@ -749,7 +749,7 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=self.hidden_features,
             kwargs_layer=kwargs_layer,
             kwargs_first_layer=kwargs_first_layer,
@@ -765,7 +765,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         """Test reset of computation."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
-            out_features=self.out_features,
+            out_features=self.in_features,
             hidden_features=self.hidden_features,
             device=self.device,
         )
@@ -1050,7 +1050,7 @@ class TestLinearGrowingBlock(TorchTestCase):
                 block.second_layer.optimal_delta_layer.weight,
                 expected_delta_weight,
                 atol=1e-5,
-                msg="Optimal delta weight should be approximately zero for already optimal layer",
+                msg="Optimal delta weight should be approximately the identity matrix for already optimal layer",
             )
 
         # Step 7: Check that no new neurons are proposed
