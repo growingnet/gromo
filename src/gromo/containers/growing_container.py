@@ -120,6 +120,7 @@ class GrowingContainer(torch.nn.Module):
                 layer.delete_update()
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
+        self.currently_updated_layer_index = layer_index
         for i, layer in enumerate(self._growing_layers):
             if verbose:
                 print(f"Layer {i} update: {layer.first_order_improvement}")
@@ -128,11 +129,9 @@ class GrowingContainer(torch.nn.Module):
                 )
                 print(f"Layer {i} eigenvalues extension: {layer.eigenvalues_extension}")
             if i != layer_index:
+                layer.delete_update()
                 if verbose:
                     print(f"Deleting layer {i}")
-                layer.delete_update()
-            else:
-                self.currently_updated_layer_index = i
         return self.currently_updated_layer_index
 
     @property
