@@ -371,8 +371,8 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>matrix</strong> (<em>torch.Tensor</em>) – input matrix, square and semi-positive definite</p></li>
 <li><p><strong>threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – threshold to consider an eigenvalue as zero</p></li>
-<li><p><strong>preferred_linalg_library</strong> (<em>None</em><em> | </em><em>str in</em><em> (</em><em>&quot;magma&quot;</em><em>, </em><em>&quot;cusolver&quot;</em><em>)</em>) – linalg library to use, “cusolver” may failed
-for non positive definite matrix if CUDA &lt; 12.1 is used
+<li><p><strong>preferred_linalg_library</strong> (<em>None</em><em> | </em><em>str in</em><em> (</em><em>&quot;magma&quot;</em><em>, </em><em>&quot;cusolver&quot;</em><em>)</em>) – linalg library to use, “cusolver” may fail
+for non-positive definite matrix if CUDA &lt; 12.1 is used
 see: <a class="reference external" href="https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html">https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html</a></p></li>
 </ul>
 </dd>
