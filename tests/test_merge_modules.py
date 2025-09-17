@@ -3,9 +3,8 @@ import unittest
 import torch
 
 from gromo.modules.conv2d_growing_module import (
+    Conv2dGrowingModule,
     Conv2dMergeGrowingModule,
-    FullConv2dGrowingModule,
-    RestrictedConv2dGrowingModule,
 )
 from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
@@ -38,7 +37,7 @@ class TestMergeGrowingModules(unittest.TestCase):
         )
         self.y = torch.rand(self.batch_size, self.out_features, device=self.device)
 
-        self.conv = FullConv2dGrowingModule(
+        self.conv = Conv2dGrowingModule(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
             kernel_size=self.kernel_size,
@@ -252,7 +251,7 @@ class TestMergeGrowingModules(unittest.TestCase):
 
     def test_conv2d_to_linear_and_conv2d_merge(self):
         # Create modules
-        conv_early_exit = FullConv2dGrowingModule(
+        conv_early_exit = Conv2dGrowingModule(
             in_channels=self.out_channels,
             out_channels=1,
             kernel_size=self.kernel_size,
@@ -265,7 +264,7 @@ class TestMergeGrowingModules(unittest.TestCase):
         self.layers.append(conv_early_exit)
         y_early_exit = torch.rand(self.batch_size, 1, device=self.device)
 
-        # Connect Conv2dMergeGrowingModule to both LinearMergeGrowingModule and FullConv2dGrowingModule
+        # Connect Conv2dMergeGrowingModule to both LinearMergeGrowingModule and Conv2dGrowingModule
         self.conv.next_module = self.conv_merge
         self.conv_merge.add_previous_module(self.conv)
         self.conv_merge.add_next_module(self.linear_merge)
