@@ -43,7 +43,9 @@ class GrowingContainer(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self._growing_layers = list()
+        self._growing_layers: list[
+            "GrowingModule | MergeGrowingModule | GrowingContainer"
+        ] = list()
         self.currently_updated_layer_index = None
 
     def set_growing_layers(self) -> None:
@@ -135,7 +137,9 @@ class GrowingContainer(torch.nn.Module):
         return self.currently_updated_layer_index
 
     @property
-    def currently_updated_layer(self) -> GrowingModule:
+    def currently_updated_layer(
+        self,
+    ) -> "GrowingModule | MergeGrowingModule | GrowingContainer":
         """Get the currently updated layer"""
         assert self.currently_updated_layer_index is not None, "No layer to update"
         return self._growing_layers[self.currently_updated_layer_index]
