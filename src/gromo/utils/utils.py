@@ -143,19 +143,24 @@ def activation_fn(fn_name: str) -> nn.Module:
     torch.nn.Module
         activation function module
     """
+    known_activations = {
+        "relu": nn.ReLU(),
+        "gelu": nn.GELU(),
+        "selu": nn.SELU(),
+        "silu": nn.SiLU(),
+        "tanh": nn.Tanh(),
+        "sigmoid": nn.Sigmoid(),
+        "identity": nn.Identity(),
+        "id": nn.Identity(),
+        "softmax": nn.Softmax(dim=1),
+    }
     if fn_name is None:
         return nn.Identity()
     fn_name = fn_name.strip().lower()
-    if fn_name == "id":
-        return nn.Identity()
-    elif fn_name == "selu":
-        return nn.SELU()
-    elif fn_name == "relu":
-        return nn.ReLU()
-    elif fn_name == "softmax":
-        return nn.Softmax(dim=1)
+    if fn_name in known_activations:
+        return known_activations[fn_name]
     else:
-        return nn.Identity()
+        raise ValueError(f"Unknown activation function: {fn_name}")
 
 
 def line_search(
@@ -294,9 +299,12 @@ def mini_batch_gradient_descent(
             if isinstance(model, nn.Module):
                 avg_grad_norm = 0.0
                 for param in model.parameters():
-                    avg_grad_norm += param.grad.norm()
+                    assert isinstance(
+                        param.grad, torch.Tensor
+                    ), f"Gradient was None for some parameter of the model {model}"
+                    avg_grad_norm += param.grad.norm().item()
                 avg_grad_norm /= len(saved_parameters)
-                gradients.append(avg_grad_norm.cpu())
+                gradients.append(torch.tensor(avg_grad_norm))
             optimizer.step()
 
         loss_history.append(epoch_loss / len(dataloader))

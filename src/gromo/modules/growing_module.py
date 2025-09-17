@@ -968,7 +968,7 @@ class GrowingModule(torch.nn.Module):
         elif isinstance(self.previous_module, MergeGrowingModule):
             raise NotImplementedError(
                 f"S growth is not implemented for module preceded by an MergeGrowingModule."
-                " (error in {self.name})"
+                f" (error in {self.name})"
             )
         else:
             raise NotImplementedError(
@@ -1193,21 +1193,26 @@ class GrowingModule(torch.nn.Module):
                     f"Scaling factor {scaling_factor} is different from the one "
                     f"used during the extended_forward {self._scaling_factor_next_module}."
                 )
-        self.layer_out_extension(
-            weight=scaling_factor * self.extended_output_layer.weight,
-            bias=(
-                scaling_factor * self.extended_output_layer.bias
-                if self.extended_output_layer.bias is not None
-                else None
-            ),
-        )
+        if extension_size > 0 or self.extended_output_layer is not None:
+            assert isinstance(self.extended_output_layer, torch.nn.Module), (
+                f"The layer {self.name} has no output extension but an"
+                f" extension of size {extension_size} was requested."
+            )
+            self.layer_out_extension(
+                weight=scaling_factor * self.extended_output_layer.weight,
+                bias=(
+                    scaling_factor * self.extended_output_layer.bias
+                    if self.extended_output_layer.bias is not None
+                    else None
+                ),
+            )
 
-        if isinstance(self.post_layer_function, torch.nn.Sequential):
-            for module in self.post_layer_function:
-                if hasattr(module, "grow"):
-                    module.grow(extension_size)
-        elif hasattr(self.post_layer_function, "grow"):
-            self.post_layer_function.grow(extension_size)
+            if isinstance(self.post_layer_function, torch.nn.Sequential):
+                for module in self.post_layer_function:
+                    if hasattr(module, "grow"):
+                        module.grow(extension_size)
+            elif hasattr(self.post_layer_function, "grow"):
+                self.post_layer_function.grow(extension_size)
 
     def apply_change(
         self,
@@ -1270,15 +1275,24 @@ class GrowingModule(torch.nn.Module):
                 )
 
             if apply_previous and self.previous_module is not None:
-                if extension_size is None:
-                    assert self.eigenvalues_extension is not None, (
-                        "We need to determine the size of the extension but"
-                        "it was not given as parameter nor could be automatically"
-                        "determined as self.eigenvalues_extension is None"
-                        f"(Error occurred in {self.name})"
-                    )
-                    extension_size = self.eigenvalues_extension.shape[0]
                 if isinstance(self.previous_module, GrowingModule):
+                    if self.previous_module.extended_output_layer is not None:
+                        if extension_size is None:
+                            assert self.eigenvalues_extension is not None, (
+                                "We need to determine the size of the extension but "
+                                "it was not given as parameter nor could be automatically "
+                                "determined as self.eigenvalues_extension is None"
+                                f"(Error occurred in {self.name})"
+                            )
+                            extension_size = self.eigenvalues_extension.shape[0]
+                    else:
+                        if extension_size is None:
+                            extension_size = 0
+                        elif extension_size > 0:
+                            raise ValueError(
+                                f"The layer {self.name} has no input extension but an"
+                                f" extension of size {extension_size} was requested."
+                            )
                     self.previous_module._apply_output_changes(
                         scaling_factor=self.scaling_factor,
                         extension_size=extension_size,
