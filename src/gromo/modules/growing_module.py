@@ -396,7 +396,6 @@ class MergeGrowingModule(torch.nn.Module):
         if len(self.previous_modules) > 0:
             new_size = self.previous_modules[0].out_features
             self.in_features = new_size
-            self.out_features = new_size
         self.total_in_features = self.sum_in_features(with_bias=True)
 
         if self.total_in_features > 0:

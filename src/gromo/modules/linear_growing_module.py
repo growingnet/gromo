@@ -25,7 +25,6 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         self.use_bias = True
         self.total_in_features: int = -1
         self.in_features = in_features
-        self.out_features = in_features
         # TODO: check if we can automatically get the input shape
         super(LinearMergeGrowingModule, self).__init__(
             post_merge_function=post_merge_function,
@@ -39,6 +38,10 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             device=device,
             name=name,
         )
+
+    @property
+    def out_features(self) -> int:
+        return self.in_features
 
     def set_next_modules(
         self, next_modules: list["MergeGrowingModule | GrowingModule"]
