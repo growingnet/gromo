@@ -650,6 +650,15 @@ class GrowingModule(torch.nn.Module):
             name=f"C({self.name})",
         )
 
+    # Parameters
+    @property
+    def input_volume(self) -> int:
+        return self.layer.in_features
+
+    @property
+    def output_volume(self) -> int:
+        return self.layer.out_features
+
     # Information functions
     @property
     def weight(self):

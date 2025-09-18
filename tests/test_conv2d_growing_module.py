@@ -86,8 +86,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # output_size echoes provided input_size
         self.assertEqual(m.output_size, m.input_size)
 
-        # input_volume with previous modules present delegates to previous.out_features
-        self.assertEqual(m.input_volume, self.prev.out_features)
+        # input_volume with previous modules present delegates to previous.output_volume
+        self.assertEqual(m.input_volume, self.prev.output_volume)
 
         # If no previous modules -> warning and -1
         m.previous_modules = []
@@ -103,7 +103,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
 
         # Reset to None to test fallback to previous modules
         m._input_volume = None
-        self.assertEqual(m.input_volume, self.prev.out_features)
+        self.assertEqual(m.input_volume, self.prev.output_volume)
 
     def test_constructor_int_conversions(self):
         """Test that int input_size and next_kernel_size are converted to tuples."""
@@ -143,7 +143,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             self.assertEqual(m.dilation, (1, 1))
 
         # With LinearGrowingModule next
-        linear_next = LinearGrowingModule(m.out_features, 10, device=global_device())
+        linear_next = LinearGrowingModule(m.output_volume, 10, device=global_device())
         m.set_next_modules([linear_next])
         self.assertEqual(m.padding, (0, 0))
         self.assertEqual(m.stride, (1, 1))

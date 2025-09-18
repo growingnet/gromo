@@ -41,6 +41,7 @@ class TestMergeGrowingModules(unittest.TestCase):
             in_channels=self.in_channels,
             out_channels=self.out_channels,
             kernel_size=self.kernel_size,
+            input_size=self.input_shape,
         )
         self.conv_merge = Conv2dMergeGrowingModule(
             in_channels=self.out_channels,
