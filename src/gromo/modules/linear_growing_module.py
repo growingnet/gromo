@@ -25,7 +25,6 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         self.use_bias = True
         self.total_in_features: int = -1
         self.in_features = in_features
-        self.out_features = in_features
         # TODO: check if we can automatically get the input shape
         super(LinearMergeGrowingModule, self).__init__(
             post_merge_function=post_merge_function,
@@ -39,6 +38,10 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             device=device,
             name=name,
         )
+
+    @property
+    def out_features(self) -> int:
+        return self.in_features
 
     def set_next_modules(
         self, next_modules: list["MergeGrowingModule | GrowingModule"]
@@ -84,14 +87,13 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         self.previous_modules = previous_modules if previous_modules else []
         self.total_in_features = 0
         for module in self.previous_modules:
-            # Merge modules are not allowed inside previous_modules; only regular growing modules
             if not isinstance(module, (LinearGrowingModule, MergeGrowingModule)):
                 raise TypeError(
                     "The previous modules must be LinearGrowingModule instances or MergeGrowingModule)."
                 )
-            if module.out_features != self.in_features:
+            if module.output_volume != self.in_features:
                 raise ValueError(
-                    "The input features must match the output features of the previous modules."
+                    "The input features must match the output volume of the previous modules."
                 )
             if isinstance(module, LinearGrowingModule):
                 self.total_in_features += module.in_features
@@ -506,7 +508,7 @@ class LinearGrowingModule(GrowingModule):
                         self.next_module.projected_v_goal(self.next_module.input), 0, -2
                     ),
                 ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
+                int(torch.tensor(self.input.shape[:-1]).prod().int().item()),
             )
         else:
             raise TypeError("The next module must be a LinearGrowingModule.")
@@ -713,12 +715,12 @@ class LinearGrowingModule(GrowingModule):
         ), f"{bias.shape[0]=} should be equal to {weight.shape[0]=}"
         assert (
             not self.use_bias or bias is not None
-        ), f"The bias of the extension should be provided because the layer has a bias"
+        ), f"The bias of the extension should be provided because the layer {self.name} has a bias"
 
         if self.use_bias:
             assert (
                 bias is not None
-            ), f"The bias of the extension should be provided because the layer has a bias"
+            ), f"The bias of the extension should be provided because the layer {self.name} has a bias"
             self.layer = self.layer_of_tensor(
                 weight=torch.cat((self.weight, weight), dim=0),
                 bias=torch.cat((self.layer.bias, bias), dim=0),
@@ -746,7 +748,7 @@ class LinearGrowingModule(GrowingModule):
         """
         assert (
             self.extended_output_layer is not None
-        ), f"The layer should have an extended output layer to sub-select the output dimension."
+        ), f"The layer {self.name} should have an extended output layer to sub-select the output dimension."
         self.extended_output_layer = self.layer_of_tensor(
             self.extended_output_layer.weight[:keep_neurons],
             bias=(
@@ -782,7 +784,7 @@ class LinearGrowingModule(GrowingModule):
             )
             assert self.eigenvalues_extension is not None, (
                 f"The eigenvalues of the extension should be computed before "
-                f"sub-selecting the optimal added parameters."
+                f"sub-selecting the optimal added parameters for {self.name}."
             )
             self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
 
@@ -830,6 +832,10 @@ class LinearGrowingModule(GrowingModule):
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
             optimal added weights alpha weights, alpha bias, omega and eigenvalues lambda
         """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus the optimal added parameters cannot be computed."
+            )
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
@@ -844,7 +850,7 @@ class LinearGrowingModule(GrowingModule):
         )
         assert (
             omega.shape[0] == self.out_features
-        ), f"omega should have the same number of output features as the layer."
+        ), f"omega should have the same number of output features ({omega.shape[0]}) as the layer ({self.out_features})."
         assert omega.shape == (self.out_features, k), (
             f"omega should have shape {(self.out_features, k)}, " f"but got {omega.shape}"
         )

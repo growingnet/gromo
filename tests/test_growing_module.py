@@ -1,5 +1,4 @@
 import unittest.mock
-import warnings
 
 import torch
 
@@ -75,7 +74,7 @@ class TestGrowingModule(TorchTestCase):
         # ========== Test with in extension ==========
         # extended input with in extension
         self.model.extended_input_layer = self.layer_in_extension
-        self.model.scaling_factor = 1.0
+        self.model.scaling_factor = 1.0  # type: ignore
         y, y_sup = self.model.extended_forward(self.x, self.x_ext)
         self.assertIsNone(y_sup)
         self.assertTrue(torch.allclose(y, y_th + self.layer_in_extension(self.x_ext)))
@@ -96,6 +95,8 @@ class TestGrowingModule(TorchTestCase):
         object.__setattr__(self.model, "_scaling_factor_next_module", 1.0)
         y, y_sup = self.model.extended_forward(self.x)
         self.assertTrue(torch.equal(y, y_th))
+        self.assertIsInstance(y_sup, torch.Tensor)
+        assert isinstance(y_sup, torch.Tensor)
         self.assertTrue(torch.equal(y_sup, self.layer_out_extension(self.x)))
 
     def test_str(self):
@@ -1018,7 +1019,7 @@ class TestMergeGrowingModuleComputeOptimalDelta(TorchTestCase):
         orig_delta = self.prev_module.optimal_delta_layer
 
         # Call with update=False
-        result = self.merge_module.compute_optimal_delta(update=False)
+        self.merge_module.compute_optimal_delta(update=False)
 
         # Should not have updated the optimal_delta_layer
         self.assertEqual(self.prev_module.optimal_delta_layer, orig_delta)

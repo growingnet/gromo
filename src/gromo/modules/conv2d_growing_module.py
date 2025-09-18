@@ -62,7 +62,11 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 f"Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
             )
             return -1
-        return self.previous_modules[0].out_features
+        return self.previous_modules[0].output_volume
+
+    @property
+    def output_volume(self) -> int:
+        return self.input_volume
 
     @property
     def out_channels(self) -> int:
@@ -70,15 +74,14 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def in_features(self) -> int:
-        warn(f"Using property in_features in {self}")
         return self.in_channels
 
     @property
     def out_features(self) -> int:
-        return self.input_volume
+        return self.in_channels
 
     @property
-    def in_features(self) -> int:
+    def out_features(self) -> int:
         return self.in_channels
 
     @property
@@ -198,17 +201,17 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 ), f"Kernel size of next Conv2d modules {module.kernel_size} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
 
         self.next_modules = next_list
-        self.total_out_features = 0
         for module in self.next_modules:
             if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
-                assert module.in_channels == self.out_channels
+                assert (
+                    module.in_channels == self.out_channels
+                ), f"Next module input channels {module.in_channels} should match {self.out_channels=}"
+                # assert module.input_volume == self.output_volume, f"Next module input volume {module.input_volume} should match {self.output_volume=}"
                 module.input_size = self.output_size
-                self.total_out_features += module.out_features
             elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
                 assert (
-                    module.in_features == self.out_features
-                ), f"Next module input features {module.in_features} should match {self.out_features=}"
-                self.total_out_features += module.out_features
+                    module.in_features == self.output_volume
+                ), f"Next module input features {module.in_features} should match {self.output_volume=}"
             else:
                 raise NotImplementedError(
                     "The next modules must be either Linear or Convolution."
@@ -248,7 +251,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         # ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
         self.previous_modules = prev_list
         self.total_in_features = 0
-        self.total_out_features = 0
         for module in self.previous_modules:
             if (
                 isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule))
@@ -257,8 +259,11 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 raise ValueError(
                     "The input channels must match the output channels of the previous modules."
                 )
+            if module.output_volume != self.input_volume:
+                raise ValueError(
+                    f"The output volume of the previous modules {module.output_volume} should match the input volume {self.input_volume=}."
+                )
             self.total_in_features += module.in_features + module.use_bias
-            self.total_out_features += module.out_features
         if self.total_in_features > 0:
             if self.input_size is None:
                 self.input_size = (
@@ -295,7 +300,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         """
         assert self.previous_modules, f"No previous modules for {self.name}."
         n = self.previous_modules[0].input.shape[0]
-        L = int(self.previous_modules[0].out_features / self.in_channels)
+        L = int(self.previous_modules[0].output_volume / self.in_channels)
         full_activity = torch.ones(
             (
                 n,
@@ -593,7 +598,7 @@ class Conv2dGrowingModule(GrowingModule):
         return self.in_channels * self.input_size[0] * self.input_size[1]
 
     @property
-    def out_features(self) -> int:
+    def output_volume(self) -> int:
         """Compute total number of elements in the output tensor
 
         Returns
@@ -624,6 +629,23 @@ class Conv2dGrowingModule(GrowingModule):
             number of input features (fan-in)
         """
         return self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+
+    @property
+    def out_features(self) -> int:
+        """
+        Return the number of output features (fan-out) of this convolutional layer when
+        cast as a linear layer.
+
+        Concretely, this integer equals:
+
+            out_channels
+
+        Returns
+        -------
+        int
+            number of output features (fan-out)
+        """
+        return self.out_channels
 
     @property
     def unfolded_extended_input(self) -> torch.Tensor:
@@ -836,7 +858,7 @@ class Conv2dGrowingModule(GrowingModule):
         """
         assert (
             weight.shape[0] == self.out_channels
-        ), f"{weight.shape[0]=} should be equal to {self.out_features=}"
+        ), f"{weight.shape[0]=} should be equal to {self.out_channels=}"
         for i in (0, 1):
             assert (
                 weight.shape[2 + i] == self.layer.kernel_size[i]
