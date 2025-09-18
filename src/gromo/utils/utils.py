@@ -117,7 +117,7 @@ def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
     """
     assert (
         input.shape[-1] == self.in_features
-    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
+    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[-1]}"
     if self.in_features == 0:
         return torch.zeros(
             input.shape[0], self.out_features, device=global_device(), requires_grad=True
