@@ -178,7 +178,7 @@ class MergeGrowingModule(torch.nn.Module):
             y = x
 
         if self.store_activity > 0:
-            self.activity = y
+            self.activity = y.detach()
             self.tensor_s.updated = False  # reset the update flag
 
         return y
