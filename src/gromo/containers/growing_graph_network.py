@@ -19,7 +19,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
-from gromo.utils.utils import f1_micro, line_search, mini_batch_gradient_descent
+from gromo.utils.utils import evaluate_dataset, line_search, mini_batch_gradient_descent
 
 
 class GrowingGraphNetwork(GrowingContainer):
@@ -304,8 +304,7 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion,
         bottlenecks: dict,
         activities: dict,
-        x: torch.Tensor,
-        y: torch.Tensor,
+        dataloader: DataLoader,
         amplitude_factor: bool = True,
         parallel: bool = True,
         verbose: bool = True,
@@ -322,10 +321,8 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
-        x : torch.Tensor
-            development input features batch
-        y : torch.Tensor
-            development true labels batch
+        dataloader: DataLoader
+            development dataloader with input features and targets
         amplitude_factor : bool, optional
             find and apply amplitude factor on the block and its parallel connections, by default True
         parallel : bool, optional
@@ -463,8 +460,7 @@ class GrowingGraphNetwork(GrowingContainer):
             # Find amplitude factor that minimizes the overall loss
             factor = self.find_amplitude_factor(
                 net=expansion.dag,
-                x=x,
-                y=y,
+                dataloader=dataloader,
                 node_module=node_module,
                 next_node_modules=next_node_modules,
             )
@@ -503,8 +499,7 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion: Expansion,
         bottlenecks: dict,
         activities: dict,
-        x: torch.Tensor,
-        y: torch.Tensor,
+        dataloader: DataLoader,
         amplitude_factor: bool = True,
         verbose: bool = True,
     ) -> list:
@@ -519,10 +514,8 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
-        x : torch.Tensor
-            development input features batch
-        y : torch.Tensor
-            development true labels batch
+        dataloader : DataLoader
+            development dataloader with input features and targets
         amplitude_factor : bool, optional
             find and apply amplitude factor on the block and its parallel connections, by default True
         verbose : bool, optional
@@ -598,8 +591,7 @@ class GrowingGraphNetwork(GrowingContainer):
         if amplitude_factor:
             factor = self.find_amplitude_factor(
                 net=expansion.dag,
-                x=x,
-                y=y,
+                dataloader=dataloader,
                 node_module=next_node_module,
             )  # MEMORY ISSUE
         else:
@@ -625,8 +617,7 @@ class GrowingGraphNetwork(GrowingContainer):
     def find_amplitude_factor(
         self,
         net: GrowingDAG,
-        x: torch.Tensor,
-        y: torch.Tensor,
+        dataloader: DataLoader,
         node_module: LinearMergeGrowingModule,
         next_node_modules: list[LinearMergeGrowingModule] = None,
     ) -> float:
@@ -636,10 +627,8 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         net : GrowingDAG
             network of interest
-        x : torch.Tensor
-            input features batch
-        y : torch.Tensor
-            true labels batch
+        dataloader : DataLoader
+            dataloader with input features and target
         node_module : LinearMergeGrowingModule
             node module to be extended or node module at the end of the edge in case of single edge
         next_node_modules : list[LinearMergeGrowingModule], optional
@@ -660,11 +649,15 @@ class GrowingGraphNetwork(GrowingContainer):
                     for parallel_edge_module in next_node_module.previous_modules:
                         parallel_edge_module.scaling_factor = factor
 
+            loss = []
             with torch.no_grad():
-                pred = net.extended_forward(x)
-                loss = self.loss_fn(pred, y).item()
+                for x, y in dataloader:
+                    x = x.to(self.device)
+                    y = y.to(self.device)
+                    pred = net.extended_forward(x)
+                    loss.append(self.loss_fn(pred, y).item())
 
-            return loss
+            return np.mean(loss).item()
 
         factor, _ = line_search(simulate_loss)
         return factor
@@ -674,12 +667,9 @@ class GrowingGraphNetwork(GrowingContainer):
         actions: list[Expansion],
         bottleneck: dict,
         input_B: dict,
-        X_train: torch.Tensor,
-        Y_train: torch.Tensor,
-        X_dev: torch.Tensor,
-        Y_dev: torch.Tensor,
-        X_val: torch.Tensor,
-        Y_val: torch.Tensor,
+        train_dataloader: DataLoader,
+        dev_dataloader: DataLoader,
+        val_dataloader: DataLoader,
         amplitude_factor: bool,
         discard_underperforming: bool = False,
         discard_metric: str = "loss_val",
@@ -695,18 +685,12 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary of calculated expressivity bottleneck at each pre-activity
         input_B : dict
             dictionary of post-activity input of each node
-        X_train : torch.Tensor
-            train features
-        Y_train : torch.Tensor
-            train labels
-        X_dev : torch.Tensor
-            development features
-        Y_dev : torch.Tensor
-            development labels
-        X_val : torch.Tensor
-            validation features
-        Y_val : torch.Tensor
-            validation labels
+        train_dataloader : DataLoader
+            train dataloader
+        dev_dataloader : DataLoader
+            development dataloader
+        val_dataloader : DataLoader
+            validation dataloader
         amplitude_factor : bool
             use amplitude factor on new neurons
         verbose : bool, optional
@@ -734,8 +718,7 @@ class GrowingGraphNetwork(GrowingContainer):
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
-                    x=X_dev,
-                    y=Y_dev,
+                    dataloader=dev_dataloader,
                     amplitude_factor=amplitude_factor,
                     verbose=verbose,
                 )
@@ -755,18 +738,21 @@ class GrowingGraphNetwork(GrowingContainer):
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
-                    x=X_dev,
-                    y=Y_dev,
+                    dataloader=dev_dataloader,
                     amplitude_factor=amplitude_factor,
                     verbose=verbose,
                 )
 
             # Evaluate
-            acc_train, loss_train = expansion.dag.evaluate(
-                X_train, Y_train, loss_fn=self.loss_fn
+            acc_train, loss_train = evaluate_dataset(
+                expansion.dag, train_dataloader, loss_fn=self.loss_fn
             )
-            acc_dev, loss_dev = expansion.dag.evaluate(X_dev, Y_dev, loss_fn=self.loss_fn)
-            acc_val, loss_val = expansion.dag.evaluate(X_val, Y_val, loss_fn=self.loss_fn)
+            acc_dev, loss_dev = evaluate_dataset(
+                expansion.dag, dev_dataloader, loss_fn=self.loss_fn
+            )
+            acc_val, loss_val = evaluate_dataset(
+                expansion.dag, val_dataloader, loss_fn=self.loss_fn
+            )
 
             # TODO: return all info instead of saving
             expansion.metrics["loss_bott"] = bott_loss_history[-1]
@@ -777,7 +763,9 @@ class GrowingGraphNetwork(GrowingContainer):
             expansion.metrics["acc_dev"] = acc_dev
             expansion.metrics["acc_val"] = acc_val
             expansion.metrics["nb_params"] = expansion.dag.count_parameters_all()
-            expansion.metrics["BIC"] = self.BIC(expansion.dag, loss_val, n=len(X_val))
+            expansion.metrics["BIC"] = self.BIC(
+                expansion.dag, loss_val, n=len(val_dataloader.dataset)
+            )
 
             if discard_underperforming and len(actions) > 1:
                 if expansion.metrics[discard_metric] <= best_metric_value:
