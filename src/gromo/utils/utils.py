@@ -496,3 +496,49 @@ def f1_macro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
         macro-average f1 score
     """
     return float(np.mean([f1(actual, predicted, label) for label in np.unique(actual)]))
+
+
+def evaluate_dataset(
+    model: nn.Module, dataloader: torch.utils.data.DataLoader, loss_fn: Callable
+) -> tuple[float, float]:
+    """Evaluate network on dataset
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        network to evaluate
+    dataloader : torch.utils.data.DataLoader
+        dataloader containing the data
+    loss_fn : Callable
+        loss function for bottleneck calculation
+
+    Returns
+    -------
+    tuple[float, float]
+        accuracy and loss
+    """
+    model.eval()
+    correct, total = 0, 0
+
+    loss = []
+    for x, y in dataloader:
+        x = x.to(model.device)
+        y = y.to(model.device)
+        with torch.no_grad():
+            pred = model(x)
+            loss.append(loss_fn(pred, y).item())
+
+        if model.out_features > 1 and y.dim() == 1:
+            final_pred = pred.argmax(axis=1)
+            count_this = final_pred == y
+            count_this = count_this.sum()
+
+            correct += count_this.item()
+            total += len(pred)
+
+    if total > 0:
+        accuracy = correct / total
+    else:
+        accuracy = -1
+
+    return accuracy, np.mean(loss).item()
