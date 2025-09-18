@@ -43,6 +43,14 @@ class LinearMergeGrowingModule(MergeGrowingModule):
     def out_features(self) -> int:
         return self.in_features
 
+    @property
+    def input_volume(self) -> int:
+        return self.in_features
+
+    @property
+    def output_volume(self) -> int:
+        return self.in_features
+
     def set_next_modules(
         self, next_modules: list["MergeGrowingModule | GrowingModule"]
     ) -> None:

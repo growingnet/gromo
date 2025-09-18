@@ -64,6 +64,14 @@ class MergeGrowingModule(torch.nn.Module):
         self.set_next_modules(next_modules)
 
     @property
+    def input_volume(self) -> int:
+        raise NotImplementedError
+
+    @property
+    def output_volume(self) -> int:
+        raise NotImplementedError
+
+    @property
     def number_of_successors(self):
         return len(self.next_modules)
 
