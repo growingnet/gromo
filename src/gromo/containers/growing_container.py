@@ -39,23 +39,25 @@ class GrowingContainer(torch.nn.Module):
         """Extended forward pass through the network"""
         raise NotImplementedError
 
+    @property
+    def first_order_improvement(self) -> torch.Tensor:
+        """Get the first order improvement of the current update."""
+        raise NotImplementedError
+
     def init_computation(self) -> None:
         """Initialize statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
-                layer.init_computation()
+            layer.init_computation()
 
     def update_computation(self) -> None:
         """Update statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
-                layer.update_computation()
+            layer.update_computation()
 
     def reset_computation(self) -> None:
         """Reset statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
-                layer.reset_computation()
+            layer.reset_computation()
 
     def compute_optimal_delta(
         self,
@@ -73,11 +75,10 @@ class GrowingContainer(torch.nn.Module):
             matrix is invertible, by default False
         """
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
-                layer.compute_optimal_delta(
-                    update=update,
-                    force_pseudo_inverse=force_pseudo_inverse,
-                )
+            layer.compute_optimal_delta(
+                update=update,
+                force_pseudo_inverse=force_pseudo_inverse,
+            )
 
     def compute_optimal_updates(self, *args, **kwargs) -> None:
         """Compute optimal updates for growth procedure"""
@@ -87,7 +88,7 @@ class GrowingContainer(torch.nn.Module):
 
     def select_best_update(self) -> None:
         """Select the best update for growth procedure"""
-        first_order_improvements = [
+        first_order_improvements: list[torch.Tensor] = [
             layer.first_order_improvement for layer in self._growing_layers
         ]
         best_layer_idx = torch.argmax(torch.stack(first_order_improvements))
