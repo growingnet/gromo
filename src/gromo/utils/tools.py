@@ -18,8 +18,8 @@ def sqrt_inverse_matrix_semi_positive(
     threshold: float
         threshold to consider an eigenvalue as zero
     preferred_linalg_library: None | str in ("magma", "cusolver")
-        linalg library to use, "cusolver" may failed
-        for non positive definite matrix if CUDA < 12.1 is used
+        linalg library to use, "cusolver" may fail
+        for non-positive definite matrix if CUDA < 12.1 is used
         see: https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html
 
     Returns
@@ -100,22 +100,22 @@ def optimal_delta(
             force_pseudo_inverse = True
             # self.delta_raw = torch.linalg.lstsq(tensor_s, tensor_m).solution.t()
             # do not use lstsq because it does not work with the GPU
-            warn(f"Using the pseudo-inverse for the computation of the optimal delta.")
+            warn("Using the pseudo-inverse for the computation of the optimal delta.")
     if force_pseudo_inverse:
         delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
 
     assert delta_raw is not None, "delta_raw should be computed by now."
     assert (
         delta_raw.isnan().sum() == 0
-    ), f"The optimal delta should not contain NaN values."
+    ), "The optimal delta should not contain NaN values."
     parameter_update_decrease = torch.trace(tensor_m @ delta_raw)
     if parameter_update_decrease < 0:
         warn(
-            f"The parameter update decrease should be positive, "
+            "The parameter update decrease should be positive, "
             f"but got {parameter_update_decrease=} for layer."
         )
         if not force_pseudo_inverse:
-            warn(f"Trying to use the pseudo-inverse with torch.float64.")
+            warn("Trying to use the pseudo-inverse with torch.float64.")
             return optimal_delta(
                 tensor_s, tensor_m, dtype=torch.float64, force_pseudo_inverse=True
             )
@@ -187,7 +187,7 @@ def compute_optimal_added_parameters(
     try:
         u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
     except torch.linalg.LinAlgError:
-        print(f"Warning: An error occurred during the SVD computation.")
+        print("Warning: An error occurred during the SVD computation.")
         print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
         print(f"matrix_n: {matrix_n.min()=}, {matrix_n.max()=}, {matrix_n.shape=}")
         print(
@@ -296,7 +296,7 @@ def compute_mask_tensor_t(
     )
     unfold = torch.nn.Unfold(
         kernel_size=conv.kernel_size,
-        padding=conv.padding,
+        padding=conv.padding,  # type: ignore
         stride=conv.stride,
         dilation=conv.dilation,
     )
@@ -344,10 +344,10 @@ def create_bordering_effect_convolution(
         in_channels=channels,
         out_channels=channels,
         groups=channels,
-        kernel_size=convolution.kernel_size,
-        padding=convolution.padding,
-        stride=convolution.stride,
-        dilation=convolution.dilation,
+        kernel_size=convolution.kernel_size,  # type: ignore
+        padding=convolution.padding,  # type: ignore
+        stride=convolution.stride,  # type: ignore
+        dilation=convolution.dilation,  # type: ignore
         bias=False,
         device=convolution.weight.device,
     )
@@ -402,6 +402,9 @@ def apply_border_effect_on_unfolded(
     ), "Either 'border_effect_conv' or 'identity_conv' must be provided."
 
     if identity_conv is None:
+        assert isinstance(
+            border_effect_conv, torch.nn.Conv2d
+        ), "'border_effect_conv' must be provided if 'identity_conv' is None."
         channels = unfolded_tensor.shape[1]
         identity_conv = create_bordering_effect_convolution(
             channels=channels,

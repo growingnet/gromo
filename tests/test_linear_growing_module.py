@@ -1,6 +1,5 @@
 import types
 from copy import deepcopy
-from typing import Any, Dict, Tuple
 from unittest import mock
 
 import torch
@@ -74,7 +73,7 @@ class TestConfig:
     }
 
 
-def theoretical_s_1(n: int, c: int) -> Tuple[torch.Tensor, ...]:
+def theoretical_s_1(n: int, c: int) -> tuple[torch.Tensor, ...]:
     """
     Compute the theoretical value of the tensor S for the input and output of
     weight matrix W = (0 ... 0 \\ 0 1 0 ... 0 \\ 0 0 2 0 ... 0 \\ ... \\ 1 ... 1).
@@ -178,7 +177,7 @@ class TestLinearGrowingModuleBase(TorchTestCase):
 
     def create_demo_layers(
         self, bias: bool
-    ) -> Tuple[LinearGrowingModule, LinearGrowingModule]:
+    ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
         """Create demo layers for testing with specified bias configuration."""
         demo_layer_1 = LinearGrowingModule(
             *self.config.LAYER_DIMS["demo_1"],
@@ -195,8 +194,8 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         )
         return demo_layer_1, demo_layer_2
 
+    @staticmethod
     def create_linear_layer(
-        self,
         in_features: int,
         out_features: int,
         bias: bool = True,
@@ -211,8 +210,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
             device=global_device(),
         )
 
+    @staticmethod
     def create_merge_layer(
-        self, in_features: int, name: str | None = None
+        in_features: int, name: str | None = None
     ) -> LinearMergeGrowingModule:
         """Helper to create a LinearMergeGrowingModule with common settings."""
         return LinearMergeGrowingModule(
@@ -221,16 +221,18 @@ class TestLinearGrowingModuleBase(TorchTestCase):
             device=global_device(),
         )
 
+    @staticmethod
     def create_standard_nn_linear(
-        self, in_features: int, out_features: int, bias: bool = True
+        in_features: int, out_features: int, bias: bool = True
     ) -> torch.nn.Linear:
         """Helper to create a standard nn.Linear layer."""
         return torch.nn.Linear(
             in_features, out_features, bias=bias, device=global_device()
         )
 
+    @staticmethod
     def setup_network_with_merge(
-        self, layer: LinearGrowingModule, output_module: LinearMergeGrowingModule
+        layer: LinearGrowingModule, output_module: LinearMergeGrowingModule
     ):
         """Set up a network with merge module and initialize computation."""
         layer.next_module = output_module
@@ -269,7 +271,12 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         )
 
     def assert_exception_with_message(
-        self, exception_type: type, expected_message: str, callable_func, *args, **kwargs
+        self,
+        exception_type: type[BaseException] | tuple[type[BaseException], ...],
+        expected_message: str,
+        callable_func,
+        *args,
+        **kwargs,
     ):
         """Helper to assert exception type and message content."""
         with self.assertRaises(exception_type) as context:
@@ -277,15 +284,16 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         self.assertIn(expected_message, str(context.exception))
 
     def create_test_input_batch(
-        self, shape: Tuple[int, ...] | None = None
+        self, shape: tuple[int, ...] | None = None
     ) -> torch.Tensor:
         """Create a standard test input batch with reproducible random data."""
         shape = shape or self.config.TENSOR_SHAPES["input_2d"]
         torch.manual_seed(self.config.RANDOM_SEED)
         return torch.randn(shape, device=global_device())
 
+    @staticmethod
     def run_forward_and_backward(
-        self, network: torch.nn.Module, input_data: torch.Tensor
+        network: torch.nn.Module, input_data: torch.Tensor
     ) -> torch.Tensor:
         """Run forward pass and backward pass, returning output."""
         output = network(input_data)
@@ -293,8 +301,8 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         loss.backward()
         return output
 
+    @staticmethod
     def assert_linear_layer_equality(
-        self,
         layer1: torch.nn.Linear,
         layer2: torch.nn.Linear,
         rtol: float = 1e-5,
@@ -309,8 +317,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         )
         return weights_equal and bias_equal
 
+    @staticmethod
     def capture_layer_invariants(
-        self, layer: LinearGrowingModule, invariant_list: list[str]
+        layer: LinearGrowingModule, invariant_list: list[str]
     ) -> dict:
         """Capture the current state of specified layer invariants."""
         reference = {}
@@ -385,12 +394,13 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         net = torch.nn.Sequential(layer_in, layer_out)
         return layer_in, layer_out, net
 
-    def create_mse_loss_function(self, reduction: str = "sum") -> torch.nn.MSELoss:
+    @staticmethod
+    def create_mse_loss_function(reduction: str = "sum") -> torch.nn.MSELoss:
         """Create MSE loss function with specified reduction."""
         return torch.nn.MSELoss(reduction=reduction)
 
+    @staticmethod
     def create_demo_layers_with_extension(
-        self,
         first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
         first_layer_extended_post_layer: torch.nn.Module | None = None,
         include_eigenvalues: bool = False,
@@ -443,7 +453,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         """
         Test apply change with sized post layer function.
         - with correct extension_size (works)
-        - with correct extension_size but with a non growable post_layer function (crash on forward)
+        - with correct extension_size but with a non-growable post_layer function (crash on forward)
         - with incorrect extension_size (crash on forward)
         - without extension_size but with self.eigenvalues_extension (works)
         - without extension_size and without self.eigenvalues_extension (error on apply change)
@@ -772,7 +782,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_extended_forward_in(self, bias):
-        torch.manual_seed(0)
+        torch.manual_seed(self.config.RANDOM_SEED)
         # fixed layers
         l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
         l_ext = torch.nn.Linear(5, 1, bias=bias, device=global_device())
@@ -792,7 +802,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         for gamma in (0.0, 1.0, 5.0):
             layer.zero_grad()
-            layer.scaling_factor = gamma
+            layer.scaling_factor = gamma  # type: ignore
             x = torch.randn((10, 3), device=global_device())
             x_ext = torch.randn((10, 5), device=global_device())
             self.assertAllClose(layer(x), l0(x))
@@ -812,7 +822,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertAllClose(
             y,
             l0(x) - gamma**2 * l_delta(x) + gamma * l_ext(x_ext),
-            message=(f"Error in applying change"),
+            message="Error in applying change",
         )
 
     def test_number_of_parameters(self):
@@ -882,114 +892,120 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         y = layer(x)
         self.assertAllClose(y, torch.tensor([[9.0, 9.0, 9.0, 90.0]]))
 
-    def test_apply_change_delta_layer(self):
-        torch.manual_seed(0)
-        for bias in {True, False}:
-            l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
-            l_delta = torch.nn.Linear(3, 1, bias=bias, device=global_device())
-            layer = LinearGrowingModule(
-                3, 1, use_bias=bias, name="layer1", device=global_device()
-            )
-            layer.weight.data.copy_(l0.weight.data)
-            layer.optimal_delta_layer = l_delta
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_apply_change_delta_layer(self, bias: bool = False):
+        torch.manual_seed(self.config.RANDOM_SEED)
+        l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
+        l_delta = torch.nn.Linear(3, 1, bias=bias, device=global_device())
+        layer = LinearGrowingModule(
+            3, 1, use_bias=bias, name="layer1", device=global_device()
+        )
+        layer.weight.data.copy_(l0.weight.data)
+        layer.optimal_delta_layer = l_delta
 
-            if bias:
-                layer.bias.data.copy_(l0.bias.data)
+        if bias:
+            layer.bias.data.copy_(l0.bias.data)
 
-            gamma = 5.0
-            layer.scaling_factor = gamma
-            layer.apply_change(apply_previous=False)
+        gamma = 5.0
+        layer.scaling_factor = gamma  # type: ignore
+        layer.apply_change(apply_previous=False)
 
-            x = torch.randn((10, 3), device=global_device())
-            y = layer(x)
-            self.assertAllClose(y, l0(x) - gamma**2 * l_delta(x))
+        x = torch.randn((10, 3), device=global_device())
+        y = layer(x)
+        self.assertAllClose(y, l0(x) - gamma**2 * l_delta(x))
 
-    def test_apply_change_out_extension(self):
-        torch.manual_seed(0)
-        for bias in {True, False}:
-            l0 = torch.nn.Linear(5, 1, bias=bias, device=global_device())
-            l_ext = torch.nn.Linear(5, 2, bias=bias, device=global_device())
-            layer = LinearGrowingModule(
-                5, 1, use_bias=bias, name="layer1", device=global_device()
-            )
-            layer.weight.data.copy_(l0.weight.data)
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_apply_change_out_extension(self, bias: bool = False):
+        torch.manual_seed(self.config.RANDOM_SEED)
+        l0 = torch.nn.Linear(5, 1, bias=bias, device=global_device())
+        l_ext = torch.nn.Linear(5, 2, bias=bias, device=global_device())
+        layer = LinearGrowingModule(
+            5, 1, use_bias=bias, name="layer1", device=global_device()
+        )
+        layer.weight.data.copy_(l0.weight.data)
 
-            if bias:
-                layer.bias.data.copy_(l0.bias.data)
-            layer.extended_output_layer = l_ext
+        if bias:
+            layer.bias.data.copy_(l0.bias.data)
+        layer.extended_output_layer = l_ext
 
-            gamma = 5.0
-            gamma_next = 5.5
-            layer.scaling_factor = gamma
-            layer.apply_change(apply_previous=False)
-            self.assertAllClose(layer.weight.data, l0.weight.data)
+        gamma = 5.0
+        gamma_next = 5.5
+        layer.scaling_factor = gamma  # type: ignore
+        layer.apply_change(apply_previous=False)
+        self.assertAllClose(layer.weight.data, l0.weight.data)
 
-            layer._scaling_factor_next_module[0] = gamma_next
-            layer._apply_output_changes()
+        layer._scaling_factor_next_module[0] = gamma_next
+        layer._apply_output_changes()
 
-            x = torch.randn((10, 5), device=global_device())
-            y = layer(x)
-            y1 = y[:, :1]
-            y2 = y[:, 1:]
-            self.assertAllClose(y1, l0(x))
-            self.assertAllClose(y2, gamma_next * l_ext(x))
+        x = torch.randn((10, 5), device=global_device())
+        y = layer(x)
+        y1 = y[:, :1]
+        y2 = y[:, 1:]
+        self.assertAllClose(y1, l0(x))
+        self.assertAllClose(y2, gamma_next * l_ext(x))
 
-    def test_apply_change_in_extension(self):
-        torch.manual_seed(0)
-        for bias in {True, False}:
-            l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
-            l_ext = torch.nn.Linear(5, 1, bias=bias, device=global_device())
-            if bias:
-                l_ext.bias.data.fill_(0)
-            layer = LinearGrowingModule(
-                3, 1, use_bias=bias, name="layer1", device=global_device()
-            )
-            layer.weight.data.copy_(l0.weight.data)
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_apply_change_in_extension(self, bias):
+        torch.manual_seed(self.config.RANDOM_SEED)
+        l0 = torch.nn.Linear(3, 1, bias=bias, device=global_device())
+        l_ext = torch.nn.Linear(5, 1, bias=bias, device=global_device())
+        if bias:
+            l_ext.bias.data.fill_(0)
+        layer = LinearGrowingModule(
+            3, 1, use_bias=bias, name="layer1", device=global_device()
+        )
+        layer.weight.data.copy_(l0.weight.data)
 
-            if bias:
-                layer.bias.data.copy_(l0.bias.data)
-            layer.extended_input_layer = l_ext
+        if bias:
+            layer.bias.data.copy_(l0.bias.data)
+        layer.extended_input_layer = l_ext
 
-            gamma = 5.0
-            layer.scaling_factor = gamma
-            layer.apply_change(apply_previous=False)
+        gamma = 5.0
+        layer.scaling_factor = gamma  # type: ignore
+        layer.apply_change(apply_previous=False)
 
-            x_cat = torch.randn((10, 8), device=global_device())
-            y = layer(x_cat)
-            x = x_cat[:, :3]
-            x_ext = x_cat[:, 3:]
+        x_cat = torch.randn((10, 8), device=global_device())
+        y = layer(x_cat)
+        x = x_cat[:, :3]
+        x_ext = x_cat[:, 3:]
 
-            self.assertAllClose(
-                y,
-                l0(x) + gamma * l_ext(x_ext),
-                atol=1e-7,
-                message=(
-                    f"Error in applying change: "
-                    f"{(y - l0(x) - gamma * l_ext(x_ext)).abs().max():.2e}"
-                ),
-            )
+        self.assertAllClose(
+            y,
+            l0(x) + gamma * l_ext(x_ext),
+            atol=1e-7,
+            message=(
+                f"Error in applying change: "
+                f"{(y - l0(x) - gamma * l_ext(x_ext)).abs().max():.2e}"
+            ),
+        )
 
-    def test_sub_select_optimal_added_parameters_out(self):
-        for bias in {True, False}:
-            layer = LinearGrowingModule(3, 1, use_bias=bias, name="layer1")
-            layer.extended_output_layer = torch.nn.Linear(3, 2, bias=bias)
+    def test_apply_change_no_corresponding_extension(self):
+        layer1, layer2 = self.create_demo_layers_with_extension()
+        layer1.extended_output_layer = None
+        with self.assertRaises(ValueError) as context:
+            layer2.apply_change(apply_previous=True, extension_size=2)
+        self.assertIn("no input extension", str(context.exception))
 
-            new_layer = torch.nn.Linear(3, 1, bias=bias)
-            new_layer.weight.data = layer.extended_output_layer.weight.data[0].view(1, -1)
-            if bias:
-                new_layer.bias.data = layer.extended_output_layer.bias.data[0].view(1)
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_sub_select_optimal_added_parameters_out(self, bias: bool = False):
+        layer = LinearGrowingModule(3, 1, use_bias=bias, name="layer1")
+        layer.extended_output_layer = torch.nn.Linear(3, 2, bias=bias)
 
-            layer._sub_select_added_output_dimension(1)
+        new_layer = torch.nn.Linear(3, 1, bias=bias)
+        new_layer.weight.data = layer.extended_output_layer.weight.data[0].view(1, -1)
+        if bias:
+            new_layer.bias.data = layer.extended_output_layer.bias.data[0].view(1)
 
-            self.assertAllClose(layer.extended_output_layer.weight, new_layer.weight)
+        layer._sub_select_added_output_dimension(1)
 
-            self.assertAllClose(layer.extended_output_layer.weight, new_layer.weight)
+        self.assertAllClose(layer.extended_output_layer.weight, new_layer.weight)
 
-            if bias:
-                self.assertAllClose(layer.extended_output_layer.bias, new_layer.bias)
+        self.assertAllClose(layer.extended_output_layer.weight, new_layer.weight)
 
-    def test_sub_select_optimal_added_parameters_in(self):
-        bias = False
+        if bias:
+            self.assertAllClose(layer.extended_output_layer.bias, new_layer.bias)
+
+    def test_sub_select_optimal_added_parameters_in(self, bias: bool = False):
         layer = LinearGrowingModule(1, 3, use_bias=bias, name="layer1")
         layer.extended_input_layer = torch.nn.Linear(2, 3, bias=bias)
         layer.eigenvalues_extension = torch.tensor([2.0, 1.0])
@@ -1138,6 +1154,16 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertIsNone(alpha_b)  # No bias in this test
         self.assertShapeEqual(omega, (demo_layers[1].out_features, k))
         self.assertShapeEqual(eigenvalues, (k,))
+
+    def test_compute_optimal_added_parameters_no_previous_module_error(self):
+        """Test ValueError when no previous module in compute_optimal_added_parameters."""
+        layer = LinearGrowingModule(3, 2, device=global_device())
+        layer.previous_module = None  # No previous module
+
+        # Should trigger ValueError
+        with self.assertRaises(ValueError) as context:
+            layer.compute_optimal_added_parameters()
+        self.assertIn("No previous module", str(context.exception))
 
     def test_multiple_successors_warning(self):
         """Test warning for multiple successors"""
@@ -1429,10 +1455,25 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         # check if we learned the identity
         self.assertAllClose(y, input_x, atol=1e-5)
 
+    def test_apply_change_with_optimal_delta_layer_no_extensions(self):
+        """Test apply_change with two connected layers where second has optimal_delta_layer but no extensions."""
+        # Create two connected layers
+        layer1, layer2 = self.demo_layers[True]
+        layer2: LinearGrowingModule
+
+        z_origin = layer2(layer1(self.input_x))
+        layer2.scaling_factor = 1.0  # type: ignore
+
+        layer2.apply_change()
+        z_new = layer2(layer1(self.input_x))
+
+        self.assertAllClose(z_new, z_origin, atol=1e-5)
+
 
 class TestLinearMergeGrowingModule(TorchTestCase):
     def setUp(self):
-        torch.manual_seed(0)
+        self.seed = 0
+        torch.manual_seed(self.seed)
         self.demo_modules = dict()
         for bias in (True, False):
             demo_merge = LinearMergeGrowingModule(
@@ -1611,7 +1652,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             layer.set_previous_modules([mismatch_layer])
         # Should trigger assertion for wrong type
         with self.assertRaises(TypeError):
-            layer.set_previous_modules([torch.nn.Linear(3, 2)])
+            layer.set_previous_modules([torch.nn.Linear(3, 2)])  # type: ignore
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_delta_basic_functionality(self, bias):
@@ -2209,7 +2250,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Set up for input_extended access
         layer.init_computation()
         x = torch.randn(4, 3, device=global_device())
-        output = layer(x)
+        layer(x)
 
         # Access input_extended property (might trigger missing lines)
         input_extended = layer.input_extended
