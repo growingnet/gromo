@@ -26,13 +26,11 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         allow_growing: bool = False,
-        input_volume: int | None = None,
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
         self.use_bias = True
         self.in_channels: int = in_channels
-        self._input_volume = input_volume
         if isinstance(input_size, int):
             input_size = (input_size, input_size)
         self.input_size = input_size
@@ -54,8 +52,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def input_volume(self) -> int:
-        if self._input_volume is not None:
-            return self._input_volume
+        if self.input_size is not None:
+            return self.input_size[0] * self.input_size[1] * self.in_channels
         if len(self.previous_modules) <= 0:
             warn(
                 f"Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
