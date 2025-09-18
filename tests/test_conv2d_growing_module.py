@@ -89,11 +89,6 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # input_volume with previous modules present delegates to previous.output_volume
         self.assertEqual(m.input_volume, self.prev.output_volume)
 
-        # If no previous modules -> warning and -1
-        m.previous_modules = []
-        with self.assertWarns(UserWarning):
-            self.assertEqual(m.input_volume, -1)
-
     def test_input_volume_with_explicit_value(self):
         """Test input_volume when _input_volume is explicitly set."""
         m = self.merge

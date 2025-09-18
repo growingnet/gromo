@@ -57,6 +57,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def input_volume(self) -> int:
         if self._input_volume is not None:
             return self._input_volume
+        if self.input_size is not None:
+            return self.input_size[0] * self.input_size[1] * self.in_channels
         if len(self.previous_modules) <= 0:
             warn(
                 f"Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
