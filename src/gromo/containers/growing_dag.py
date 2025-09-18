@@ -7,7 +7,7 @@ import networkx as nx
 import torch
 import torch.nn as nn
 
-from gromo.containers.growing_container import GrowingContainer, safe_forward
+from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.constant_module import ConstantModule
 from gromo.modules.conv2d_growing_module import (
     Conv2dMergeGrowingModule,
@@ -18,7 +18,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
-from gromo.utils.utils import activation_fn, f1_micro
+from gromo.utils.utils import activation_fn, f1_micro, safe_forward
 
 
 supported_layer_types = ["linear", "convolution"]
