@@ -104,8 +104,8 @@ def theoretical_s_1(n: int, c: int) -> tuple[torch.Tensor, ...]:
     """
     # Pre-compute common values to avoid redundant calculations
     device = global_device()
-    arange_c = torch.arange(c, device=device)
-    ones_c = torch.ones(c, dtype=torch.long, device=device)
+    arange_c = torch.arange(c, dtype=torch.double, device=device)
+    ones_c = torch.ones(c, dtype=torch.double, device=device)
     arange_n = torch.arange(n, device=device)
 
     # Input statistics matrices
@@ -115,7 +115,7 @@ def theoretical_s_1(n: int, c: int) -> tuple[torch.Tensor, ...]:
     is1 = torch.ones(c, c, device=device)
 
     # Output statistics matrices
-    arange_c_plus1 = torch.arange(c + 1, device=device)
+    arange_c_plus1 = torch.arange(c + 1, dtype=torch.double, device=device)
     va_im = arange_c_plus1**2
     va_im[-1] = c * (c - 1) // 2
     v1_im = arange_c_plus1
@@ -1508,6 +1508,19 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_init(self, bias):
         self.assertIsInstance(self.demo_modules[bias]["add"], LinearMergeGrowingModule)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_parameters(self, bias):
+        self.assertEqual(self.demo_modules[bias]["add"].input_volume, 3)
+        self.assertEqual(self.demo_modules[bias]["add"].output_volume, 3)
+        self.assertEqual(
+            self.demo_modules[bias]["add"].input_volume,
+            self.demo_modules[bias]["prev"].output_volume,
+        )
+        self.assertEqual(
+            self.demo_modules[bias]["add"].output_volume,
+            self.demo_modules[bias]["next"].input_volume,
+        )
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_input_storage(self, bias):
