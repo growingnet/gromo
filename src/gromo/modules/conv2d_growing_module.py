@@ -36,7 +36,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self._input_volume = input_volume
         if isinstance(input_size, int):
             input_size = (input_size, input_size)
-        self.input_size = input_size
+        self.input_size: tuple[int, int] = input_size
         if isinstance(next_kernel_size, int):
             next_kernel_size = (next_kernel_size, next_kernel_size)
         self.kernel_size: tuple[int, int] = next_kernel_size

@@ -72,6 +72,7 @@ class TensorStatistic:
     def __str__(self):
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
+    @torch.no_grad()
     def update(self, **kwargs):
         assert (
             not self._shape or self._tensor is not None

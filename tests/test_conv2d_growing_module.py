@@ -89,6 +89,12 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # input_volume with previous modules present delegates to previous.output_volume
         self.assertEqual(m.input_volume, self.prev.output_volume)
 
+        # If no previous modules -> warning and -1
+        m.previous_modules = []
+        m.input_size = None
+        with self.assertWarns(UserWarning):
+            self.assertEqual(m.input_volume, -1)
+
     def test_input_volume_with_explicit_value(self):
         """Test input_volume when _input_volume is explicitly set."""
         m = self.merge
@@ -199,6 +205,18 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         )
         with self.assertRaises(AssertionError):
             m.set_previous_modules([bad_prev2])
+
+        # Output volume mismatch -> ValueError
+        bad_prev3 = Conv2dGrowingModule(
+            in_channels=1,
+            out_channels=self.merge_in_channels,
+            kernel_size=self.kernel_size,
+            padding=(1, 1),
+            input_size=self.input_hw,
+            device=global_device(),
+        )
+        with self.assertRaises(ValueError):
+            m.set_previous_modules([bad_prev3])
 
     def test_set_next_modules_assertions_and_side_effects(self):
         """Test set_next_modules assertions and side-effects on connected conv modules."""
