@@ -4,7 +4,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
+from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_mlp import Perceptron
+from gromo.modules.linear_growing_module import (
+    LinearGrowingModule,
+    LinearMergeGrowingModule,
+)
 
 
 # Create synthetic data
@@ -135,6 +140,21 @@ class TestGrowingContainer(unittest.TestCase):
                     f"reset_computation was not called on the growing layer for {tensor_name}",
                 )
 
+    def test_compute_optimal_delta(self):
+        gather_statistics(self.dataloader, self.model, self.loss)
+        self.model.compute_optimal_delta()
+
+        for layer in self.model._growing_layers:
+            # Check if the optimal updates are computed
+            self.assertTrue(
+                hasattr(layer, "optimal_delta_layer"),
+                "compute_optimal_updates was not called on the growing layer",
+            )
+            self.assertTrue(
+                hasattr(layer, "parameter_update_decrease"),
+                "compute_optimal_updates was not called on the growing layer",
+            )
+
     def test_compute_optimal_updates(self):
         gather_statistics(self.dataloader, self.model, self.loss)
         self.model.compute_optimal_updates()
@@ -261,6 +281,51 @@ class TestGrowingContainer(unittest.TestCase):
             self.model.number_of_parameters(),
             theoretical_number_of_param,
             "Number of parameters is incorrect",
+        )
+
+    def test_update_size(self):
+        class TestContainer(GrowingContainer):
+            def __init__(self, in_features, out_features):
+                super().__init__(in_features=in_features, out_features=out_features)
+                self.linear1 = LinearGrowingModule(
+                    in_features=self.in_features, out_features=self.out_features
+                )
+                self.linear2 = LinearGrowingModule(
+                    in_features=self.in_features, out_features=self.out_features
+                )
+                self.merge = LinearMergeGrowingModule(
+                    in_features=self.out_features,
+                    previous_modules=[self.linear1, self.linear2],
+                )
+                self.linear1.next_module = self.merge
+                self.linear2.next_module = self.merge
+                self.set_growing_layers()
+
+            def set_growing_layers(self):
+                self._growing_layers = [self.linear1, self.linear2, self.merge]
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                x1 = self.linear1(x)
+                x2 = self.linear2(x)
+                return self.merge(x1 + x2)
+
+        container = TestContainer(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        assumed_total_in_features = (self.in_features + 1) * 2
+        self.assertEqual(container.merge.total_in_features, assumed_total_in_features)
+        self.assertEqual(
+            container.merge.previous_tensor_s._shape,
+            (assumed_total_in_features, assumed_total_in_features),
+        )
+
+        container.linear1.in_features += 5
+        container.update_size()
+        assumed_total_in_features += 5
+        self.assertEqual(container.merge.total_in_features, assumed_total_in_features)
+        self.assertEqual(
+            container.merge.previous_tensor_s._shape,
+            (assumed_total_in_features, assumed_total_in_features),
         )
 
 

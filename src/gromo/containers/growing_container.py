@@ -22,7 +22,7 @@ class GrowingContainer(torch.nn.Module):
         self._growing_layers = list()
         self.currently_updated_layer_index = None
 
-    def set_growing_layers(self):
+    def set_growing_layers(self) -> None:
         """
         Reference all growable layers of the model in the _growing_layers private attribute. This method should be implemented
         in the child class and called in the __init__ method.
@@ -37,31 +37,53 @@ class GrowingContainer(torch.nn.Module):
         """Extended forward pass through the network"""
         raise NotImplementedError
 
-    def init_computation(self):
+    def init_computation(self) -> None:
         """Initialize statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.init_computation()
 
-    def update_computation(self):
+    def update_computation(self) -> None:
         """Update statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.update_computation()
 
-    def reset_computation(self):
+    def reset_computation(self) -> None:
         """Reset statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
                 layer.reset_computation()
 
-    def compute_optimal_updates(self, *args, **kwargs):
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        force_pseudo_inverse: bool = False,
+    ) -> None:
+        """Compute optimal delta for growth procedure
+
+        Parameters
+        ----------
+        update : bool, optional
+            update the optimal delta layer attribute and the first order decrease, by default True
+        force_pseudo_inverse : bool, optional
+            use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible, by default False
+        """
+        for layer in self._growing_layers:
+            if isinstance(layer, (GrowingModule, MergeGrowingModule, GrowingContainer)):
+                layer.compute_optimal_delta(
+                    update=update,
+                    force_pseudo_inverse=force_pseudo_inverse,
+                )
+
+    def compute_optimal_updates(self, *args, **kwargs) -> None:
         """Compute optimal updates for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, GrowingContainer)):
                 layer.compute_optimal_updates(*args, **kwargs)
 
-    def select_best_update(self):
+    def select_best_update(self) -> None:
         """Select the best update for growth procedure"""
         first_order_improvements = [
             layer.first_order_improvement for layer in self._growing_layers
@@ -90,12 +112,12 @@ class GrowingContainer(torch.nn.Module):
         return self.currently_updated_layer_index
 
     @property
-    def currently_updated_layer(self):
+    def currently_updated_layer(self) -> GrowingModule:
         """Get the currently updated layer"""
         assert self.currently_updated_layer_index is not None, "No layer to update"
         return self._growing_layers[self.currently_updated_layer_index]
 
-    def apply_change(self):
+    def apply_change(self) -> None:
         """Apply changes to the model"""
         assert self.currently_updated_layer is not None, "No layer to update"
         self.currently_updated_layer.apply_change()
@@ -112,3 +134,9 @@ class GrowingContainer(torch.nn.Module):
             Number of parameters.
         """
         return sum(p.numel() for p in self.parameters())
+
+    def update_size(self) -> None:
+        """Update sizes of the individual modules"""
+        for layer in self._growing_layers:
+            if isinstance(layer, (MergeGrowingModule, GrowingContainer)):
+                layer.update_size()

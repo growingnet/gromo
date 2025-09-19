@@ -22,11 +22,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         device: torch.device | None = None,
         name: str = None,
     ) -> None:
-        device = device if device is not None else global_device()
         self.use_bias = True
         self.total_in_features: int = -1
         self.in_features = in_features
-        self.out_features = in_features
         # TODO: check if we can automatically get the input shape
         super(LinearMergeGrowingModule, self).__init__(
             post_merge_function=post_merge_function,
@@ -40,6 +38,18 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             device=device,
             name=name,
         )
+
+    @property
+    def out_features(self) -> int:
+        return self.in_features
+
+    @property
+    def input_volume(self) -> int:
+        return self.in_features
+
+    @property
+    def output_volume(self) -> int:
+        return self.in_features
 
     def set_next_modules(
         self, next_modules: list["MergeGrowingModule | GrowingModule"]
@@ -85,14 +95,17 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         self.previous_modules = previous_modules if previous_modules else []
         self.total_in_features = 0
         for module in self.previous_modules:
-            if not isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
-                raise TypeError("The previous modules must be LinearGrowingModule.")
-            if module.out_features != self.in_features:
-                raise ValueError(
-                    "The input features must match the output features of the previous modules."
+            if not isinstance(module, (LinearGrowingModule, MergeGrowingModule)):
+                raise TypeError(
+                    "The previous modules must be LinearGrowingModule instances or MergeGrowingModule)."
                 )
-            self.total_in_features += module.in_features
-            self.total_in_features += module.use_bias
+            if module.output_volume != self.in_features:
+                raise ValueError(
+                    "The input features must match the output volume of the previous modules."
+                )
+            if isinstance(module, LinearGrowingModule):
+                self.total_in_features += module.in_features
+                self.total_in_features += module.use_bias
         if self.total_in_features > 0:
             self.previous_tensor_s = TensorStatistic(
                 (
@@ -140,17 +153,15 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         for (
             module
         ) in self.previous_modules:  # FIXME: what if a previous module is a merge
-            if module.use_bias:
-                full_activity[:, current_index : current_index + module.in_features] = (
-                    module.input
-                )
-                # full_activity[:, current_index + module.in_features] = 1
-                current_index += module.in_features + 1
-            else:
-                full_activity[:, current_index : current_index + module.in_features] = (
-                    module.input
-                )
-                current_index += module.in_features
+            if isinstance(module, MergeGrowingModule):
+                continue
+                # module_input = torch.flatten(module.construct_full_activity(), 1)
+            module_input = torch.flatten(module.input, 1)
+            module_features = module_input.shape[1]
+            full_activity[:, current_index : current_index + module_features] = (
+                module_input
+            )
+            current_index += module_features + int(module.use_bias)
         return full_activity
 
     def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
@@ -244,7 +255,6 @@ class LinearGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        device = device if device is not None else global_device()
         super(LinearGrowingModule, self).__init__(
             layer=torch.nn.Linear(
                 in_features, out_features, bias=use_bias, device=device
