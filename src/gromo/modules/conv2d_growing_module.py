@@ -493,9 +493,17 @@ class Conv2dGrowingModule(GrowingModule):
 
     @property
     def input_size(self) -> tuple[int, int]:
-        self.update_input_size()
+        if self._input_size is None:
+            self.update_input_size()
         assert self._input_size is not None, "The input size should have been set."
         return self._input_size
+
+    @input_size.setter
+    def input_size(self, value: tuple[int, int] | None) -> None:
+        if value is not None:
+            self.update_input_size(value)
+        else:
+            self._input_size = None
 
     def update_computation(self) -> None:
         """
