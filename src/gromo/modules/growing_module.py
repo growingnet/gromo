@@ -851,7 +851,10 @@ class GrowingModule(torch.nn.Module):
         return activity, supplementary_activity
 
     def update_input_size(
-        self, input_size: tuple[int, ...] | None = None, **kwargs
+        self,
+        input_size: tuple[int, ...] | None = None,
+        compute_from_previous: bool = False,
+        force_update: bool = True,
     ) -> tuple[int, ...] | None:
         """
         Update the input size of the layer. Either according to the parameter or the input currently stored.
@@ -860,8 +863,12 @@ class GrowingModule(torch.nn.Module):
         ----------
         input_size: tuple[int, ...] | None
             new input size
-        **kwargs
-            additional arguments for specific layers
+        compute_from_previous: bool
+            whether to compute the input size from the previous module
+            assuming its output size won't be affected by the post-layer function
+        force_update: bool
+            whether to force the update even if the input size is already set
+            (_input_size is not None)
 
         Returns
         -------
