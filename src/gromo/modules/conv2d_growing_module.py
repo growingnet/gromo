@@ -59,7 +59,7 @@ class Conv2dGrowingModule(GrowingModule):
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
-        input_size: tuple[int, int] = (-1, -1),
+        input_size: tuple[int, int] | None = None,
         # groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
@@ -102,9 +102,10 @@ class Conv2dGrowingModule(GrowingModule):
             device=device,
             name=name,
         )
+        self.layer: torch.nn.Conv2d
         self.kernel_size = self.layer.kernel_size
 
-        self.input_size: tuple[int, int] = input_size
+        self._input_size: tuple[int, int] | None = input_size
         self.use_bias = use_bias
 
     # Information functions
@@ -468,21 +469,33 @@ class Conv2dGrowingModule(GrowingModule):
         if input_size is not None:
             new_size = input_size
         elif self.store_input and self.input is not None:
-            new_size = self.input.shape[-2:]
-        elif self.previous_module and self.previous_module.input_size != (-1, -1):
+            new_size = tuple(self.input.shape[-2:])
+            assert (
+                isinstance(new_size, tuple) and len(new_size) == 2
+            ), f"The input size should be a tuple of two integers, but got {new_size=}."
+        elif self.previous_module and self.previous_module.input_size is not None:
             new_size = compute_output_shape_conv(
                 self.previous_module.input_size, self.previous_module.layer
             )
         else:
             raise AssertionError(f"Unable to compute the input size for {self.name}.")
 
-        if self.input_size != (-1, -1) and new_size != self.input_size:
+        if self._input_size is not None and new_size != self._input_size:
             warn(
-                f"The input size of the layer {self.name} has changed from {self.input_size} to {new_size}."
+                f"The input size of the layer {self.name} has changed from {self._input_size} to {new_size}."
                 f"This may lead to errors if the size of the tensor statistics "
                 f"and of the mask tensor T are not updated."
             )
-        self.input_size = new_size
+        self._input_size = new_size
+        assert (
+            isinstance(self._input_size, tuple) and len(self._input_size) == 2
+        ), f"The input size should be a tuple of two integers, but got {self._input_size=}."
+
+    @property
+    def input_size(self) -> tuple[int, int]:
+        self.update_input_size()
+        assert self._input_size is not None, "The input size should have been set."
+        return self._input_size
 
     def update_computation(self) -> None:
         """
@@ -505,7 +518,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
-        input_size: tuple[int, int] = (-1, -1),
+        input_size: tuple[int, int] | None = None,
         # groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
@@ -901,7 +914,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
-        input_size: tuple[int, int] = (-1, -1),
+        input_size: tuple[int, int] | None = None,
         # groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
@@ -947,10 +960,6 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         torch.Tensor
             mask tensor T
         """
-        assert self.input_size != (-1, -1), (
-            f"The input size should be set before computing the mask tensor T "
-            f"for {self.name}."
-        )
         self.layer: torch.nn.Conv2d  # CHECK: why do we need to specify the type here?
         if self._mask_tensor_t is None:
             self._mask_tensor_t = compute_mask_tensor_t(self.input_size, self.layer).to(
