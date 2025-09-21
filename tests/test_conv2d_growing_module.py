@@ -520,7 +520,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 loss.backward()
 
                 demo_couple[0].update_input_size()
-                demo_couple[1].update_input_size()
+                demo_couple[1].update_input_size(compute_from_previous=True)
                 demo_couple[1].tensor_m_prev.update()
 
                 self.assertEqual(

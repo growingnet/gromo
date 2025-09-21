@@ -457,7 +457,12 @@ class Conv2dGrowingModule(GrowingModule):
                     f"yet for {type(self.previous_module)} as previous module."
                 )
 
-    def update_input_size(self, input_size: tuple[int, int] | None = None) -> None:
+    def update_input_size(
+        self,
+        input_size: tuple[int, int] | None = None,
+        compute_from_previous: bool = False,
+        force_update: bool = True,
+    ) -> tuple[int, int] | None:
         """
         Update the input size of the layer. Either according to the parameter or the input currently stored.
 
@@ -465,20 +470,42 @@ class Conv2dGrowingModule(GrowingModule):
         ----------
         input_size: tuple[int, int] | None
             new input size
+        compute_from_previous: bool
+            whether to compute the input size from the previous module
+            assuming its output size won't be affected by the post-layer function
+        force_update: bool
+            whether to force the update even if the input size is already set
+            (_input_size is not None)
+
+        Returns
+        -------
+        tuple[int, int] | None
+            updated input size if it could be computed, None otherwise
         """
         if input_size is not None:
             new_size = input_size
         elif self.store_input and self.input is not None:
-            new_size = tuple(self.input.shape[-2:])
+            new_size: tuple[int, ...] = tuple(self.input.shape[2:])
             assert (
-                isinstance(new_size, tuple) and len(new_size) == 2
+                len(new_size) == 2
             ), f"The input size should be a tuple of two integers, but got {new_size=}."
-        elif self.previous_module and self.previous_module.input_size is not None:
+        elif not force_update and self._input_size is not None:
+            return self._input_size
+        elif (
+            compute_from_previous
+            and self.previous_module
+            and self.previous_module.update_input_size(force_update=False) is not None
+        ):
+            # the last condition is to avoid having an error
+            # if the previous module cannot compute its input size
             new_size = compute_output_shape_conv(
                 self.previous_module.input_size, self.previous_module.layer
             )
+        elif not force_update:
+            # if we do not force the update and cannot compute it, just return the current value
+            return self._input_size
         else:
-            raise AssertionError(f"Unable to compute the input size for {self.name}.")
+            raise AssertionError(f"Unable to get the input size for {self.name}.")
 
         if self._input_size is not None and new_size != self._input_size:
             warn(
