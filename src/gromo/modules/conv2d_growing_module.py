@@ -459,7 +459,7 @@ class Conv2dGrowingModule(GrowingModule):
 
     def update_input_size(
         self,
-        input_size: tuple[int, int] | None = None,
+        input_size: tuple[int, int] | torch.Size | None = None,
         compute_from_previous: bool = False,
         force_update: bool = True,
     ) -> tuple[int, int] | None:
@@ -483,12 +483,9 @@ class Conv2dGrowingModule(GrowingModule):
             updated input size if it could be computed, None otherwise
         """
         if input_size is not None:
-            new_size = input_size
+            new_size = tuple(input_size)
         elif self.store_input and self.input is not None:
             new_size: tuple[int, ...] = tuple(self.input.shape[2:])
-            assert (
-                len(new_size) == 2
-            ), f"The input size should be a tuple of two integers, but got {new_size=}."
         elif not force_update and self._input_size is not None:
             return self._input_size
         elif compute_from_previous and self.previous_module:
@@ -511,6 +508,10 @@ class Conv2dGrowingModule(GrowingModule):
                 f"This may lead to errors if the size of the tensor statistics "
                 f"and of the mask tensor T are not updated."
             )
+
+        assert (
+            len(new_size) == 2
+        ), f"The input size should be a tuple of two integers, but got {new_size=}."
         self._input_size = new_size
         return self._input_size
 
