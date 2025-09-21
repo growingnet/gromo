@@ -487,23 +487,7 @@ class Conv2dGrowingModule(GrowingModule):
                 f"and of the mask tensor T are not updated."
             )
         self._input_size = new_size
-        assert (
-            isinstance(self._input_size, tuple) and len(self._input_size) == 2
-        ), f"The input size should be a tuple of two integers, but got {self._input_size=}."
-
-    @property
-    def input_size(self) -> tuple[int, int]:
-        if self._input_size is None:
-            self.update_input_size()
-        assert self._input_size is not None, "The input size should have been set."
         return self._input_size
-
-    @input_size.setter
-    def input_size(self, value: tuple[int, int] | None) -> None:
-        if value is not None:
-            self.update_input_size(value)
-        else:
-            self._input_size = None
 
     def update_computation(self) -> None:
         """
