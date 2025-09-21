@@ -488,19 +488,23 @@ class Conv2dGrowingModule(GrowingModule):
             new_size: tuple[int, ...] = tuple(self.input.shape[2:])
         elif not force_update and self._input_size is not None:
             return self._input_size
-        elif compute_from_previous and self.previous_module:
-            prev_input_size = self.previous_module.update_input_size(force_update=False)
+        elif (
+            compute_from_previous
+            and self.previous_module
+            and (
+                prev_input_size := self.previous_module.update_input_size(
+                    force_update=False
+                )
+            )
+        ):
             # we get it this way instead of self.previous_module.input_size
             # to avoid errors if the previous module input size can't be computed
-            if prev_input_size is not None:
-                new_size = compute_output_shape_conv(
-                    prev_input_size, self.previous_module.layer
-                )
-        elif not force_update:
-            # if we do not force the update and cannot compute it, just return the current value
-            return self._input_size
+            new_size = compute_output_shape_conv(
+                prev_input_size, self.previous_module.layer
+            )
         else:
-            raise AssertionError(f"Unable to get the input size for {self.name}.")
+            # if we cannot compute it, just return the current value
+            return self._input_size
 
         if self._input_size is not None and new_size != self._input_size:
             warn(
