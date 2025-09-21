@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Create a `input_size` property in GrowingModule. (:gh:`143` by `Théo Rudkiewicz`_)
 - Fix sign errors in `compute_optimal_added_parameters` when using `tensor_m_prev` and in `tensor_n` computation. Add unit tests to cover these cases (:gh:`118` and :gh:`115` by `Théo Rudkiewicz`_).
 - Makes flattening of input optional in GrowingMLP. Default value is True for backward compatibility (:gh:`108` by `Stéphane Rivaud`_).
 - Add the option to handle post layer function that need to grow like BatchNorm (:gh:`105` by `Théo Rudkiewicz`_).
