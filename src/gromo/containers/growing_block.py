@@ -279,7 +279,7 @@ class GrowingBlock(GrowingContainer):
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
-            use_projected_gradient=self.hidden_features > 0 or use_projected_gradient,
+            use_projected_gradient=self.hidden_features > 0 and use_projected_gradient,
             dtype=dtype,
             update_previous=True,
         )
