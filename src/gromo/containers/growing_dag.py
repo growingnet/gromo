@@ -426,7 +426,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 input_size = self.nodes[node].get("shape")
                 kernel_size = self.nodes[node]["kernel_size"]
                 input_volume = (
-                    in_channels * input_size * input_size
+                    in_channels * input_size[0] * input_size[1]
                     if input_size is not None
                     else None
                 )
@@ -1390,7 +1390,7 @@ class Expansion:
         added_in_features = (
             added_size * kernel_size[0] * kernel_size[1] + self.dag.use_bias
         )
-        input_shape = self.dag.input_shape**2
+        input_shape = self.dag.input_shape[0] * self.dag.input_shape[1]
         for next_node in self.next_nodes:
             next_node_module = self.dag.get_node_module(next_node)
             current_total_in_features = next_node_module.total_in_features

@@ -52,7 +52,7 @@ class GrowingGraphNetwork(GrowingContainer):
         use_bias: bool = True,
         use_batch_norm: bool = False,
         layer_type: str = "linear",
-        input_shape: int = None,
+        input_shape: tuple[int, int] = None,
         device: str | None = None,
     ) -> None:
         super(GrowingGraphNetwork, self).__init__(
@@ -471,7 +471,7 @@ class GrowingGraphNetwork(GrowingContainer):
         for prev_edge_module in node_module.previous_modules:
             # we do not need to change the _scaling_factor_next_module as it is
             # given as a parameter of _apply_output_changes
-            # prev_edge_module._scaling_factor_next_module = factor # Warning
+            prev_edge_module._scaling_factor_next_module[0] = factor  # Warning
             prev_edge_module._apply_output_changes(factor)
             # Delete activities
             prev_edge_module.delete_update(include_previous=False, include_output=True)
