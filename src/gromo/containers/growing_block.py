@@ -83,7 +83,7 @@ class GrowingBlock(GrowingContainer):
         self.activation_derivative = 1
 
     @property
-    def eigenvalues(self):
+    def eigenvalues_extension(self):
         return self.second_layer.eigenvalues_extension
 
     @property
@@ -250,6 +250,8 @@ class GrowingBlock(GrowingContainer):
         numerical_threshold: float = 1e-15,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
+        dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -262,6 +264,10 @@ class GrowingBlock(GrowingContainer):
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
+        dtype: torch.dtype
+            dtype for the computation of the optimal delta and added parameters
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
         """
         if self.hidden_features > 0:
             _, _, _ = self.second_layer.compute_optimal_delta()
@@ -273,7 +279,8 @@ class GrowingBlock(GrowingContainer):
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
-            use_projected_gradient=self.hidden_features > 0,
+            use_projected_gradient=self.hidden_features > 0 or use_projected_gradient,
+            dtype=dtype,
             update_previous=True,
         )
 
@@ -282,9 +289,11 @@ class GrowingBlock(GrowingContainer):
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
-        assert self.eigenvalues is not None, "No optimal added parameters computed."
+        assert (
+            self.eigenvalues_extension is not None
+        ), "No optimal added parameters computed."
         self.second_layer.apply_change()
-        self.hidden_features += self.eigenvalues.shape[0]
+        self.hidden_features += self.eigenvalues_extension.shape[0]
 
     def sub_select_optimal_added_parameters(
         self,
@@ -298,7 +307,9 @@ class GrowingBlock(GrowingContainer):
         keep_neurons: int
             number of neurons to keep
         """
-        assert self.eigenvalues is not None, "No optimal added parameters computed."
+        assert (
+            self.eigenvalues_extension is not None
+        ), "No optimal added parameters computed."
         self.second_layer.sub_select_optimal_added_parameters(keep_neurons)
 
     @property
