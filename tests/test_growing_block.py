@@ -844,10 +844,10 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Verify updates were computed
         self.assertIsNotNone(block.first_layer.extended_output_layer)
         self.assertIsNotNone(block.second_layer.extended_input_layer)
-        self.assertIsNotNone(block.eigenvalues)
+        self.assertIsNotNone(block.eigenvalues_extension)
         assert isinstance(block.first_layer.extended_output_layer, torch.nn.Linear)
         assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
-        assert isinstance(block.eigenvalues, torch.Tensor)
+        assert isinstance(block.eigenvalues_extension, torch.Tensor)
 
         # Step 5: Reset computation
         block.reset_computation()
@@ -874,12 +874,12 @@ class TestLinearGrowingBlock(TorchTestCase):
         )  # Should be positive improvement
 
         # Step 9: Sub select new neurons
-        num_neurons_to_keep = min(1, block.eigenvalues.shape[0])
+        num_neurons_to_keep = min(1, block.eigenvalues_extension.shape[0])
 
         block.sub_select_optimal_added_parameters(num_neurons_to_keep)
 
         # Verify sub-selection
-        self.assertEqual(block.eigenvalues.shape[0], num_neurons_to_keep)
+        self.assertEqual(block.eigenvalues_extension.shape[0], num_neurons_to_keep)
         self.assertEqual(
             block.first_layer.extended_output_layer.out_features,
             num_neurons_to_keep,
@@ -957,7 +957,7 @@ class TestLinearGrowingBlock(TorchTestCase):
             block.first_layer.optimal_delta_layer,
             block.first_layer.extended_output_layer,
             block.first_layer.extended_input_layer,
-            block.eigenvalues,
+            block.eigenvalues_extension,
         ]
         for obj in deleted_objects:
             self.assertIsNone(obj)
@@ -1055,13 +1055,13 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         # Step 7: Check that no new neurons are proposed
         # Since the block is already optimal (identity), eigenvalues should be very small or zero
-        self.assertIsNotNone(block.eigenvalues)
-        assert isinstance(block.eigenvalues, torch.Tensor)
+        self.assertIsNotNone(block.eigenvalues_extension)
+        assert isinstance(block.eigenvalues_extension, torch.Tensor)
 
         # All eigenvalues should be very small (ideally zero) since no improvement is possible
         self.assertTrue(
-            torch.all(torch.abs(block.eigenvalues) < 1e-3),
-            f"Eigenvalues should be very small for optimal block, got {block.eigenvalues}",
+            torch.all(torch.abs(block.eigenvalues_extension) < 1e-3),
+            f"Eigenvalues should be very small for optimal block, got {block.eigenvalues_extension}",
         )
 
         # Step 9: Set scaling factor to 1
@@ -1085,7 +1085,7 @@ class TestLinearGrowingBlock(TorchTestCase):
             block.first_layer.optimal_delta_layer,
             block.first_layer.extended_output_layer,
             block.first_layer.extended_input_layer,
-            block.eigenvalues,
+            block.eigenvalues_extension,
         ]
         for obj in deleted_objects:
             self.assertIsNone(obj)
