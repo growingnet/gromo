@@ -571,7 +571,7 @@ class GrowingModule(torch.nn.Module):
 
         self._input: torch.Tensor | None = None
         self._pre_activity: torch.Tensor | None = None
-        # self._activity = None
+        self._input_size: tuple[int, ...] | None = None
 
         self._tensor_s = TensorStatistic(
             tensor_s_shape,
@@ -849,6 +849,50 @@ class GrowingModule(torch.nn.Module):
         activity = self.post_layer_function(pre_activity)
 
         return activity, supplementary_activity
+
+    def update_input_size(
+        self,
+        input_size: tuple[int, ...] | None = None,
+        compute_from_previous: bool = False,
+        force_update: bool = True,
+    ) -> tuple[int, ...] | None:
+        """
+        Update the input size of the layer. Either according to the parameter or the input currently stored.
+
+        Parameters
+        ----------
+        input_size: tuple[int, ...] | None
+            new input size
+        compute_from_previous: bool
+            whether to compute the input size from the previous module
+            assuming its output size won't be affected by the post-layer function
+        force_update: bool
+            whether to force the update even if the input size is already set
+            (_input_size is not None)
+
+        Returns
+        -------
+        tuple[int, ...] | None
+            updated input size if it could be computed, None otherwise
+        """
+        raise NotImplementedError
+
+    @property
+    def input_size(self) -> tuple[int, ...]:
+        if self._input_size is None:
+            self.update_input_size()
+            if self._input_size is None:
+                raise ValueError(
+                    f"The input size of the layer {self.name} is not defined."
+                )
+        return self._input_size
+
+    @input_size.setter
+    def input_size(self, value: tuple[int, ...] | None) -> None:
+        if value is not None:
+            self.update_input_size(value)
+        else:
+            self._input_size = None
 
     @property
     def input(self) -> torch.Tensor:
