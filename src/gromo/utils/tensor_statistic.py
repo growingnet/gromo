@@ -197,8 +197,8 @@ class TensorStatisticWithError(TensorStatistic):
             else:
                 self._tensor += update
     
-            # if np.random.rand() < 0.1:
-            #     warn("Warning this code has been poorly reviewed")
+            if np.random.rand() < 0.1:
+                warn("Warning this code has been poorly reviewed")
             
             self._batches += 1
             self.samples += nb_sample
