@@ -906,39 +906,42 @@ class TestConv2dGrowingModule(TorchTestCase):
         self.assertLess(loss.item(), 1e-3)
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
-    def test_update_input_size(self, bias: bool):
+    def test_input_size(self, bias: bool):
         demo_layer = self.bias_demos[bias]
 
         # error
-        with self.assertRaises(AssertionError):
-            demo_layer.update_input_size()
+        with self.assertRaises(ValueError):
+            demo_layer.input_size
+
+        # no error but get None
+        self.assertIsNone(demo_layer.update_input_size(force_update=False))
 
         # automatic setting
         demo_layer.store_input = True
         demo_layer(self.input_x)
 
-        demo_layer.update_input_size()
         self.assertEqual(demo_layer.input_size, (10, 10))
 
         # manual
         with self.assertWarns(Warning):
-            demo_layer.update_input_size((7, 7))
+            demo_layer.input_size = (7, 7)
 
         self.assertEqual(demo_layer.input_size, (7, 7))
 
-    def test_input_volume_property(self):
-        """Test the input_volume property calculation for Conv2dGrowingModule - covers line 557."""
-        demo = Conv2dGrowingModule(
-            in_channels=2,
-            out_channels=7,
-            kernel_size=(3, 5),
-            input_size=(7, 11),
-            device=global_device(),
-        )
+        demo_layer.input_size = None
+        self.assertIsNone(demo_layer._input_size)
 
-        # Test input_volume calculation
-        expected_volume = 2 * 7 * 11  # in_channels * input_size[0] * input_size[1]
-        self.assertEqual(demo.input_volume, expected_volume)
+    def test_input_size_with_recursive_calls(self):
+        demo_couple: tuple[Conv2dGrowingModule, Conv2dGrowingModule] = self.demo_couple[
+            False
+        ]
+        demo_in, demo_out = demo_couple
+
+        demo_in.input_size = self.input_x.shape[2:]
+        y = demo_in(self.input_x)
+        self.assertEqual(demo_in.input_size, self.input_x.shape[2:])
+        demo_out.update_input_size(compute_from_previous=True)
+        self.assertEqual(demo_out.input_size, y.shape[2:])
 
 
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
@@ -1030,7 +1033,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         )
 
     def test_mask_tensor_t(self):
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             _ = self.demo.mask_tensor_t
 
         hin, win = 11, 13
@@ -1077,7 +1080,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 loss.backward()
 
                 demo_couple[0].update_input_size()
-                demo_couple[1].update_input_size()
+                demo_couple[1].update_input_size(compute_from_previous=True)
                 demo_couple[1].tensor_m_prev.update()
 
                 self.assertEqual(
