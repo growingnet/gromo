@@ -1,5 +1,4 @@
 import random
-import unittest
 from unittest.mock import MagicMock, patch
 
 import torch
@@ -17,14 +16,16 @@ from gromo.utils.utils import (
     line_search,
     mini_batch_gradient_descent,
     reset_device,
+    safe_forward,
     set_device,
     set_from_conf,
     torch_ones,
     torch_zeros,
 )
+from tests.torch_unittest import TorchTestCase
 
 
-class TestUtils(unittest.TestCase):
+class TestUtils(TorchTestCase):
     @classmethod
     def setUpClass(cls):
         """Set up available devices for testing"""
@@ -346,6 +347,75 @@ class TestUtils(unittest.TestCase):
         self.assertGreater(f1_macro_score, 0.0)
         self.assertLess(f1_macro_score, 1.0)
 
+    def test_safe_forward(self) -> None:
+        """Test safe_forward function for Linear layers with various input configurations."""
+        # Test on each available device
+        for device_name in self.available_devices:
+            with self.subTest(device=device_name):
+                set_device(device_name)
+                device = global_device()
+
+                # Test normal case with non-zero features
+                in_features = 5
+                out_features = 3
+                batch_size = 4
+
+                # Create a mock linear layer
+                linear_layer = nn.Linear(in_features, out_features, device=device)
+
+                # Test normal forward pass
+                input_tensor = torch.randn(batch_size, in_features, device=device)
+                output = safe_forward(linear_layer, input_tensor)
+
+                self.assertShapeEqual(output, (batch_size, out_features))
+                # Compare with normal linear forward
+                expected_output = torch.nn.functional.linear(
+                    input_tensor, linear_layer.weight, linear_layer.bias
+                )
+                self.assertAllClose(output, expected_output)
+
+                # Test with zero input features (edge case)
+                zero_in_features = 0
+                zero_linear = nn.Linear(zero_in_features, out_features, device=device)
+                zero_input = torch.empty(batch_size, zero_in_features, device=device)
+
+                zero_output = safe_forward(zero_linear, zero_input)
+                self.assertShapeEqual(zero_output, (batch_size, out_features))
+                # Should return zeros with requires_grad=True
+                self.assertTrue(torch.all(zero_output == 0))
+                self.assertTrue(zero_output.requires_grad)
+
+                # Test input shape mismatch (should raise AssertionError)
+                wrong_input = torch.randn(batch_size, in_features + 1, device=device)
+                with self.assertRaises(AssertionError) as context:
+                    safe_forward(linear_layer, wrong_input)
+
+                self.assertIn("Input shape", str(context.exception))
+                self.assertIn("must match the input feature size", str(context.exception))
+
+                # Test with different batch dimensions
+                input_3d = torch.randn(2, 3, in_features, device=device)
+                output_3d = safe_forward(linear_layer, input_3d)
+                self.assertShapeEqual(output_3d, (2, 3, out_features))
+
+                # Test with single sample
+                input_single = torch.randn(1, in_features, device=device)
+                output_single = safe_forward(linear_layer, input_single)
+                self.assertShapeEqual(output_single, (1, out_features))
+
+                # Test without bias
+                linear_no_bias = nn.Linear(
+                    in_features, out_features, bias=False, device=device
+                )
+                output_no_bias = safe_forward(linear_no_bias, input_tensor)
+                self.assertShapeEqual(output_no_bias, (batch_size, out_features))
+                expected_no_bias = torch.nn.functional.linear(
+                    input_tensor, linear_no_bias.weight, None
+                )
+                self.assertAllClose(output_no_bias, expected_no_bias)
+
 
 if __name__ == "__main__":
-    unittest.main()
+    from unittest import main
+
+    main()
