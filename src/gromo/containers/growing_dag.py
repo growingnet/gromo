@@ -75,7 +75,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.update_nodes(self.nodes, node_attributes)
         self.update_edges(edges, edge_attributes, zero_weights=False)
         self.update_connections(edges)
-        self.id_last_node_added = max(len(node_attributes.keys()) - 2, 0)
 
     def init_computation(self):
         for node_module in self.get_all_node_modules():
@@ -358,7 +357,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             new_edges, edge_attributes=edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(new_edges)
-        self.id_last_node_added += 1
 
     def remove_direct_edge(self, prev_node: str, next_node: str) -> None:
         """Remove direct edge from graph
@@ -819,7 +817,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
 
         one_hop_edges = []
-        new_node = str(self.id_last_node_added + 1)
+        new_node = str(len(self.nodes) - 1)
         for prev_node, succ in successors.items():
             for next_node in succ:
                 if not self._indirect_connection_exists(prev_node, next_node):
