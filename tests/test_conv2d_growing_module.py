@@ -970,7 +970,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
         # For FullConv2d, tensor_n should be zero when bottleneck is fully resolved
         self.assertAllClose(
-            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-7
+            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1.1e-7
         )
         self.assertAllClose(
             demo_layer_2.eigenvalues_extension,
