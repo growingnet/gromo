@@ -1,6 +1,8 @@
 from unittest import TestCase, main
+
 import torch
 from torch.utils.data import DataLoader, TensorDataset
+
 from gromo.utils.tensor_statistic import TensorStatistic, TensorStatisticWithError
 from gromo.utils.utils import reset_device, set_device
 
@@ -50,51 +52,59 @@ class TestTensorStatistic(TestCase):
     def tearDown(self) -> None:
         reset_device()
 
+
 class TestTensorStatisticWithError(TestTensorStatistic):
-    
+
     def test_error(self):
         set_device("cuda" if torch.cuda.is_available() else "cpu")
-        
+
         num_batches = 100
         batch_size = 10
         total_samples = num_batches * batch_size
-        mean = torch.tensor([3.0, 4.0])  
-        cov = torch.tensor([[1.0, 0.5],   
-                            [0.5, 2.0]])
-        
+        mean = torch.tensor([3.0, 4.0])
+        cov = torch.tensor([[1.0, 0.5], [0.5, 2.0]])
+
         torch.manual_seed(42)
         dist = torch.distributions.MultivariateNormal(mean, covariance_matrix=cov)
         samples = dist.sample((total_samples,))
         dataloader = DataLoader(samples, batch_size=batch_size, shuffle=False)
-        
+
         mean_statistic = TensorStatisticWithError(
             shape=None,
             update_function=lambda x: (x.sum(dim=0), x.size(0)),
             name="Mean with Error",
         )
-        
+
         self.assertRaises(AssertionError, mean_statistic.error)
 
         for batch in dataloader:
             mean_statistic.updated = False
             mean_statistic.update(x=batch)
-        
+
         self.assertTrue(mean_statistic.samples == num_batches * batch_size)
-        true_error = torch.norm(mean_statistic() - mean).item()**2
-        self.assertTrue(true_error < mean_statistic.error()*2) # this test pass most of the time, but can fail due to randomness (if no seed is set)
+        true_error = torch.norm(mean_statistic() - mean).item() ** 2
+        self.assertTrue(
+            true_error < mean_statistic.error() * 2
+        )  # this test pass most of the time, but can fail due to randomness (if no seed is set)
 
         cov_statistic = TensorStatisticWithError(
             shape=None,
-            update_function=lambda x: ((x - mean_statistic()).T @ (x - mean_statistic()), x.size(0)),
-            name = "Covariance with Error",
+            update_function=lambda x: (
+                (x - mean_statistic()).T @ (x - mean_statistic()),
+                x.size(0),
+            ),
+            name="Covariance with Error",
         )
-        
+
         for batch in dataloader:
             cov_statistic.updated = False
             cov_statistic.update(x=batch)
-        
-        true_error = torch.norm(cov_statistic() - cov).item()**2
-        self.assertTrue(true_error < cov_statistic.error()*2) # this test pass most of the time, but can fail due to randomness (if no seed is set)
+
+        true_error = torch.norm(cov_statistic() - cov).item() ** 2
+        self.assertTrue(
+            true_error < cov_statistic.error() * 2
+        )  # this test pass most of the time, but can fail due to randomness (if no seed is set)
+
 
 if __name__ == "__main__":
     main()
