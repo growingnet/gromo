@@ -600,6 +600,40 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         super().remove_node(node)
         self._get_ancestors(self.root)
 
+    def rename_nodes(self, mapping: dict) -> None:
+        """Rename nodes in the graph.
+
+        Parameters
+        ----------
+        mapping : dict
+            A dictionary mapping old node names to new node names.
+        """
+        # nx.relabel_nodes(self, mapping, copy=True)
+        for old_name, new_name in mapping.items():
+            if (new_name == old_name) or (old_name not in self.nodes):
+                continue
+            if new_name in self.nodes:
+                raise ValueError(
+                    f"New node name '{new_name}' already exists in the graph."
+                )
+            # Move successors
+            self._succ[new_name] = self._succ.pop(old_name)
+            # Update predecessors of successors
+            for succ in self._succ[new_name]:
+                self._pred[succ][new_name] = self._pred[succ].pop(old_name)
+
+            # Move predecessors
+            self._pred[new_name] = self._pred.pop(old_name)
+            # Update successors of predecessors
+            for pred in self._pred[new_name]:
+                self._succ[pred][new_name] = self._succ[pred].pop(old_name)
+
+            # Move node attributes
+            self._node[new_name] = self._node.pop(old_name)
+
+        # Update ancestors
+        self._get_ancestors(self.root)
+
     def is_empty(self) -> bool:
         return nx.is_empty(self)
 
