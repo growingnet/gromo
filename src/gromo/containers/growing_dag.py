@@ -259,6 +259,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         return [self.get_node_module(node) for node in nodes]
 
+    def get_all_edge_modules(self) -> list[GrowingModule]:
+        """Getter function for all modules attached to edges
+
+        Returns
+        -------
+        list[GrowingModule]
+            list of modules for all existing edges
+        """
+        return self.get_edge_modules(list(self.edges))
+
     def get_all_node_modules(self) -> list[MergeGrowingModule]:
         """Getter function for all modules attached to nodes
 
