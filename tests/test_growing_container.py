@@ -4,7 +4,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from gromo.containers.growing_mlp import Perceptron
+from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.growing_mlp import GrowingMLP, Perceptron
+from gromo.modules.linear_growing_module import (
+    LinearGrowingModule,
+    LinearMergeGrowingModule,
+)
 
 
 # Create synthetic data
@@ -47,10 +52,11 @@ class TestGrowingContainer(unittest.TestCase):
 
         # Create a simple perceptron model
         self.hidden_features = 4
-        self.model = Perceptron(
+        self.model = GrowingMLP(
             in_features=self.in_features,
             out_features=self.out_features,
-            hidden_feature=self.hidden_features,
+            hidden_size=self.hidden_features,
+            number_hidden_layers=3,
             device=torch.device("cpu"),
         )
         self.loss = nn.MSELoss()
@@ -134,6 +140,21 @@ class TestGrowingContainer(unittest.TestCase):
                     getattr(layer, tensor_name)._tensor,
                     f"reset_computation was not called on the growing layer for {tensor_name}",
                 )
+
+    def test_compute_optimal_delta(self):
+        gather_statistics(self.dataloader, self.model, self.loss)
+        self.model.compute_optimal_delta()
+
+        for layer in self.model._growing_layers:
+            # Check if the optimal updates are computed
+            self.assertTrue(
+                hasattr(layer, "optimal_delta_layer"),
+                "compute_optimal_updates was not called on the growing layer",
+            )
+            self.assertTrue(
+                hasattr(layer, "parameter_update_decrease"),
+                "compute_optimal_updates was not called on the growing layer",
+            )
 
     def test_compute_optimal_updates(self):
         gather_statistics(self.dataloader, self.model, self.loss)
@@ -223,9 +244,16 @@ class TestGrowingContainer(unittest.TestCase):
             f"Currently updated layer index: {self.model.currently_updated_layer_index}",
         )
 
+        max_v = 0
+        max_i = -1
+        for i, layer in enumerate(self.model._growing_layers):
+            if layer.first_order_improvement > max_v:
+                max_v = layer.first_order_improvement
+                max_i = i
+
         # selecting the best update
         self.model.select_best_update()
-        self.check_update_selection(self.model, layer_index=0)  # only one layer
+        self.check_update_selection(self.model, layer_index=max_i)  # only one layer
 
     def test_select_update(self):
         # computing the optimal updates
@@ -257,10 +285,63 @@ class TestGrowingContainer(unittest.TestCase):
             + self.hidden_features * self.out_features
             + self.out_features
         )
+
+        model = Perceptron(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_feature=self.hidden_features,
+            device=torch.device("cpu"),
+        )
+
         self.assertEqual(
-            self.model.number_of_parameters(),
+            model.number_of_parameters(),
             theoretical_number_of_param,
             "Number of parameters is incorrect",
+        )
+
+    def test_update_size(self):
+        class TestContainer(GrowingContainer):
+            def __init__(self, in_features, out_features):
+                super().__init__(in_features=in_features, out_features=out_features)
+                self.linear1 = LinearGrowingModule(
+                    in_features=self.in_features, out_features=self.out_features
+                )
+                self.linear2 = LinearGrowingModule(
+                    in_features=self.in_features, out_features=self.out_features
+                )
+                self.merge = LinearMergeGrowingModule(
+                    in_features=self.out_features,
+                    previous_modules=[self.linear1, self.linear2],
+                )
+                self.linear1.next_module = self.merge
+                self.linear2.next_module = self.merge
+                self.set_growing_layers()
+
+            def set_growing_layers(self):
+                self._growing_layers = [self.linear1, self.linear2, self.merge]
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                x1 = self.linear1(x)
+                x2 = self.linear2(x)
+                return self.merge(x1 + x2)
+
+        container = TestContainer(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        assumed_total_in_features = (self.in_features + 1) * 2
+        self.assertEqual(container.merge.total_in_features, assumed_total_in_features)
+        self.assertEqual(
+            container.merge.previous_tensor_s._shape,
+            (assumed_total_in_features, assumed_total_in_features),
+        )
+
+        container.linear1.in_features += 5
+        container.update_size()
+        assumed_total_in_features += 5
+        self.assertEqual(container.merge.total_in_features, assumed_total_in_features)
+        self.assertEqual(
+            container.merge.previous_tensor_s._shape,
+            (assumed_total_in_features, assumed_total_in_features),
         )
 
 

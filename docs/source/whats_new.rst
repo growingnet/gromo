@@ -21,6 +21,8 @@ Enhancements
 ~~~~~~~~~~~~
 - Add `TensorStatisticWithError` and corresponding class `TestTensorStatisticWithError`. It computes an estimation of the quadratic error done when estimating the 
 given tensor statistic. Modify `TensorStatistic` so as not to need to call init (:gh:`146` by `Félix Houdouin`_). 
+- Create a `input_size` property in GrowingModule. (:gh:`143` by `Théo Rudkiewicz`_)
+- Improve `GrowingContainer` to allow `GrowingContainer` as submodules (:gh:`133` by `Théo Rudkiewicz`_ and `Stella Douka`_).
 - Fix sign errors in `compute_optimal_added_parameters` when using `tensor_m_prev` and in `tensor_n` computation. Add unit tests to cover these cases (:gh:`118` and :gh:`115` by `Théo Rudkiewicz`_).
 - Makes flattening of input optional in GrowingMLP. Default value is True for backward compatibility (:gh:`108` by `Stéphane Rivaud`_).
 - Add the option to handle post layer function that need to grow like BatchNorm (:gh:`105` by `Théo Rudkiewicz`_).
@@ -56,6 +58,7 @@ given tensor statistic. Modify `TensorStatistic` so as not to need to call init 
 Bugs
 ~~~~
 
+- Fix memory leak in tensor updates (:gh:`138` by `Stella Douka`_)
 - Device handling in GrowingMLP, GrowingMLPMixer, and GrowingResidualMLP (:gh:`129` by `Stella Douka`_)
 - Delete leftover activity tensors (:gh:`78` by `Stella Douka`_)
 - Fix inconsistency with torch.empty not creating empty tensors (:gh:`78` by `Stella Douka`_)
