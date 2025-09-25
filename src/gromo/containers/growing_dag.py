@@ -593,6 +593,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         self._get_ancestors(self.root)
 
+    def remove_node(self, node: str) -> None:
+        if node in self.nodes:
+            node_module = self.get_node_module(node)
+            node_module.__del__()
+        super().remove_node(node)
+        self._get_ancestors(self.root)
+
     def is_empty(self) -> bool:
         return nx.is_empty(self)
 
