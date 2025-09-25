@@ -1,4 +1,5 @@
 import copy
+import string
 import warnings
 from collections import deque
 from typing import Callable, Iterator, Mapping
@@ -416,6 +417,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 )
             else:
                 batch_norm = nn.Identity()
+            name = node.split("_")[0]
             if self.nodes[node]["type"] == "linear":
                 in_features = self.nodes[node]["size"]
                 self.__set_node_module(
@@ -428,7 +430,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                         ),
                         allow_growing=True,
                         device=self.device,
-                        name=f"{node}",
+                        name=f"{name}",
                     ),
                 )
             elif self.nodes[node]["type"] == "convolution":
@@ -453,7 +455,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                         ),
                         allow_growing=True,
                         device=self.device,
-                        name=f"{node}",
+                        name=f"{name}",
                     ),
                 )
             else:
@@ -477,6 +479,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             set the weights to zero, by default False
         """
         for prev_node, next_node in edges:
+            name = f"{prev_node.split('_')[0]}_{next_node.split('_')[0]}"
+
             if edge_attributes.get("constant"):
                 self.__set_edge_module(
                     prev_node,
@@ -499,7 +503,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     out_features=self.nodes[next_node]["size"],
                     use_bias=edge_attributes.get("use_bias", self.use_bias),
                     device=self.device,
-                    name=f"L{prev_node}_{next_node}",
+                    name=f"L{name}",
                 )
                 if zero_weights:
                     new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
@@ -528,7 +532,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     use_bias=edge_attributes.get("use_bias", self.use_bias),
                     # allow_growing=True,
                     device=self.device,
-                    name=f"C{prev_node}_{next_node}",
+                    name=f"C{name}",
                 )
             elif (
                 self.nodes[prev_node]["type"] == "convolution"
@@ -540,7 +544,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     out_features=self.nodes[next_node]["size"],
                     use_bias=edge_attributes.get("use_bias", self.use_bias),
                     device=self.device,
-                    name=f"L{prev_node}_{next_node}",
+                    name=f"L{name}",
                 )
                 if zero_weights:
                     new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
@@ -903,9 +907,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             actions.append(expansion)
 
         # All possible one-hop connections
-        for attr in one_hop_edges:
+        for i, attr in enumerate(one_hop_edges):
             previous_node = attr.get("previous_node")
-            new_node = attr.get("new_node")
+            new_node = f"{attr.get('new_node')}_{string.ascii_lowercase[i]}"
             next_node = attr.get("next_node")
             node_attributes = attr.get("node_attributes", {})
             edge_attributes = attr.get("edge_attributes", {})
@@ -1310,7 +1314,7 @@ class Expansion:
         elif self.type == "new node":
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
-            return [n for n in self.dag.predecessors(self.expanding_node)]
+            return [n for n in self.dag.predecessors(self.expanding_node) if "_" not in n]
 
     @property
     def next_nodes(self) -> list[str] | str:
@@ -1319,7 +1323,7 @@ class Expansion:
         elif self.type == "new node":
             return [self.next_node]  # type: ignore
         else:
-            return [n for n in self.dag.successors(self.expanding_node)]
+            return [n for n in self.dag.successors(self.expanding_node) if "_" not in n]
 
     @property
     def new_edges(self) -> list[tuple] | tuple:
@@ -1331,9 +1335,17 @@ class Expansion:
                 (self.expanding_node, self.next_node),
             ]
         else:
-            new_edges = [in_edge for in_edge in self.dag.in_edges(self.expanding_node)]
+            new_edges = [
+                in_edge
+                for in_edge in self.dag.in_edges(self.expanding_node)
+                if "_" not in in_edge[0]
+            ]
             new_edges.extend(
-                [out_edge for out_edge in self.dag.out_edges(self.expanding_node)]
+                [
+                    out_edge
+                    for out_edge in self.dag.out_edges(self.expanding_node)
+                    if "_" not in out_edge[1]
+                ]
             )
             return new_edges
 
