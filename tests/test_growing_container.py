@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.containers.growing_mlp import Perceptron
+from gromo.containers.growing_mlp import GrowingMLP, Perceptron
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -52,10 +52,11 @@ class TestGrowingContainer(unittest.TestCase):
 
         # Create a simple perceptron model
         self.hidden_features = 4
-        self.model = Perceptron(
+        self.model = GrowingMLP(
             in_features=self.in_features,
             out_features=self.out_features,
-            hidden_feature=self.hidden_features,
+            hidden_size=self.hidden_features,
+            number_hidden_layers=3,
             device=torch.device("cpu"),
         )
         self.loss = nn.MSELoss()
@@ -243,9 +244,16 @@ class TestGrowingContainer(unittest.TestCase):
             f"Currently updated layer index: {self.model.currently_updated_layer_index}",
         )
 
+        max_v = 0
+        max_i = -1
+        for i, layer in enumerate(self.model._growing_layers):
+            if layer.first_order_improvement > max_v:
+                max_v = layer.first_order_improvement
+                max_i = i
+
         # selecting the best update
         self.model.select_best_update()
-        self.check_update_selection(self.model, layer_index=0)  # only one layer
+        self.check_update_selection(self.model, layer_index=max_i)  # only one layer
 
     def test_select_update(self):
         # computing the optimal updates
@@ -277,8 +285,16 @@ class TestGrowingContainer(unittest.TestCase):
             + self.hidden_features * self.out_features
             + self.out_features
         )
+
+        model = Perceptron(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_feature=self.hidden_features,
+            device=torch.device("cpu"),
+        )
+
         self.assertEqual(
-            self.model.number_of_parameters(),
+            model.number_of_parameters(),
             theoretical_number_of_param,
             "Number of parameters is incorrect",
         )

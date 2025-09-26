@@ -1497,7 +1497,7 @@ class Expansion:
             return new_edges
 
     def expand(self) -> None:
-        """Create new edge or node on a copy of the enclosed GrowingDAG"""
+        """Create new edge or node on the enclosed GrowingDAG"""
         if self.type == "new edge":
             self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
             self.dag.toggle_edge_candidate(
