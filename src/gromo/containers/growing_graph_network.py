@@ -19,7 +19,11 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
-from gromo.utils.utils import evaluate_dataset, line_search, mini_batch_gradient_descent
+from gromo.utils.utils import (
+    evaluate_extended_dataset,
+    line_search,
+    mini_batch_gradient_descent,
+)
 
 
 class GrowingGraphNetwork(GrowingContainer):
@@ -751,14 +755,22 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
             # Evaluate
-            acc_train, loss_train = evaluate_dataset(
-                expansion.dag, train_dataloader, loss_fn=self.loss_fn
+            mask = {
+                "nodes": [expansion.expanding_node],
+                "edges": (
+                    [expansion.new_edges]
+                    if expansion.type == "new edge"
+                    else expansion.new_edges
+                ),
+            }
+            acc_train, loss_train = evaluate_extended_dataset(
+                self.dag, train_dataloader, loss_fn=self.loss_fn, mask=mask
             )
-            acc_dev, loss_dev = evaluate_dataset(
-                expansion.dag, dev_dataloader, loss_fn=self.loss_fn
+            acc_dev, loss_dev = evaluate_extended_dataset(
+                self.dag, dev_dataloader, loss_fn=self.loss_fn, mask=mask
             )
-            acc_val, loss_val = evaluate_dataset(
-                expansion.dag, val_dataloader, loss_fn=self.loss_fn
+            acc_val, loss_val = evaluate_extended_dataset(
+                self.dag, val_dataloader, loss_fn=self.loss_fn, mask=mask
             )
 
             # TODO: return all info instead of saving

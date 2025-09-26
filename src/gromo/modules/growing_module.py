@@ -847,7 +847,12 @@ class GrowingModule(torch.nn.Module):
         return self.post_layer_function(pre_activity)
 
     def extended_forward(
-        self, x: torch.Tensor, x_ext: torch.Tensor | None = None
+        self,
+        x: torch.Tensor,
+        x_ext: torch.Tensor | None = None,
+        use_optimal_delta: bool = True,
+        use_extended_input: bool = True,
+        use_extended_output: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Forward pass of the module with layer extension and layer update scaled
@@ -863,6 +868,12 @@ class GrowingModule(torch.nn.Module):
             input tensor
         x_ext: torch.Tensor | None
             extension tensor
+        use_optimal_delta: bool, optional
+            if True, use the optimal delta layer, default True
+        use_extended_input: bool, optional
+            if True, use the extended input layer, default True
+        use_extended_output: bool, optional
+            if True, use the extended output layer, default True
 
         Returns
         -------
@@ -875,24 +886,25 @@ class GrowingModule(torch.nn.Module):
         linear_factor = self.scaling_factor**2 * torch.sign(self.scaling_factor)
         sqrt_factor = self.scaling_factor
 
-        if self.optimal_delta_layer is not None:
+        if self.optimal_delta_layer is not None and use_optimal_delta:
             pre_activity -= linear_factor * self.optimal_delta_layer(x)
 
-        if self.extended_input_layer:
-            if x_ext is None:
-                raise ValueError(
-                    f"x_ext must be provided got None for {self.name}."
-                    f"As the input is extended, an extension is needed."
-                )
-            pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
-        else:
-            if x_ext is not None:  # TODO: and is not empty
-                warnings.warn(
-                    f"x_ext must be None got {x_ext} for {self.name}. As the input is not extended, no extension is needed.",
-                    UserWarning,
-                )
+        if use_extended_input:
+            if self.extended_input_layer:
+                if x_ext is None:
+                    raise ValueError(
+                        f"x_ext must be provided got None for {self.name}."
+                        f"As the input is extended, an extension is needed."
+                    )
+                pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
+            else:
+                if x_ext is not None:  # TODO: and is not empty
+                    warnings.warn(
+                        f"x_ext must be None got {x_ext} for {self.name}. As the input is not extended, no extension is needed.",
+                        UserWarning,
+                    )
 
-        if self.extended_output_layer:
+        if self.extended_output_layer and use_extended_output:
             supplementary_pre_activity = (
                 self._scaling_factor_next_module * self.extended_output_layer(x)
             )
