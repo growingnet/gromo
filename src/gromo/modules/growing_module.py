@@ -297,10 +297,6 @@ class MergeGrowingModule(torch.nn.Module):
         """
         Delete the update of the optimal added parameters.
         """
-        self.optimal_delta_layer = None
-        self.extended_input_layer = None
-        self.parameter_update_decrease = None
-        self.eigenvalues_extension = None
         self.activity = None
         self.input = None
 
@@ -308,7 +304,7 @@ class MergeGrowingModule(torch.nn.Module):
             for previous_module in self.previous_modules:
                 if isinstance(previous_module, GrowingModule):
                     previous_module.delete_update(
-                        include_previous=False, include_output=True
+                        include_previous=False, delete_output=True
                     )
 
     def compute_optimal_delta(
@@ -1647,7 +1643,9 @@ class GrowingModule(torch.nn.Module):
     def delete_update(
         self,
         include_previous: bool = True,
-        include_output: bool = False,
+        delete_delta: bool = True,
+        delete_input: bool = True,
+        delete_output: bool = False,
     ) -> None:
         """
         Delete the updates of the layer:
@@ -1659,13 +1657,25 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        include_previous: bool
-            if True delete the extended_output_layer of the previous layer
-        include_output: bool
-            if True delete the extended_output_layer of this layer,
+        include_previous : bool, optional
+            delete the extended_output_layer of the previous layer, by default True
+        delete_delta : bool, optional
+            delete the optimal_delta_layer of the module, by default True
+        delete_input : bool, optional
+            delete the extended_input_layer of this module, by default True
+        delete_output : bool, optional
+            delete the extended_output_layer of this layer, by default False
             warning: this does not delete the extended_input_layer of the next layer
+
+        Raises
+        ------
+        NotImplementedError
+            raised when include_previous is True and the previous module is of type MergeGrowingModule
+        TypeError
+            raised when the previous module is not of type GrowingModule or MergeGrowingModule
         """
-        self.optimal_delta_layer = None
+        if delete_delta:
+            self.optimal_delta_layer = None
         self.scaling_factor = 0.0  # type: ignore
         # this type problem is due to the use of the setter to change the scaling factor
         self.parameter_update_decrease = None
@@ -1674,11 +1684,11 @@ class GrowingModule(torch.nn.Module):
         self._input = None
 
         # delete extended_output_layer
-        if include_output:
+        if delete_output:
             self.extended_output_layer = None
 
         # delete previous module extended_output_layer
-        if self.extended_input_layer is not None:
+        if self.extended_input_layer is not None and delete_input:
             # delete extended_input_layer
             self.extended_input_layer = None
             if self.previous_module is not None:
