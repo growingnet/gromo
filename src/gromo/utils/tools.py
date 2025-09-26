@@ -400,6 +400,9 @@ def apply_border_effect_on_unfolded(
     assert isinstance(border_effect_conv, torch.nn.Conv2d) or isinstance(
         identity_conv, torch.nn.Conv2d
     ), "Either 'border_effect_conv' or 'identity_conv' must be provided."
+    assert all(
+        isinstance(s, int) and s > 0 for s in original_size
+    ), "'original_size' must be a tuple of positive integers."
 
     if identity_conv is None:
         assert isinstance(

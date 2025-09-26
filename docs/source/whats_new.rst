@@ -21,6 +21,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Add `GrowingBlock` to mimic a ResNet 18/34 block. (:gh:`106` by `Théo Rudkiewicz`_)
+- fix(RestrictedConv2dGrowingModule.bordered_unfolded_extended_prev_input): Use the correct input size to compute the border effect of the convolution. (:gh:`147` by `Théo Rudkiewicz`_)
 - Create a `input_size` property in GrowingModule. (:gh:`143` by `Théo Rudkiewicz`_)
 - Improve `GrowingContainer` to allow `GrowingContainer` as submodules (:gh:`133` by `Théo Rudkiewicz`_ and `Stella Douka`_).
 - Fix sign errors in `compute_optimal_added_parameters` when using `tensor_m_prev` and in `tensor_n` computation. Add unit tests to cover these cases (:gh:`118` and :gh:`115` by `Théo Rudkiewicz`_).
@@ -33,6 +34,7 @@ Enhancements
 - Implement systematic test coverage improvement initiative achieving 92% → 95% overall coverage through 4-phase strategic enhancement targeting critical modules: utils.py (80% → 96%), tools.py (78% → 98%), and growing_module.py (92% → 94%). Added 27 comprehensive test methods covering multi-device compatibility, error handling paths, mathematical algorithm edge cases, and abstract class testing via concrete implementations (:gh:`113` by `Stéphane Rivaud`_).
 - Fix the `tensor_n` computation in `RestrictedConv2dGrowingModule` (:gh:`103` by `Théo Rudkiewicz`_).
 - Add `GrowingBatchNorm1d` and `GrowingBatchNorm2d` modules to support batch normalization in growing networks (:gh:`101` by `Théo Rudkiewicz`_).
+- Implemented Conv2dMergeGrowingModule and added support for computing number of parameters in Conv2dGrowingModule (:gh:`94` by `Stella Douka`_)
 - Optimize RestrictedConv2dGrowingModule to fasten the simulation of the side effect of a convolution (:gh:`99` by `Théo Rudkiewicz`_).
 - Split Conv2dGrowingModule into two subclass `FullConv2dGrowingModule`(that does the same as the previous class) and  `RestrictedConv2dGrowingModule` (that compute only the best 1x1 convolution as the second layer at growth time) (:gh:`92` by `Théo Rudkiewicz`_).
 - Code factorization of methods `compute_optimal_added_parameters` and `compute_optimal_delta` that are now abstracted in the `GrowingModule` class. (:gh:`87` by `Théo Rudkiewicz`_).
@@ -77,6 +79,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)
 - Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)
 - Added support for configuration files that override default class arguments (:gh:`38` by `Stella Douka`_)
 

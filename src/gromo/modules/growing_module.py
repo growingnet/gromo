@@ -19,12 +19,12 @@ class MergeGrowingModule(torch.nn.Module):
     def __init__(
         self,
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list["MergeGrowingModule | GrowingModule"] = None,
-        next_modules: list["MergeGrowingModule | GrowingModule"] = None,
+        previous_modules: list["MergeGrowingModule | GrowingModule"] | None = None,
+        next_modules: list["MergeGrowingModule | GrowingModule"] | None = None,
         allow_growing: bool = False,
-        tensor_s_shape: tuple[int, int] = None,
+        tensor_s_shape: tuple[int, int] | None = None,
         device: torch.device | None = None,
-        name: str = None,
+        name: str | None = None,
     ) -> None:
 
         super(MergeGrowingModule, self).__init__()
@@ -62,6 +62,14 @@ class MergeGrowingModule(torch.nn.Module):
         self.set_previous_modules(previous_modules)
         self.next_modules: list[MergeGrowingModule | GrowingModule] = []
         self.set_next_modules(next_modules)
+
+    @property
+    def input_volume(self) -> int:
+        raise NotImplementedError
+
+    @property
+    def output_volume(self) -> int:
+        raise NotImplementedError
 
     @property
     def number_of_successors(self):
@@ -251,9 +259,10 @@ class MergeGrowingModule(torch.nn.Module):
         """
         self.store_input = True
         self.store_activity = True
+        self.tensor_s.init()
         for module in self.previous_modules:
             module.store_input = True
-        self.tensor_s.init()
+            module.store_pre_activity = True
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.init()
         if self.previous_tensor_m is not None:
@@ -275,9 +284,10 @@ class MergeGrowingModule(torch.nn.Module):
         """
         self.store_input = False
         self.store_activity = False
+        self.tensor_s.reset()
         for module in self.previous_modules:
             module.store_input = False
-        self.tensor_s.reset()
+            module.store_pre_activity = False
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.reset()
         if self.previous_tensor_m is not None:
@@ -293,7 +303,13 @@ class MergeGrowingModule(torch.nn.Module):
         self.eigenvalues_extension = None
         self.activity = None
         self.input = None
-        # TODO: include_previous
+
+        if include_previous:
+            for previous_module in self.previous_modules:
+                if isinstance(previous_module, GrowingModule):
+                    previous_module.delete_update(
+                        include_previous=False, include_output=True
+                    )
 
     def compute_optimal_delta(
         self,
@@ -348,6 +364,8 @@ class MergeGrowingModule(torch.nn.Module):
         deltas = []
         current_index = 0
         for module in self.previous_modules:
+            if isinstance(module, MergeGrowingModule):
+                continue
             delta_w = delta[:, current_index : current_index + module.in_features]
             if module.use_bias:
                 delta_b = delta[:, current_index + module.in_features]
@@ -358,6 +376,17 @@ class MergeGrowingModule(torch.nn.Module):
             delta_w = delta_w.reshape(*module.weight.shape)
             if update:
                 module.optimal_delta_layer = module.layer_of_tensor(delta_w, delta_b)
+            # elif isinstance(module, MergeGrowingModule):
+            #     if update:
+            #         if module.post_merge_function.is_non_linear():
+            #             warnings.warn(
+            #                 f"The previous module {module.name} is a MergeGrowingModule with a non-linear post merge function. "
+            #                 f"The optimal delta may not be accurate.",
+            #                 UserWarning,
+            #             )
+            #         else:
+            #             module.set_optimal_delta_layers(delta_w, delta_b)
+
             if return_deltas:
                 deltas.append((delta_w, delta_b))
 
@@ -375,7 +404,6 @@ class MergeGrowingModule(torch.nn.Module):
         if len(self.previous_modules) > 0:
             new_size = self.previous_modules[0].out_features
             self.in_features = new_size
-            self.out_features = new_size
         self.total_in_features = self.sum_in_features(with_bias=True)
 
         if self.total_in_features > 0:
@@ -422,10 +450,16 @@ class MergeGrowingModule(torch.nn.Module):
             sum of previous in_features
         """
         if with_bias:
-            return np.sum(
-                [module.in_features + module.use_bias for module in self.previous_modules]
+            return sum(
+                module.in_features + module.use_bias
+                for module in self.previous_modules
+                if not isinstance(module, MergeGrowingModule)
             )
-        return np.sum([module.in_features for module in self.previous_modules])
+        return sum(
+            module.in_features
+            for module in self.previous_modules
+            if not isinstance(module, MergeGrowingModule)
+        )
 
     def sum_out_features(self) -> int:
         """Count total out_features of next modules
@@ -530,6 +564,7 @@ class GrowingModule(torch.nn.Module):
         self.device = get_correct_device(self, device)
 
         self.layer: torch.nn.Module = layer.to(self.device)
+        # TODO: don't allow non-linearity if prev module is merge
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
         if extended_post_layer_function is None:
             self.extended_post_layer_function = self.post_layer_function
@@ -622,6 +657,15 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"C({self.name})",
         )
+
+    # Parameters
+    @property
+    def input_volume(self) -> int:
+        return self.layer.in_features
+
+    @property
+    def output_volume(self) -> int:
+        return self.layer.out_features
 
     # Information functions
     @property
@@ -1588,7 +1632,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.init()
             self.tensor_s_growth.init()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.init_computation()
         else:
             raise NotImplementedError
 
@@ -1605,7 +1649,7 @@ class GrowingModule(torch.nn.Module):
             self.cross_covariance.update()
             self.tensor_s_growth.update()
         elif isinstance(self.previous_module, MergeGrowingModule):
-            raise NotImplementedError  # TODO
+            self.previous_module.update_computation()
         else:
             raise NotImplementedError
 
@@ -1623,6 +1667,10 @@ class GrowingModule(torch.nn.Module):
             self.tensor_m_prev.reset()
             self.cross_covariance.reset()
             self.tensor_s_growth.reset()
+        elif isinstance(self.previous_module, MergeGrowingModule):
+            self.previous_module.reset_computation()
+        else:
+            raise NotImplementedError
 
     def delete_update(
         self,
