@@ -1119,7 +1119,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             print()
         return output[self.end]
 
-    def extended_forward(self, x: torch.Tensor, verbose: bool = False) -> torch.Tensor:
+    def extended_forward(
+        self, x: torch.Tensor, verbose: bool = False, mask: dict = {}
+    ) -> torch.Tensor:
         """Extended forward function for DAG model
 
         Parameters
@@ -1128,6 +1130,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             input tensor
         verbose : bool, optional
             print info, by default False
+        mask : dict, optional
+            extension mask for specific nodes and edges, by default {}
+            example: mask["edges"] for edges and mask["nodes"] for nodes
 
         Returns
         -------
@@ -1138,14 +1143,35 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             print("\nExtended Forward DAG...")
         output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, None)}
         for node in nx.topological_sort(self):
+            # Check if node is a candidate node and is not present in the mask
+            if self.is_node_candidate(node) and node not in mask.get("nodes"):
+                continue
             if verbose:
                 print(f"{node=}")
             for previous_node in self.predecessors(node):
+                # Check if previous_node is a candidate node and is not present in the mask
+                if self.is_node_candidate(
+                    previous_node
+                ) and previous_node not in mask.get("nodes"):
+                    continue
+                # Check if (previous_node, node) is a candidate edge and is not present in the mask
+                if self.is_edge_candidate(previous_node, node) and (
+                    previous_node,
+                    node,
+                ) not in mask.get("edges"):
+                    continue
                 module = self.get_edge_module(previous_node, node)
                 if verbose:
                     print("\t-->", module.name, module)
                 module_input = output[previous_node]
-                activity, activity_ext = module.extended_forward(*module_input)
+                # Perform extended_forward on the edge layer
+                # if node in mask extend the output, if previous_node in mask extend the input
+                activity, activity_ext = module.extended_forward(
+                    *module_input,
+                    use_optimal_delta=True,
+                    use_extended_input=previous_node in mask.get("nodes"),
+                    use_extended_output=node in mask.get("nodes"),
+                )
                 # activity_ext = (
                 #     activity_ext
                 #     if activity_ext is not None
