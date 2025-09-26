@@ -179,7 +179,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         prev_node : str
             incoming node of edge
         next_node : str
-            outgoing module of edge
+            outgoing node of edge
         module : GrowingModule
             growable module to set to edge
         """
@@ -196,6 +196,84 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             growable module to set to node
         """
         self.nodes[node]["module"] = module
+
+    def toggle_edge_candidate(
+        self, prev_node: str, next_node: str, candidate: bool
+    ) -> None:
+        """Toggle the candidate attribute of an edge
+
+        Parameters
+        ----------
+        prev_node : str
+            incoming node of edge
+        next_node : str
+            outgoing node of edge
+        candidate : bool
+            candidate value
+
+        Raises
+        ------
+        ValueError
+            raised if the edge does not exist
+        """
+        if prev_node is None or next_node is None:
+            return
+        if (prev_node, next_node) not in self.edges:
+            raise ValueError(
+                f"Edge ({prev_node}, {next_node}) is not present in the graph"
+            )
+        self[prev_node][next_node]["candidate"] = candidate
+
+    def toggle_node_candidate(self, node: str, candidate: bool) -> None:
+        """Toggle the candidate attribute of a node
+
+        Parameters
+        ----------
+        node : str
+            specified node name
+        candidate : bool
+            candidate value
+
+        Raises
+        ------
+        ValueError
+            raised if the node does not exist
+        """
+        if node not in self.nodes:
+            raise ValueError(f"Node {node} is not present in the graph")
+        self.nodes[node]["candidate"] = candidate
+
+    def is_edge_candidate(self, prev_node: str, next_node: str) -> bool:
+        """Know if an edge is a candidate edge
+
+        Parameters
+        ----------
+        prev_node : str
+            incoming node of edge
+        next_node : str
+            outgoing node of edge
+
+        Returns
+        -------
+        bool
+            candidate attribute
+        """
+        return self[prev_node][next_node].get("candidate", False)
+
+    def is_node_candidate(self, node: str) -> bool:
+        """Know if a node is a candidate node
+
+        Parameters
+        ----------
+        node : str
+            specified node name
+
+        Returns
+        -------
+        bool
+            candidate attribute
+        """
+        return self.nodes[node].get("candidate", False)
 
     def get_edge_module(self, prev_node: str, next_node: str) -> GrowingModule:
         """Getter function for module of edge
@@ -1349,7 +1427,11 @@ class Expansion:
         elif self.type == "new node":
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
-            return [n for n in self.dag.predecessors(self.expanding_node) if "_" not in n]
+            return [
+                n
+                for n in self.dag.predecessors(self.expanding_node)
+                if not self.dag.is_node_candidate(n)
+            ]
 
     @property
     def next_nodes(self) -> list[str] | str:
@@ -1358,7 +1440,11 @@ class Expansion:
         elif self.type == "new node":
             return [self.next_node]  # type: ignore
         else:
-            return [n for n in self.dag.successors(self.expanding_node) if "_" not in n]
+            return [
+                n
+                for n in self.dag.successors(self.expanding_node)
+                if not self.dag.is_node_candidate(n)
+            ]
 
     @property
     def new_edges(self) -> list[tuple] | tuple:
@@ -1373,13 +1459,13 @@ class Expansion:
             new_edges = [
                 in_edge
                 for in_edge in self.dag.in_edges(self.expanding_node)
-                if "_" not in in_edge[0]
+                if not self.dag.is_node_candidate(in_edge[0])
             ]
             new_edges.extend(
                 [
                     out_edge
                     for out_edge in self.dag.out_edges(self.expanding_node)
-                    if "_" not in out_edge[1]
+                    if not self.dag.is_node_candidate(out_edge[1])
                 ]
             )
             return new_edges
@@ -1388,8 +1474,12 @@ class Expansion:
         """Create new edge or node on a copy of the enclosed GrowingDAG"""
         if self.type == "new edge":
             self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
+            self.dag.toggle_edge_candidate(
+                self.previous_node, self.next_node, candidate=True
+            )
         elif self.type == "new node":
             self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes, zero_weights=True)  # type: ignore
+            self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
 
     def update_growth_history(
         self,
