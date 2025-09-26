@@ -458,11 +458,13 @@ class GrowingGraphNetwork(GrowingContainer):
 
         if amplitude_factor:
             # Find amplitude factor that minimizes the overall loss
+            mask = {"nodes": [expansion.expanding_node]}
             factor = self.find_amplitude_factor(
                 net=self.dag,
                 dataloader=dataloader,
                 node_module=node_module,
                 next_node_modules=next_node_modules,
+                mask=mask,
             )
         else:
             factor = 1
@@ -492,7 +494,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         # TODO FUTURE : Save updates to return
 
-        return loss_history
+        return loss_history, factor
 
     def update_edge_weights(
         self,
@@ -593,6 +595,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 net=self.dag,
                 dataloader=dataloader,
                 node_module=next_node_module,
+                mask={"edges": [(expansion.previous_node, expansion.next_node)]},
             )
         else:
             factor = 1.0
@@ -612,14 +615,15 @@ class GrowingGraphNetwork(GrowingContainer):
         # there is no layer extension recorded
         # next_node_module.update_size()
 
-        return loss_history
+        return loss_history, factor
 
     def find_amplitude_factor(
         self,
-        net: GrowingDAG,
+        net: GrowingContainer,
         dataloader: DataLoader,
         node_module: LinearMergeGrowingModule,
         next_node_modules: list[LinearMergeGrowingModule] = None,
+        mask: dict = {},
     ) -> float:
         """Find amplitude factor with line search
 
@@ -633,6 +637,9 @@ class GrowingGraphNetwork(GrowingContainer):
             node module to be extended or node module at the end of the edge in case of single edge
         next_node_modules : list[LinearMergeGrowingModule], optional
             next node modules of module to be extended, leave empty in case of single edge, by default None
+        mask : dict, optional
+            extension mask for specific nodes and edges, by default {}
+            example: mask["edges"] for edges and mask["nodes"] for nodes
 
         Returns
         -------
@@ -654,7 +661,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 for x, y in dataloader:
                     x = x.to(self.device)
                     y = y.to(self.device)
-                    pred = net.extended_forward(x)
+                    pred = net.extended_forward(x, mask=mask)
                     loss.append(self.loss_fn(pred, y).item())
 
             return np.mean(loss).item()
@@ -714,7 +721,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weight of next_node's incoming edge
-                bott_loss_history = self.update_edge_weights(
+                bott_loss_history, factor = self.update_edge_weights(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
@@ -734,7 +741,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weights of new edges
-                bott_loss_history = self.expand_node(
+                bott_loss_history, factor = self.expand_node(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
@@ -755,6 +762,7 @@ class GrowingGraphNetwork(GrowingContainer):
             )
 
             # TODO: return all info instead of saving
+            expansion.metrics["scaling_factor"] = factor
             expansion.metrics["loss_bott"] = bott_loss_history[-1]
             expansion.metrics["loss_train"] = loss_train
             expansion.metrics["loss_dev"] = loss_dev
