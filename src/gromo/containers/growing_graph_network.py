@@ -837,11 +837,11 @@ class GrowingGraphNetwork(GrowingContainer):
         # Greedy choice based on validation loss
         selection = {}
         if use_bic:
-            for index, expansion in enumerate(options):
-                selection[index] = expansion.metrics["BIC"]
+            for index, option in enumerate(options):
+                selection[index] = option.metrics["BIC"]
         else:
-            for index, expansion in enumerate(options):
-                selection[index] = expansion.metrics["loss_val"]
+            for index, option in enumerate(options):
+                selection[index] = option.metrics["loss_val"]
 
         best_ind = min(selection.items(), key=operator.itemgetter(1))[0]
 
@@ -850,9 +850,61 @@ class GrowingGraphNetwork(GrowingContainer):
 
         # Reconstruct graph
         best_option = options[best_ind]
-        del options  # TODO: memory freed?
 
-        self.dag = copy.copy(best_option.dag)
+        # Make selected nodes and edges non candidate
+        self.dag.toggle_node_candidate(best_option.expanding_node, candidate=False)
+        self.dag.toggle_edge_candidate(
+            best_option.previous_node, best_option.next_node, candidate=False
+        )
+
+        # Update size of expanded node
+        self.dag.nodes[best_option.expanding_node]["size"] += self.neurons
+
+        # Discard unused edges or nodes
+        for index, option in enumerate(options):
+            if index != best_ind:
+                if option.type == "new edge":
+                    self.dag.remove_edge(option.previous_node, option.next_node)
+                elif option.type == "new node":
+                    self.dag.remove_node(option.expanding_node)
+        del options
+
+        # Delete updates based on mask
+        for prev_node, next_node in self.dag.edges:
+            if prev_node == best_option.expanding_node:
+                delete_input = False
+                delete_output = True
+            elif next_node == best_option.expanding_node:
+                delete_input = True
+                delete_output = False
+            else:
+                delete_input = True
+                delete_output = True
+
+            edge_module = self.dag.get_edge_module(prev_node, next_node)
+            edge_module.delete_update(
+                include_previous=False,
+                delete_delta=False,
+                delete_input=delete_input,
+                delete_output=delete_output,
+            )
+
+            # Apply changes
+            factor = best_option.metrics["scaling_factor"]
+            edge_module.scaling_factor = factor
+            edge_module._scaling_factor_next_module[0] = factor
+            edge_module.apply_change(scaling_factor=factor, apply_previous=False)
+            if not delete_output:
+                edge_module._apply_output_changes(
+                    scaling_factor=factor, extension_size=self.neurons
+                )
+
+        # Rename new node to standard name
+        self.dag.rename_nodes(
+            {best_option.expanding_node: best_option.expanding_node.split("_")[0]}
+        )
+
+        # Transfer metrics
         self.growth_history = copy.copy(best_option.growth_history)
         self.growth_loss_train = best_option.metrics["loss_train"]
         self.growth_loss_dev = best_option.metrics["loss_dev"]
