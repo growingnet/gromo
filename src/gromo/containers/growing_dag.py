@@ -1610,18 +1610,6 @@ class Expansion:
 
         return has_enough_memory
 
-    def discard(self) -> None:
-        """Discard the enclosed GrowingDAG to free memory"""
-        if "dag" in self.__dict__:
-            del self.dag
-            del self.growth_history
-
-    def __del__(self) -> None:
-        if "dag" in self.__dict__:
-            del self.dag
-            del self.growth_history
-            del self.metrics
-
     def __repr__(self) -> str:
         if self.type == "new edge":
             return f"[Expansion]: New edge from {self.previous_node} to {self.next_node}"

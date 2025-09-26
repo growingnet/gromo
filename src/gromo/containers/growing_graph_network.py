@@ -478,23 +478,10 @@ class GrowingGraphNetwork(GrowingContainer):
             # we do not need to change the _scaling_factor_next_module as it is
             # given as a parameter of _apply_output_changes
             prev_edge_module._scaling_factor_next_module[0] = factor  # Warning
-            prev_edge_module._apply_output_changes(factor)
-            # Delete activities
-            prev_edge_module.delete_update(include_previous=False, include_output=True)
 
         for next_node_module in next_node_modules:
             for parallel_module in next_node_module.previous_modules:
                 parallel_module.scaling_factor = factor
-                parallel_module.apply_change(apply_previous=False)
-                # Delete activities
-                parallel_module.delete_update(include_previous=False)
-            # Delete activities
-            next_node_module.delete_update()
-
-        node_module.delete_update()
-
-        # Update size
-        expansion.dag.nodes[expansion.expanding_node]["size"] += self.neurons
 
         # TODO FUTURE : Save updates to return
 
@@ -607,17 +594,6 @@ class GrowingGraphNetwork(GrowingContainer):
         # TODO: Apply existing weight updates to the rest of the edges, or all at once
         for edge in next_node_module.previous_modules:
             edge.scaling_factor = factor
-            edge.apply_change(apply_previous=False)
-            edge.reset_computation()
-            edge.delete_update(include_previous=False, include_output=True)
-
-        # next_node_module.reset_computation()
-        next_node_module.delete_update()
-
-        # Important to update size of next merge module!
-        # It cannot happen automatically because
-        # there is no layer extension recorded
-        # next_node_module.update_size()
 
         return loss_history, factor
 
