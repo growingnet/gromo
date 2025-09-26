@@ -1,3 +1,4 @@
+import types
 from warnings import warn
 
 import torch
@@ -75,6 +76,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def in_features(self) -> int:
+        return self.in_channels
+
+    @property
+    def out_features(self) -> int:
         return self.in_channels
 
     @property
@@ -238,14 +243,14 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                 raise TypeError("The previous modules must be Conv2dGrowingModule.")
 
         # Then check kernel size constraints for all Conv2d modules
-        if len(prev_list) > 0:
-            first_ks = tuple(prev_list[0].kernel_size)
-            assert all(
-                tuple(m.kernel_size) == first_ks for m in prev_list
-            ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
-            assert (
-                tuple(self.kernel_size) == first_ks
-            ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        # if len(prev_list) > 0:
+        # first_ks = tuple(prev_list[0].kernel_size)
+        # assert all(
+        #     tuple(m.kernel_size) == first_ks for m in prev_list
+        # ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+        # assert (
+        #     tuple(self.kernel_size) == first_ks
+        # ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
         self.previous_modules = prev_list
         self.total_in_features = 0
         for module in self.previous_modules:
@@ -534,6 +539,8 @@ class Conv2dGrowingModule(GrowingModule):
         self._input_size: tuple[int, int] | None = input_size
         self.use_bias = use_bias
 
+        self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
+
     # Information functions
     # TODO: implement activation_gradient ?
     # this function is used to estimate the F.O. improvement of the loss after the extension of the network
@@ -704,6 +711,32 @@ class Conv2dGrowingModule(GrowingModule):
             )
         else:
             return super(Conv2dGrowingModule, self).__str__(verbose=verbose)
+
+    def __make_safe_forward(self):
+        def _forward(conv_self, input: torch.Tensor) -> torch.Tensor:
+            if self.out_channels == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    0,
+                    self.out_height,
+                    self.out_width,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            if self.in_channels == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    self.out_channels,
+                    self.out_height,
+                    self.out_width,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            return torch.nn.Conv2d.forward(conv_self, input)
+
+        return _forward
 
     # Statistics computation
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
