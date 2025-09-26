@@ -336,9 +336,9 @@ class GrowingGraphNetwork(GrowingContainer):
             bottleneck loss history
         """
 
-        node_module = expansion.dag.get_node_module(expansion.expanding_node)
-        prev_node_modules = expansion.dag.get_node_modules(expansion.previous_nodes)
-        next_node_modules = expansion.dag.get_node_modules(expansion.next_nodes)
+        node_module = self.dag.get_node_module(expansion.expanding_node)
+        prev_node_modules = self.dag.get_node_modules(expansion.previous_nodes)
+        next_node_modules = self.dag.get_node_modules(expansion.next_nodes)
 
         bottleneck, input_x = [], []
         for next_node_module in next_node_modules:
@@ -459,7 +459,7 @@ class GrowingGraphNetwork(GrowingContainer):
         if amplitude_factor:
             # Find amplitude factor that minimizes the overall loss
             factor = self.find_amplitude_factor(
-                net=expansion.dag,
+                net=self.dag,
                 dataloader=dataloader,
                 node_module=node_module,
                 next_node_modules=next_node_modules,
@@ -527,11 +527,11 @@ class GrowingGraphNetwork(GrowingContainer):
             bottleneck loss history
         """
 
-        new_edge_module = expansion.dag.get_edge_module(
+        new_edge_module = self.dag.get_edge_module(
             expansion.previous_node, expansion.next_node
         )
-        prev_node_module = expansion.dag.get_node_module(expansion.previous_node)
-        next_node_module = expansion.dag.get_node_module(expansion.next_node)
+        prev_node_module = self.dag.get_node_module(expansion.previous_node)
+        next_node_module = self.dag.get_node_module(expansion.next_node)
 
         bottleneck = bottlenecks[next_node_module._name]
         activity = activities[prev_node_module._name]
@@ -590,10 +590,10 @@ class GrowingGraphNetwork(GrowingContainer):
         # TODO: fix squared value, or check why
         if amplitude_factor:
             factor = self.find_amplitude_factor(
-                net=expansion.dag,
+                net=self.dag,
                 dataloader=dataloader,
                 node_module=next_node_module,
-            )  # MEMORY ISSUE
+            )
         else:
             factor = 1.0
 
@@ -762,10 +762,10 @@ class GrowingGraphNetwork(GrowingContainer):
             expansion.metrics["acc_train"] = acc_train
             expansion.metrics["acc_dev"] = acc_dev
             expansion.metrics["acc_val"] = acc_val
-            expansion.metrics["nb_params"] = expansion.dag.count_parameters_all()
-            expansion.metrics["BIC"] = self.BIC(
-                expansion.dag, loss_val, n=len(val_dataloader.dataset)
-            )
+            # expansion.metrics["nb_params"] = expansion.dag.count_parameters_all()
+            # expansion.metrics["BIC"] = self.BIC(
+            #     expansion.dag, loss_val, n=len(val_dataloader.dataset)
+            # )
 
             if discard_underperforming and len(actions) > 1:
                 if expansion.metrics[discard_metric] <= best_metric_value:

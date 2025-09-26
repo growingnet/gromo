@@ -760,10 +760,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             self.remove_direct_edge(self.root, self.end)
             self.remove_direct_edge(self.root, self.end)
 
-        # TODO: Temporary solution
-        for expansion in actions:
-            expansion.dag = copy.deepcopy(self)
-
         return bottleneck, input_B
 
     def _get_ancestors(self, root: str, pre_root: int = 0) -> None:
@@ -1390,10 +1386,6 @@ class Expansion:
 
     def expand(self) -> None:
         """Create new edge or node on a copy of the enclosed GrowingDAG"""
-        # if not self.check_available_memory():
-        #     return False
-        # Deep copy the dag to avoid modifying the original one
-        self.dag = copy.deepcopy(self.dag)
         if self.type == "new edge":
             self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
         elif self.type == "new node":
