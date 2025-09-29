@@ -197,7 +197,7 @@ class TestGrowingModule(TorchTestCase):
         self.assertIsInstance(l2.extended_output_layer, torch.nn.Identity)
 
         reset_all()
-        l2.delete_update(include_output=True)
+        l2.delete_update(delete_output=True)
         self.assertIsNone(l2.extended_input_layer)
         self.assertIsNone(l1.extended_output_layer)
         self.assertIsNone(l2.optimal_delta_layer)
