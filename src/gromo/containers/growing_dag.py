@@ -239,6 +239,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         ValueError
             raised if the node does not exist
         """
+        if node is None:
+            return
         if node not in self.nodes:
             raise ValueError(f"Node {node} is not present in the graph")
         self.nodes[node]["candidate"] = candidate
@@ -753,10 +755,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for expansion in actions:
             prev_nodes = expansion.previous_nodes
             next_nodes = expansion.next_nodes
-            if not isinstance(prev_nodes, list):
-                prev_nodes = [prev_nodes]
-            if not isinstance(next_nodes, list):
-                next_nodes = [next_nodes]
 
             prev_node_modules.update(prev_nodes)
             next_node_modules.update(next_nodes)
@@ -1443,9 +1441,9 @@ class Expansion:
                 )
 
     @property
-    def previous_nodes(self) -> list[str] | str:
+    def previous_nodes(self) -> list[str]:
         if self.type == "new edge":
-            return self.previous_node  # type: ignore
+            return [self.previous_node]  # type: ignore
         elif self.type == "new node":
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
@@ -1456,9 +1454,9 @@ class Expansion:
             ]
 
     @property
-    def next_nodes(self) -> list[str] | str:
+    def next_nodes(self) -> list[str]:
         if self.type == "new edge":
-            return self.next_node  # type: ignore
+            return [self.next_node]  # type: ignore
         elif self.type == "new node":
             return [self.next_node]  # type: ignore
         else:
@@ -1469,9 +1467,9 @@ class Expansion:
             ]
 
     @property
-    def new_edges(self) -> list[tuple] | tuple:
+    def new_edges(self) -> list[tuple]:
         if self.type == "new edge":
-            return (self.previous_node, self.next_node)
+            return [(self.previous_node, self.next_node)]
         elif self.type == "new node":
             return [
                 (self.previous_node, self.expanding_node),

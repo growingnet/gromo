@@ -771,7 +771,7 @@ class TestGrowingDAG(unittest.TestCase):
             previous_node=self.dag.root,
             next_node=self.dag.end,
         )
-        self.assertEqual(expansion.new_edges, (self.dag.root, self.dag.end))
+        self.assertEqual(expansion.new_edges, [(self.dag.root, self.dag.end)])
         expansion.expand()
         self.assertFalse(
             torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).weight)

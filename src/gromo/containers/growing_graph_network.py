@@ -733,11 +733,7 @@ class GrowingGraphNetwork(GrowingContainer):
             # Evaluate
             mask = {
                 "nodes": [expansion.expanding_node],
-                "edges": (
-                    [expansion.new_edges]
-                    if expansion.type == "new edge"
-                    else expansion.new_edges
-                ),
+                "edges": expansion.new_edges,
             }
             acc_train, loss_train = evaluate_extended_dataset(
                 self.dag, train_dataloader, loss_fn=self.loss_fn, mask=mask
@@ -804,15 +800,12 @@ class GrowingGraphNetwork(GrowingContainer):
         new_actions = []
         for expansion in actions:
             new_node = expansion.expanding_node
-            next_node = expansion.next_nodes
+            next_nodes = expansion.next_nodes
             if new_node == chosen_position:
                 # Case: expand current node
                 new_actions.append(expansion)
-            elif isinstance(next_node, list) and chosen_position in next_node:
-                # Case: expand immediate previous node
-                new_actions.append(expansion)
-            elif next_node == chosen_position:
-                # Case: add new previous node
+            elif chosen_position in next_nodes:
+                # Case: expand immediate previous node or add new previous node or direct edge
                 new_actions.append(expansion)
             else:
                 del expansion
