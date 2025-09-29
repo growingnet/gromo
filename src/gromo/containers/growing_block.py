@@ -33,7 +33,7 @@ class GrowingBlock(GrowingContainer):
         pre_activation: torch.nn.Module = torch.nn.Identity(),
         name: str = "block",
         downsample: torch.nn.Module = torch.nn.Identity(),
-        device: torch.device = torch.device("cpu"),
+        device: torch.device | None = None,
     ) -> None:
         """
         Initialise the block.
@@ -56,7 +56,7 @@ class GrowingBlock(GrowingContainer):
             name of the block
         downsample: torch.nn.Module
             operation to apply on the residual stream
-        device: torch.device
+        device: torch.device | None
             device to use for the block
         """
         assert in_features == out_features or not isinstance(
@@ -340,7 +340,7 @@ class LinearGrowingBlock(GrowingBlock):
         kwargs_first_layer: dict | None = None,
         kwargs_second_layer: dict | None = None,
         downsample: torch.nn.Module = torch.nn.Identity(),
-        device: torch.device = torch.device("cpu"),
+        device: torch.device | None = None,
     ) -> None:
         """
         Initialise the block.
@@ -369,6 +369,10 @@ class LinearGrowingBlock(GrowingBlock):
             dictionary of arguments for the first layer, if None use kwargs_layer
         kwargs_second_layer: dict | None
             dictionary of arguments for the second layer, if None use kwargs_layer
+        downsample: torch.nn.Module
+            operation to apply on the residual stream
+        device: torch.device | None
+            device to use for the block
         """
         pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer = (
             self.set_default_values(
@@ -431,7 +435,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         kwargs_first_layer: dict | None = None,
         kwargs_second_layer: dict | None = None,
         downsample: torch.nn.Module = torch.nn.Identity(),
-        device: torch.device = torch.device("cpu"),
+        device: torch.device | None = None,
     ) -> None:
         """
         Initialise the convolutional block.
@@ -462,6 +466,8 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             dictionary of arguments for the second layer, if None use kwargs_layer
         downsample: torch.nn.Module
             operation to apply on the residual stream
+        device: torch.device | None
+            device to use for the block
         """
         pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer = (
             self.set_default_values(
