@@ -312,7 +312,7 @@ class GrowingGraphNetwork(GrowingContainer):
         amplitude_factor: bool = True,
         parallel: bool = True,
         verbose: bool = True,
-    ) -> list:
+    ) -> tuple[list, float]:
         """Increase block dimension by expanding node with more neurons
         Increase output size of incoming layers and input size of outgoing layers
         Train new neurons to minimize the expressivity bottleneck
@@ -336,8 +336,8 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Returns
         -------
-        list
-            bottleneck loss history
+        tuple[list, float]
+            bottleneck loss history, amplitude factor
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
@@ -495,7 +495,7 @@ class GrowingGraphNetwork(GrowingContainer):
         dataloader: DataLoader,
         amplitude_factor: bool = True,
         verbose: bool = True,
-    ) -> list:
+    ) -> tuple[list, float]:
         """Update weights of a single layer edge
         Train layer to minimize the expressivity bottleneck
 
@@ -516,8 +516,8 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Returns
         -------
-        list
-            bottleneck loss history
+        tuple[list, float]
+            bottleneck loss history, amplitude factor
         """
 
         new_edge_module = self.dag.get_edge_module(

@@ -581,11 +581,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     device=self.device,
                     name=f"L{name}",
                 )
-                if zero_weights:
-                    new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
-                    if new_module.use_bias:
-                        new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
-                # TODO: set bias to zeros
             elif (
                 self.nodes[prev_node]["type"] == "convolution"
                 and self.nodes[next_node]["type"] == "convolution"
@@ -622,12 +617,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     device=self.device,
                     name=f"L{name}",
                 )
-                if zero_weights:
-                    new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
-                    if new_module.use_bias:
-                        new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
             else:
                 raise NotImplementedError
+
+            if zero_weights:
+                new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
+                if new_module.use_bias:
+                    new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
 
             self.__set_edge_module(
                 prev_node,
@@ -1169,8 +1165,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 activity, activity_ext = module.extended_forward(
                     *module_input,
                     use_optimal_delta=True,
-                    use_extended_input=previous_node in mask.get("nodes"),
-                    use_extended_output=node in mask.get("nodes"),
+                    use_extended_input=previous_node in mask.get("nodes", {}),
+                    use_extended_output=node in mask.get("nodes", {}),
                 )
                 # activity_ext = (
                 #     activity_ext
@@ -1547,7 +1543,7 @@ class Expansion:
             step_update[str(node)] = keep_max(new_value, str(node))
         self.growth_history[current_step].update(step_update)
 
-    def check_available_memory(self, safety_factor=0.9) -> bool:
+    def __check_available_memory(self, safety_factor=0.9) -> bool:
         has_enough_memory = True
         n = 2  # batch_size
 

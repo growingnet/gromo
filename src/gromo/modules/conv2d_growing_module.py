@@ -83,10 +83,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         return self.in_channels
 
     @property
-    def out_features(self) -> int:
-        return self.in_channels
-
-    @property
     def output_size(self) -> tuple[int, int]:
         return self.input_size  # TODO: check for exceptions!
 
