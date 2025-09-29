@@ -1144,7 +1144,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, None)}
         for node in nx.topological_sort(self):
             # Check if node is a candidate node and is not present in the mask
-            if self.is_node_candidate(node) and node not in mask.get("nodes"):
+            if self.is_node_candidate(node) and node not in mask.get("nodes", {}):
                 continue
             if verbose:
                 print(f"{node=}")
@@ -1152,13 +1152,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 # Check if previous_node is a candidate node and is not present in the mask
                 if self.is_node_candidate(
                     previous_node
-                ) and previous_node not in mask.get("nodes"):
+                ) and previous_node not in mask.get("nodes", {}):
                     continue
                 # Check if (previous_node, node) is a candidate edge and is not present in the mask
                 if self.is_edge_candidate(previous_node, node) and (
                     previous_node,
                     node,
-                ) not in mask.get("edges"):
+                ) not in mask.get("edges", {}):
                     continue
                 module = self.get_edge_module(previous_node, node)
                 if verbose:
