@@ -1211,10 +1211,13 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
                 raise NotImplementedError
             else:
                 raise NotImplementedError
-        self.previous_module.update_input_size()
+        input_size = self.update_input_size(compute_from_previous=True)
+        assert (
+            input_size is not None
+        ), f"The input size should be known to compute the bordered unfolded input for {self.name}."
         return apply_border_effect_on_unfolded(
             unfolded_tensor=self.previous_module.unfolded_extended_input,
-            original_size=self.previous_module.input_size,
+            original_size=input_size,
             border_effect_conv=self.layer,
             identity_conv=self.bordering_convolution,
         )

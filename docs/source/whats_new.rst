@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- fix(RestrictedConv2dGrowingModule.bordered_unfolded_extended_prev_input): Use the correct input size to compute the border effect of the convolution. (:gh:`147` by `Théo Rudkiewicz`_)
 - Create a `input_size` property in GrowingModule. (:gh:`143` by `Théo Rudkiewicz`_)
 - Improve `GrowingContainer` to allow `GrowingContainer` as submodules (:gh:`133` by `Théo Rudkiewicz`_ and `Stella Douka`_).
 - Fix sign errors in `compute_optimal_added_parameters` when using `tensor_m_prev` and in `tensor_n` computation. Add unit tests to cover these cases (:gh:`118` and :gh:`115` by `Théo Rudkiewicz`_).

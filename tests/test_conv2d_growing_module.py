@@ -592,6 +592,7 @@ class TestConv2dGrowingModule(TorchTestCase):
                 padding=1,
                 use_bias=bias,
                 device=global_device(),
+                name="first_layer",
             )
             demo_out = self._tested_class(
                 in_channels=5,
@@ -600,6 +601,7 @@ class TestConv2dGrowingModule(TorchTestCase):
                 use_bias=bias,
                 previous_module=demo_in,
                 device=global_device(),
+                name="second_layer",
             )
             self.demo_couple[bias] = (demo_in, demo_out)
 
@@ -985,7 +987,6 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             False
         ]  # Use without bias for simplicity
 
-        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
         demo_layer_2.store_pre_activity = True
         demo_layer_1.store_input = True
         demo_layer_2.tensor_m_prev.init()
@@ -1079,7 +1080,6 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 loss = torch.norm(y)
                 loss.backward()
 
-                demo_couple[0].update_input_size()
                 demo_couple[1].update_input_size(compute_from_previous=True)
                 demo_couple[1].tensor_m_prev.update()
 
@@ -1577,7 +1577,6 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         loss = torch.nn.functional.mse_loss(y, torch.zeros_like(y))
         loss.backward()
 
-        demo_in.update_input_size()
         demo_out.tensor_m_prev.update()
 
         s0 = demo_in.in_channels * demo_in.kernel_size[0] * demo_in.kernel_size[1] + (
@@ -1716,6 +1715,61 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
             self.assertIsInstance(alpha_b, torch.Tensor)
         else:
             self.assertIsNone(alpha_b)
+
+    def test_bordered_unfolded_extended_prev_input_shape(self):
+        """
+        Test that bordered_unfolded_extended_prev_input runs correctly and returns proper shape.
+
+        This test mimics the setup from minimal_crashing_code_2 to ensure that the
+        bordered_unfolded_extended_prev_input property works correctly and returns
+        a tensor with the expected shape, particularly testing the fix for the
+        border effect bug.
+        """
+        # Create previous module (first conv layer) - mimics minimal_crashing_code_2
+        prev_module = RestrictedConv2dGrowingModule(
+            in_channels=2,
+            out_channels=7,
+            kernel_size=(3, 5),
+            stride=2,
+            padding=1,
+            use_bias=False,
+            input_size=(7, 11),
+        )
+
+        # Create current module (second conv layer)
+        current_module = RestrictedConv2dGrowingModule(
+            in_channels=7,
+            out_channels=11,
+            kernel_size=(5, 3),
+            stride=1,
+            padding=1,
+            use_bias=False,
+            previous_module=prev_module,
+        )
+
+        # Set up input and forward pass
+        x = torch.randn(1, 2, 13, 17, device=global_device())
+        prev_module.store_input = True
+
+        # Forward pass through both modules
+        intermediate = prev_module(x)
+        output = current_module(intermediate)
+
+        # Update input sizes
+        # Access bordered_unfolded_extended_prev_input - this should not crash
+        bordered_tensor = current_module.bordered_unfolded_extended_prev_input
+
+        # Verify tensor structure
+        self.assertShapeEqual(
+            bordered_tensor,
+            (
+                output.shape[0],  # Batch size
+                prev_module.in_channels
+                * prev_module.kernel_size[0]
+                * prev_module.kernel_size[1],
+                output.shape[2] * output.shape[3],
+            ),
+        )
 
 
 if __name__ == "__main__":
