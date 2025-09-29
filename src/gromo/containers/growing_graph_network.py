@@ -754,10 +754,21 @@ class GrowingGraphNetwork(GrowingContainer):
             expansion.metrics["acc_train"] = acc_train
             expansion.metrics["acc_dev"] = acc_dev
             expansion.metrics["acc_val"] = acc_val
-            # expansion.metrics["nb_params"] = expansion.dag.count_parameters_all()
-            # expansion.metrics["BIC"] = self.BIC(
-            #     expansion.dag, loss_val, n=len(val_dataloader.dataset)
-            # )
+            edges = []
+            for prev_node, next_node in self.dag.edges:
+                if (prev_node, next_node) in expansion.new_edges:
+                    edges.append((prev_node, next_node))
+                elif (
+                    not self.dag.is_node_candidate(prev_node)
+                    and not self.dag.is_node_candidate(next_node)
+                    and not self.dag.is_edge_candidate(prev_node, next_node)
+                ):
+                    edges.append((prev_node, next_node))
+            nb_params = self.dag.count_parameters(edges=edges)
+            expansion.metrics["nb_params"] = nb_params
+            expansion.metrics["BIC"] = self.BIC(
+                nb_params, loss_val, n=len(val_dataloader.dataset)
+            )
 
             if discard_underperforming and len(actions) > 1:
                 if expansion.metrics[discard_metric] <= best_metric_value:
@@ -947,14 +958,14 @@ class GrowingGraphNetwork(GrowingContainer):
         """
         return self.dag.parameters()
 
-    def BIC(self, net: GrowingDAG, loss: float, n: int) -> float:
+    def BIC(self, nb_params: int, loss: float, n: int) -> float:
         """Bayesian Information Criterion
         BIC = k*log(n) - 2log(L), where k is the number of parameters
 
         Parameters
         ----------
-        net : GrowingDAG
-            network of interest
+        nb_params : int
+            number of parameters
         loss : float
             loss of the model
         n : int
@@ -965,5 +976,4 @@ class GrowingGraphNetwork(GrowingContainer):
         float
             BIC score
         """
-        k = net.count_parameters_all()
-        return k * np.log2(n) - 2 * np.log2(loss)
+        return nb_params * np.log2(n) - 2 * np.log2(loss)
