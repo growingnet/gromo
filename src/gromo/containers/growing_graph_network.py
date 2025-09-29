@@ -862,7 +862,8 @@ class GrowingGraphNetwork(GrowingContainer):
         )
 
         # Update size of expanded node
-        self.dag.nodes[best_option.expanding_node]["size"] += self.neurons
+        if best_option.type != "new edge":
+            self.dag.nodes[best_option.expanding_node]["size"] += self.neurons
 
         # Discard unused edges or nodes
         for index, option in enumerate(options):
@@ -904,9 +905,10 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
         # Rename new node to standard name
-        self.dag.rename_nodes(
-            {best_option.expanding_node: best_option.expanding_node.split("_")[0]}
-        )
+        if best_option.type != "new edge":
+            self.dag.rename_nodes(
+                {best_option.expanding_node: best_option.expanding_node.split("_")[0]}
+            )
 
         # Transfer metrics
         self.growth_history = copy.copy(best_option.growth_history)
