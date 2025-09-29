@@ -70,7 +70,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         # self.use_bias = any(module.use_bias for module in self.next_modules)
         assert all(
             modules.in_features == self.out_features for modules in self.next_modules
-        ), f"The output features must match the input features of the next modules."
+        ), f"The output features of {self.name} ({self.out_features}) must match the input features of the next modules. Found {[module.in_features for module in self.next_modules]}."
 
     def set_previous_modules(
         self, previous_modules: list["MergeGrowingModule | GrowingModule"]
