@@ -692,7 +692,7 @@ class TestGrowingDAG(unittest.TestCase):
             previous_node=self.dag.root,
             next_node=self.dag.end,
         )
-        self.assertIsNot(self.dag, expansion.dag)
+        self.assertIs(self.dag, expansion.dag)
 
         with self.assertRaises(ValueError):
             Expansion(
@@ -714,6 +714,7 @@ class TestGrowingDAG(unittest.TestCase):
             )
 
     def test_expansion_new_edges(self) -> None:
+        # Add new edge
         expansion = Expansion(
             self.dag,
             type="new edge",
@@ -729,6 +730,7 @@ class TestGrowingDAG(unittest.TestCase):
             torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).bias)
         )
 
+        # Add new node
         expansion = Expansion(
             self.dag,
             type="new node",
@@ -758,6 +760,7 @@ class TestGrowingDAG(unittest.TestCase):
             torch.any(expansion.dag.get_edge_module("test", self.dag.end).bias)
         )
 
+        # Expand existing node
         self.dag.add_node_with_two_edges(
             self.dag.root,
             "test",
@@ -776,6 +779,8 @@ class TestGrowingDAG(unittest.TestCase):
                 ("test", self.dag.end),
             ],
         )
+        expansion.expand()
+        self.assertIsNot(self.dag, expansion.dag)
 
 
 if __name__ == "__main__":
