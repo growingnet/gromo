@@ -86,10 +86,10 @@ class TestTensorStatisticWithError(TestTensorStatistic):
             mean_statistic.update(x=batch)
             if i == 2:
                 self.assertWarns(UserWarning, mean_statistic.error)
-        self.assertTrue(mean_statistic.samples == num_batches * batch_size)
+        self.assertEqual(mean_statistic.samples, num_batches * batch_size)
         true_error = torch.norm(mean_statistic() - mean).item() ** 2
-        self.assertTrue(
-            true_error < mean_statistic.error() * 2
+        self.assertLessEqual(
+            true_error, mean_statistic.error() * 2
         )  # this test pass most of the time, but can fail due to randomness (if no seed is set)
 
         cov_statistic = TensorStatisticWithError(
@@ -106,8 +106,8 @@ class TestTensorStatisticWithError(TestTensorStatistic):
             cov_statistic.update(x=batch)
 
         true_error = torch.norm(cov_statistic() - cov).item() ** 2
-        self.assertTrue(
-            true_error < cov_statistic.error() * 2
+        self.assertLessEqual(
+            true_error, cov_statistic.error() * 2
         )  # this test pass most of the time, but can fail due to randomness (if no seed is set)
 
 
