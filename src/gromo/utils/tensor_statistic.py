@@ -90,7 +90,11 @@ class TensorStatistic:
             self.updated = True
 
     def init(self):
-        pass
+        if self._shape is None:
+            self._tensor = None
+        else:
+            self._tensor = torch.zeros(self._shape, device=self.device)
+        self.samples = 0
 
     def reset(self):
         self._tensor = None
@@ -208,9 +212,6 @@ class TensorStatisticWithError(TensorStatistic):
                 self._tensor = update
             else:
                 self._tensor += update
-
-            if np.random.rand() < 0.1:
-                warn("Warning this code has been poorly reviewed")
 
             self._batches += 1
             self.samples += nb_sample
