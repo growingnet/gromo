@@ -84,6 +84,9 @@ class TestTensorStatisticWithError(TestTensorStatistic):
             i += 1
             mean_statistic.updated = False
             mean_statistic.update(x=batch)
+            if i == 1:
+                with self.assertWarns(UserWarning):
+                    self.assertEqual(mean_statistic.error(), float("inf"))
             if i == 2:
                 self.assertWarns(UserWarning, mean_statistic.error)
         self.assertEqual(mean_statistic.samples, num_batches * batch_size)
