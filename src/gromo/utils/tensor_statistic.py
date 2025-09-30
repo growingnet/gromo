@@ -90,11 +90,7 @@ class TensorStatistic:
             self.updated = True
 
     def init(self):
-        if self._shape is None:
-            self._tensor = None
-        else:
-            self._tensor = torch.zeros(self._shape, device=self.device)
-        self.samples = 0
+        pass
 
     def reset(self):
         self._tensor = None
