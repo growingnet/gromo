@@ -9,7 +9,10 @@ from gromo.utils.utils import reset_device, set_device
 
 class TestTensorStatistic(TestCase):
     _tested_class = TensorStatistic
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8bebdadd5445cadc460acca77930fc62fe7faae3
     def test_mean(self):
         set_device("cpu")
         x = None
@@ -57,7 +60,10 @@ class TestTensorStatistic(TestCase):
 
 class TestTensorStatisticWithError(TestTensorStatistic):
     _tested_class = TensorStatisticWithError
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8bebdadd5445cadc460acca77930fc62fe7faae3
     def test_error(self):
         set_device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -86,7 +92,11 @@ class TestTensorStatisticWithError(TestTensorStatistic):
             mean_statistic.update(x=batch)
             if i == 2:
                 self.assertWarns(UserWarning, mean_statistic.error)
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 8bebdadd5445cadc460acca77930fc62fe7faae3
         self.assertTrue(mean_statistic.samples == num_batches * batch_size)
         true_error = torch.norm(mean_statistic() - mean).item() ** 2
         self.assertTrue(
