@@ -1806,17 +1806,19 @@ class GrowingModule(torch.nn.Module):
 
     def __del__(self) -> None:
         # Unset next module of self.previous_module
-        if isinstance(self.previous_module, GrowingModule):
-            self.previous_module.next_module = None
-        elif isinstance(self.previous_module, MergeGrowingModule):
-            if self in self.previous_module.next_modules:
-                self.previous_module.next_modules.remove(self)
+        if hasattr(self, "previous_module") and self.previous_module is not None:
+            if isinstance(self.previous_module, GrowingModule):
+                self.previous_module.next_module = None
+            elif isinstance(self.previous_module, MergeGrowingModule):
+                if self in self.previous_module.next_modules:
+                    self.previous_module.next_modules.remove(self)
         # Unset previous module of self.next_module
-        if isinstance(self.next_module, GrowingModule):
-            self.next_module.previous_module = None
-        elif isinstance(self.next_module, MergeGrowingModule):
-            if self in self.next_module.previous_modules:
-                self.next_module.previous_modules.remove(self)
+        if hasattr(self, "next_module") and self.next_module is not None:
+            if isinstance(self.next_module, GrowingModule):
+                self.next_module.previous_module = None
+            elif isinstance(self.next_module, MergeGrowingModule):
+                if self in self.next_module.previous_modules:
+                    self.next_module.previous_modules.remove(self)
 
 
 if __name__ == "__main__":
