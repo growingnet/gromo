@@ -92,7 +92,6 @@ class TensorStatistic:
     def init(self):
         self.reset()
 
-
     def reset(self):
         self._tensor = None
         self.samples = 0
