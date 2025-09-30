@@ -73,7 +73,7 @@ class TensorStatistic:
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
     @torch.no_grad()
-    def update(self, **kwargs):
+    def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
         if self.updated is False:
             update, nb_sample = self._update_function(**kwargs)
             assert (self._shape is None or self._shape == update.size()) and (
@@ -88,6 +88,7 @@ class TensorStatistic:
                 self._tensor += update
             self.samples += nb_sample
             self.updated = True
+            return update, nb_sample
 
     def init(self):
         self.reset()
@@ -145,7 +146,7 @@ class TensorStatisticWithError(TensorStatistic):
         ),
         device: torch.device | str | None = None,
         name: str | None = None,
-        **kwargs: Any,
+        trace_precision: float = 1e-3,
     ) -> None:
         """
         Initialise the tensor information.
@@ -158,14 +159,13 @@ class TensorStatisticWithError(TensorStatistic):
             function to update the tensor and compute the batch covariance
         name: str
             used for debugging
-        **kwargs: Any
-            additional arguments to pass to the update function, such as relative precision for the trace computation
+        trace_precision: float
+            relative precision for the trace computation, default 1e-3
         """
         super().__init__(shape, update_function, device, name)
         self._square_norm_sum = 0
-        self.trace_precision = kwargs.get(
-            "trace_precision", 1e-3
-        )  # relative precision stopping criterion for the trace computation
+        self.trace_precision = trace_precision
+        # relative precision stopping criterion for the trace computation
         self._compute_trace = True  # whether to continue computing the trace covariance
         self._batches = 0
         self._trace = None  # trace of the covariance matrix (of the random variable obtain when averaging on a batch)
@@ -177,7 +177,7 @@ class TensorStatisticWithError(TensorStatistic):
         self._batches = 0
         self._trace = None
 
-    def error(self):
+    def error(self) -> float:
         """
         Returns an estimation of the quadratic error of the current estimate to the true expectation.
 
@@ -185,41 +185,35 @@ class TensorStatisticWithError(TensorStatistic):
         -------
         float
             estimation of the quadratic error of the current estimate to the true expectation
-
         """
         assert self._trace is not None, "The trace has not been computed yet."
-        assert self._batches > 1, "The trace has not been computed yet."
+        if self._batches == 1:
+            warn(
+                "The trace has not been computed yet. We give an infinite error estimate."
+            )
+            return float("inf")
         if self._compute_trace:
             warn(
-                f"The desired trace precision has not been reached for the tensor statistic {self.name}. The error estimate may be inaccurate."
+                f"The desired trace precision has not been reached for the tensor statistic {self.name}. "
+                f"The error estimate may be inaccurate."
             )
         return self._trace / self._batches
 
-    def update(self, **kwargs):
+    def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
         if self.updated is False:
-            update, nb_sample = self._update_function(**kwargs)
-            if self._shape is None:
-                self._shape = update.size()
-            assert self._shape == update.size(), (
-                f"The update tensor has a different size than the tensor statistic {self.name}"
-                f" {update.size()=}, {self._shape=}"
-            )
-            if self._tensor is None:
-                self._tensor = update
-            else:
-                self._tensor += update
-
+            update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
+            assert isinstance(
+                self._tensor, torch.Tensor
+            )  # self._tensor should not be None here
             self._batches += 1
-            self.samples += nb_sample
-            self.updated = True
 
             if self._compute_trace:
-                batch_sum_norm = (update / nb_sample).norm().pow(2).item()
-                self._square_norm_sum += batch_sum_norm
-                mu_n_norm = torch.norm(self._tensor / (self.samples)).item()
-                trace_covariance = (self._square_norm_sum) / (
-                    self._batches
-                ) - mu_n_norm**2
+                self._square_norm_sum += update.pow(2).sum().item() / (nb_sample**2)
+                mu_n_norm = self._tensor.pow(2).sum().item() / (self.samples**2)
+                trace_covariance = (self._square_norm_sum) / (self._batches) - mu_n_norm
+                # trace_covariance := Ê[||X||^2] - ||mu_n||^2
+                # where X is the random variable obtained by averaging on a batch
+                # and mu_n is the current estimate of the expectation
                 if self._trace is not None:
                     delta_trace_covariance = trace_covariance - self._trace
                     if abs(delta_trace_covariance) < self.trace_precision * abs(
@@ -227,3 +221,5 @@ class TensorStatisticWithError(TensorStatistic):
                     ):
                         self._compute_trace = False
                 self._trace = trace_covariance
+
+            return update, nb_sample
