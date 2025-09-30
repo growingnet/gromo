@@ -21,8 +21,7 @@ class TensorStatistic:
         We want to compute the average of a set of tensors of shape (2, 3) in data
         loader `data_loader`. We can use the following code:
 
-            ```
-            python
+            ```python
             tensor_statistic = TensorStatistic(
                 shape=(2, 3),
                 update_function=lambda data: (data.sum(dim=0), data.size(0)),
@@ -121,8 +120,7 @@ class TensorStatisticWithError(TensorStatistic):
         We want to compute the average of a set of tensors of shape (2, 3) in data
         loader `data_loader`. We can use the following code:
 
-            ```
-            python
+            ```python
             tensor_statistic = TensorStatistic(
                 update_function=lambda data: (data.sum(dim=0), data.size(0)),
                 name="Average",
@@ -155,7 +153,7 @@ class TensorStatisticWithError(TensorStatistic):
         ----------
         shape: tuple[int, ...] | None
             shape of the tensor to compute, if None use the shape of the first update
-        update_function: Callable[[Any], tuple[torch.Tensor, int, torch.Tensor]]
+        update_function: Callable[[Any], tuple[torch.Tensor, int]]
             function to update the tensor and compute the batch covariance
         name: str
             used for debugging
@@ -199,6 +197,7 @@ class TensorStatisticWithError(TensorStatistic):
             )
         return self._trace / self._batches
 
+    @torch.no_grad()
     def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
         if self.updated is False:
             update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
