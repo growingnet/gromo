@@ -1,10 +1,10 @@
+import types
 from warnings import warn
 
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.utils import global_device
 
 
 # Constants for gradient computation
@@ -273,6 +273,8 @@ class LinearGrowingModule(GrowingModule):
         self.in_features = in_features
         self.out_features = out_features
 
+        self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
+
     # Information functions
     @property
     def activation_gradient(self) -> torch.Tensor:
@@ -340,6 +342,20 @@ class LinearGrowingModule(GrowingModule):
             )
         else:
             return super(LinearGrowingModule, self).__str__(verbose=verbose)
+
+    def __make_safe_forward(self):
+        def _forward(lin_self, input: torch.Tensor) -> torch.Tensor:
+            if self.in_features == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    self.out_features,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            return torch.nn.Linear.forward(lin_self, input)
+
+        return _forward
 
     # Statistics computation
     def compute_s_update(self) -> tuple[torch.Tensor, int]:

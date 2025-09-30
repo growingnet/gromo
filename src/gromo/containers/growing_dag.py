@@ -19,7 +19,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
-from gromo.utils.utils import activation_fn, f1_micro, safe_forward
+from gromo.utils.utils import activation_fn, f1_micro
 
 
 supported_layer_types = ["linear", "convolution"]
