@@ -76,11 +76,11 @@ class TensorStatistic:
     def update(self, **kwargs):
         if self.updated is False:
             update, nb_sample = self._update_function(**kwargs)
-            if self._shape is None:
-                self._shape = update.size()
-            assert self._shape == update.size(), (
-                f"The update tensor has a different size than the tensor statistic {self.name}"
-                f" {update.size()=}, {self._shape=}"
+            assert (self._shape is None or self._shape == update.size()) and (
+                self._tensor is None or self._tensor.size() == update.size()
+            ), (
+                f"The update tensor has a different size than the tensor statistic {self.name} :"
+                f"self._shape={None if self._shape is None else self._shape}, update.size()={update.size()}, self._tensor.shape={None if self._tensor is None else self._tensor.size()}"
             )
             if self._tensor is None:
                 self._tensor = update
@@ -90,6 +90,7 @@ class TensorStatistic:
             self.updated = True
 
     def init(self):
+        self.reset()
         pass
 
     def reset(self):
