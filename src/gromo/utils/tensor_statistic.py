@@ -91,7 +91,7 @@ class TensorStatistic:
 
     def init(self):
         self.reset()
-        pass
+
 
     def reset(self):
         self._tensor = None
@@ -141,8 +141,8 @@ class TensorStatisticWithError(TensorStatistic):
         self,
         shape: tuple[int, ...] | None,
         update_function: (
-            Callable[[Any], tuple[torch.Tensor, int, torch.Tensor]]
-            | Callable[[], tuple[torch.Tensor, int, torch.Tensor]]
+            Callable[[Any], tuple[torch.Tensor, int]]
+            | Callable[[], tuple[torch.Tensor, int]]
         ),
         device: torch.device | str | None = None,
         name: str | None = None,
