@@ -759,14 +759,17 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             prev_node_modules.update(prev_nodes)
             next_node_modules.update(next_nodes)
 
-        # Add hooks on node modules of interest
         prev_node_modules = self.get_node_modules(prev_node_modules)
         next_node_modules = self.get_node_modules(next_node_modules)
-        # for node_module in prev_node_modules:
-        #     node_module.store_activity = True
-        # for node_module in next_node_modules:
-        #     node_module.init_computation()
+
+        # Add hooks on node modules of interest
         self.init_computation()
+
+        pre_activities_grad = {
+            node_module._name: torch.empty(0) for node_module in next_node_modules
+        }
+        input_B = {node: torch.empty(0) for node in self.nodes}
+        bottleneck = {}
 
         # Forward - Backward step
         for X, Y in dataloader:
@@ -776,60 +779,61 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             loss.backward()
             self.update_computation()
 
-        input_B = {}
-        bottleneck = {}
+            # Accumulate pre-activity gradients and input tensors on cpu
+            for node_module in next_node_modules:
+                assert node_module.pre_activity is not None
+                assert node_module.pre_activity.grad is not None
+                # Save pre activiy gradients
+                pre_activities_grad[node_module._name] = torch.cat(
+                    (
+                        pre_activities_grad[node_module._name],
+                        node_module.pre_activity.grad.clone().detach().cpu(),
+                    )
+                )
+            for node_module in self.get_all_node_modules():
+                assert node_module.activity is not None
+                # Save input activity of input layers
+                input_B[node_module._name] = torch.cat(
+                    (
+                        input_B[node_module._name],
+                        node_module.activity.clone().detach().cpu(),
+                    )
+                )
 
+        # Compute optimal updates
         self.compute_optimal_delta()
-        # Update tensors
-        # for node_module in next_node_modules:
-        #     assert node_module.previous_tensor_s is not None
-        #     assert node_module.previous_tensor_m is not None
-        #     node_module.previous_tensor_s.update()
-        #     node_module.previous_tensor_m.update()
 
-        #     # Compute optimal possible updates
-        #     node_module.compute_optimal_delta(update=True, return_deltas=False)
+        with torch.no_grad():
+            for node_module in next_node_modules:
+                # Compute expressivity bottleneck
+                v_proj = pre_activities_grad[node_module._name]
+                for module in node_module.previous_modules:
+                    v_proj -= (
+                        module.optimal_delta_layer(
+                            input_B[module.previous_module._name].to(module.device)
+                        )
+                        .clone()
+                        .detach()
+                        .cpu()
+                    )
 
-        for node_module in next_node_modules:
-            # Compute expressivity bottleneck
-            bottleneck[node_module._name] = (
-                node_module.projected_v_goal().clone().detach()
-            )  # (batch_size, out_features)
+                bottleneck[node_module._name] = v_proj
 
-            # TODO: separate to functions that add the hooks and remove them
+                if constant_module:
+                    assert torch.all(
+                        bottleneck[node_module._name]
+                        == pre_activities_grad[node_module._name]
+                    ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
 
-            if constant_module:
-                assert torch.all(
-                    bottleneck[node_module._name] == node_module.pre_activity.grad
-                ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
-
-            # # Reset tensors and remove hooks
-            # node_module.reset_computation()
+        # Reset tensors and remove hooks
         self.reset_computation()
 
-        # Retrieve input activities
-        for node_module in prev_node_modules:
-            assert node_module.activity is not None
-            # Save input activity of input layers
-            input_B[node_module._name] = node_module.activity.clone().detach()
-
-            # Reset tensors and remove hooks
-            node_module.store_activity = False
-            # node_module.delete_update()
-
-        # Reset all hooks
+        # Delete activities of node modules
         for node_module in self.get_all_node_modules():
-            if node_module in next_node_modules:
-                for parallel_module in node_module.previous_modules:
-                    parallel_module.reset_computation()
-                    # DO NOT delete updates
-                    # parallel_module.delete_update(include_previous=False)
-            # Delete activities
             node_module.delete_update()
 
         if constant_module:
             # Remove constant module if needed
-            self.remove_direct_edge(self.root, self.end)
             self.remove_direct_edge(self.root, self.end)
 
         return bottleneck, input_B
@@ -1203,7 +1207,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for edge in self.edges:
             module = self.get_edge_module(*edge)
             param.append(module.weight)
-            param.append(module.bias)
+            if module.use_bias:
+                param.append(module.bias)
         return iter(param)
 
     def count_parameters_all(self) -> int:

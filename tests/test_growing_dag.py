@@ -318,7 +318,10 @@ class TestGrowingDAG(unittest.TestCase):
             self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer
         )
         self.assertIsNotNone(
-            expansions[0].dag.get_edge_module("test", self.dag.end).optimal_delta_layer
+            self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.weight
+        )
+        self.assertIsNotNone(
+            self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.bias
         )
         self.assertTrue(
             torch.all(
