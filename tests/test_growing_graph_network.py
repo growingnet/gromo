@@ -115,10 +115,8 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             expansion=expansion,
             bottlenecks=self.bottleneck,
             activities=self.input_B,
-            dataloader=self.test_dataloader,
             verbose=False,
         )
-        self.net.dag = expansion.dag
 
         self.assertEqual(self.net.dag.nodes[node]["size"], self.net.neurons)
         self.assertEqual(
@@ -148,11 +146,9 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             expansion=expansion,
             bottlenecks=self.bottleneck,
             activities=self.input_B,
-            dataloader=self.test_dataloader,
-            amplitude_factor=False,
             verbose=False,
         )
-        edge_module.apply_change(apply_previous=False)
+        edge_module.apply_change(scaling_factor=1, apply_previous=False)
 
         self.assertEqual(len(self.net.dag.edges), 3)
         self.assertIn((prev_node, next_node), self.net.dag.edges)

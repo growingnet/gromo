@@ -308,11 +308,9 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion,
         bottlenecks: dict,
         activities: dict,
-        dataloader: DataLoader,
-        amplitude_factor: bool = True,
         parallel: bool = True,
         verbose: bool = True,
-    ) -> tuple[list, float]:
+    ) -> list:
         """Increase block dimension by expanding node with more neurons
         Increase output size of incoming layers and input size of outgoing layers
         Train new neurons to minimize the expressivity bottleneck
@@ -325,10 +323,6 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
-        dataloader: DataLoader
-            development dataloader with input features and targets
-        amplitude_factor : bool, optional
-            find and apply amplitude factor on the block and its parallel connections, by default True
         parallel : bool, optional
             take into account parallel connections, by default True
         verbose : bool, optional
@@ -336,8 +330,8 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Returns
         -------
-        tuple[list, float]
-            bottleneck loss history, amplitude factor
+        list
+            bottleneck loss history
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
@@ -460,42 +454,15 @@ class GrowingGraphNetwork(GrowingContainer):
             )
             i += out_features
 
-        if amplitude_factor:
-            # Find amplitude factor that minimizes the overall loss
-            mask = {"nodes": [expansion.expanding_node]}
-            factor = self.find_amplitude_factor(
-                net=self.dag,
-                dataloader=dataloader,
-                node_module=node_module,
-                next_node_modules=next_node_modules,
-                mask=mask,
-            )
-        else:
-            factor = 1
-
-        # Apply final changes
-        for prev_edge_module in node_module.previous_modules:
-            # we do not need to change the _scaling_factor_next_module as it is
-            # given as a parameter of _apply_output_changes
-            prev_edge_module._scaling_factor_next_module[0] = factor  # Warning
-
-        for next_node_module in next_node_modules:
-            for parallel_module in next_node_module.previous_modules:
-                parallel_module.scaling_factor = factor
-
-        # TODO FUTURE : Save updates to return
-
-        return loss_history, factor
+        return loss_history
 
     def update_edge_weights(
         self,
         expansion: Expansion,
         bottlenecks: dict,
         activities: dict,
-        dataloader: DataLoader,
-        amplitude_factor: bool = True,
         verbose: bool = True,
-    ) -> tuple[list, float]:
+    ) -> list:
         """Update weights of a single layer edge
         Train layer to minimize the expressivity bottleneck
 
@@ -507,17 +474,13 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
-        dataloader : DataLoader
-            development dataloader with input features and targets
-        amplitude_factor : bool, optional
-            find and apply amplitude factor on the block and its parallel connections, by default True
         verbose : bool, optional
             print info, by default True
 
         Returns
         -------
-        tuple[list, float]
-            bottleneck loss history, amplitude factor
+        list
+            bottleneck loss history
         """
 
         new_edge_module = self.dag.get_edge_module(
@@ -579,44 +542,19 @@ class GrowingGraphNetwork(GrowingContainer):
             weight, bias
         )
 
-        # Find amplitude factor with line search
-        # TODO: fix squared value, or check why
-        if amplitude_factor:
-            factor = self.find_amplitude_factor(
-                net=self.dag,
-                dataloader=dataloader,
-                node_module=next_node_module,
-                mask={"edges": [(expansion.previous_node, expansion.next_node)]},
-            )
-        else:
-            factor = 1.0
-
-        # TODO: Apply existing weight updates to the rest of the edges, or all at once
-        for edge in next_node_module.previous_modules:
-            edge.scaling_factor = factor
-
-        return loss_history, factor
+        return loss_history
 
     def find_amplitude_factor(
         self,
-        net: GrowingContainer,
         dataloader: DataLoader,
-        node_module: LinearMergeGrowingModule,
-        next_node_modules: list[LinearMergeGrowingModule] = None,
         mask: dict = {},
     ) -> float:
         """Find amplitude factor with line search
 
         Parameters
         ----------
-        net : GrowingDAG
-            network of interest
         dataloader : DataLoader
             dataloader with input features and target
-        node_module : LinearMergeGrowingModule
-            node module to be extended or node module at the end of the edge in case of single edge
-        next_node_modules : list[LinearMergeGrowingModule], optional
-            next node modules of module to be extended, leave empty in case of single edge, by default None
         mask : dict, optional
             extension mask for specific nodes and edges, by default {}
             example: mask["edges"] for edges and mask["nodes"] for nodes
@@ -628,20 +566,16 @@ class GrowingGraphNetwork(GrowingContainer):
         """
 
         def simulate_loss(factor):
-            for prev_edge_module in node_module.previous_modules:
-                prev_edge_module.scaling_factor = factor
-                prev_edge_module._scaling_factor_next_module[0] = factor
-            if next_node_modules is not None:
-                for next_node_module in next_node_modules:
-                    for parallel_edge_module in next_node_module.previous_modules:
-                        parallel_edge_module.scaling_factor = factor
+            for edge_module in self.dag.get_all_edge_modules():
+                edge_module.scaling_factor = factor
+                edge_module._scaling_factor_next_module.data[0] = factor
 
             loss = []
             with torch.no_grad():
                 for x, y in dataloader:
                     x = x.to(self.device)
                     y = y.to(self.device)
-                    pred = net.extended_forward(x, mask=mask)
+                    pred = self.extended_forward(x, mask=mask)
                     loss.append(self.loss_fn(pred, y).item())
 
             return np.mean(loss).item()
@@ -714,12 +648,10 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weight of next_node's incoming edge
-                bott_loss_history, factor = self.update_edge_weights(
+                bott_loss_history = self.update_edge_weights(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
-                    dataloader=dev_dataloader,
-                    amplitude_factor=amplitude_factor,
                     verbose=verbose,
                 )
 
@@ -734,14 +666,25 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
                 # Update weights of new edges
-                bott_loss_history, factor = self.expand_node(
+                bott_loss_history = self.expand_node(
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
-                    dataloader=dev_dataloader,
-                    amplitude_factor=amplitude_factor,
                     verbose=verbose,
                 )
+
+            # Find amplitude factor that minimizes the overall loss
+            if amplitude_factor:
+                mask = {
+                    "nodes": [expansion.expanding_node],
+                    "edges": [(expansion.previous_node, expansion.next_node)],
+                }
+                self.find_amplitude_factor(dev_dataloader, mask)
+            else:
+                factor = 1.0
+            for edge_module in self.dag.get_all_edge_modules():
+                edge_module.scaling_factor = factor
+                edge_module._scaling_factor_next_module.data[0] = factor
 
             # Evaluate
             expansion.metrics["scaling_factor"] = factor

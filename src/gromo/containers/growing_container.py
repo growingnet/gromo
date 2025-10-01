@@ -35,7 +35,7 @@ class GrowingContainer(torch.nn.Module):
         """Forward pass through the network"""
         raise NotImplementedError
 
-    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
         """Extended forward pass through the network"""
         raise NotImplementedError
 
