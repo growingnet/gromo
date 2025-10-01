@@ -523,6 +523,27 @@ def f1_macro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
     return float(np.mean([f1(actual, predicted, label) for label in np.unique(actual)]))
 
 
+def compute_BIC(nb_params: int, loss: float, n: int) -> float:
+    """Bayesian Information Criterion
+    BIC = k*log(n) - 2log(L), where k is the number of parameters
+
+    Parameters
+    ----------
+    nb_params : int
+        number of parameters
+    loss : float
+        loss of the model
+    n : int
+        number of samples used for training
+
+    Returns
+    -------
+    float
+        BIC score
+    """
+    return nb_params * np.log2(n) - 2 * np.log2(loss)
+
+
 def evaluate_dataset(
     model: nn.Module, dataloader: torch.utils.data.DataLoader, loss_fn: Callable
 ) -> tuple[float, float]:

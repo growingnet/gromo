@@ -654,10 +654,11 @@ class GrowingGraphNetwork(GrowingContainer):
         actions: list[Expansion],
         bottleneck: dict,
         input_B: dict,
-        train_dataloader: DataLoader,
-        dev_dataloader: DataLoader,
-        val_dataloader: DataLoader,
         amplitude_factor: bool,
+        evaluate: bool,
+        train_dataloader: DataLoader = None,
+        dev_dataloader: DataLoader = None,
+        val_dataloader: DataLoader = None,
         verbose: bool = False,
     ) -> None:
         """Execute all DAG expansions and save statistics
@@ -670,17 +671,33 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary of calculated expressivity bottleneck at each pre-activity
         input_B : dict
             dictionary of post-activity input of each node
-        train_dataloader : DataLoader
-            train dataloader
-        dev_dataloader : DataLoader
-            development dataloader
-        val_dataloader : DataLoader
-            validation dataloader
         amplitude_factor : bool
             use amplitude factor on new neurons
+        evaluate : bool
+            evaluate expansion on the data
+        train_dataloader : DataLoader, optional
+            train dataloader, used if evaluate=True
+        dev_dataloader : DataLoader, optional
+            development dataloader, used if evaluate=True or amplitude_factor=True
+        val_dataloader : DataLoader, optional
+            validation dataloader, used if evaluate=True
         verbose : bool, optional
             print info, by default False
         """
+        if amplitude_factor:
+            assert (
+                dev_dataloader is not None
+            ), "Development DataLoader should be given if amplitude_factor is True"
+        if evaluate:
+            assert (
+                train_dataloader is not None
+            ), "Train DataLoader should be given if evaluate is True"
+            assert (
+                dev_dataloader is not None
+            ), "Development DataLoader should be given if evaluate is True"
+            assert (
+                val_dataloader is not None
+            ), "Validation DataLoader should be given if evaluate is True"
         # Execute all graph growth options
         for expansion in actions:
             # Create a new edge
@@ -727,44 +744,15 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
             # Evaluate
-            mask = {
-                "nodes": [expansion.expanding_node],
-                "edges": expansion.new_edges,
-            }
-            acc_train, loss_train = evaluate_extended_dataset(
-                self.dag, train_dataloader, loss_fn=self.loss_fn, mask=mask
-            )
-            acc_dev, loss_dev = evaluate_extended_dataset(
-                self.dag, dev_dataloader, loss_fn=self.loss_fn, mask=mask
-            )
-            acc_val, loss_val = evaluate_extended_dataset(
-                self.dag, val_dataloader, loss_fn=self.loss_fn, mask=mask
-            )
-
-            # TODO: return all info instead of saving
             expansion.metrics["scaling_factor"] = factor
             expansion.metrics["loss_bott"] = bott_loss_history[-1]
-            expansion.metrics["loss_train"] = loss_train
-            expansion.metrics["loss_dev"] = loss_dev
-            expansion.metrics["loss_val"] = loss_val
-            expansion.metrics["acc_train"] = acc_train
-            expansion.metrics["acc_dev"] = acc_dev
-            expansion.metrics["acc_val"] = acc_val
-            edges = []
-            for prev_node, next_node in self.dag.edges:
-                if (prev_node, next_node) in expansion.new_edges:
-                    edges.append((prev_node, next_node))
-                elif (
-                    not self.dag.is_node_candidate(prev_node)
-                    and not self.dag.is_node_candidate(next_node)
-                    and not self.dag.is_edge_candidate(prev_node, next_node)
-                ):
-                    edges.append((prev_node, next_node))
-            nb_params = self.dag.count_parameters(edges=edges)
-            expansion.metrics["nb_params"] = nb_params
-            expansion.metrics["BIC"] = self.BIC(
-                nb_params, loss_val, n=len(val_dataloader.dataset)
-            )
+            if evaluate:
+                expansion.evaluate(
+                    train_dataloader=train_dataloader,
+                    dev_dataloader=dev_dataloader,
+                    val_dataloader=val_dataloader,
+                    loss_fn=self.loss_fn,
+                )
 
     def restrict_action_space(
         self, actions: list[Expansion], chosen_position: str
@@ -910,20 +898,23 @@ class GrowingGraphNetwork(GrowingContainer):
         """
         return self.dag(x)
 
-    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
         """Forward function of DAG network including extensions of the modules
 
         Parameters
         ----------
         x : torch.Tensor
             input tensor
+        mask : dict, optional
+            extension mask for specific nodes and edges, by default {}
+            example: mask["edges"] for edges and mask["nodes"] for nodes
 
         Returns
         -------
         torch.Tensor
             output of the extended model
         """
-        return self.dag.extended_forward(x)
+        return self.dag.extended_forward(x, mask=mask)
 
     def parameters(self) -> Iterator:
         """Iterator of network parameters
@@ -934,23 +925,3 @@ class GrowingGraphNetwork(GrowingContainer):
             parameters iterator
         """
         return self.dag.parameters()
-
-    def BIC(self, nb_params: int, loss: float, n: int) -> float:
-        """Bayesian Information Criterion
-        BIC = k*log(n) - 2log(L), where k is the number of parameters
-
-        Parameters
-        ----------
-        nb_params : int
-            number of parameters
-        loss : float
-            loss of the model
-        n : int
-            number of samples used for training
-
-        Returns
-        -------
-        float
-            BIC score
-        """
-        return nb_params * np.log2(n) - 2 * np.log2(loss)

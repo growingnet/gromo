@@ -19,7 +19,12 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
-from gromo.utils.utils import activation_fn, f1_micro
+from gromo.utils.utils import (
+    activation_fn,
+    compute_BIC,
+    evaluate_extended_dataset,
+    f1_micro,
+)
 
 
 supported_layer_types = ["linear", "convolution"]
@@ -1118,7 +1123,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return output[self.end]
 
     def extended_forward(
-        self, x: torch.Tensor, verbose: bool = False, mask: dict = {}
+        self, x: torch.Tensor, mask: dict = {}, verbose: bool = False
     ) -> torch.Tensor:
         """Extended forward function for DAG model
 
@@ -1126,11 +1131,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         ----------
         x : torch.Tensor
             input tensor
-        verbose : bool, optional
-            print info, by default False
         mask : dict, optional
             extension mask for specific nodes and edges, by default {}
             example: mask["edges"] for edges and mask["nodes"] for nodes
+        verbose : bool, optional
+            print info, by default False
 
         Returns
         -------
@@ -1546,68 +1551,48 @@ class Expansion:
             step_update[str(node)] = keep_max(new_value, str(node))
         self.growth_history[current_step].update(step_update)
 
-    def __check_available_memory(self, safety_factor=0.9) -> bool:
-        has_enough_memory = True
-        n = 2  # batch_size
-
-        if self.type == "edge":
-            added_size = self.dag.get_node_module(self.previous_node).total_in_features
-        else:
-            added_size = self.dag.neurons
-        kernel_size = self.edge_attributes.get("kernel_size", (3, 3))
-        added_in_features = (
-            added_size * kernel_size[0] * kernel_size[1] + self.dag.use_bias
+    def evaluate(
+        self,
+        train_dataloader: torch.utils.data.DataLoader,
+        dev_dataloader: torch.utils.data.DataLoader,
+        val_dataloader: torch.utils.data.DataLoader,
+        loss_fn: Callable,
+    ) -> None:
+        mask = {
+            "nodes": [self.expanding_node],
+            "edges": self.new_edges,
+        }
+        acc_train, loss_train = evaluate_extended_dataset(
+            self.dag, train_dataloader, loss_fn=loss_fn, mask=mask
         )
-        input_shape = self.dag.input_shape[0] * self.dag.input_shape[1]
-        for next_node in self.next_nodes:
-            next_node_module = self.dag.get_node_module(next_node)
-            current_total_in_features = next_node_module.total_in_features
-            if current_total_in_features + added_in_features >= 120:
-                return False
-            current_out_features = (
-                next_node_module.out_channels
-                if isinstance(next_node_module, Conv2dMergeGrowingModule)
-                else next_node_module.out_features
-            )
+        acc_dev, loss_dev = evaluate_extended_dataset(
+            self.dag, dev_dataloader, loss_fn=loss_fn, mask=mask
+        )
+        acc_val, loss_val = evaluate_extended_dataset(
+            self.dag, val_dataloader, loss_fn=loss_fn, mask=mask
+        )
 
-            free_bytes, total_bytes = torch.cuda.mem_get_info(self.dag.device)
-            mem_free_MB = free_bytes / 1024**2
-
-            # Measure usage with and without the module
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats(self.dag.device)
-
-            with torch.no_grad():
-                before = torch.cuda.max_memory_allocated(self.dag.device)
-                try:
-                    full_activity = torch.zeros(
-                        n, added_in_features + current_total_in_features, input_shape
-                    ).to(self.dag.device)
-                    desired_activation = torch.zeros(
-                        n, current_out_features, input_shape
-                    ).to(self.dag.device)
-                    temp0 = torch.einsum(
-                        "iam, ibm -> ab",
-                        full_activity,
-                        full_activity,
-                    )
-                    temp1 = torch.einsum(
-                        "iam, icm -> ac",
-                        full_activity,
-                        desired_activation,
-                    )
-                except Exception as e:
-                    return False, None, mem_free_MB  # failed to run
-                after = torch.cuda.max_memory_allocated(self.dag.device)
-
-            mem_used_MB = (after - before) / 1024**2
-            usable_MB = safety_factor * mem_free_MB
-            can_add = mem_used_MB < usable_MB
-            if not can_add:
-                return False
-            has_enough_memory = can_add & has_enough_memory
-
-        return has_enough_memory
+        self.metrics["loss_train"] = loss_train
+        self.metrics["loss_dev"] = loss_dev
+        self.metrics["loss_val"] = loss_val
+        self.metrics["acc_train"] = acc_train
+        self.metrics["acc_dev"] = acc_dev
+        self.metrics["acc_val"] = acc_val
+        edges = []
+        for prev_node, next_node in self.dag.edges:
+            if (prev_node, next_node) in self.new_edges:
+                edges.append((prev_node, next_node))
+            elif (
+                not self.dag.is_node_candidate(prev_node)
+                and not self.dag.is_node_candidate(next_node)
+                and not self.dag.is_edge_candidate(prev_node, next_node)
+            ):
+                edges.append((prev_node, next_node))
+        nb_params = self.dag.count_parameters(edges=edges)
+        self.metrics["nb_params"] = nb_params
+        self.metrics["BIC"] = compute_BIC(
+            nb_params, loss_val, n=len(val_dataloader.dataset)
+        )
 
     def __repr__(self) -> str:
         if self.type == "new edge":

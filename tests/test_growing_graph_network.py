@@ -219,39 +219,56 @@ class TestGrowingGraphNetwork(unittest.TestCase):
     def test_inter_training(self) -> None:
         pass
 
-    def test_execute_expansions(self) -> None:
+    @unittest_parametrize(({"evaluate": True}, {"evaluate": False}))
+    def test_execute_expansions(self, evaluate: bool) -> None:
         self.net.execute_expansions(
             self.actions,
             self.bottleneck,
             self.input_B,
+            amplitude_factor=False,
+            evaluate=evaluate,
             train_dataloader=self.dataloader,
             dev_dataloader=self.dataloader,
             val_dataloader=self.test_dataloader,
-            amplitude_factor=False,
         )
 
         for expansion in self.actions:
-            self.assertIsNotNone(expansion.metrics.get("loss_train"))
-            self.assertIsNotNone(expansion.metrics.get("loss_dev"))
-            self.assertIsNotNone(expansion.metrics.get("loss_val"))
-            self.assertIsNotNone(expansion.metrics.get("acc_train"))
-            self.assertIsNotNone(expansion.metrics.get("acc_dev"))
-            self.assertIsNotNone(expansion.metrics.get("acc_val"))
+            if evaluate:
+                self.assertIsNotNone(expansion.metrics.get("loss_train"))
+                self.assertIsNotNone(expansion.metrics.get("loss_dev"))
+                self.assertIsNotNone(expansion.metrics.get("loss_val"))
+                self.assertIsNotNone(expansion.metrics.get("acc_train"))
+                self.assertIsNotNone(expansion.metrics.get("acc_dev"))
+                self.assertIsNotNone(expansion.metrics.get("acc_val"))
 
-            self.assertEqual(
-                expansion.metrics.get("loss_train"), expansion.metrics.get("loss_dev")
-            )
-            self.assertEqual(
-                expansion.metrics.get("acc_train"), expansion.metrics.get("acc_dev")
-            )
+                self.assertEqual(
+                    expansion.metrics.get("loss_train"), expansion.metrics.get("loss_dev")
+                )
+                self.assertEqual(
+                    expansion.metrics.get("acc_train"), expansion.metrics.get("acc_dev")
+                )
 
-            self.assertIsNotNone(expansion.metrics.get("nb_params"))
-            self.assertIsNotNone(expansion.metrics.get("BIC"))
+                self.assertIsNotNone(expansion.metrics.get("nb_params"))
+                self.assertIsNotNone(expansion.metrics.get("BIC"))
+            else:
+                self.assertIsNone(expansion.metrics.get("loss_train"))
+                self.assertIsNone(expansion.metrics.get("loss_dev"))
+                self.assertIsNone(expansion.metrics.get("loss_val"))
+                self.assertIsNone(expansion.metrics.get("acc_train"))
+                self.assertIsNone(expansion.metrics.get("acc_dev"))
+                self.assertIsNone(expansion.metrics.get("acc_val"))
+                self.assertIsNone(expansion.metrics.get("nb_params"))
+                self.assertIsNone(expansion.metrics.get("BIC"))
+
+            self.assertIsNotNone(expansion.metrics.get("scaling_factor"))
+            self.assertIsNotNone(expansion.metrics.get("loss_bott"))
 
             self.assertIsNotNone(expansion.dag)
             self.assertIsInstance(expansion.dag, GrowingDAG)
             self.assertIsNotNone(expansion.growth_history)
             self.assertIsInstance(expansion.growth_history, dict)
+
+            expansion.metrics.clear()
 
     def test_calculate_bottleneck(self) -> None:
         bottleneck, inputB = self.net.dag.calculate_bottleneck(
