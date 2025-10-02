@@ -479,6 +479,49 @@ class TestMergeGrowingModules(unittest.TestCase):
             (new_linear_in_features + new_linear.use_bias, self.out_features),
         )
 
+        # ---------- Average Pooling ------------
+
+        # Forward and backward pass
+        for layer in self.layers:
+            layer.init_computation()
+
+        x_conv = self.conv(self.x)
+        x_conv_merge = self.conv_merge(x_conv)
+        x_pooling = pooling(x_conv_merge)
+        x_conv_merge_after_pooling = conv_merge_after_pooling(x_pooling)
+        x_flatten = self.flatten(x_conv_merge_after_pooling)
+        x_linear_merge = new_linear_merge(x_flatten)
+        out = new_linear(x_linear_merge)
+
+        self.assertEqual(out.shape, (self.batch_size, self.out_features))
+
+        loss = self.loss_fn(out, self.y)
+        loss.backward()
+
+        for layer in self.layers:
+            layer.update_computation()
+
+        # Compute optimal deltas
+        for layer in self.layers:
+            if isinstance(layer, LinearMergeGrowingModule) or (
+                layer is conv_merge_after_pooling
+            ):
+                with self.assertRaises(AssertionError):
+                    layer.compute_optimal_delta()
+            else:
+                layer.compute_optimal_delta()
+                if isinstance(layer, GrowingModule):
+                    self.assertIsNotNone(layer.optimal_delta_layer)
+
+        # Reset computation
+        for layer in self.layers:
+            layer.reset_computation()
+            layer.delete_update()
+
+        # ---------- Max Pooling ------------
+
+        pooling = torch.nn.MaxPool2d(kernel_size=self.kernel_size)
+
         # Forward and backward pass
         for layer in self.layers:
             layer.init_computation()
