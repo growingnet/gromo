@@ -106,6 +106,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             if isinstance(module, LinearGrowingModule):
                 self.total_in_features += module.in_features
                 self.total_in_features += module.use_bias
+
         if self.total_in_features > 0:
             self.previous_tensor_s = TensorStatistic(
                 (
