@@ -40,19 +40,23 @@ class TestGrowingModule(TorchTestCase):
         - with fixed post layer size (crash)
         - with variable post layer size (no crash)
         """
-        model = GrowingModule(
-            self.first_layer, post_layer_function=SizedIdentity(2), allow_growing=False
-        )
+        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
+            model = GrowingModule(
+                self.first_layer,
+                post_layer_function=SizedIdentity(2),
+                allow_growing=False,
+            )
         model.extended_output_layer = self.first_layer_ext
         with self.assertRaises(ValueError):
             model.extended_forward(self.x)
 
-        model = GrowingModule(
-            self.first_layer,
-            post_layer_function=SizedIdentity(2),
-            extended_post_layer_function=torch.nn.Identity(),
-            allow_growing=False,
-        )
+        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
+            model = GrowingModule(
+                self.first_layer,
+                post_layer_function=SizedIdentity(2),
+                extended_post_layer_function=torch.nn.Identity(),
+                allow_growing=False,
+            )
         model.extended_output_layer = self.first_layer_ext
         model.extended_forward(self.x)
 
@@ -87,7 +91,7 @@ class TestGrowingModule(TorchTestCase):
 
         # ========== Test with out extension ==========
         # extended input without extension crashes
-        with self.assertWarns(UserWarning):
+        with self.assertWarns(UserWarning):  # x_ext must be None
             self.model.extended_forward(self.x, self.x_ext)
 
         self.model.extended_output_layer = self.layer_out_extension
@@ -106,14 +110,14 @@ class TestGrowingModule(TorchTestCase):
         self.assertIsInstance(repr(self.model), str)
 
     def test_init(self):
-        with self.assertWarns(UserWarning):
+        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
             GrowingModule(
                 self.layer,
                 extended_post_layer_function=SizedIdentity(2),
                 allow_growing=False,
             )
 
-        with self.assertWarns(UserWarning):
+        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
             GrowingModule(
                 self.layer,
                 extended_post_layer_function=torch.nn.Sequential(
@@ -183,6 +187,7 @@ class TestGrowingModule(TorchTestCase):
 
         reset_all()
         with self.assertWarns(UserWarning):
+            # the extended_output_layer associated stored in the previous module has not been deleted
             l2.delete_update(include_previous=False)
         self.assertIsNone(l2.extended_input_layer)
         self.assertIsInstance(l1.extended_output_layer, torch.nn.Identity)
@@ -213,6 +218,7 @@ class TestGrowingModule(TorchTestCase):
         # incorrect behavior
         reset(l1, False)
         with self.assertWarns(UserWarning):
+            # No previous module is associated with this layer
             l1.delete_update()
 
         # incorrect behavior

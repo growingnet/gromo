@@ -428,6 +428,10 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         layer_in.extended_output_layer = first_layer_ext
         layer_out.extended_input_layer = second_layer_ext
 
+        layer_in.scaling_factor.data[0] = 1
+        layer_in._scaling_factor_next_module.data[0] = 1
+        layer_out.scaling_factor.data[0] = 1
+
         if include_eigenvalues:
             layer_out.eigenvalues_extension = torch.empty(2, device=global_device())
 
@@ -1407,7 +1411,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         if first_layer_bias:
             self.assertIsNotNone(layer1.extended_output_layer.bias)
 
-        layer2.apply_change()
+        layer2.apply_change(scaling_factor=1)
         y = layer2(layer1(self.input_x))
         self.assertIsNotNone(y)
         self.assertIsInstance(y, torch.Tensor)
@@ -1639,7 +1643,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             5, 4, device=global_device(), name="mismatch"
         )
         with self.assertRaises(AssertionError):
-            layer.set_next_modules([mismatch_layer])
+            with self.assertWarns(UserWarning):  # Next modules with non-empty tensor S
+                layer.set_next_modules([mismatch_layer])
 
     def test_set_previous_modules_warning_and_assertion(self):
         """Test set_previous_modules triggers warnings and assertion for feature mismatch."""
@@ -1844,12 +1849,14 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         added_in_features = 2
 
         # This should trigger the added_in_features > 0 branch
-        layer.add_parameters(
-            matrix_extension=None,
-            bias_extension=None,
-            added_in_features=added_in_features,
-            added_out_features=0,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=None,
+                bias_extension=None,
+                added_in_features=added_in_features,
+                added_out_features=0,
+            )
 
         # Verify layer dimensions changed correctly
         self.assertEqual(layer.in_features, original_in_features + added_in_features)
@@ -1879,12 +1886,14 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         )
 
         # This should trigger the custom matrix_extension branch
-        layer.add_parameters(
-            matrix_extension=custom_matrix,
-            bias_extension=None,
-            added_in_features=added_in_features,
-            added_out_features=0,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=custom_matrix,
+                bias_extension=None,
+                added_in_features=added_in_features,
+                added_out_features=0,
+            )
 
         # Verify layer dimensions
         self.assertEqual(layer.in_features, original_in_features + added_in_features)
@@ -1910,12 +1919,14 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         added_out_features = 2
 
         # This should trigger the added_out_features > 0 branch
-        layer.add_parameters(
-            matrix_extension=None,
-            bias_extension=None,
-            added_in_features=0,
-            added_out_features=added_out_features,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=None,
+                bias_extension=None,
+                added_in_features=0,
+                added_out_features=added_out_features,
+            )
 
         # Verify layer dimensions changed correctly
         self.assertEqual(layer.in_features, original_in_features)
@@ -1946,12 +1957,14 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         )
 
         # This should trigger the custom matrix/bias extension branches
-        layer.add_parameters(
-            matrix_extension=custom_weight,
-            bias_extension=custom_bias,
-            added_in_features=0,
-            added_out_features=added_out_features,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=custom_weight,
+                bias_extension=custom_bias,
+                added_in_features=0,
+                added_out_features=added_out_features,
+            )
 
         # Verify layer dimensions
         self.assertEqual(layer.in_features, original_in_features)
@@ -2735,29 +2748,33 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer = LinearGrowingModule(3, 2, device=global_device())
 
         # Test input feature addition (changed documentation and assertions)
-        layer.add_parameters(
-            matrix_extension=torch.randn(
-                2, 2, device=global_device()
-            ),  # (out_features, added_in_features)
-            bias_extension=None,
-            added_in_features=2,
-            added_out_features=0,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=torch.randn(
+                    2, 2, device=global_device()
+                ),  # (out_features, added_in_features)
+                bias_extension=None,
+                added_in_features=2,
+                added_out_features=0,
+            )
         # Verify the addition worked
         self.assertEqual(layer.weight.shape[1], 5)  # 3 + 2
 
         # Test output feature addition (changed documentation and assertions)
         layer2 = LinearGrowingModule(3, 2, device=global_device())
-        layer2.add_parameters(
-            matrix_extension=torch.randn(
-                1, 3, device=global_device()
-            ),  # (added_out_features, in_features)
-            bias_extension=torch.randn(
-                1, device=global_device()
-            ),  # (added_out_features,)
-            added_in_features=0,
-            added_out_features=1,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer2.add_parameters(
+                matrix_extension=torch.randn(
+                    1, 3, device=global_device()
+                ),  # (added_out_features, in_features)
+                bias_extension=torch.randn(
+                    1, device=global_device()
+                ),  # (added_out_features,)
+                added_in_features=0,
+                added_out_features=1,
+            )
         # Verify the addition worked
         self.assertEqual(layer2.weight.shape[0], 3)  # 2 + 1
 

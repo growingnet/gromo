@@ -259,7 +259,9 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             device=global_device(),
         )
         with self.assertRaises(AssertionError):
-            m.set_next_modules([n1, n3])
+            with self.assertWarns(UserWarning):
+                # You are setting the next modules with a non-empty tensor S
+                m.set_next_modules([n1, n3])
 
         # Kernel size mismatch between merge and next -> assertion
         m2 = Conv2dMergeGrowingModule(

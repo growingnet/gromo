@@ -540,7 +540,9 @@ class TestGrowingDAG(unittest.TestCase):
         in_features = 0
         out_features = 2
         batch_size = 5
-        linear = torch.nn.Linear(in_features, out_features, device=global_device())
+        with self.assertWarns(UserWarning):
+            # Initializing zero-element tensors is a no-op
+            linear = torch.nn.Linear(in_features, out_features, device=global_device())
         x = torch.rand((batch_size, in_features), device=global_device())
         self.assertTrue(
             torch.all(
@@ -679,6 +681,7 @@ class TestGrowingDAG(unittest.TestCase):
                 type="new edge",
             )
         with self.assertWarns(UserWarning):
+            # When creating a new edge the expanding node argument is not required
             Expansion(
                 self.dag,
                 type="new edge",
@@ -706,6 +709,7 @@ class TestGrowingDAG(unittest.TestCase):
                 type="expanded node",
             )
         with self.assertWarns(UserWarning):
+            # When expanding an existing node the previous and next nodes arguments are not required
             Expansion(
                 self.dag,
                 type="expanded node",

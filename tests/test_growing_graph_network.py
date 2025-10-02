@@ -6,6 +6,7 @@ import torch
 from gromo.containers.growing_dag import Expansion, GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
+from tests.unittest_tools import unittest_parametrize
 
 
 class TestGrowingGraphNetwork(unittest.TestCase):
@@ -213,19 +214,20 @@ class TestGrowingGraphNetwork(unittest.TestCase):
     def test_inter_training(self) -> None:
         pass
 
-    def test_execute_expansions(self) -> None:
-        self.net.execute_expansions(
-            self.actions,
-            self.bottleneck,
-            self.input_B,
-            self.x,
-            self.y,
-            self.x,
-            self.y,
-            self.x_test,
-            self.y_test,
-            amplitude_factor=False,
-        )
+    @unittest_parametrize(({"evaluate": True}, {"evaluate": False}))
+    def test_execute_expansions(self, evaluate: bool) -> None:
+        with self.assertWarns(UserWarning):
+            # Initializing zero-element tensors is a no-op
+            self.net.execute_expansions(
+                self.actions,
+                self.bottleneck,
+                self.input_B,
+                amplitude_factor=False,
+                evaluate=evaluate,
+                train_dataloader=self.dataloader,
+                dev_dataloader=self.dataloader,
+                val_dataloader=self.test_dataloader,
+            )
 
         for expansion in self.actions:
             self.assertIsNotNone(expansion.metrics.get("loss_train"))

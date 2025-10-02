@@ -376,7 +376,9 @@ class TestUtils(TorchTestCase):
 
                 # Test with zero input features (edge case)
                 zero_in_features = 0
-                zero_linear = nn.Linear(zero_in_features, out_features, device=device)
+                with self.assertWarns(UserWarning):
+                    # Initializing zero-element tensors is a no-op
+                    zero_linear = nn.Linear(zero_in_features, out_features, device=device)
                 zero_input = torch.empty(batch_size, zero_in_features, device=device)
 
                 zero_output = safe_forward(zero_linear, zero_input)
