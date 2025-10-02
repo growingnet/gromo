@@ -128,6 +128,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node_module in self.get_all_node_modules():
             node_module.delete_update(include_previous=True)
 
+    # Initialize GrowingDAG and properties
+
     def init_dag_parameters(self) -> dict:
         edges = [(self.root, self.end)]
         node_attributes = {
@@ -179,6 +181,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     @property
     def out_degree(self) -> nx.reportviews.OutDegreeView:
         return super().out_degree
+
+    # Module setters and attributes
 
     def __set_edge_module(
         self, prev_node: str, next_node: str, module: GrowingModule
@@ -255,6 +259,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         if node not in self.nodes:
             raise ValueError(f"Node {node} is not present in the graph")
         self.nodes[node]["candidate"] = candidate
+
+    # Module getters and attributes
 
     def is_edge_candidate(self, prev_node: str, next_node: str) -> bool:
         """Know if an edge is a candidate edge
@@ -369,6 +375,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             list of modules for all existing nodes
         """
         return self.get_node_modules(list(self.nodes))
+
+    def is_empty(self) -> bool:
+        return nx.is_empty(self)
+
+    # Add new modules
 
     def add_direct_edge(
         self,
@@ -850,6 +861,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         return bottleneck, input_B
 
+    # Helper functions for managing the DAG
+
     def _get_ancestors(self, root: str, pre_root: int = 0) -> None:
         """Discover all eventual ancestors of nodes
 
@@ -1086,6 +1099,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         self.__recursiveBFS(q, nodes_visited, update)
 
+    # Forward functions
+
     def forward(self, x: torch.Tensor, verbose: bool = False) -> torch.Tensor:
         """Forward function for DAG model
 
@@ -1213,6 +1228,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             print()
         return output[self.end][0]
 
+    # Parameters
+
     def parameters(self) -> Iterator:
         # TODO : Temporary solution
         param = []
@@ -1251,6 +1268,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             for edge in edges
             for param in self.get_edge_module(*edge).parameters()
         )
+
+    # Evaluation functions
 
     def evaluate(
         self,
@@ -1345,6 +1364,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             return accuracy, loss.item(), f1score
 
         return accuracy, loss.item()
+
+    # String representations
 
     def __str__(self) -> str:
         nodes = list(self.nodes)
@@ -1560,23 +1581,39 @@ class Expansion:
 
     def evaluate(
         self,
+        model: GrowingContainer,
         train_dataloader: torch.utils.data.DataLoader,
         dev_dataloader: torch.utils.data.DataLoader,
         val_dataloader: torch.utils.data.DataLoader,
         loss_fn: Callable,
     ) -> None:
+        """Evaluate GrowingContainer based on GrowingDAG expansion and save metrics
+
+        Parameters
+        ----------
+        model : GrowingContainer
+            container to be evaluated
+        train_dataloader : torch.utils.data.DataLoader
+            train dataloader
+        dev_dataloader : torch.utils.data.DataLoader
+            development dataloader
+        val_dataloader : torch.utils.data.DataLoader
+            validation dataloader
+        loss_fn : Callable
+            loss function
+        """
         mask = {
             "nodes": [self.expanding_node],
             "edges": self.new_edges,
         }
         acc_train, loss_train = evaluate_extended_dataset(
-            self.dag, train_dataloader, loss_fn=loss_fn, mask=mask
+            model, train_dataloader, loss_fn=loss_fn, mask=mask
         )
         acc_dev, loss_dev = evaluate_extended_dataset(
-            self.dag, dev_dataloader, loss_fn=loss_fn, mask=mask
+            model, dev_dataloader, loss_fn=loss_fn, mask=mask
         )
         acc_val, loss_val = evaluate_extended_dataset(
-            self.dag, val_dataloader, loss_fn=loss_fn, mask=mask
+            model, val_dataloader, loss_fn=loss_fn, mask=mask
         )
 
         self.metrics["loss_train"] = loss_train

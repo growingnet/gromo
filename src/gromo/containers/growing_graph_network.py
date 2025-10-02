@@ -688,6 +688,7 @@ class GrowingGraphNetwork(GrowingContainer):
             expansion.metrics["loss_bott"] = bott_loss_history[-1]
             if evaluate:
                 expansion.evaluate(
+                    self.dag,
                     train_dataloader=train_dataloader,
                     dev_dataloader=dev_dataloader,
                     val_dataloader=val_dataloader,
