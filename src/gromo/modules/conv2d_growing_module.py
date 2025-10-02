@@ -95,6 +95,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (0, 0)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.padding
+        elif isinstance(self.next_modules[0], Conv2dMergeGrowingModule):
+            return self.next_modules[0].padding
         elif isinstance(
             self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
         ):
@@ -111,6 +113,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.stride
+        elif isinstance(self.next_modules[0], Conv2dMergeGrowingModule):
+            return self.next_modules[0].stride
         elif isinstance(
             self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
         ):
@@ -127,6 +131,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
             return self.next_modules[0].layer.dilation
+        elif isinstance(self.next_modules[0], Conv2dMergeGrowingModule):
+            return self.next_modules[0].dilation
         elif isinstance(
             self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
         ):
