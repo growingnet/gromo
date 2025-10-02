@@ -80,6 +80,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.update_nodes(self.nodes, node_attributes)
         self.update_edges(edges, edge_attributes, zero_weights=False)
         self.update_connections(edges)
+        self.set_growing_layers()
+
+    # Override functions from GrowingContainer
+
+    def set_growing_layers(self) -> None:
+        self._growing_layers = self.get_all_edge_modules()
 
     def init_computation(self):
         for node_module in self.get_all_node_modules():
@@ -390,6 +396,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             edges, edge_attributes=edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(edges)
+        self.set_growing_layers()
 
     def add_node_with_two_edges(
         self,
@@ -442,27 +449,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             new_edges, edge_attributes=edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(new_edges)
-
-    def remove_direct_edge(self, prev_node: str, next_node: str) -> None:
-        """Remove direct edge from graph
-        Delete module instances from the connected nodes and update their size
-
-        Parameters
-        ----------
-        prev_node : str
-            incoming node of edge
-        next_node : str
-            outgoing node of edge
-        """
-        edge = (prev_node, next_node)
-        if edge in self.edges:
-            edge_module = self.get_edge_module(*edge)
-            edge_module.previous_module.next_modules.remove(edge_module)  # type: ignore
-            edge_module.previous_module.update_size()  # type: ignore
-            edge_module.next_module.previous_modules.remove(edge_module)  # type: ignore
-            edge_module.next_module.update_size()  # type: ignore
-            del edge_module
-            self.remove_edge(*edge)
+        self.set_growing_layers()
 
     def update_nodes(
         self, nodes: list | Mapping, node_attributes: dict[str, dict]
@@ -674,12 +661,34 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         self._get_ancestors(self.root)
 
+    # Remove existing modules
+
+    def remove_direct_edge(self, prev_node: str, next_node: str) -> None:
+        """Remove direct edge from graph
+        Delete module instances from the connected nodes and update their size
+
+        Parameters
+        ----------
+        prev_node : str
+            incoming node of edge
+        next_node : str
+            outgoing node of edge
+        """
+        edge = (prev_node, next_node)
+        if edge in self.edges:
+            edge_module = self.get_edge_module(*edge)
+            edge_module.__del__()
+            self.remove_edge(*edge)
+            self._get_ancestors(self.root)
+            self.set_growing_layers()
+
     def remove_node(self, node: str) -> None:
         if node in self.nodes:
             node_module = self.get_node_module(node)
             node_module.__del__()
-        super().remove_node(node)
-        self._get_ancestors(self.root)
+            super().remove_node(node)
+            self._get_ancestors(self.root)
+            self.set_growing_layers()
 
     def rename_nodes(self, mapping: dict) -> None:
         """Rename nodes in the graph.
@@ -715,9 +724,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # Update ancestors
         self._get_ancestors(self.root)
 
-    def is_empty(self) -> bool:
-        return nx.is_empty(self)
-
+    # Calculate expressivity bottleneck of GrowingDAG
     def calculate_bottleneck(
         self,
         actions: list["Expansion"],

@@ -31,6 +31,21 @@ class GrowingContainer(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def set_scaling_factor(self, factor: float) -> None:
+        """Assign scaling factor to all growing layers
+
+        Parameters
+        ----------
+        factor : float
+            scaling factor
+        """
+        for layer in self._growing_layers:
+            if isinstance(layer, GrowingContainer):
+                layer.set_scaling_factor(factor)
+            else:
+                layer.scaling_factor = factor
+                layer._scaling_factor_next_module.data[0] = factor
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network"""
         raise NotImplementedError

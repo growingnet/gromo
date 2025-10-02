@@ -75,6 +75,7 @@ class GrowingGraphNetwork(GrowingContainer):
         self.loss_fn = loss_fn
 
         self.reset_network()
+        self.set_growing_layers()
 
     def set_growing_layers(self):
         self._growing_layers.append(self.dag)
@@ -566,9 +567,7 @@ class GrowingGraphNetwork(GrowingContainer):
         """
 
         def simulate_loss(factor):
-            for edge_module in self.dag.get_all_edge_modules():
-                edge_module.scaling_factor = factor
-                edge_module._scaling_factor_next_module.data[0] = factor
+            self.set_scaling_factor(factor)
 
             loss = []
             with torch.no_grad():
@@ -677,14 +676,12 @@ class GrowingGraphNetwork(GrowingContainer):
             if amplitude_factor:
                 mask = {
                     "nodes": [expansion.expanding_node],
-                    "edges": [(expansion.previous_node, expansion.next_node)],
+                    "edges": expansion.new_edges,
                 }
                 self.find_amplitude_factor(dev_dataloader, mask)
             else:
                 factor = 1.0
-            for edge_module in self.dag.get_all_edge_modules():
-                edge_module.scaling_factor = factor
-                edge_module._scaling_factor_next_module.data[0] = factor
+            self.set_scaling_factor(factor)
 
             # Evaluate
             expansion.metrics["scaling_factor"] = factor
@@ -803,7 +800,7 @@ class GrowingGraphNetwork(GrowingContainer):
             # Apply changes
             factor = best_option.metrics["scaling_factor"]
             edge_module.scaling_factor = factor
-            edge_module._scaling_factor_next_module[0] = factor
+            edge_module._scaling_factor_next_module.data[0] = factor
             edge_module.apply_change(scaling_factor=factor, apply_previous=False)
             if not delete_output:
                 edge_module._apply_output_changes(
