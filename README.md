@@ -4,6 +4,7 @@
 
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)
 [![Tests](https://github.com/growingnet/gromo/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/tests.yml)
+[![Ruff Type Check](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml)
 
 # GroMo
 

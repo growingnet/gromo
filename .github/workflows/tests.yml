@@ -31,6 +31,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - uses: pre-commit/action@v3.0.1
+        env:
+          SKIP: ruff-check  # ,ruff-format
 
       - name: Install dependencies
         run: |
