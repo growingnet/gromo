@@ -152,5 +152,8 @@ class GrowingContainer(torch.nn.Module):
         Due to the recursive nature of the containers, the returned dictionary
         contains nested dictionaries for each layer.
         """
-        stats = {layer.name: layer.weights_statistics() for layer in self._growing_layers}
+        stats = {}
+        for module in self.modules():
+            if isinstance(module, GrowingModule):
+                stats[module.name] = module.weights_statistics()
         return stats
