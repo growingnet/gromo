@@ -8,6 +8,7 @@ from gromo.utils.utils import (
     activation_fn,
     batch_gradient_descent,
     calculate_true_positives,
+    compute_tensor_stats,
     f1,
     f1_macro,
     f1_micro,
@@ -413,6 +414,23 @@ class TestUtils(TorchTestCase):
                     input_tensor, linear_no_bias.weight, None
                 )
                 self.assertAllClose(output_no_bias, expected_no_bias)
+
+    def test_compute_tensor_stats(self) -> None:
+        """Test compute_tensor_stats function returns correct output types."""
+        # Test with normal tensor (multiple elements)
+        for tensor in [torch.randn(3, 4), torch.tensor(5.0)]:
+            stats = compute_tensor_stats(tensor)
+
+            # Check output type and keys
+            self.assertIsInstance(stats, dict)
+            expected_keys = {"min", "max", "mean", "std"}
+            self.assertEqual(set(stats.keys()), expected_keys)
+
+            # Check value types
+            for key, value in stats.items():
+                self.assertIsInstance(
+                    value, float, f"Value for key '{key}' should be float"
+                )
 
 
 if __name__ == "__main__":

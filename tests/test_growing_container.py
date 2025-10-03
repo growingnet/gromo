@@ -33,6 +33,33 @@ def gather_statistics(dataloader, model, loss):
         model.update_computation()
 
 
+# Create a dummy GrowingContainer to test the base class method
+class DummyGrowingContainer(GrowingContainer):
+    def __init__(self, in_features, out_features):
+        super().__init__(in_features=in_features, out_features=out_features)
+        # Add some GrowingModule instances
+        self.layer1 = LinearGrowingModule(
+            in_features=in_features, out_features=4, name="layer1"
+        )
+        self.layer2 = LinearGrowingModule(
+            in_features=4, out_features=out_features, name="layer2"
+        )
+        self.set_growing_layers()
+
+    def set_growing_layers(self):
+        self._growing_layers = [self.layer1, self.layer2]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.layer2(self.layer1(x))
+
+    @property
+    def first_order_improvement(self) -> torch.Tensor:
+        return torch.tensor(0.0)
+
+    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.forward(x)
+
+
 class TestGrowingContainer(unittest.TestCase):
     """
     Test the GrowingContainer class. We only test the function calls to
@@ -342,6 +369,21 @@ class TestGrowingContainer(unittest.TestCase):
         self.assertEqual(
             container.merge.previous_tensor_s._shape,
             (assumed_total_in_features, assumed_total_in_features),
+        )
+
+    def test_weights_statistics(self):
+        """Test that weights_statistics method runs and returns a dictionary."""
+
+        # Test the dummy container
+        container = DummyGrowingContainer(
+            in_features=self.in_features, out_features=self.out_features
+        )
+
+        stats = container.weights_statistics()
+
+        # Check that the result is a dictionary
+        self.assertIsInstance(
+            stats, dict, "weights_statistics should return a dictionary"
         )
 
 

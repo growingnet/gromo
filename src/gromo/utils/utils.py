@@ -1,8 +1,9 @@
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.utils.data
 
 
 __global_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -185,6 +186,32 @@ def activation_fn(fn_name: str) -> nn.Module:
         return known_activations[fn_name]
     else:
         raise ValueError(f"Unknown activation function: {fn_name}")
+
+
+def compute_tensor_stats(tensor: torch.Tensor) -> dict[str, float]:
+    """
+    Compute basic statistics of a tensor (min, max, mean, std).
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        The input tensor for which to compute statistics.
+
+    Returns
+    -------
+    dict[str, float]
+        A dictionary containing the computed statistics.
+    """
+    min_value = tensor.min().item()
+    max_value = tensor.max().item()
+    mean_value = tensor.mean().item()
+    std_value = tensor.std().item() if tensor.numel() > 1 else 0.0
+    return {
+        "min": min_value,
+        "max": max_value,
+        "mean": mean_value,
+        "std": std_value,
+    }
 
 
 def line_search(

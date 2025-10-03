@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 
 from gromo.config.loader import load_config
@@ -144,3 +146,14 @@ class GrowingContainer(torch.nn.Module):
         for layer in self._growing_layers:
             if isinstance(layer, (MergeGrowingModule, GrowingContainer)):
                 layer.update_size()
+
+    def weights_statistics(self) -> dict[str, Any]:
+        """Get the statistics of the weights in the growing layers.
+        Due to the recursive nature of the containers, the returned dictionary
+        contains nested dictionaries for each layer.
+        """
+        stats = {}
+        for module in self.modules():
+            if isinstance(module, GrowingModule):
+                stats[module.name] = module.weights_statistics()
+        return stats
