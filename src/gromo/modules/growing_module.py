@@ -210,7 +210,11 @@ class MergeGrowingModule(torch.nn.Module):
         """
         v_proj = self.pre_activity.grad.clone().detach()
         for module in self.previous_modules:
-            v_proj -= module.optimal_delta_layer(module.input)
+            if isinstance(module, GrowingModule):
+                v_proj -= module.optimal_delta_layer(module.input)
+            elif isinstance(module, MergeGrowingModule):
+                for prev_module in module.previous_modules:
+                    v_proj -= prev_module.optimal_delta_layer(prev_module.input)
 
         return v_proj
 

@@ -349,7 +349,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         total_in_features = input_x.shape[1]
         total_out_features = bottleneck.shape[1]
-        in_edges = len(node_module.previous_modules)
+        in_edges = len(node_module.previous_modules)  # TODO: fix for prev Merge
 
         # Initialize alpha and omega weights
         if isinstance(node_module, Conv2dMergeGrowingModule):

@@ -1485,11 +1485,23 @@ class Expansion:
         elif self.type == "new node":
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
-            return [
-                n
-                for n in self.dag.predecessors(self.expanding_node)
-                if not self.dag.is_node_candidate(n)
-            ]
+            # return [
+            #     n
+            #     for n in self.dag.predecessors(self.expanding_node)
+            #     if not self.dag.is_node_candidate(n)
+            # ]
+            previous_nodes = []  # TODO: is this the best way?
+            for edge in self.dag.get_node_module(self.expanding_node).previous_modules:
+                if isinstance(edge, GrowingModule):
+                    if not self.dag.is_node_candidate(edge.previous_module._name):
+                        previous_nodes.append(edge.previous_module._name)
+                elif isinstance(edge, MergeGrowingModule):
+                    for prev_edge in edge.previous_modules:
+                        if not self.dag.is_node_candidate(
+                            prev_edge.previous_module._name
+                        ):  # TODO: this would not work for a different dag, assume no candidate nodes on the other one?
+                            previous_nodes.append(prev_edge.previous_module._name)
+            return previous_nodes
 
     @property
     def next_nodes(self) -> list[str]:
