@@ -205,7 +205,7 @@ def compute_tensor_stats(tensor: torch.Tensor) -> dict[str, float]:
     min_value = tensor.min().item()
     max_value = tensor.max().item()
     mean_value = tensor.mean().item()
-    std_value = tensor.std().item() if tensor.numel() > 1 else -1.0
+    std_value = tensor.std().item() if tensor.numel() > 1 else 0.0
     return {
         "min": min_value,
         "max": max_value,
