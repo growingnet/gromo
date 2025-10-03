@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add `weights_statistics` method to `GrowingModule` and `GrowingContainer` to retrieve statistics of weights in all growing layers. (:gh:`152` by `Théo Rudkiewicz`_)
 - Add `GrowingBlock` to mimic a ResNet 18/34 block. (:gh:`106` by `Théo Rudkiewicz`_)
 - fix(RestrictedConv2dGrowingModule.bordered_unfolded_extended_prev_input): Use the correct input size to compute the border effect of the convolution. (:gh:`147` by `Théo Rudkiewicz`_)
 - Create a `input_size` property in GrowingModule. (:gh:`143` by `Théo Rudkiewicz`_)
