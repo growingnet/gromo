@@ -324,14 +324,6 @@ class GrowingBlock(GrowingContainer):
         """
         return self.second_layer.first_order_improvement
 
-    def weights_statistics(self) -> dict[str, dict[str, dict[str, float]]]:
-        """Get the statistics of the weights in the growing layers."""
-        stats = {
-            self.first_layer.name: self.first_layer.weights_statistics(),
-            self.second_layer.name: self.second_layer.weights_statistics(),
-        }
-        return stats
-
 
 class LinearGrowingBlock(GrowingBlock):
     def __init__(
