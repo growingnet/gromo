@@ -307,6 +307,7 @@ def mini_batch_gradient_descent(
     for epoch in range(max_epochs):
         correct, total, epoch_loss = 0, 0, 0
         for x_batch, y_batch in dataloader:
+            x_batch, y_batch = x_batch.to(global_device()), y_batch.to(global_device())
             optimizer.zero_grad()
 
             output = model(x_batch)
@@ -520,3 +521,122 @@ def f1_macro(actual: torch.Tensor, predicted: torch.Tensor) -> float:
         macro-average f1 score
     """
     return float(np.mean([f1(actual, predicted, label) for label in np.unique(actual)]))
+
+
+def compute_BIC(nb_params: int, loss: float, n: int) -> float:
+    """Bayesian Information Criterion
+    BIC = k*log(n) - 2log(L), where k is the number of parameters
+
+    Parameters
+    ----------
+    nb_params : int
+        number of parameters
+    loss : float
+        loss of the model
+    n : int
+        number of samples used for training
+
+    Returns
+    -------
+    float
+        BIC score
+    """
+    return nb_params * np.log2(n) - 2 * np.log2(loss)
+
+
+def evaluate_dataset(
+    model: nn.Module, dataloader: torch.utils.data.DataLoader, loss_fn: Callable
+) -> tuple[float, float]:
+    """Evaluate network on dataset
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        network to evaluate
+    dataloader : torch.utils.data.DataLoader
+        dataloader containing the data
+    loss_fn : Callable
+        loss function for bottleneck calculation
+
+    Returns
+    -------
+    tuple[float, float]
+        accuracy and loss
+    """
+    model.eval()
+    correct, total = 0, 0
+
+    loss = []
+    for x, y in dataloader:
+        x = x.to(model.device)
+        y = y.to(model.device)
+        with torch.no_grad():
+            pred = model(x)
+            loss.append(loss_fn(pred, y).item())
+
+        if model.out_features > 1 and y.dim() == 1:
+            final_pred = pred.argmax(axis=1)
+            count_this = final_pred == y
+            count_this = count_this.sum()
+
+            correct += count_this.item()
+            total += len(pred)
+
+    if total > 0:
+        accuracy = correct / total
+    else:
+        accuracy = -1
+
+    return accuracy, np.mean(loss).item()
+
+
+def evaluate_extended_dataset(
+    model: nn.Module,
+    dataloader: torch.utils.data.DataLoader,
+    loss_fn: Callable,
+    mask: dict = {},
+) -> tuple[float, float]:
+    """Evaluate extended network on dataset
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        network to evaluate
+    dataloader : torch.utils.data.DataLoader
+        dataloader containing the data
+    loss_fn : Callable
+        loss function for bottleneck calculation
+    mask : dict, optional
+        extension mask for specific nodes and edges, by default {}
+        example: mask["edges"] for edges and mask["nodes"] for nodes
+
+    Returns
+    -------
+    tuple[float, float]
+        accuracy and loss
+    """
+    model.eval()
+    correct, total = 0, 0
+
+    loss = []
+    for x, y in dataloader:
+        x = x.to(model.device)
+        y = y.to(model.device)
+        with torch.no_grad():
+            pred = model.extended_forward(x, mask=mask)
+            loss.append(loss_fn(pred, y).item())
+
+        if model.out_features > 1 and y.dim() == 1:
+            final_pred = pred.argmax(axis=1)
+            count_this = final_pred == y
+            count_this = count_this.sum()
+
+            correct += count_this.item()
+            total += len(pred)
+
+    if total > 0:
+        accuracy = correct / total
+    else:
+        accuracy = -1
+
+    return accuracy, np.mean(loss).item()

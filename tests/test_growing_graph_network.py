@@ -6,6 +6,7 @@ import torch
 from gromo.containers.growing_dag import Expansion, GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
+from tests.unittest_tools import unittest_parametrize
 
 
 class TestGrowingGraphNetwork(unittest.TestCase):
@@ -13,9 +14,11 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.in_features = 5
         self.out_features = 2
         self.batch_size = 8
+        self.neurons = 10
         self.net = GrowingGraphNetwork(
             in_features=self.in_features,
             out_features=self.out_features,
+            neurons=self.neurons,
             loss_fn=torch.nn.CrossEntropyLoss(),
         )
         self.net.dag.add_node_with_two_edges(
@@ -32,12 +35,18 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.y = torch.randint(
             0, self.out_features, (self.batch_size,), device=global_device()
         )
+        self.dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(self.x, self.y), batch_size=self.batch_size
+        )
 
         self.x_test = torch.rand(
             (self.batch_size, self.in_features), device=global_device()
         )
         self.y_test = torch.randint(
             0, self.out_features, (self.batch_size,), device=global_device()
+        )
+        self.test_dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(self.x_test, self.y_test), batch_size=4
         )
 
         self.bottleneck = {
@@ -102,26 +111,22 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             previous_node=prev_nodes,
             next_node=next_nodes,
         )
-        with self.assertWarns(UserWarning):
-            self.net.expand_node(
-                expansion,
-                self.bottleneck,
-                self.input_B,
-                self.x_test,
-                self.y_test,
-                verbose=False,
-            )
-        self.net.dag = expansion.dag
+        self.net.expand_node(
+            expansion=expansion,
+            bottlenecks=self.bottleneck,
+            activities=self.input_B,
+            verbose=False,
+        )
 
-        self.assertEqual(self.net.dag.nodes[node]["size"], self.net.neurons * 2)
+        self.assertEqual(self.net.dag.nodes[node]["size"], self.net.neurons)
         self.assertEqual(
             self.net.dag.get_edge_module("start", node).in_features, self.in_features
         )
         self.assertEqual(
-            self.net.dag.get_edge_module("start", node).out_features, self.net.neurons * 2
+            self.net.dag.get_edge_module("start", node).out_features, self.net.neurons
         )
         self.assertEqual(
-            self.net.dag.get_edge_module(node, "end").in_features, self.net.neurons * 2
+            self.net.dag.get_edge_module(node, "end").in_features, self.net.neurons
         )
         self.assertEqual(
             self.net.dag.get_edge_module(node, "end").out_features, self.out_features
@@ -138,15 +143,12 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         prev_weight = copy.deepcopy(edge_module.weight)
 
         self.net.update_edge_weights(
-            expansion,
-            self.bottleneck,
-            self.input_B,
-            self.x_test,
-            self.y_test,
-            amplitude_factor=False,
+            expansion=expansion,
+            bottlenecks=self.bottleneck,
+            activities=self.input_B,
             verbose=False,
         )
-        self.net.dag = expansion.dag
+        edge_module.apply_change(scaling_factor=1, apply_previous=False)
 
         self.assertEqual(len(self.net.dag.edges), 3)
         self.assertIn((prev_node, next_node), self.net.dag.edges)
@@ -213,46 +215,60 @@ class TestGrowingGraphNetwork(unittest.TestCase):
     def test_inter_training(self) -> None:
         pass
 
-    def test_execute_expansions(self) -> None:
+    @unittest_parametrize(({"evaluate": True}, {"evaluate": False}))
+    def test_execute_expansions(self, evaluate: bool) -> None:
         self.net.execute_expansions(
             self.actions,
             self.bottleneck,
             self.input_B,
-            self.x,
-            self.y,
-            self.x,
-            self.y,
-            self.x_test,
-            self.y_test,
             amplitude_factor=False,
+            evaluate=evaluate,
+            train_dataloader=self.dataloader,
+            dev_dataloader=self.dataloader,
+            val_dataloader=self.test_dataloader,
         )
 
         for expansion in self.actions:
-            self.assertIsNotNone(expansion.metrics.get("loss_train"))
-            self.assertIsNotNone(expansion.metrics.get("loss_dev"))
-            self.assertIsNotNone(expansion.metrics.get("loss_val"))
-            self.assertIsNotNone(expansion.metrics.get("acc_train"))
-            self.assertIsNotNone(expansion.metrics.get("acc_dev"))
-            self.assertIsNotNone(expansion.metrics.get("acc_val"))
+            if evaluate:
+                self.assertIsNotNone(expansion.metrics.get("loss_train"))
+                self.assertIsNotNone(expansion.metrics.get("loss_dev"))
+                self.assertIsNotNone(expansion.metrics.get("loss_val"))
+                self.assertIsNotNone(expansion.metrics.get("acc_train"))
+                self.assertIsNotNone(expansion.metrics.get("acc_dev"))
+                self.assertIsNotNone(expansion.metrics.get("acc_val"))
 
-            self.assertEqual(
-                expansion.metrics.get("loss_train"), expansion.metrics.get("loss_dev")
-            )
-            self.assertEqual(
-                expansion.metrics.get("acc_train"), expansion.metrics.get("acc_dev")
-            )
+                self.assertEqual(
+                    expansion.metrics.get("loss_train"), expansion.metrics.get("loss_dev")
+                )
+                self.assertEqual(
+                    expansion.metrics.get("acc_train"), expansion.metrics.get("acc_dev")
+                )
 
-            self.assertIsNotNone(expansion.metrics.get("nb_params"))
-            self.assertIsNotNone(expansion.metrics.get("BIC"))
+                self.assertIsNotNone(expansion.metrics.get("nb_params"))
+                self.assertIsNotNone(expansion.metrics.get("BIC"))
+            else:
+                self.assertIsNone(expansion.metrics.get("loss_train"))
+                self.assertIsNone(expansion.metrics.get("loss_dev"))
+                self.assertIsNone(expansion.metrics.get("loss_val"))
+                self.assertIsNone(expansion.metrics.get("acc_train"))
+                self.assertIsNone(expansion.metrics.get("acc_dev"))
+                self.assertIsNone(expansion.metrics.get("acc_val"))
+                self.assertIsNone(expansion.metrics.get("nb_params"))
+                self.assertIsNone(expansion.metrics.get("BIC"))
+
+            self.assertIsNotNone(expansion.metrics.get("scaling_factor"))
+            self.assertIsNotNone(expansion.metrics.get("loss_bott"))
 
             self.assertIsNotNone(expansion.dag)
             self.assertIsInstance(expansion.dag, GrowingDAG)
             self.assertIsNotNone(expansion.growth_history)
             self.assertIsInstance(expansion.growth_history, dict)
 
+            expansion.metrics.clear()
+
     def test_calculate_bottleneck(self) -> None:
         bottleneck, inputB = self.net.dag.calculate_bottleneck(
-            self.actions, self.x, self.y
+            self.actions, self.dataloader
         )
 
         self.assertIsNotNone(bottleneck.get("end"))
@@ -282,17 +298,17 @@ class TestGrowingGraphNetwork(unittest.TestCase):
     def test_grow_step(self) -> None:
         pass
 
-    def test_choose_growth_best_option(self) -> None:
+    @unittest_parametrize(({"use_bic": True}, {"use_bic": False}))
+    def test_choose_growth_best_option(self, use_bic: bool) -> None:
         options = self.net.dag.define_next_actions()
         with self.assertRaises(KeyError):
-            self.net.choose_growth_best_action(options, use_bic=False)
-        with self.assertRaises(KeyError):
-            self.net.choose_growth_best_action(options, use_bic=True)
+            self.net.choose_growth_best_action(options, use_bic=use_bic)
 
-        min_value, min_value_bic = torch.inf, torch.inf
+        min_value = torch.inf
         for i, opt in enumerate(options):
-            opt.dag = None
+            opt.expand()
             opt.growth_history = i
+            opt.metrics["scaling_factor"] = 1
             opt.metrics["loss_train"] = None
             opt.metrics["loss_dev"] = None
             opt.metrics["acc_train"] = None
@@ -301,18 +317,37 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             opt.metrics["loss_val"] = torch.rand(1)
             opt.metrics["nb_params"] = torch.randint(10, 1000, (1,))
             opt.metrics["BIC"] = torch.randint(10, 1000, (1,))
-            if opt.metrics["loss_val"] < min_value:
-                min_value = opt.metrics["loss_val"]
-                min_index = i
-            if opt.metrics["BIC"] < min_value_bic:
-                min_value_bic = opt.metrics["BIC"]
-                min_index_bic = i
+            if use_bic:
+                if opt.metrics["BIC"] < min_value:
+                    min_value = opt.metrics["BIC"]
+                    min_index = i
+            else:
+                if opt.metrics["loss_val"] < min_value:
+                    min_value = opt.metrics["loss_val"]
+                    min_index = i
 
-        self.net.choose_growth_best_action(options, use_bic=False)
+        if options[min_index].type != "new edge":
+            node_module = self.net.dag.get_node_module(options[min_index].expanding_node)
+            for module in node_module.previous_modules:
+                weight = torch.rand(
+                    (self.neurons, module.in_features), device=module.device
+                )
+                bias = torch.rand(self.neurons, device=module.device)
+                module.extended_output_layer = module.layer_of_tensor(
+                    weight=weight, bias=bias
+                )
+            for module in node_module.next_modules:
+                weight = torch.rand(
+                    (module.out_features, self.neurons), device=module.device
+                )
+                bias = torch.zeros(module.out_features, device=module.device)
+                module.extended_input_layer = module.layer_of_tensor(
+                    weight=weight, bias=bias
+                )
+
+        self.net.choose_growth_best_action(options, use_bic=use_bic)
+
         self.assertEqual(self.net.growth_history, min_index)
-
-        self.net.choose_growth_best_action(options, use_bic=True)
-        self.assertEqual(self.net.growth_history, min_index_bic)
 
 
 if __name__ == "__main__":
