@@ -1777,7 +1777,7 @@ class GrowingModule(torch.nn.Module):
             values are dictionaries of weight statistics.
         """
         layer_stats = {
-            "weight": self.tensor_statistics(self.layer.weight),
+            "weight": compute_tensor_stats(self.layer.weight),
         }
         if self.layer.bias is not None:
             layer_stats["bias"] = compute_tensor_stats(self.layer.bias)
