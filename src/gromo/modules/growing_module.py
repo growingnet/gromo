@@ -7,7 +7,7 @@ import torch
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
-from gromo.utils.utils import get_correct_device, tensor_statistics
+from gromo.utils.utils import compute_tensor_stats, get_correct_device
 
 
 class MergeGrowingModule(torch.nn.Module):
@@ -1780,7 +1780,7 @@ class GrowingModule(torch.nn.Module):
             "weight": self.tensor_statistics(self.layer.weight),
         }
         if self.layer.bias is not None:
-            layer_stats["bias"] = tensor_statistics(self.layer.bias)
+            layer_stats["bias"] = compute_tensor_stats(self.layer.bias)
 
         return layer_stats
 

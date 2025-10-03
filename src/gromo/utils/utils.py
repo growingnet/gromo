@@ -188,7 +188,7 @@ def activation_fn(fn_name: str) -> nn.Module:
         raise ValueError(f"Unknown activation function: {fn_name}")
 
 
-def tensor_statistics(tensor: torch.Tensor) -> dict[str, float]:
+def compute_tensor_stats(tensor: torch.Tensor) -> dict[str, float]:
     """
     Compute basic statistics of a tensor (min, max, mean, std).
 
