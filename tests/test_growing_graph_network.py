@@ -22,9 +22,9 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             loss_fn=torch.nn.CrossEntropyLoss(),
         )
         self.net.dag.add_node_with_two_edges(
-            "start",
+            self.net.dag.root,
             "1",
-            "end",
+            self.net.dag.end,
             node_attributes={"type": "linear", "size": self.net.neurons},
         )
         self.x = torch.rand(
@@ -50,13 +50,13 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         )
 
         self.bottleneck = {
-            "end": torch.rand(
+            self.net.dag.end: torch.rand(
                 (self.batch_size, self.out_features), device=global_device()
             ),
             "1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
         }
         self.input_B = {
-            "start": torch.rand(
+            self.net.dag.root: torch.rand(
                 (self.batch_size, self.in_features), device=global_device()
             ),
             "1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
@@ -68,31 +68,32 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.net.init_empty_graph()
         self.assertEqual(len(self.net.dag.nodes), 2)
         self.assertEqual(len(self.net.dag.edges), 0)
-        self.assertIn("start", self.net.dag.nodes)
-        self.assertIn("end", self.net.dag.nodes)
-        self.assertEqual(self.net.dag.in_degree("start"), 0)
-        self.assertEqual(self.net.dag.out_degree("start"), 0)
-        self.assertEqual(self.net.dag.in_degree("end"), 0)
-        self.assertEqual(self.net.dag.out_degree("end"), 0)
-        self.assertEqual(self.net.dag.nodes["start"]["size"], self.in_features)
-        self.assertEqual(self.net.dag.nodes["end"]["size"], self.out_features)
-        self.assertEqual(self.net.dag.nodes["start"]["type"], "linear")
-        self.assertEqual(self.net.dag.nodes["end"]["type"], "linear")
-        self.assertFalse(self.net.dag.nodes["end"]["use_batch_norm"])
+        self.assertIn(self.net.dag.root, self.net.dag.nodes)
+        self.assertIn(self.net.dag.end, self.net.dag.nodes)
+        self.assertEqual(self.net.dag.in_degree(self.net.dag.root), 0)
+        self.assertEqual(self.net.dag.out_degree(self.net.dag.root), 0)
+        self.assertEqual(self.net.dag.in_degree(self.net.dag.end), 0)
+        self.assertEqual(self.net.dag.out_degree(self.net.dag.end), 0)
+        self.assertEqual(self.net.dag.nodes[self.net.dag.root]["size"], self.in_features)
+        self.assertEqual(self.net.dag.nodes[self.net.dag.end]["size"], self.out_features)
+        self.assertEqual(self.net.dag.nodes[self.net.dag.root]["type"], "linear")
+        self.assertEqual(self.net.dag.nodes[self.net.dag.end]["type"], "linear")
+        self.assertFalse(self.net.dag.nodes[self.net.dag.end]["use_batch_norm"])
 
     def test_growth_history_step(self) -> None:
         self.net.growth_history_step(
-            neurons_added=[("start", "1"), ("1", "end")],
-            # neurons_updated=[("start", "end")],
+            neurons_added=[(self.net.dag.root, "1"), ("1", self.net.dag.end)],
+            # neurons_updated=[(self.net.dag.root, self.net.dag.end)],
         )
 
         for edge in self.net.dag.edges:
             self.assertIn(str(edge), self.net.growth_history[self.net.global_step])
         self.assertEqual(
-            self.net.growth_history[self.net.global_step][str(("start", "1"))], 2
+            self.net.growth_history[self.net.global_step][str((self.net.dag.root, "1"))],
+            2,
         )
         self.assertEqual(
-            self.net.growth_history[self.net.global_step][str(("1", "end"))], 2
+            self.net.growth_history[self.net.global_step][str(("1", self.net.dag.end))], 2
         )
         self.assertEqual(self.net.growth_history[self.net.global_step]["1"], 0)
 
@@ -102,8 +103,8 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
     def test_expand_node(self) -> None:
         node = "1"
-        prev_nodes = "start"
-        next_nodes = "end"
+        prev_nodes = self.net.dag.root
+        next_nodes = self.net.dag.end
         expansion = Expansion(
             self.net.dag,
             "new node",
@@ -120,21 +121,21 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
         self.assertEqual(self.net.dag.nodes[node]["size"], self.net.neurons)
         self.assertEqual(
-            self.net.dag.get_edge_module("start", node).in_features, self.in_features
+            self.net.dag.get_edge_module(prev_nodes, node).in_features, self.in_features
         )
         self.assertEqual(
-            self.net.dag.get_edge_module("start", node).out_features, self.net.neurons
+            self.net.dag.get_edge_module(prev_nodes, node).out_features, self.net.neurons
         )
         self.assertEqual(
-            self.net.dag.get_edge_module(node, "end").in_features, self.net.neurons
+            self.net.dag.get_edge_module(node, next_nodes).in_features, self.net.neurons
         )
         self.assertEqual(
-            self.net.dag.get_edge_module(node, "end").out_features, self.out_features
+            self.net.dag.get_edge_module(node, next_nodes).out_features, self.out_features
         )
 
     def test_update_edge_weights(self) -> None:
-        prev_node = "start"
-        next_node = "end"
+        prev_node = self.net.dag.root
+        next_node = self.net.dag.end
         expansion = Expansion(
             self.net.dag, "new edge", previous_node=prev_node, next_node=next_node
         )
@@ -170,17 +171,17 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
     def test_find_amplitude_factor(self) -> None:
         pass
-        # # self.net.dag.get_edge_module("start", "1").optimal_delta_layer = torch.nn.Linear(
+        # # self.net.dag.get_edge_module(self.net.dag.root, "1").optimal_delta_layer = torch.nn.Linear(
         # #     in_features=self.in_features,
         # #     out_features=self.net.neurons,
         # #     device=global_device(),
         # # )
-        # # self.net.dag.get_edge_module("start", "1").extended_output_layer = torch.nn.Linear(
+        # # self.net.dag.get_edge_module(self.net.dag.root, "1").extended_output_layer = torch.nn.Linear(
         # #     in_features=self.in_features,
         # #     out_features=self.net.neurons,
         # #     device=global_device(),
         # # )
-        # edge_module = self.net.dag.get_edge_module("1", "end")
+        # edge_module = self.net.dag.get_edge_module("1", self.net.dag.end)
         # edge_module.weight.data = torch.zeros((self.out_features, self.net.neurons), device=global_device())
         # edge_module.optimal_delta_layer = torch.nn.Linear(
         #     in_features=self.net.neurons,
@@ -190,13 +191,13 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         # # edge_module.optimal_delta_layer.weight.data *= 100
         # # edge_module.optimal_delta_layer.bias.data += 10
         # print(f"{edge_module.optimal_delta_layer.weight=}")
-        # # self.net.dag.get_edge_module("1", "end").extended_input_layer = torch.nn.Linear(
+        # # self.net.dag.get_edge_module("1", self.net.dag.end).extended_input_layer = torch.nn.Linear(
         # #     in_features=self.net.neurons,
         # #     out_features=self.out_features,
         # #     device=global_device(),
         # # )
 
-        # node_module = self.net.dag.get_node_module("end")
+        # node_module = self.net.dag.get_node_module(self.net.dag.end)
         # pred = torch.argmax(self.net(self.x), dim=1)
         # extended_pred = torch.argmax(self.net.extended_forward(self.x), dim=1)
         # print(f"{pred=}")
@@ -271,14 +272,18 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             self.actions, self.dataloader
         )
 
-        self.assertIsNotNone(bottleneck.get("end"))
-        self.assertEqual(bottleneck["end"].shape, (self.batch_size, self.out_features))
+        self.assertIsNotNone(bottleneck.get(self.net.dag.end))
+        self.assertEqual(
+            bottleneck[self.net.dag.end].shape, (self.batch_size, self.out_features)
+        )
 
         self.assertIsNotNone(bottleneck.get("1"))
         self.assertEqual(bottleneck["1"].shape, (self.batch_size, self.net.neurons))
 
-        self.assertIsNotNone(inputB.get("start"))
-        self.assertEqual(inputB["start"].shape, (self.batch_size, self.in_features))
+        self.assertIsNotNone(inputB.get(self.net.dag.root))
+        self.assertEqual(
+            inputB[self.net.dag.root].shape, (self.batch_size, self.in_features)
+        )
 
         self.assertIsNotNone(inputB.get("1"))
         self.assertEqual(inputB["1"].shape, (self.batch_size, self.net.neurons))
@@ -286,13 +291,13 @@ class TestGrowingGraphNetwork(unittest.TestCase):
     def test_restrict_action_space(self) -> None:
         self.assertEqual(len(self.actions), 4)
 
-        gens = self.net.restrict_action_space(self.actions, "end")
+        gens = self.net.restrict_action_space(self.actions, self.net.dag.end)
         self.assertEqual(len(gens), 3)
 
         gens = self.net.restrict_action_space(self.actions, "1")
         self.assertEqual(len(gens), 2)
 
-        gens = self.net.restrict_action_space(self.actions, "start")
+        gens = self.net.restrict_action_space(self.actions, self.net.dag.root)
         self.assertEqual(len(gens), 0)
 
     def test_grow_step(self) -> None:
