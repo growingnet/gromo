@@ -561,7 +561,7 @@ class TestMergeGrowingModules(unittest.TestCase):
             layer.reset_computation()
             layer.delete_update()
 
-    def test_container_to_container(self):
+    def test_container_to_container_with_expansion(self):
         # Create Containers
         hidden_channels = 10
         dag1 = GrowingGraphNetwork(
@@ -570,6 +570,7 @@ class TestMergeGrowingModules(unittest.TestCase):
             loss_fn=self.loss_fn,
             input_shape=self.input_shape,
             layer_type="convolution",
+            name="dag1",
         )
         dag2 = GrowingGraphNetwork(
             in_features=hidden_channels,
@@ -577,6 +578,7 @@ class TestMergeGrowingModules(unittest.TestCase):
             loss_fn=self.loss_fn,
             input_shape=self.input_shape,
             layer_type="convolution",
+            name="dag2",
         )
 
         start_of_dag1 = dag1.dag.get_node_module(dag1.dag.root)
@@ -718,15 +720,13 @@ class TestMergeGrowingModules(unittest.TestCase):
 
         # Retrieve bottleneck
         with torch.no_grad():
-            bottleneck = {  # TODO: rename nodes with dag name as prefix
-                "start": start_of_dag2.projected_v_goal()
-                .clone()
-                .detach(),  # start_of_dag2
-                "end": end_of_dag2.projected_v_goal().clone().detach(),  # start_of_dag2
+            bottleneck = {
+                start_of_dag2._name: start_of_dag2.projected_v_goal().clone().detach(),
+                end_of_dag2._name: end_of_dag2.projected_v_goal().clone().detach(),
             }
             input_B = {
-                "start": start_of_dag1.activity.clone().detach(),  # start_of_dag1
-                "end": end_of_dag1.activity.clone().detach(),  # end_of_dag1
+                start_of_dag1._name: start_of_dag1.activity.clone().detach(),
+                end_of_dag1._name: end_of_dag1.activity.clone().detach(),
             }
 
         expansion = Expansion(

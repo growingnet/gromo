@@ -1,7 +1,7 @@
 import copy
 import operator
 import warnings
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Sequence
 
 import numpy as np
 import torch
@@ -56,6 +56,7 @@ class GrowingGraphNetwork(GrowingContainer):
         use_bias: bool = True,
         use_batch_norm: bool = False,
         layer_type: str = "linear",
+        name: str = "",
         input_shape: tuple[int, int] = None,
         device: str | None = None,
     ) -> None:
@@ -67,6 +68,7 @@ class GrowingGraphNetwork(GrowingContainer):
         self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
         self.layer_type = layer_type
+        self._name = name
         self.input_shape = input_shape
         self.neurons = neurons
 
@@ -113,6 +115,7 @@ class GrowingGraphNetwork(GrowingContainer):
             use_bias=self.use_bias,
             use_batch_norm=self.use_batch_norm,
             default_layer_type=self.layer_type,
+            name=self._name,
             input_shape=self.input_shape,
             device=self.device,
         )
@@ -584,7 +587,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def execute_expansions(
         self,
-        actions: list[Expansion],
+        actions: Sequence[Expansion],
         bottleneck: dict,
         input_B: dict,
         amplitude_factor: bool,
@@ -598,7 +601,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Parameters
         ----------
-        actions : list[Expansion]
+        actions : Sequence[Expansion]
             list with growth actions information
         bottleneck : dict
             dictionary of calculated expressivity bottleneck at each pre-activity
@@ -727,7 +730,7 @@ class GrowingGraphNetwork(GrowingContainer):
         return new_actions
 
     def choose_growth_best_action(
-        self, options: list[Expansion], use_bic: bool = False, verbose: bool = False
+        self, options: Sequence[Expansion], use_bic: bool = False, verbose: bool = False
     ) -> None:
         """Choose the growth action with the minimum validation loss greedily
         Log average metrics of the current growth step
@@ -735,7 +738,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         Parameters
         ----------
-        options : list[Expansion]
+        options : Sequence[Expansion]
             list with all possible graphs and their statistics
         use_bic : bool, optional
             use BIC to select the network expansion, by default False

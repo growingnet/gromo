@@ -40,6 +40,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         use_batch_norm: bool,
         default_layer_type: str = "linear",
         activation: str = "selu",
+        name: str = "",
         root: str = "start",
         end: str = "end",
         input_shape: int = None,
@@ -58,8 +59,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
         self.activation = activation
-        self.root = root
-        self.end = end
+        self._name = name
+        self.root = f"{root}@{name}"
+        self.end = f"{end}@{name}"
 
         if default_layer_type not in supported_layer_types:
             raise NotImplementedError(
@@ -277,6 +279,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         bool
             candidate attribute
         """
+        if (prev_node, next_node) not in self.edges:
+            # default behaviour assumes only one GrowingDAG is growing at a time
+            warnings.warn(
+                f"Edge ({prev_node},{next_node}) does not belong in the current GrowingDAG({self._name}). All external edges are assumed to be non-candidate.",
+                UserWarning,
+            )
+            return False
         return self[prev_node][next_node].get("candidate", False)
 
     def is_node_candidate(self, node: str) -> bool:
@@ -292,6 +301,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         bool
             candidate attribute
         """
+        if node not in self.nodes:
+            # default behaviour assumes only one GrowingDAG is growing at a time
+            warnings.warn(
+                f"Node {node} does not belong in the current GrowingDAG({self._name}). All external nodes are assumed to be non-candidate.",
+                UserWarning,
+            )
+            return False
         return self.nodes[node].get("candidate", False)
 
     def get_edge_module(self, prev_node: str, next_node: str) -> GrowingModule:
@@ -332,7 +348,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Parameters
         ----------
         edges : list
-            list fo edges to retrieve modules
+            list of edges to retrieve modules
 
         Returns
         -------
@@ -1370,7 +1386,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def __str__(self) -> str:
         nodes = list(self.nodes)
         edges = list(self.edges)
-        lines = [f"GrowingDAG("]
+        lines = [f"GrowingDAG[{self._name}]("]
         lines.append(f"\tNodes ({len(nodes)}):")
         for i, n in enumerate(nodes):
             attrs = {
@@ -1485,23 +1501,11 @@ class Expansion:
         elif self.type == "new node":
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
-            # return [
-            #     n
-            #     for n in self.dag.predecessors(self.expanding_node)
-            #     if not self.dag.is_node_candidate(n)
-            # ]
-            previous_nodes = []  # TODO: is this the best way?
-            for edge in self.dag.get_node_module(self.expanding_node).previous_modules:
-                if isinstance(edge, GrowingModule):
-                    if not self.dag.is_node_candidate(edge.previous_module._name):
-                        previous_nodes.append(edge.previous_module._name)
-                elif isinstance(edge, MergeGrowingModule):
-                    for prev_edge in edge.previous_modules:
-                        if not self.dag.is_node_candidate(
-                            prev_edge.previous_module._name
-                        ):  # TODO: this would not work for a different dag, assume no candidate nodes on the other one?
-                            previous_nodes.append(prev_edge.previous_module._name)
-            return previous_nodes
+            return [
+                n
+                for n in self.dag.predecessors(self.expanding_node)
+                if not self.dag.is_node_candidate(n)
+            ]
 
     @property
     def next_nodes(self) -> list[str]:
