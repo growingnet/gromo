@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from gromo.containers.growing_dag import Expansion
+from gromo.containers.growing_dag import InterMergeExpansion
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
@@ -729,19 +729,25 @@ class TestMergeGrowingModules(unittest.TestCase):
                 end_of_dag1._name: end_of_dag1.activity.clone().detach(),
             }
 
-        expansion = Expansion(
-            dag=dag2.dag, type="expanded node", expanding_node=dag2.dag.root
+        expansion = InterMergeExpansion(
+            dag=dag2.dag,
+            type="expanded node",
+            expanding_node=dag2.dag.root,
+            adjacent_expanding_node=dag1.dag.end,
         )
         actions = [expansion]
 
-        dag2.execute_expansions(
-            actions=actions,
-            bottleneck=bottleneck,
-            input_B=input_B,
-            amplitude_factor=False,
-            evaluate=False,
-            verbose=False,
-        )
+        with self.assertWarns(UserWarning):
+            # All external nodes are assumed to be non-candidate
+            dag2.execute_expansions(
+                actions=actions,
+                bottleneck=bottleneck,
+                input_B=input_B,
+                amplitude_factor=False,
+                evaluate=False,
+                verbose=False,
+            )
+        expansion.metrics["loss_val"] = 1
 
         dag2.choose_growth_best_action(
             options=actions,

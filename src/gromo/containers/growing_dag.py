@@ -1544,6 +1544,36 @@ class Expansion:
             )
             return new_edges
 
+    @property
+    def in_edges(self) -> list[GrowingModule]:
+        if self.type == "new edge":
+            return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
+        elif self.type == "new node":
+            return self.dag.get_edge_modules([(self.previous_node, self.expanding_node)])
+        else:
+            return self.dag.get_edge_modules(
+                [
+                    in_edge
+                    for in_edge in self.dag.in_edges(self.expanding_node)
+                    if not self.dag.is_node_candidate(in_edge[0])
+                ]
+            )
+
+    @property
+    def out_edges(self) -> list[GrowingModule]:
+        if self.type == "new edge":
+            return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
+        elif self.type == "new node":
+            return self.dag.get_edge_modules([(self.expanding_node, self.next_node)])
+        else:
+            return self.dag.get_edge_modules(
+                [
+                    out_edge
+                    for out_edge in self.dag.out_edges(self.expanding_node)
+                    if not self.dag.is_node_candidate(out_edge[1])
+                ]
+            )
+
     def expand(self) -> None:
         """Create new edge or node on the enclosed GrowingDAG"""
         if self.type == "new edge":
@@ -1595,6 +1625,13 @@ class Expansion:
             step_update[str(node)] = keep_max(new_value, str(node))
         self.growth_history[current_step].update(step_update)
 
+    def create_mask(self) -> dict:
+        mask = {
+            "nodes": [self.expanding_node],
+            "edges": self.new_edges,
+        }
+        return mask
+
     def evaluate(
         self,
         model: GrowingContainer,
@@ -1618,10 +1655,7 @@ class Expansion:
         loss_fn : Callable
             loss function
         """
-        mask = {
-            "nodes": [self.expanding_node],
-            "edges": self.new_edges,
-        }
+        mask = self.create_mask()
         acc_train, loss_train = evaluate_extended_dataset(
             model, train_dataloader, loss_fn=loss_fn, mask=mask
         )
@@ -1662,3 +1696,153 @@ class Expansion:
         elif self.type == "expanded node":
             return f"[Expansion]: Expanding node {self.expanding_node}"
         return "[Expansion]: NotImplemented"
+
+
+class InterMergeExpansion(Expansion):
+    def __init__(
+        self,
+        dag: GrowingDAG,
+        type: str,
+        growth_history: dict = {},
+        expanding_node: str | None = None,
+        previous_node: str | None = None,
+        next_node: str | None = None,
+        adjacent_expanding_node: str | None = None,
+        edge_attributes: dict = {},
+        node_attributes: dict = {},
+    ) -> None:
+        super().__init__(
+            dag,
+            type,
+            growth_history,
+            expanding_node,
+            previous_node,
+            next_node,
+            edge_attributes,
+            node_attributes,
+        )
+        self.adjacent_expanding_node = adjacent_expanding_node
+        self.previous_node = previous_node
+        self.next_node = next_node
+
+    @property
+    def previous_nodes(self) -> list[MergeGrowingModule]:
+        if self.type == "new edge" or self.type == "new node":
+            return [self.dag.get_node_module(self.previous_node)]
+        else:
+            previous_nodes = []
+            for edge in self.dag.get_node_module(self.expanding_node).previous_modules:
+                if isinstance(edge, GrowingModule):
+                    if not self.dag.is_node_candidate(edge.previous_module._name):
+                        previous_nodes.append(edge.previous_module)
+                elif isinstance(edge, MergeGrowingModule):
+                    for prev_edge in edge.previous_modules:
+                        if (
+                            not self.dag.is_node_candidate(
+                                prev_edge.previous_module._name
+                            )
+                            or self.expanding_node == self.dag.root
+                        ):  # TODO: this would not work for a different dag, assume no candidate nodes on the other one?
+                            previous_nodes.append(prev_edge.previous_module)
+            return previous_nodes
+
+    @property
+    def next_nodes(self) -> list[MergeGrowingModule]:
+        if self.type == "new edge" or self.type == "new node":
+            return [self.dag.get_node_module(self.next_node)]
+        else:
+            next_nodes = []
+            for edge in self.dag.get_node_module(self.expanding_node).next_modules:
+                if isinstance(edge, GrowingModule):
+                    if not self.dag.is_node_candidate(edge.next_module._name):
+                        next_nodes.append(edge.next_module)
+                    elif isinstance(edge, MergeGrowingModule):
+                        for next_edge in edge.next_modules:
+                            if (
+                                not self.dag.is_node_candidate(
+                                    next_edge.next_module._name
+                                )
+                                or self.expanding_node == self.dag.end
+                            ):
+                                next_nodes.append(next_edge.next_module)
+            return next_nodes
+
+    @property
+    def new_edges(self) -> list[GrowingModule]:
+        if self.type == "new edge" or self.type == "new node":
+            return self.dag.get_edge_modules(super().new_edges())
+        else:
+            new_edges = []
+            current_node_module = self.dag.get_node_module(self.expanding_node)
+            for edge in current_node_module.previous_modules:
+                if isinstance(edge, GrowingModule):
+                    if not self.dag.is_node_candidate(edge.previous_module._name):
+                        new_edges.append(edge)
+                elif isinstance(edge, MergeGrowingModule):
+                    for prev_edge in edge.previous_modules:
+                        if (
+                            self.expanding_node == self.dag.root
+                        ) or not self.dag.is_node_candidate(
+                            prev_edge.previous_module._name
+                        ):
+                            new_edges.append(prev_edge)
+            for edge in current_node_module.next_modules:
+                if isinstance(edge, GrowingModule):
+                    if not self.dag.is_node_candidate(edge.next_module._name):
+                        new_edges.append(edge)
+                elif isinstance(edge, MergeGrowingModule):
+                    for next_edge in edge.next_modules:
+                        if (
+                            self.expanding_node == self.dag.end
+                        ) or not self.dag.is_node_candidate(next_edge.next_module._name):
+                            new_edges.append(next_edge)
+            return new_edges
+
+    @property
+    def in_edges(self) -> list[GrowingModule]:
+        if self.type == "new edge":
+            return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
+        elif self.type == "new node":
+            return self.dag.get_edge_modules([(self.previous_node, self.expanding_node)])
+        else:
+            in_edges = []
+            for edge in self.dag.get_node_module(self.expanding_node).previous_modules:
+                if isinstance(edge, GrowingModule):
+                    if not self.dag.is_node_candidate(edge.previous_module._name):
+                        in_edges.append(edge)
+                elif isinstance(edge, MergeGrowingModule):
+                    for prev_edge in edge.previous_modules:
+                        if (
+                            self.expanding_node == self.dag.root
+                        ) or not self.dag.is_node_candidate(
+                            prev_edge.previous_module._name
+                        ):
+                            in_edges.append(prev_edge)
+            return in_edges
+
+    @property
+    def out_edges(self) -> list[GrowingModule]:
+        if self.type == "new edge":
+            return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
+        elif self.type == "new node":
+            return self.dag.get_edge_modules([(self.expanding_node, self.next_node)])
+        else:
+            out_edges = []
+            for edge in self.dag.get_node_module(self.expanding_node).next_modules:
+                if isinstance(edge, GrowingModule):
+                    if not self.dag.is_node_candidate(edge.next_module._name):
+                        out_edges.append(edge)
+                elif isinstance(edge, MergeGrowingModule):
+                    for next_edge in edge.next_modules:
+                        if (
+                            self.expanding_node == self.dag.end
+                        ) or not self.dag.is_node_candidate(next_edge.next_module._name):
+                            out_edges.append(next_edge)
+            return out_edges
+
+    def create_mask(self) -> dict:
+        mask = {
+            "nodes": [self.expanding_node, self.adjacent_expanding_node],
+            "edges": [edge._name for edge in self.new_edges],
+        }
+        return mask

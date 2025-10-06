@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.containers.growing_dag import Expansion, GrowingDAG
+from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     Conv2dMergeGrowingModule,
@@ -339,8 +339,12 @@ class GrowingGraphNetwork(GrowingContainer):
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
-        prev_node_modules = self.dag.get_node_modules(expansion.previous_nodes)
-        next_node_modules = self.dag.get_node_modules(expansion.next_nodes)
+        if isinstance(expansion, InterMergeExpansion):
+            prev_node_modules = expansion.previous_nodes
+            next_node_modules = expansion.next_nodes
+        elif isinstance(expansion, Expansion):
+            prev_node_modules = self.dag.get_node_modules(expansion.previous_nodes)
+            next_node_modules = self.dag.get_node_modules(expansion.next_nodes)
 
         bottleneck, input_x = [], []
         for next_node_module in next_node_modules:
@@ -352,7 +356,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         total_in_features = input_x.shape[1]
         total_out_features = bottleneck.shape[1]
-        in_edges = len(node_module.previous_modules)  # TODO: fix for prev Merge
+        in_edges = len(expansion.in_edges)
 
         # Initialize alpha and omega weights
         if isinstance(node_module, Conv2dMergeGrowingModule):
@@ -402,7 +406,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # Record layer extensions of new block
         i = 0
         alpha = alpha.view(self.neurons, -1)  # (neurons, total_in_features)
-        for i_edge, prev_edge_module in enumerate(node_module.previous_modules):
+        for i_edge, prev_edge_module in enumerate(expansion.in_edges):
             # Output extension for alpha weights
             in_features = int(prev_edge_module.in_features)  # type: ignore
             prev_edge_module._scaling_factor_next_module[0] = 1  # type: ignore
@@ -418,7 +422,7 @@ class GrowingGraphNetwork(GrowingContainer):
             i += in_features
         i = 0
         omega = omega.view(-1, self.neurons)  # (total_out_features, neurons)
-        for next_edge_module in node_module.next_modules:
+        for next_edge_module in expansion.out_edges:
             # Input extension for omega weights
             if isinstance(next_edge_module, LinearGrowingModule):
                 out_features = int(next_edge_module.out_features)  # type: ignore
