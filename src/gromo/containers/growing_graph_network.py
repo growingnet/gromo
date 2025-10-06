@@ -735,7 +735,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def choose_growth_best_action(
         self, options: Sequence[Expansion], use_bic: bool = False, verbose: bool = False
-    ) -> None:
+    ) -> Expansion:
         """Choose the growth action with the minimum validation loss greedily
         Log average metrics of the current growth step
         Reconstruct chosen graph and discard the rest
@@ -823,13 +823,13 @@ class GrowingGraphNetwork(GrowingContainer):
 
         # Transfer metrics
         self.growth_history = copy.copy(best_option.growth_history)
-        self.growth_loss_train = best_option.metrics["loss_train"]
-        self.growth_loss_dev = best_option.metrics["loss_dev"]
-        self.growth_loss_val = best_option.metrics["loss_val"]
-        self.growth_acc_train = best_option.metrics["acc_train"]
-        self.growth_acc_dev = best_option.metrics["acc_dev"]
-        self.growth_acc_val = best_option.metrics["acc_val"]
-        del best_option
+        self.growth_loss_train = best_option.metrics.get("loss_train")
+        self.growth_loss_dev = best_option.metrics.get("loss_dev")
+        self.growth_loss_val = best_option.metrics.get("loss_val")
+        self.growth_acc_train = best_option.metrics.get("acc_train")
+        self.growth_acc_dev = best_option.metrics.get("acc_dev")
+        self.growth_acc_val = best_option.metrics.get("acc_val")
+        return best_option
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function of DAG network
