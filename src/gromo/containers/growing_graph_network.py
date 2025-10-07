@@ -106,6 +106,11 @@ class GrowingGraphNetwork(GrowingContainer):
     def delete_update(self) -> None:
         self.dag.delete_update()
 
+    def update_size(self) -> None:
+        super().update_size()
+        self.in_features = self.dag.nodes[self.dag.root]["size"]
+        self.out_features = self.dag.nodes[self.dag.end]["size"]
+
     def init_empty_graph(self) -> None:
         """Create empty DAG with start and end nodes"""
         self.dag = GrowingDAG(

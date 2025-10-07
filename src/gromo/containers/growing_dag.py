@@ -87,7 +87,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     # Override functions from GrowingContainer
 
     def set_growing_layers(self) -> None:
-        self._growing_layers = self.get_all_edge_modules()
+        self._growing_layers = self.get_all_edge_modules() + self.get_all_node_modules()
 
     def init_computation(self):
         for node_module in self.get_all_node_modules():
@@ -687,6 +687,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )
 
         self._get_ancestors(self.root)
+
+    def update_size(self) -> None:
+        super().update_size()
+        for node in self.nodes():
+            module = self.get_node_module(node)
+            if isinstance(module, Conv2dMergeGrowingModule):
+                size = module.in_channels
+            elif isinstance(module, LinearMergeGrowingModule):
+                size = module.in_features
+            self.nodes[node].update({"size": size})
+            if node == self.root:
+                self.in_features = size
+            elif node == self.end:
+                self.out_features = size
 
     # Remove existing modules
 

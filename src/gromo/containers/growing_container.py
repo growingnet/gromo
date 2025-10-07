@@ -42,7 +42,7 @@ class GrowingContainer(torch.nn.Module):
         for layer in self._growing_layers:
             if isinstance(layer, GrowingContainer):
                 layer.set_scaling_factor(factor)
-            else:
+            elif isinstance(layer, GrowingModule):
                 layer.scaling_factor = factor
                 layer._scaling_factor_next_module.data[0] = factor
 
