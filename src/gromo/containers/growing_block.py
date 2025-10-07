@@ -82,9 +82,38 @@ class GrowingBlock(GrowingContainer):
         # TODO: FIX this
         self.activation_derivative = 1
 
+    def __str__(self, verbose: int = 0) -> str:
+        if verbose == 0:
+            return (
+                f"{self.name} ({self.first_layer.__str__()} -> "
+                f"{self.second_layer.__str__()})"
+            )
+        elif verbose == 1:
+            return (
+                f"{self.name}:\n"
+                f"{self.first_layer.__str__(verbose=1)}"
+                f"\n->\n"
+                f"{self.second_layer.__str__(verbose=1)}"
+            )
+        elif verbose >= 2:
+            return (
+                f"{self.name}:\n"
+                f"Pre-activation: {self.pre_activation}\n"
+                f"Downsample: {self.downsample}\n"
+                f"{self.first_layer.__str__(verbose=2)}"
+                f"\n->\n"
+                f"{self.second_layer.__str__(verbose=2)}"
+            )
+        else:
+            raise ValueError("verbose must be a non-negative integer.")
+
     @property
     def eigenvalues_extension(self):
         return self.second_layer.eigenvalues_extension
+
+    @property
+    def parameter_update_decrease(self):
+        return self.second_layer.parameter_update_decrease
 
     @property
     def scaling_factor(self):
