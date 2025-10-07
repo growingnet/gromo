@@ -120,7 +120,7 @@ class GrowingContainer(torch.nn.Module):
                 layer.delete_update()
         return self.currently_updated_layer_index
 
-    def dummy_select_update(self, **kwargs):
+    def dummy_select_update(self, **_) -> int:
         self.currently_updated_layer_index = 0
         return 0
 
