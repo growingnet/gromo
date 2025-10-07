@@ -706,7 +706,6 @@ class TestMergeGrowingModules(unittest.TestCase):
 
         # Compute optimal deltas
         for layer in self.layers:
-            print(type(layer))
             if isinstance(layer, LinearMergeGrowingModule):
                 with self.assertRaises(AssertionError):
                     layer.compute_optimal_delta()
@@ -749,46 +748,40 @@ class TestMergeGrowingModules(unittest.TestCase):
             )
         expansion.metrics["loss_val"] = 1
 
-        chosen_action = dag2.choose_growth_best_action(
+        dag2.choose_growth_best_action(
             options=actions,
             verbose=False,
         )
-        if chosen_action.type != "new edge":
-            dag1.dag.nodes[chosen_action.adjacent_expanding_node]["size"] += dag2.neurons
-        # Delete updates on dag2 based on mask
-        for prev_node, next_node in dag1.dag.edges:
-            if prev_node == chosen_action.adjacent_expanding_node:
-                delete_input = False
-                delete_output = True
-            elif next_node == chosen_action.adjacent_expanding_node:
-                delete_input = True
-                delete_output = False
-            else:
-                delete_input = True
-                delete_output = True
-
-            edge_module = dag1.dag.get_edge_module(prev_node, next_node)
-            edge_module.delete_update(
-                include_previous=False,
-                delete_delta=False,
-                delete_input=delete_input,
-                delete_output=delete_output,
-            )
-
-            # Apply changes
-            factor = chosen_action.metrics["scaling_factor"]
-            edge_module.scaling_factor = factor
-            edge_module._scaling_factor_next_module.data[0] = factor
-            edge_module.apply_change(scaling_factor=factor, apply_previous=False)
-            if not delete_output:
-                edge_module._apply_output_changes(
-                    scaling_factor=factor, extension_size=dag2.neurons
-                )
+        dag1.chosen_action = dag2.chosen_action
+        dag1.apply_change()
+        dag2.apply_change()
 
         # Reset computation
         for layer in self.layers:
             layer.reset_computation()
             layer.delete_update()
+
+        hidden_channels += dag2.neurons
+        self.assertEqual(
+            dag1.dag.get_edge_module(dag1.dag.root, dag1.dag.end).out_channels,
+            hidden_channels,
+        )
+        self.assertEqual(
+            dag1.dag.get_node_module(dag1.dag.end).in_channels, hidden_channels
+        )
+        self.assertEqual(dag1.dag.nodes[dag1.dag.end]["size"], hidden_channels)
+        self.assertEqual(
+            dag2.dag.get_node_module(dag2.dag.root).in_channels, hidden_channels
+        )
+        self.assertEqual(
+            dag2.dag.get_edge_module(dag2.dag.root, dag2.dag.end).in_channels,
+            hidden_channels,
+        )
+        self.assertEqual(dag2.dag.nodes[dag2.dag.root]["size"], hidden_channels)
+        self.assertEqual(dag1.out_features, hidden_channels)
+        self.assertEqual(dag2.in_features, hidden_channels)
+        self.assertEqual(dag1.dag.out_features, hidden_channels)
+        self.assertEqual(dag2.dag.in_features, hidden_channels)
 
         x_dag1 = dag1(self.x)
         x_dag2 = dag2(x_dag1)
@@ -799,7 +792,7 @@ class TestMergeGrowingModules(unittest.TestCase):
         self.assertEqual(out.shape, (self.batch_size, self.out_features))
         self.assertEqual(
             x_dag1.shape,
-            (self.batch_size, hidden_channels + dag2.neurons, *self.input_shape),
+            (self.batch_size, hidden_channels, *self.input_shape),
         )
 
     def test_linear_merge_to_conv_merge(self):

@@ -352,7 +352,22 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
         self.net.choose_growth_best_action(options, use_bic=use_bic)
 
-        self.assertEqual(self.net.growth_history, min_index)
+        # self.assertEqual(self.net.growth_history, min_index)
+        self.assertIsNotNone(self.net.chosen_action)
+        self.assertIs(self.net.chosen_action, options[min_index])
+        self.assertIsNotNone(
+            edge_module.optimal_delta_layer
+            for edge_module in self.net.dag.get_all_edge_modules()
+        )
+        if options[min_index].type != "new edge":
+            self.assertIsNotNone(
+                edge_module.extended_output_layer
+                for edge_module in node_module.previous_modules
+            )
+            self.assertIsNotNone(
+                edge_module.extended_input_layer
+                for edge_module in node_module.next_modules
+            )
 
 
 if __name__ == "__main__":
