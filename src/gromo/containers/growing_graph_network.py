@@ -740,7 +740,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def choose_growth_best_action(
         self, options: Sequence[Expansion], use_bic: bool = False, verbose: bool = False
-    ) -> Expansion:
+    ) -> None:
         """Choose the growth action with the minimum validation loss greedily
         Log average metrics of the current growth step
         Reconstruct chosen graph and discard the rest
@@ -769,17 +769,15 @@ class GrowingGraphNetwork(GrowingContainer):
             print("Chose option", best_ind)
 
         # Reconstruct graph
-        best_option = options[best_ind]
+        self.chosen_action = options[best_ind]
 
         # Make selected nodes and edges non candidate
-        self.dag.toggle_node_candidate(best_option.expanding_node, candidate=False)
+        self.dag.toggle_node_candidate(self.chosen_action.expanding_node, candidate=False)
         self.dag.toggle_edge_candidate(
-            best_option.previous_node, best_option.next_node, candidate=False
+            self.chosen_action.previous_node,
+            self.chosen_action.next_node,
+            candidate=False,
         )
-
-        # Update size of expanded node
-        if best_option.type != "new edge":
-            self.dag.nodes[best_option.expanding_node]["size"] += self.neurons
 
         # Discard unused edges or nodes
         for index, option in enumerate(options):
@@ -792,10 +790,10 @@ class GrowingGraphNetwork(GrowingContainer):
 
         # Delete updates based on mask
         for prev_node, next_node in self.dag.edges:
-            if prev_node == best_option.expanding_node:
+            if prev_node == self.chosen_action.expanding_node:
                 delete_input = False
                 delete_output = True
-            elif next_node == best_option.expanding_node:
+            elif next_node == self.chosen_action.expanding_node:
                 delete_input = True
                 delete_output = False
             else:
@@ -810,31 +808,38 @@ class GrowingGraphNetwork(GrowingContainer):
                 delete_output=delete_output,
             )
 
-            # Apply changes
-            factor = best_option.metrics["scaling_factor"]
+    def apply_change(self) -> None:
+        # Apply changes
+        for prev_node, next_node in self.dag.edges:
+            factor = self.chosen_action.metrics["scaling_factor"]
+            edge_module = self.dag.get_edge_module(prev_node, next_node)
+
             edge_module.scaling_factor = factor
             edge_module._scaling_factor_next_module.data[0] = factor
             edge_module.apply_change(scaling_factor=factor, apply_previous=False)
-            if not delete_output:
+            if edge_module.extended_output_layer is not None:
                 edge_module._apply_output_changes(
                     scaling_factor=factor, extension_size=self.neurons
                 )
 
-        # Rename new node to standard name
-        if best_option.type != "new edge":
-            self.dag.rename_nodes(
-                {best_option.expanding_node: best_option.expanding_node.split("_")[0]}
-            )
+        if self.chosen_action.type != "new edge":
+            if self.chosen_action.expanding_node in self.dag.nodes:
+                expanding_node = self.chosen_action.expanding_node
+            else:
+                expanding_node = self.chosen_action.adjacent_expanding_node
+            # Update size of expanded node
+            self.update_size()
+            # Rename new node to standard name
+            self.dag.rename_nodes({expanding_node: expanding_node.split("_")[0]})
 
         # Transfer metrics
-        self.growth_history = copy.copy(best_option.growth_history)
-        self.growth_loss_train = best_option.metrics.get("loss_train")
-        self.growth_loss_dev = best_option.metrics.get("loss_dev")
-        self.growth_loss_val = best_option.metrics.get("loss_val")
-        self.growth_acc_train = best_option.metrics.get("acc_train")
-        self.growth_acc_dev = best_option.metrics.get("acc_dev")
-        self.growth_acc_val = best_option.metrics.get("acc_val")
-        return best_option
+        self.growth_history = copy.copy(self.chosen_action.growth_history)
+        self.growth_loss_train = self.chosen_action.metrics.get("loss_train")
+        self.growth_loss_dev = self.chosen_action.metrics.get("loss_dev")
+        self.growth_loss_val = self.chosen_action.metrics.get("loss_val")
+        self.growth_acc_train = self.chosen_action.metrics.get("acc_train")
+        self.growth_acc_dev = self.chosen_action.metrics.get("acc_dev")
+        self.growth_acc_val = self.chosen_action.metrics.get("acc_val")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function of DAG network
