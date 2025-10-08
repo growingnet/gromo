@@ -564,21 +564,47 @@ class TestMergeGrowingModules(unittest.TestCase):
     def test_container_to_container_with_expansion(self):
         # Create Containers
         hidden_channels = 10
+        node_attributes = {
+            "type": "convolution",
+            "size": 5,
+            "kernel_size": self.kernel_size,
+            "shape": self.input_shape,
+        }
+        edge_attributes = {"kernel_size": self.kernel_size}
         dag1 = GrowingGraphNetwork(
             in_features=self.in_channels,
             out_features=hidden_channels,
             loss_fn=self.loss_fn,
+            neurons=20,
             input_shape=self.input_shape,
             layer_type="convolution",
             name="dag1",
+        )
+        dag1.dag.add_node_with_two_edges(
+            dag1.dag.root,
+            "1",
+            dag1.dag.end,
+            node_attributes=node_attributes,
+            edge_attributes=edge_attributes,
+        )
+        node_in_features = int(
+            dag1.dag.get_edge_module("1", dag1.dag.end).in_features + 1
         )
         dag2 = GrowingGraphNetwork(
             in_features=hidden_channels,
             out_features=self.out_channels,
             loss_fn=self.loss_fn,
+            neurons=10,
             input_shape=self.input_shape,
             layer_type="convolution",
             name="dag2",
+        )
+        dag2.dag.add_node_with_two_edges(
+            dag2.dag.root,
+            "1",
+            dag2.dag.end,
+            node_attributes=node_attributes,
+            edge_attributes=edge_attributes,
         )
 
         start_of_dag1 = dag1.dag.get_node_module(dag1.dag.root)
@@ -617,7 +643,9 @@ class TestMergeGrowingModules(unittest.TestCase):
         self.assertIsNone(start_of_dag1.previous_tensor_s)
         self.assertIsNone(start_of_dag1.previous_tensor_m)
 
-        self.assertEqual(end_of_dag1.total_in_features, self.conv_in_features + 1)
+        self.assertEqual(
+            end_of_dag1.total_in_features, self.conv_in_features + 1 + node_in_features
+        )
         self.assertEqual(
             end_of_dag1.tensor_s._shape,
             (
@@ -647,7 +675,9 @@ class TestMergeGrowingModules(unittest.TestCase):
 
         self.assertEqual(
             end_of_dag2.total_in_features,
-            hidden_channels * self.kernel_size[0] * self.kernel_size[1] + 1,
+            hidden_channels * self.kernel_size[0] * self.kernel_size[1]
+            + 1
+            + node_in_features,
         )
         self.assertEqual(
             end_of_dag2.tensor_s._shape,
@@ -722,10 +752,12 @@ class TestMergeGrowingModules(unittest.TestCase):
             bottleneck = {
                 start_of_dag2._name: start_of_dag2.projected_v_goal().clone().detach(),
                 end_of_dag2._name: end_of_dag2.projected_v_goal().clone().detach(),
+                "1": dag2.dag.get_node_module("1").projected_v_goal().clone().detach(),
             }
             input_B = {
                 start_of_dag1._name: start_of_dag1.activity.clone().detach(),
                 end_of_dag1._name: end_of_dag1.activity.clone().detach(),
+                "1": dag1.dag.get_node_module("1").activity.clone().detach(),
             }
 
         expansion = InterMergeExpansion(
@@ -767,15 +799,23 @@ class TestMergeGrowingModules(unittest.TestCase):
             hidden_channels,
         )
         self.assertEqual(
+            dag1.dag.get_edge_module("1", dag1.dag.end).out_channels,
+            hidden_channels,
+        )
+        self.assertEqual(
             dag1.dag.get_node_module(dag1.dag.end).in_channels, hidden_channels
         )
         self.assertEqual(dag1.dag.nodes[dag1.dag.end]["size"], hidden_channels)
         self.assertEqual(
-            dag2.dag.get_node_module(dag2.dag.root).in_channels, hidden_channels
-        )
-        self.assertEqual(
             dag2.dag.get_edge_module(dag2.dag.root, dag2.dag.end).in_channels,
             hidden_channels,
+        )
+        self.assertEqual(
+            dag2.dag.get_edge_module(dag2.dag.root, "1").in_channels,
+            hidden_channels,
+        )
+        self.assertEqual(
+            dag2.dag.get_node_module(dag2.dag.root).in_channels, hidden_channels
         )
         self.assertEqual(dag2.dag.nodes[dag2.dag.root]["size"], hidden_channels)
         self.assertEqual(dag1.out_features, hidden_channels)
