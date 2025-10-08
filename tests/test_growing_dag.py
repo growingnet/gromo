@@ -43,7 +43,7 @@ class TestGrowingDAG(unittest.TestCase):
             use_bias=self.use_bias,
             use_batch_norm=self.use_batch_norm,
             default_layer_type="linear",
-            name="dag_linear",
+            name="dag-linear",
         )
         self.dag.remove_edge(self.dag.root, self.dag.end)
         self.dag_conv = GrowingDAG(
@@ -54,7 +54,7 @@ class TestGrowingDAG(unittest.TestCase):
             use_batch_norm=self.use_batch_norm,
             default_layer_type="convolution",
             input_shape=(3, 3),
-            name="dag_conv",
+            name="dag-conv",
         )
         self.dag_conv.remove_edge(self.dag_conv.root, self.dag_conv.end)
 
@@ -989,7 +989,7 @@ class TestGrowingDAG(unittest.TestCase):
             use_bias=self.use_bias,
             use_batch_norm=self.use_batch_norm,
             default_layer_type="linear",
-            name="dag_linear",
+            name="dag-linear",
         )
         self.dag_conv.add_direct_edge(
             self.dag_conv.root,
@@ -1104,22 +1104,17 @@ class TestGrowingDAG(unittest.TestCase):
             adjacent_expanding_node=dag.root,
         )
         expansion.expand()
-        with self.assertWarns(UserWarning):
-            # All external nodes are assumed to be non-candidate
-            self.assertEqual(
-                expansion.new_edges,
-                [
-                    self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
-                    dag.get_edge_module(dag.root, dag.end),
-                ],
-            )
-        with self.assertWarns(UserWarning):
-            # All external nodes are assumed to be non-candidate
-            self.assertEqual(
-                expansion.in_edges,
-                [self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end)],
-            )
-        # with self.assertWarns(UserWarning):  # All external nodes are assumed to be non-candidate
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.in_edges,
+            [self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end)],
+        )
         self.assertEqual(expansion.out_edges, [dag.get_edge_module(dag.root, dag.end)])
 
 

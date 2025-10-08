@@ -43,7 +43,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         name: str = "",
         root: str = "start",
         end: str = "end",
-        input_shape: tuple[int, int] = None,
+        input_shape: tuple[int, int] | None = None,
         DAG_parameters: dict = None,
         device: torch.device | str | None = None,
     ) -> None:
@@ -58,6 +58,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
         self.activation = activation
+        if "_" in name:
+            raise ValueError(
+                f"The character '_' is not allowed in the name of a GrowingDAG. Found {name}."
+            )
         self._name = name
         self.root = f"{root}@{name}"
         self.end = f"{end}@{name}"
