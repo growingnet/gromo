@@ -1858,6 +1858,149 @@ class GrowingModule(torch.nn.Module):
 
         return layer_stats
 
+    def scale_parameter_update(self, scale: float) -> None:
+        """
+        Scale the parameter update by a given factor.
+        This means scaling the optimal delta and the parameter_update_decrease.
+
+        Parameters
+        ----------
+        scale : float
+            The factor by which to scale the parameter update.
+        """
+        if self.optimal_delta_layer is not None:
+            self.scale_layer(self.optimal_delta_layer, scale)
+            if self.parameter_update_decrease is not None:
+                self.parameter_update_decrease *= scale
+
+    @staticmethod
+    def scale_layer(layer: torch.nn.Module, scale: float) -> torch.nn.Module:
+        """
+        Scale the weights and biases of a given layer by a specified factor.
+
+        Parameters
+        ----------
+        layer : torch.nn.Module
+            The layer whose parameters are to be scaled.
+        scale : float
+            The factor by which to scale the layer's parameters.
+
+        Returns
+        -------
+        torch.nn.Module
+            The layer with scaled parameters.
+        """
+        if hasattr(layer, "weight") and layer.weight is not None:
+            layer.weight.data *= scale
+        if hasattr(layer, "bias") and layer.bias is not None:
+            layer.bias.data *= scale
+        return layer
+
+    def scale_layer_extension(
+        self,
+        scale: float | None,
+        scale_output: float | None,
+        scale_input: float | None,
+    ) -> None:
+        """
+        Scale the layer extension by a given factor.
+        This means scaling the extended_input_layer, the extended_output_layer and
+        the eigenvalues_extension.
+        However as the eigenvalues_extension will be squared they will be
+        scaled by sqrt(scale_input * scale_output).
+
+        Parameters
+        ----------
+        scale : float | None
+            The factor by which to scale the layer extension.
+            If not None, replace both scale_input and scale_output
+            if they are not None.
+        scale_output : float | None
+            The factor by which to scale the layer output extension.
+        scale_input : float | None
+            The factor by which to scale the layer input extension.
+            If not None, scale must be None.
+        """
+        scales: list[float | None] = [scale_output, scale_input]  # type: ignore
+        for i, specific_scale in enumerate(scales):
+            if specific_scale is None:
+                assert (
+                    scale is not None
+                ), "scale can't be None if scale_input or scale_output is None."
+                scales[i] = scale
+        assert all(isinstance(s, float) for s in scales)
+        scales: list[float]
+        self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
+        if self.extended_output_layer is not None:
+            self.scale_layer(self.extended_output_layer, scales[0])
+        if (
+            self.previous_module is not None
+            and self.previous_module.extended_output_layer is not None
+        ):
+            self.scale_layer(self.previous_module.extended_output_layer, scales[1])
+
+    def normalise_optimal_updates(self, std_target: float | None = None) -> None:
+        """
+        Normalise the optimal updates so that the standard deviation of the
+        weights of the updates is equal to std_target.
+        If std_target is None, we use the standard deviation of the weights of the layer.
+        If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
+
+        Let s the target standard deviation then:
+        - optimal_delta_layer is scaled to have a std of s (so
+        by s / std(optimal_delta_layer))
+        - extended_input_layer is scaled to have a std of s (so
+        by s / std(extended_input_layer))
+        - extended_output_layer is scaled to match the scaling of the extended_input_layer
+        and the optimal_delta_layer (so by std(extended_input_layer) / std(optimal_delta_layer))
+        """
+        # Determine target standard deviation
+        if std_target is None:
+            if hasattr(self.layer, "weight") and self.layer.weight is not None:
+                std_target = self.layer.weight.std().item()
+            else:
+                # Use 1 / sqrt(in_features) as default
+                std_target = 1.0 / (self.in_features**0.5)
+
+        # Track scaling factors for extensions
+        delta_scale = 1.0
+        input_extension_scale = 1.0
+
+        # Get current standard deviations and calculate scaling factors
+        if self.optimal_delta_layer is not None and hasattr(
+            self.optimal_delta_layer, "weight"
+        ):
+            current_std = self.optimal_delta_layer.weight.std().item()
+            if current_std > 0:
+                delta_scale = std_target / current_std
+
+        if self.extended_input_layer is not None and hasattr(
+            self.extended_input_layer, "weight"
+        ):
+            current_std = self.extended_input_layer.weight.std().item()
+            if current_std > 0:
+                input_extension_scale = std_target / current_std
+
+        # Calculate output extension scale to maintain relationship
+        output_extension_scale = (
+            input_extension_scale / delta_scale if delta_scale > 0 else 1.0
+        )
+
+        # Apply scaling using existing methods
+        if self.optimal_delta_layer is not None and delta_scale != 1.0:
+            self.scale_parameter_update(delta_scale)
+
+        if self.extended_input_layer is not None or (
+            self.previous_module is not None
+            and hasattr(self.previous_module, "extended_output_layer")
+            and self.previous_module.extended_output_layer is not None
+        ):
+            self.scale_layer_extension(
+                scale=None,
+                scale_output=output_extension_scale,
+                scale_input=input_extension_scale,
+            )
+
 
 if __name__ == "__main__":
     help(GrowingModule)
