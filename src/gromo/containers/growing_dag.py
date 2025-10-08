@@ -43,12 +43,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         name: str = "",
         root: str = "start",
         end: str = "end",
-        input_shape: int = None,
+        input_shape: tuple[int, int] = None,
         DAG_parameters: dict = None,
         device: torch.device | str | None = None,
-        **kwargs,
     ) -> None:
-        nx.DiGraph.__init__(self, **kwargs)
+        nx.DiGraph.__init__(self)
         GrowingContainer.__init__(
             self,
             in_features=in_features,
@@ -1510,9 +1509,7 @@ class Expansion:
 
     @property
     def previous_nodes(self) -> list[str]:
-        if self.type == "new edge":
-            return [self.previous_node]  # type: ignore
-        elif self.type == "new node":
+        if self.type == "new edge" or self.type == "new node":
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
             return [
@@ -1523,9 +1520,7 @@ class Expansion:
 
     @property
     def next_nodes(self) -> list[str]:
-        if self.type == "new edge":
-            return [self.next_node]  # type: ignore
-        elif self.type == "new node":
+        if self.type == "new edge" or self.type == "new node":
             return [self.next_node]  # type: ignore
         else:
             return [
@@ -1688,9 +1683,7 @@ class Expansion:
         self.metrics["acc_val"] = acc_val
         edges = []
         for prev_node, next_node in self.dag.edges:
-            if (prev_node, next_node) in self.new_edges:
-                edges.append((prev_node, next_node))
-            elif (
+            if (prev_node, next_node) in self.new_edges or (
                 not self.dag.is_node_candidate(prev_node)
                 and not self.dag.is_node_candidate(next_node)
                 and not self.dag.is_edge_candidate(prev_node, next_node)
@@ -1782,7 +1775,7 @@ class InterMergeExpansion(Expansion):
     @property
     def new_edges(self) -> list[GrowingModule]:
         if self.type == "new edge" or self.type == "new node":
-            return self.dag.get_edge_modules(super().new_edges())
+            return self.dag.get_edge_modules(super().new_edges)
         else:
             new_edges = []
             current_node_module = self.dag.get_node_module(self.expanding_node)
