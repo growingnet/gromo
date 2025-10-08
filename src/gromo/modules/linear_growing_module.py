@@ -934,3 +934,31 @@ class LinearGrowingModule(GrowingModule):
             layer, torch.nn.Linear
         ), f"The layer should be a torch.nn.Linear but got {type(layer)}."
         return layer.in_features
+
+    def create_layer_in_extension(self, extension_size: int) -> None:
+        """
+        Create the layer input extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        # Create a linear layer for input extension
+        self.extended_input_layer = torch.nn.Linear(
+            extension_size, self.out_features, bias=self.use_bias, device=self.device
+        )
+
+    def create_layer_out_extension(self, extension_size: int) -> None:
+        """
+        Create the layer output extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        # Create a linear layer for output extension
+        self.extended_output_layer = torch.nn.Linear(
+            self.in_features, extension_size, bias=self.use_bias, device=self.device
+        )
