@@ -538,7 +538,11 @@ class Conv2dGrowingModule(GrowingModule):
         self.layer.padding = value
 
     @property
-    def stride(self) -> tuple[int, int]:
+    def dilation(self):
+        return self.layer.dilation
+
+    @property
+    def stride(self):
         return self.layer.stride
 
     def __out_dimension(self, dim: int) -> int:
@@ -647,7 +651,7 @@ class Conv2dGrowingModule(GrowingModule):
         unfolded_input = torch.nn.functional.unfold(
             self.input,
             self.layer.kernel_size,
-            padding=self.layer.padding,
+            padding=self.padding,
             stride=self.layer.stride,
             dilation=self.layer.dilation,
         )
@@ -726,7 +730,7 @@ class Conv2dGrowingModule(GrowingModule):
         """
         Compute the update of the tensor S.
         With the input tensor B, the update is
-        S := (B^c_F)^T B^c_F \in (C d[+1]d[+1], C d[+1]d[+1]).
+        S := (B^c_F)^T B^c_F in (C d[+1]d[+1], C d[+1]d[+1]).
 
         Returns
         -------
@@ -774,6 +778,9 @@ class Conv2dGrowingModule(GrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
+            assert isinstance(
+                desired_activation, torch.Tensor
+            ), f"The gradient of the pre-activity must be a torch.Tensor (error in {self.name})."
         desired_activation = desired_activation.flatten(start_dim=-2)
 
         return (
@@ -1632,7 +1639,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         """
         Compute the update of the tensor S_growth.
         With the input tensor B, the update is
-        S_growth := (Bt)^T Bt \in (C dd, C dd).
+        S_growth := (Bt)^T Bt in (C dd, C dd).
 
         Returns
         -------
