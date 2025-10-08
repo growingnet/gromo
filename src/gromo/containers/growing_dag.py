@@ -1770,15 +1770,13 @@ class InterMergeExpansion(Expansion):
                 if isinstance(edge, GrowingModule):
                     if not self.dag.is_node_candidate(edge.next_module._name):
                         next_nodes.append(edge.next_module)
-                    elif isinstance(edge, MergeGrowingModule):
-                        for next_edge in edge.next_modules:
-                            if (
-                                not self.dag.is_node_candidate(
-                                    next_edge.next_module._name
-                                )
-                                or self.expanding_node == self.dag.end
-                            ):
-                                next_nodes.append(next_edge.next_module)
+                elif isinstance(edge, MergeGrowingModule):
+                    for next_edge in edge.next_modules:
+                        if (
+                            not self.dag.is_node_candidate(next_edge.next_module._name)
+                            or self.expanding_node == self.dag.end
+                        ):
+                            next_nodes.append(next_edge.next_module)
             return next_nodes
 
     @property
