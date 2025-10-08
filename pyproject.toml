@@ -26,6 +26,7 @@ dependencies = [
 ]
 [project.optional-dependencies]
 test = ["coverage"]
+dev = ["ruff", "pre-commit"]
 doc = [
     "Sphinx",
     "sphinx-gallery",
@@ -88,3 +89,59 @@ exclude_also = [
     # Defensive assertion code
     "raise NotImplementedError",
 ]
+
+[tool.ruff]
+line-length = 90
+target-version = "py311"
+
+[tool.ruff.lint]
+# Enable basic linting rules with type-related checks
+select = [
+    # "ERA", # no commented code
+    # "ANN", # flake8-annotations (basic type checking)
+    "BLE",   # blind except
+    # "B",   # flake8-bugbear
+    "A",     # flake8-builtins
+    "COM",   # flake8-commas
+    "C4",    # flake8-comprehensions
+    # "EM",  # flake8-errmsg
+    "FA",    # flake8-future-annotations
+    "ICN",   # flake8-import-conventions
+    "PIE",   # flake8-pie
+    "PYI",   # flake8-pyi (stub files)
+    "F",     # Pyflakes
+    "SIM",   # flake8-simplify
+    "TC",    # flake8-type-checking
+    "ARG",   # flake8-unused-arguments
+    "N",     # pep8-naming
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "N",     # pep8-naming
+    # "UP",  # pyupgrade
+    "RUF",   # Ruff-specific rules
+]
+
+# Ignore some rules that might be too strict for existing codebase
+ignore = [
+    "ANN401",  # Dynamically typed expressions (Any) are disallowed
+    "COM812",  # Trailing comma missing (conflicts with formatter)
+    "COM819",  # Trailing comma prohibited (conflicts with formatter)
+    "C408",    # can initialise dict with dict(...)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can have more relaxed type checking
+"tests/**/*.py" = ["ANN", "ARG"]
+# Examples can ignore type annotations
+"examples/**/*.py" = ["ANN"]
+# Init files can ignore unused imports
+"**/__init__.py" = ["F401"]
+
+[tool.ruff.format]
+# Use same formatting as black
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
