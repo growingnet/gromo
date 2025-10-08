@@ -2054,6 +2054,144 @@ class GrowingModule(torch.nn.Module):
                 scale_input=input_extension_scale,
             )
 
+    def create_layer_in_extension(self, extension_size: int) -> None:
+        """
+        Create the layer input extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        raise NotImplementedError
+
+    def create_layer_out_extension(self, extension_size: int) -> None:
+        """
+        Create the layer output extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        raise NotImplementedError
+
+    @torch.no_grad()
+    def copy_uniform_initialization(
+        self, tensor: torch.Tensor, fan_in: int
+    ) -> torch.Tensor:
+        """
+        Initialize the tensor with a uniform law with bounds
+        -sqrt(std(W)), sqrt(std(W))
+        where std(W) is the empirical variance of the weights of the layer
+        if the layer has weights, otherwise use
+        -1 / sqrt(fan_in), 1 / sqrt(fan_in)
+        where fan_in is the number of input features of the
+        extension.
+        """
+        # Get the standard deviation from the main layer weights
+        if hasattr(self.layer, "weight") and self.layer.weight is not None:
+            std_dev = self.layer.weight.std().item()
+        else:
+            # Fallback to Xavier uniform initialization bounds
+            std_dev = 1.0 / (fan_in**0.5)
+
+        # Initialize with uniform distribution
+        bound = std_dev**0.5
+        torch.nn.init.uniform_(tensor, -bound, bound)
+
+        return tensor
+
+    @staticmethod
+    def get_fan_in_from_layer(layer: torch.nn.Module) -> int:
+        """
+        Get the fan_in (number of input features) from a given layer.
+
+        Parameters
+        ----------
+        layer: torch.nn.Module
+            layer to get the fan_in from
+
+        Returns
+        -------
+        int
+            fan_in of the layer
+        """
+        raise NotImplementedError
+
+    @torch.no_grad()
+    def create_layer_extensions(
+        self,
+        extension_size: int,
+        output_extension_size: int | None = None,
+        input_extension_size: int | None = None,
+        output_extension_init: str = "copy_uniform",
+        input_extension_init: str = "copy_uniform",
+    ) -> None:
+        """
+        Create the layer input and output extensions of given sizes.
+        Allow to have different sizes for input and output extensions,
+        this is useful for example is you connect a convolutional layer
+        to a linear layer.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        output_extension_size: int | None
+            size of the output extension to create, if None use extension_size
+        input_extension_size: int | None
+            size of the input extension to create, if None use extension_size
+        """
+        if output_extension_size is None:
+            output_extension_size = extension_size
+        if input_extension_size is None:
+            input_extension_size = extension_size
+        assert isinstance(self.previous_module, GrowingModule), (
+            f"The layer {self.name} has no previous module."
+            "Therefore, neuron addition is not possible."
+        )
+        self.previous_module.create_layer_out_extension(output_extension_size)
+        self.create_layer_in_extension(input_extension_size)
+
+        known_inits = {
+            "copy_uniform": self.copy_uniform_initialization,
+            "zeros": lambda tensor, size: torch.zeros_like(tensor),
+            # Future initializations can be added here
+        }
+
+        for init in (output_extension_init, input_extension_init):
+            if init not in known_inits:
+                raise ValueError(
+                    f"Unknown initialization method '{init}'. "
+                    f"Available methods are: {list(known_inits.keys())}."
+                )
+
+        # Initialize input extension
+        layer_to_init = self.extended_input_layer
+        assert isinstance(layer_to_init, torch.nn.Module), (
+            f"The layer {self.name} has no input extension."
+            "Therefore, it can't be initialized."
+        )
+        init = input_extension_init
+
+        known_inits[init](layer_to_init.weight, self.get_fan_in_from_layer(layer_to_init))
+        if layer_to_init.bias is not None:
+            known_inits[init](
+                layer_to_init.bias, self.get_fan_in_from_layer(layer_to_init)
+            )
+
+        # Initialize output extension
+        layer_to_init = self.previous_module.extended_output_layer
+        assert isinstance(layer_to_init, torch.nn.Module), (
+            f"The previous layer {self.previous_module.name} has no output extension."
+            "Therefore, it can't be initialized."
+        )
+        init = output_extension_init
+        known_inits[init](layer_to_init.weight, self.previous_module.in_features)
+        if layer_to_init.bias is not None:
+            known_inits[init](layer_to_init.bias, self.previous_module.in_features)
+
 
 if __name__ == "__main__":
     help(GrowingModule)
