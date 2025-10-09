@@ -1,8 +1,9 @@
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable
 
 import numpy as np
 import torch
 import torch.nn as nn
+from deprecated import deprecated
 
 
 __global_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -101,6 +102,9 @@ def torch_ones(*size: tuple[int, int], **kwargs) -> torch.Tensor:
         return torch.ones(*size, device=__global_device, **kwargs)
 
 
+@deprecated(
+    "This functionality is already integrated in the `GrowingModule` sub-classes."
+)
 def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
     """Safe Linear forward function for empty input tensors
     Resolves bug with shape transformation when using cuda
