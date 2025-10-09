@@ -45,7 +45,7 @@ class TestGrowingDAG(unittest.TestCase):
             default_layer_type="linear",
             name="dag-linear",
         )
-        self.dag.remove_edge(self.dag.root, self.dag.end)
+        self.dag.remove_direct_edge(self.dag.root, self.dag.end)
         self.dag_conv = GrowingDAG(
             in_features=self.in_features,
             out_features=self.out_features,
@@ -56,17 +56,44 @@ class TestGrowingDAG(unittest.TestCase):
             input_shape=(3, 3),
             name="dag-conv",
         )
-        self.dag_conv.remove_edge(self.dag_conv.root, self.dag_conv.end)
+        self.dag_conv.remove_direct_edge(self.dag_conv.root, self.dag_conv.end)
 
     def tearDown(self) -> None:
         del self.dag
+        del self.dag_conv
         return super().tearDown()
 
     def test_init(self) -> None:
         self.assertEqual(list(self.dag.nodes), [self.dag.root, self.dag.end])
         self.assertEqual(len(self.dag.edges), 0)
         self.assertEqual(self.dag.in_degree(self.dag.root), 0)
+        self.assertEqual(self.dag.out_degree(self.dag.root), 0)
+        self.assertEqual(self.dag.in_degree(self.dag.end), 0)
         self.assertEqual(self.dag.out_degree(self.dag.end), 0)
+        self.assertEqual(len(self.dag._growing_layers), 2)
+
+        with self.assertRaises(ValueError):
+            # Character _ not allowed in name
+            GrowingDAG(
+                in_features=self.in_features,
+                out_features=self.out_features,
+                neurons=self.hidden_size,
+                use_bias=self.use_bias,
+                use_batch_norm=self.use_batch_norm,
+                name="test_name",
+            )
+        dag = GrowingDAG(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            DAG_parameters={},
+        )
+        self.assertEqual(len(dag.nodes), 0)
+        self.assertEqual(len(dag.edges), 0)
+        self.assertEqual(dag.ancestors, {})
+        self.assertEqual(len(dag._growing_layers), 0)
 
     def test_edge_candidate(self) -> None:
         with self.assertRaises(ValueError):
