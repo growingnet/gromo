@@ -772,17 +772,18 @@ class TestMergeGrowingModules(unittest.TestCase):
                 "1": dag1.dag.get_node_module("1").activity.clone().detach(),
             }
 
+        # You should grow the node that has pooling as a post_merge_function
         expansion = InterMergeExpansion(
-            dag=dag2.dag,
+            dag=dag1.dag,
             type="expanded node",
-            expanding_node=dag2.dag.root,
-            adjacent_expanding_node=dag1.dag.end,
+            expanding_node=dag1.dag.end,
+            adjacent_expanding_node=dag2.dag.root,
         )
         actions = [expansion]
 
         with self.assertWarns(UserWarning):
             # All external nodes are assumed to be non-candidate
-            dag2.execute_expansions(
+            dag1.execute_expansions(
                 actions=actions,
                 bottleneck=bottleneck,
                 input_B=input_B,
@@ -792,11 +793,11 @@ class TestMergeGrowingModules(unittest.TestCase):
             )
         expansion.metrics["loss_val"] = 1
 
-        dag2.choose_growth_best_action(
+        dag1.choose_growth_best_action(
             options=actions,
             verbose=False,
         )
-        dag1.chosen_action = dag2.chosen_action
+        dag2.chosen_action = dag1.chosen_action
         dag1.apply_change()
         dag2.apply_change()
 
@@ -805,7 +806,7 @@ class TestMergeGrowingModules(unittest.TestCase):
             layer.reset_computation()
             layer.delete_update()
 
-        hidden_channels += dag2.neurons
+        hidden_channels += dag1.neurons
         self.assertEqual(
             dag1.dag.get_edge_module(dag1.dag.root, dag1.dag.end).out_channels,
             hidden_channels,
