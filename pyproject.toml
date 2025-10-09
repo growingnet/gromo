@@ -23,6 +23,7 @@ dependencies = [
     "networkx",
     "torch",
     "numpy",
+    "deprecated",
 ]
 [project.optional-dependencies]
 test = ["coverage"]
