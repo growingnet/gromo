@@ -19,7 +19,7 @@ from gromo.utils.utils import global_device
 class TestMergeGrowingModules(unittest.TestCase):
     def setUp(self) -> None:
         self.batch_size = 4
-        self.input_shape = (9, 9)
+        self.input_shape = (12, 12)
         self.device = global_device()
 
         self.in_channels = 3
@@ -381,6 +381,10 @@ class TestMergeGrowingModules(unittest.TestCase):
             out_dim_after_pooling * out_dim_after_pooling * self.out_channels
         )
         pooling = torch.nn.AvgPool2d(kernel_size=self.kernel_size)
+        self.conv_merge.post_merge_function = torch.nn.Sequential(
+            torch.nn.ReLU(),
+            pooling,
+        )
         conv_merge_after_pooling = Conv2dMergeGrowingModule(
             in_channels=self.out_channels,
             next_kernel_size=(1, 1),
@@ -406,8 +410,6 @@ class TestMergeGrowingModules(unittest.TestCase):
         self.conv.next_module = self.conv_merge
         self.conv_merge.add_previous_module(self.conv)
         self.conv_merge.add_next_module(conv_merge_after_pooling)
-        # self.conv_merge.add_next_module(pooling)
-        # conv_merge_after_pooling.add_previous_module(pooling)
         conv_merge_after_pooling.add_previous_module(self.conv_merge)
         conv_merge_after_pooling.add_next_module(new_linear_merge)
         new_linear_merge.add_previous_module(conv_merge_after_pooling)
@@ -489,8 +491,7 @@ class TestMergeGrowingModules(unittest.TestCase):
 
         x_conv = self.conv(self.x)
         x_conv_merge = self.conv_merge(x_conv)
-        x_pooling = pooling(x_conv_merge)
-        x_conv_merge_after_pooling = conv_merge_after_pooling(x_pooling)
+        x_conv_merge_after_pooling = conv_merge_after_pooling(x_conv_merge)
         x_flatten = self.flatten(x_conv_merge_after_pooling)
         x_linear_merge = new_linear_merge(x_flatten)
         out = new_linear(x_linear_merge)
@@ -523,6 +524,10 @@ class TestMergeGrowingModules(unittest.TestCase):
         # ---------- Max Pooling ------------
 
         pooling = torch.nn.MaxPool2d(kernel_size=self.kernel_size)
+        self.conv_merge.post_merge_function = torch.nn.Sequential(
+            torch.nn.ReLU(),
+            pooling,
+        )
 
         # Forward and backward pass
         for layer in self.layers:
@@ -530,8 +535,7 @@ class TestMergeGrowingModules(unittest.TestCase):
 
         x_conv = self.conv(self.x)
         x_conv_merge = self.conv_merge(x_conv)
-        x_pooling = pooling(x_conv_merge)
-        x_conv_merge_after_pooling = conv_merge_after_pooling(x_pooling)
+        x_conv_merge_after_pooling = conv_merge_after_pooling(x_conv_merge)
         x_flatten = self.flatten(x_conv_merge_after_pooling)
         x_linear_merge = new_linear_merge(x_flatten)
         out = new_linear(x_linear_merge)
@@ -590,12 +594,17 @@ class TestMergeGrowingModules(unittest.TestCase):
         node_in_features = int(
             dag1.dag.get_edge_module("1", dag1.dag.end).in_features + 1
         )
+        pooling = torch.nn.AvgPool2d(kernel_size=self.kernel_size)
+        out_dim_after_pooling = (
+            self.input_shape[0] - self.kernel_size[0]
+        ) // self.kernel_size[0] + 1
+        node_attributes["shape"] = (out_dim_after_pooling, out_dim_after_pooling)
         dag2 = GrowingGraphNetwork(
             in_features=hidden_channels,
             out_features=self.out_channels,
             loss_fn=self.loss_fn,
             neurons=10,
-            input_shape=self.input_shape,
+            input_shape=(out_dim_after_pooling, out_dim_after_pooling),
             layer_type="convolution",
             name="dag2",
         )
@@ -612,6 +621,9 @@ class TestMergeGrowingModules(unittest.TestCase):
         start_of_dag2 = dag2.dag.get_node_module(dag2.dag.root)
         end_of_dag2 = dag2.dag.get_node_module(dag2.dag.end)
         new_linear_in_features = end_of_dag2.output_volume
+
+        # Add pooling as post_merge_function
+        end_of_dag1.post_merge_function = pooling
 
         new_linear_merge = LinearMergeGrowingModule(
             in_features=new_linear_in_features, name="new_linear_merge"
@@ -749,14 +761,14 @@ class TestMergeGrowingModules(unittest.TestCase):
 
         # Retrieve bottleneck
         with torch.no_grad():
+            # Retrieve bottleneck of next node modules
             bottleneck = {
-                start_of_dag2._name: start_of_dag2.projected_v_goal().clone().detach(),
                 end_of_dag2._name: end_of_dag2.projected_v_goal().clone().detach(),
                 "1": dag2.dag.get_node_module("1").projected_v_goal().clone().detach(),
             }
+            # Retrieve post-activity of previous node modules
             input_B = {
                 start_of_dag1._name: start_of_dag1.activity.clone().detach(),
-                end_of_dag1._name: end_of_dag1.activity.clone().detach(),
                 "1": dag1.dag.get_node_module("1").activity.clone().detach(),
             }
 
@@ -823,6 +835,7 @@ class TestMergeGrowingModules(unittest.TestCase):
         self.assertEqual(dag1.dag.out_features, hidden_channels)
         self.assertEqual(dag2.dag.in_features, hidden_channels)
 
+        dag1.init_computation()
         x_dag1 = dag1(self.x)
         x_dag2 = dag2(x_dag1)
         x_flatten = self.flatten(x_dag2)
@@ -831,8 +844,17 @@ class TestMergeGrowingModules(unittest.TestCase):
 
         self.assertEqual(out.shape, (self.batch_size, self.out_features))
         self.assertEqual(
-            x_dag1.shape,
+            end_of_dag1.input.shape,
             (self.batch_size, hidden_channels, *self.input_shape),
+        )
+        self.assertEqual(
+            x_dag1.shape,
+            (
+                self.batch_size,
+                hidden_channels,
+                out_dim_after_pooling,
+                out_dim_after_pooling,
+            ),
         )
 
     def test_linear_merge_to_conv_merge(self):
