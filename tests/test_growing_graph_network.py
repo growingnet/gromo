@@ -15,11 +15,14 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.out_features = 2
         self.batch_size = 8
         self.neurons = 10
+
+        # Linear Graph
         self.net = GrowingGraphNetwork(
             in_features=self.in_features,
             out_features=self.out_features,
             neurons=self.neurons,
             loss_fn=torch.nn.CrossEntropyLoss(),
+            layer_type="linear",
         )
         self.net.dag.add_node_with_two_edges(
             self.net.dag.root,
@@ -63,6 +66,54 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         }
 
         self.actions = self.net.dag.define_next_actions()
+
+        # Convolutional Graph
+        self.input_shape = (9, 9)
+        self.kernel_size = (3, 3)
+        self.net_conv = GrowingGraphNetwork(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            neurons=self.neurons,
+            loss_fn=torch.nn.CrossEntropyLoss(),
+            input_shape=self.input_shape,
+            layer_type="convolution",
+        )
+        self.net_conv.dag.add_node_with_two_edges(
+            self.net_conv.dag.root,
+            "1",
+            self.net_conv.dag.end,
+            node_attributes={
+                "type": "convolution",
+                "size": self.net.neurons,
+                "kernel_size": self.kernel_size,
+                "shape": self.input_shape,
+            },
+            edge_attributes={"kernel_size": self.kernel_size},
+        )
+        self.net_conv.dag.remove_direct_edge(
+            self.net_conv.dag.root, self.net_conv.dag.end
+        )
+
+        self.bottleneck_conv = {
+            self.net_conv.dag.end: torch.rand(
+                (self.batch_size, self.out_features, *self.input_shape),
+                device=global_device(),
+            ),
+            "1": torch.rand(
+                (self.batch_size, self.net_conv.neurons, *self.input_shape),
+                device=global_device(),
+            ),
+        }
+        self.input_B_conv = {
+            self.net_conv.dag.root: torch.rand(
+                (self.batch_size, self.in_features, *self.input_shape),
+                device=global_device(),
+            ),
+            "1": torch.rand(
+                (self.batch_size, self.net_conv.neurons, *self.input_shape),
+                device=global_device(),
+            ),
+        }
 
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
@@ -134,6 +185,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         )
 
     def test_update_edge_weights(self) -> None:
+        # Linear Graph
         prev_node = self.net.dag.root
         next_node = self.net.dag.end
         expansion = Expansion(
@@ -168,6 +220,49 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
         # activity = torch.matmul(self.x, edge_module.weight.T) + edge_module.bias
         self.assertTrue(torch.all(edge_module.weight != prev_weight))
+        self.assertEqual(edge_module.weight.shape, (self.out_features, self.in_features))
+        self.assertEqual(edge_module.bias.shape, (self.out_features,))
+
+        # Convolutional Graph
+        prev_node = self.net_conv.dag.root
+        next_node = self.net_conv.dag.end
+        expansion = Expansion(
+            self.net_conv.dag, "new edge", previous_node=prev_node, next_node=next_node
+        )
+        expansion.dag.add_direct_edge(
+            prev_node, next_node, edge_attributes={"kernel_size": self.kernel_size}
+        )
+        edge_module = expansion.dag.get_edge_module(prev_node, next_node)
+        prev_weight = copy.deepcopy(edge_module.weight)
+
+        self.net_conv.update_edge_weights(
+            expansion=expansion,
+            bottlenecks=self.bottleneck_conv,
+            activities=self.input_B_conv,
+            verbose=False,
+        )
+        edge_module.apply_change(scaling_factor=1, apply_previous=False)
+
+        self.assertEqual(len(self.net_conv.dag.edges), 3)
+        self.assertIn((prev_node, next_node), self.net_conv.dag.edges)
+        self.assertEqual(self.net_conv.dag.nodes[prev_node]["size"], self.in_features)
+        self.assertEqual(self.net_conv.dag.nodes[next_node]["size"], self.out_features)
+        self.assertEqual(self.net_conv.dag.out_degree(prev_node), 2)
+        self.assertEqual(self.net_conv.dag.in_degree(next_node), 2)
+        self.assertEqual(
+            self.net_conv.dag.get_edge_module(prev_node, next_node).in_channels,
+            self.in_features,
+        )
+        self.assertEqual(
+            self.net_conv.dag.get_edge_module(prev_node, next_node).out_channels,
+            self.out_features,
+        )
+        self.assertTrue(torch.all(edge_module.weight != prev_weight))
+        self.assertEqual(
+            edge_module.weight.shape,
+            (self.out_features, self.in_features, *self.kernel_size),
+        )
+        self.assertEqual(edge_module.bias.shape, (self.out_features,))
 
     def test_find_amplitude_factor(self) -> None:
         pass
