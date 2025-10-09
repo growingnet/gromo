@@ -68,6 +68,42 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertEqual(self.dag.in_degree(self.dag.root), 0)
         self.assertEqual(self.dag.out_degree(self.dag.end), 0)
 
+    def test_edge_candidate(self) -> None:
+        with self.assertRaises(ValueError):
+            # Edge not present in the graph
+            self.dag.toggle_edge_candidate(self.dag.root, self.dag.end, True)
+        with self.assertWarns(UserWarning):
+            # Edge does not belong in the current graph
+            self.assertFalse(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+        self.dag.add_direct_edge(self.dag.root, self.dag.end)
+        self.assertFalse(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+        self.dag.toggle_edge_candidate(self.dag.root, self.dag.end, True)
+        self.assertTrue(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+        self.dag.toggle_edge_candidate(self.dag.root, self.dag.end, False)
+        self.assertFalse(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+    def test_node_candidate(self) -> None:
+        with self.assertRaises(ValueError):
+            # Node not present in the graph
+            self.dag.toggle_node_candidate("test", True)
+        with self.assertWarns(UserWarning):
+            # Node does not belong in the current graph
+            self.assertFalse(self.dag.is_node_candidate("test"))
+
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "test", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.assertFalse(self.dag.is_node_candidate("test"))
+
+        self.dag.toggle_node_candidate("test", True)
+        self.assertTrue(self.dag.is_node_candidate("test"))
+
+        self.dag.toggle_node_candidate("test", False)
+        self.assertFalse(self.dag.is_node_candidate("test"))
+
     def test_get_edge_module(self) -> None:
         self.dag.add_direct_edge(self.dag.root, self.dag.end)
         self.assertEqual(
@@ -1005,26 +1041,33 @@ class TestGrowingDAG(unittest.TestCase):
 
         # Add new edge
         expansion = InterMergeExpansion(
-            self.dag,
+            dag,
             type="new edge",
-            previous_node=self.dag.root,
-            next_node=self.dag.end,
+            previous_node=dag.root,
+            next_node=dag.end,
         )
         expansion.expand()
         self.assertEqual(
             expansion.new_edges,
-            self.dag.get_edge_modules([(self.dag.root, self.dag.end)]),
+            dag.get_edge_modules([(dag.root, dag.end)]),
         )
         self.assertFalse(
-            torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).weight)
+            torch.any(expansion.dag.get_edge_module(dag.root, dag.end).weight)
         )
-        self.assertFalse(
-            torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).bias)
-        )
+        self.assertFalse(torch.any(expansion.dag.get_edge_module(dag.root, dag.end).bias))
         self.assertEqual(
-            expansion.in_edges, [self.dag.get_edge_module(self.dag.root, self.dag.end)]
+            expansion.previous_nodes, [dag.get_node_module(expansion.previous_node)]
         )
+        self.assertEqual(expansion.next_nodes, [dag.get_node_module(expansion.next_node)])
+        self.assertEqual(expansion.in_edges, [dag.get_edge_module(dag.root, dag.end)])
         self.assertEqual(expansion.in_edges, expansion.out_edges)
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [None, None],
+                "edges": [dag.get_edge_module(dag.root, dag.end)._name],
+            },
+        )
 
         # Add new node
         expansion = InterMergeExpansion(
@@ -1059,12 +1102,29 @@ class TestGrowingDAG(unittest.TestCase):
             torch.any(expansion.dag.get_edge_module("test", self.dag_conv.end).bias)
         )
         self.assertEqual(
+            expansion.previous_nodes,
+            [self.dag_conv.get_node_module(expansion.previous_node)],
+        )
+        self.assertEqual(
+            expansion.next_nodes, [self.dag_conv.get_node_module(expansion.next_node)]
+        )
+        self.assertEqual(
             expansion.in_edges,
             [self.dag_conv.get_edge_module(self.dag_conv.root, "test")],
         )
         self.assertEqual(
             expansion.out_edges,
             [self.dag_conv.get_edge_module("test", self.dag_conv.end)],
+        )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": ["test", None],
+                "edges": [
+                    self.dag_conv.get_edge_module(self.dag_conv.root, "test")._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                ],
+            },
         )
 
         # Expand existing node
@@ -1081,6 +1141,13 @@ class TestGrowingDAG(unittest.TestCase):
             expanding_node="test",
         )
         expansion.expand()
+        self.assertTrue(self.dag_conv.is_node_candidate("test"))
+        self.assertEqual(
+            expansion.previous_nodes, [self.dag_conv.get_node_module(self.dag_conv.root)]
+        )
+        self.assertEqual(
+            expansion.next_nodes, [self.dag_conv.get_node_module(self.dag_conv.end)]
+        )
         self.assertEqual(
             expansion.new_edges,
             self.dag_conv.get_edge_modules(
@@ -1096,7 +1163,18 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertEqual(
             expansion.out_edges, self.dag_conv.get_node_module("test").next_modules
         )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": ["test", None],
+                "edges": [
+                    self.dag_conv.get_edge_module(self.dag_conv.root, "test")._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                ],
+            },
+        )
 
+        # Expansion with the first MergeGrowingModule
         expansion = InterMergeExpansion(
             self.dag_conv,
             type="expanded node",
@@ -1104,6 +1182,10 @@ class TestGrowingDAG(unittest.TestCase):
             adjacent_expanding_node=dag.root,
         )
         expansion.expand()
+        self.assertEqual(
+            expansion.previous_nodes, [self.dag_conv.get_node_module(self.dag_conv.root)]
+        )
+        self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
         self.assertEqual(
             expansion.new_edges,
             [
@@ -1116,6 +1198,144 @@ class TestGrowingDAG(unittest.TestCase):
             [self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end)],
         )
         self.assertEqual(expansion.out_edges, [dag.get_edge_module(dag.root, dag.end)])
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [self.dag_conv.end, dag.root],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                ],
+            },
+        )
+
+        self.dag_conv.toggle_node_candidate("test", False)
+        self.assertEqual(
+            expansion.previous_nodes,
+            [
+                self.dag_conv.get_node_module(self.dag_conv.root),
+                self.dag_conv.get_node_module("test"),
+            ],
+        )
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.in_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [self.dag_conv.end, dag.root],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                ],
+            },
+        )
+
+        # Expansion with the second MergeGrowingModule
+        dag.add_node_with_two_edges(
+            dag.root,
+            "test",
+            dag.end,
+            node_attributes=self.init_node_attributes,
+        )
+        dag.toggle_node_candidate("test", True)
+        expansion = InterMergeExpansion(
+            dag,
+            type="expanded node",
+            expanding_node=dag.root,
+            adjacent_expanding_node=self.dag_conv.end,
+        )
+        expansion.expand()
+        self.assertEqual(
+            expansion.previous_nodes,
+            [
+                self.dag_conv.get_node_module(self.dag_conv.root),
+                self.dag_conv.get_node_module("test"),
+            ],
+        )
+        self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.in_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+            ],
+        )
+        self.assertEqual(expansion.out_edges, [dag.get_edge_module(dag.root, dag.end)])
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [dag.root, self.dag_conv.end],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                ],
+            },
+        )
+
+        dag.toggle_node_candidate("test", False)
+        self.assertEqual(
+            expansion.next_nodes,
+            [dag.get_node_module(dag.end), dag.get_node_module("test")],
+        )
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+                dag.get_edge_module(dag.root, "test"),
+            ],
+        )
+        self.assertEqual(
+            expansion.out_edges,
+            [
+                dag.get_edge_module(dag.root, dag.end),
+                dag.get_edge_module(dag.root, "test"),
+            ],
+        )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [dag.root, self.dag_conv.end],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                    dag.get_edge_module(dag.root, "test")._name,
+                ],
+            },
+        )
 
 
 if __name__ == "__main__":
