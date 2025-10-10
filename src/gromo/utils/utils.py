@@ -191,6 +191,32 @@ def activation_fn(fn_name: str) -> nn.Module:
         raise ValueError(f"Unknown activation function: {fn_name}")
 
 
+def compute_tensor_stats(tensor: torch.Tensor) -> dict[str, float]:
+    """
+    Compute basic statistics of a tensor (min, max, mean, std).
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        The input tensor for which to compute statistics.
+
+    Returns
+    -------
+    dict[str, float]
+        A dictionary containing the computed statistics.
+    """
+    min_value = tensor.min().item()
+    max_value = tensor.max().item()
+    mean_value = tensor.mean().item()
+    std_value = tensor.std().item() if tensor.numel() > 1 else 0.0
+    return {
+        "min": min_value,
+        "max": max_value,
+        "mean": mean_value,
+        "std": std_value,
+    }
+
+
 def line_search(
     cost_fn: Callable, return_history: bool = False
 ) -> tuple[float, float] | tuple[list, list]:

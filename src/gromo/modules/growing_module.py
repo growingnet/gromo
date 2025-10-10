@@ -7,7 +7,7 @@ import torch
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
-from gromo.utils.utils import get_correct_device
+from gromo.utils.utils import compute_tensor_stats, get_correct_device
 
 
 class MergeGrowingModule(torch.nn.Module):
@@ -1827,6 +1827,24 @@ class GrowingModule(torch.nn.Module):
                 if self in self.next_module.previous_modules:
                     self.next_module.previous_modules.remove(self)
                     self.next_module.update_size()
+
+    def weights_statistics(self) -> dict[str, dict[str, float]]:
+        """
+        Get the statistics of the weights in the growing layer.
+
+        Returns
+        -------
+        dict[str, dict[str, float]]
+            A dictionary where keys are weights names and
+            values are dictionaries of weight statistics.
+        """
+        layer_stats = {
+            "weight": compute_tensor_stats(self.layer.weight),
+        }
+        if self.layer.bias is not None:
+            layer_stats["bias"] = compute_tensor_stats(self.layer.bias)
+
+        return layer_stats
 
 
 if __name__ == "__main__":

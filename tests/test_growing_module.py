@@ -439,6 +439,47 @@ class TestGrowingModule(TorchTestCase):
         expected_size_3 = layer2.in_features + (1 if layer2.use_bias else 0)
         self.assertEqual(growth_tensor_3.shape, (expected_size_3, expected_size_3))
 
+    def test_weights_statistics(self) -> None:
+        """Test weights_statistics method returns correct output types."""
+        # Test both cases: with and without bias
+        test_cases = [
+            {"use_bias": True, "expected_keys": {"weight", "bias"}},
+            {"use_bias": False, "expected_keys": {"weight"}},
+        ]
+
+        for case in test_cases:
+            with self.subTest(use_bias=case["use_bias"]):
+                # Create a GrowingModule with the specified bias setting
+                layer = GrowingModule(
+                    layer=torch.nn.Linear(
+                        3, 2, bias=case["use_bias"], device=global_device()
+                    ),
+                    tensor_s_shape=(3, 3),
+                    tensor_m_shape=(3, 2),
+                    allow_growing=False,
+                )
+
+                # Get weight statistics
+                stats = layer.weights_statistics()
+
+                # Check output type
+                self.assertIsInstance(stats, dict)
+
+                # Check expected keys
+                self.assertEqual(set(stats.keys()), case["expected_keys"])
+
+                # Check that each value is a dict of floats
+                for param_name, param_stats in stats.items():
+                    self.assertIsInstance(
+                        param_stats, dict, f"Stats for '{param_name}' should be dict"
+                    )
+                    for stat_name, stat_value in param_stats.items():
+                        self.assertIsInstance(
+                            stat_value,
+                            float,
+                            f"Stat '{stat_name}' for '{param_name}' should be float",
+                        )
+
 
 class TestMergeGrowingModule(TorchTestCase):
     """Test MergeGrowingModule base class functionality to cover missing lines."""
