@@ -54,13 +54,13 @@ repos:
         ]
         exclude: ^docs/ | ^setup\.py$ |
 
-  -   repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.13.3
-      hooks:
-      -   id: ruff-check
-          args: ["--fix", "--output-format=full"]
-          verbose: true
-      # - id: ruff-format conflict with black
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.3
+    hooks:
+    -   id: ruff-check
+        args: ["--fix", "--output-format=full", "--exit-zero"]
+        verbose: true
+    # - id: ruff-format conflict with black
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1

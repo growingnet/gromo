@@ -9,6 +9,7 @@ from gromo.utils.utils import (
     batch_gradient_descent,
     calculate_true_positives,
     compute_tensor_stats,
+    evaluate_dataset,
     f1,
     f1_macro,
     f1_micro,
@@ -431,6 +432,39 @@ class TestUtils(TorchTestCase):
                 self.assertIsInstance(
                     value, float, f"Value for key '{key}' should be float"
                 )
+
+    def test_evaluate_dataset(self) -> None:
+        batch_size = 4
+        in_features = 5
+        out_features = 2
+        model = torch.nn.Linear(in_features, out_features, device=global_device())
+
+        x = torch.rand(batch_size, in_features, device=global_device())
+        y = torch.randint(0, out_features, (batch_size,), device=global_device())
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y), batch_size=batch_size
+        )
+        loss_fn = torch.nn.CrossEntropyLoss()
+
+        accuracy, loss = evaluate_dataset(model, dataloader, loss_fn)
+        self.assertGreaterEqual(accuracy, 0)
+        self.assertLessEqual(accuracy, 1)
+        self.assertGreaterEqual(loss, 0)
+        self.assertEqual(loss, loss_fn(model(x), y).item())
+
+        out_features = 1
+        model = torch.nn.Linear(in_features, out_features, device=global_device())
+
+        y = torch.rand(batch_size, out_features, device=global_device())
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y), batch_size=batch_size
+        )
+        loss_fn = torch.nn.MSELoss()
+
+        accuracy, loss = evaluate_dataset(model, dataloader, loss_fn)
+        self.assertEqual(accuracy, -1)
+        self.assertGreaterEqual(loss, 0)
+        self.assertEqual(loss, loss_fn(model(x), y).item())
 
 
 if __name__ == "__main__":
