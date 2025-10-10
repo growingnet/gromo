@@ -598,8 +598,8 @@ def evaluate_dataset(
 
     loss = []
     for x, y in dataloader:
-        x = x.to(model.device)
-        y = y.to(model.device)
+        x = x.to(global_device())
+        y = y.to(global_device())
         with torch.no_grad():
             pred = model(x)
             loss.append(loss_fn(pred, y).item())
@@ -650,8 +650,8 @@ def evaluate_extended_dataset(
 
     loss = []
     for x, y in dataloader:
-        x = x.to(model.device)
-        y = y.to(model.device)
+        x = x.to(global_device())
+        y = y.to(global_device())
         with torch.no_grad():
             pred = model.extended_forward(x, mask=mask)
             loss.append(loss_fn(pred, y).item())
