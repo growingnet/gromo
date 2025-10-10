@@ -2,6 +2,7 @@ import copy
 import unittest
 
 import torch
+from torch.nn.functional import one_hot
 
 from gromo.containers.growing_dag import Expansion, GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
@@ -265,48 +266,44 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.assertEqual(edge_module.bias.shape, (self.out_features,))
 
     def test_find_amplitude_factor(self) -> None:
-        pass
-        # # self.net.dag.get_edge_module(self.net.dag.root, "1").optimal_delta_layer = torch.nn.Linear(
-        # #     in_features=self.in_features,
-        # #     out_features=self.net.neurons,
-        # #     device=global_device(),
-        # # )
-        # # self.net.dag.get_edge_module(self.net.dag.root, "1").extended_output_layer = torch.nn.Linear(
-        # #     in_features=self.in_features,
-        # #     out_features=self.net.neurons,
-        # #     device=global_device(),
-        # # )
-        # edge_module = self.net.dag.get_edge_module("1", self.net.dag.end)
-        # edge_module.weight.data = torch.zeros((self.out_features, self.net.neurons), device=global_device())
-        # edge_module.optimal_delta_layer = torch.nn.Linear(
-        #     in_features=self.net.neurons,
-        #     out_features=self.out_features,
-        #     device=global_device(),
-        # )
-        # # edge_module.optimal_delta_layer.weight.data *= 100
-        # # edge_module.optimal_delta_layer.bias.data += 10
-        # print(f"{edge_module.optimal_delta_layer.weight=}")
-        # # self.net.dag.get_edge_module("1", self.net.dag.end).extended_input_layer = torch.nn.Linear(
-        # #     in_features=self.net.neurons,
-        # #     out_features=self.out_features,
-        # #     device=global_device(),
-        # # )
+        self.net.dag.get_edge_module("1", self.net.dag.end).extended_input_layer = (
+            torch.nn.Linear(
+                in_features=self.net.neurons,
+                out_features=self.out_features,
+                device=global_device(),
+            )
+        )
+        self.net.dag.get_edge_module(self.net.dag.root, "1").extended_output_layer = (
+            torch.nn.Linear(
+                in_features=self.in_features,
+                out_features=self.net.neurons,
+                device=global_device(),
+            )
+        )
+        self.net.loss_fn = torch.nn.L1Loss()
 
-        # node_module = self.net.dag.get_node_module(self.net.dag.end)
-        # pred = torch.argmax(self.net(self.x), dim=1)
-        # extended_pred = torch.argmax(self.net.extended_forward(self.x), dim=1)
-        # print(f"{pred=}")
-        # print(f"{extended_pred=}")
+        pred = one_hot(
+            torch.argmax(self.net(self.x), dim=1), num_classes=self.out_features
+        )
+        extended_pred = one_hot(
+            torch.argmax(self.net.extended_forward(self.x), dim=1),
+            num_classes=self.out_features,
+        )
 
-        # factor = self.net.find_input_amplitude_factor(self.x, self.y, node_module)
-        # self.assertNotEqual(factor, 0.0)
-        # self.assertNotEqual(factor, 1.0)
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(
+                self.x, one_hot(self.y, num_classes=self.out_features)
+            )
+        )
+        factor = self.net.find_amplitude_factor(dataloader, mask={"nodes": "1"})
+        self.assertNotEqual(factor, 1.0)
 
-        # factor = self.net.find_input_amplitude_factor(self.x, pred, node_module)
-        # self.assertEqual(factor, 0.0)
-
-        # # factor = self.net.find_input_amplitude_factor(self.x, extended_pred, node_module)
-        # # self.assertEqual(factor, 1.0)
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(self.x, extended_pred)
+        )
+        factor = self.net.find_amplitude_factor(dataloader, mask={"nodes": "1"})
+        if torch.all(pred != extended_pred):
+            self.assertEqual(factor, 1.0)
 
     def test_inter_training(self) -> None:
         pass
