@@ -571,6 +571,47 @@ class TestMergeGrowingModule(TorchTestCase):
         self.assertEqual(len(self.merge_module.previous_modules), 1)
         self.assertEqual(self.merge_module.previous_modules[0], self.mock_module2)
 
+    def test_delete(self) -> None:
+        in_features = 5
+        hidden_features = 3
+        out_features = 2
+        merge1 = LinearMergeGrowingModule(
+            in_features=in_features, device=global_device(), name="merge1"
+        )
+        prev_module = LinearGrowingModule(
+            in_features=in_features,
+            out_features=hidden_features,
+            device=global_device(),
+        )
+        merge2 = LinearMergeGrowingModule(
+            in_features=hidden_features, device=global_device(), name="merge2"
+        )
+        next_module = LinearGrowingModule(
+            in_features=hidden_features,
+            out_features=out_features,
+            device=global_device(),
+        )
+        merge3 = LinearMergeGrowingModule(
+            in_features=out_features, device=global_device(), name="merge3"
+        )
+        merge1.add_next_module(prev_module)
+        prev_module.previous_module = merge1
+        prev_module.next_module = merge2
+        merge2.add_previous_module(prev_module)
+        merge2.add_next_module(next_module)
+        next_module.previous_module = merge2
+        next_module.next_module = merge3
+        merge3.add_previous_module(next_module)
+
+        merge2.__del__()
+
+        self.assertEqual(len(merge2.previous_modules), 0)
+        self.assertEqual(len(merge2.next_modules), 0)
+        self.assertIsNone(prev_module.next_module)
+        self.assertIsNone(next_module.previous_module)
+        self.assertEqual(len(merge1.next_modules), 0)
+        self.assertEqual(len(merge3.previous_modules), 0)
+
 
 class TestGrowingModuleEdgeCases(TorchTestCase):
     """Test edge cases and error conditions in GrowingModule to improve coverage."""
