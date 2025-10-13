@@ -840,6 +840,48 @@ class TestGrowingDAG(unittest.TestCase):
         numel += self.hidden_size * self.out_features + self.out_features
         self.assertEqual(self.dag.count_parameters([(start, "1"), ("1", end)]), numel)
 
+    def test_evaluate(self) -> None:
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(start, end)
+        self.dag.add_node_with_two_edges(
+            start, "1", end, node_attributes=self.init_node_attributes
+        )
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device()).argmax(axis=1)
+        loss_fn = torch.nn.CrossEntropyLoss()
+        actual_out = self.dag.forward(x)
+        actual_loss = loss_fn(actual_out, y).item()
+        acc, _, f1 = self.dag.evaluate(
+            x, actual_out.argmax(axis=1), loss_fn, with_f1score=True
+        )
+        self.assertEqual(acc, 1.0)
+        self.assertEqual(f1, 1.0)
+
+        _, loss = self.dag.evaluate(x, y, loss_fn, with_f1score=False)
+        self.assertEqual(actual_loss, loss)
+
+        dag = GrowingDAG(
+            in_features=self.in_features,
+            out_features=1,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            default_layer_type="linear",
+        )
+        start, end = dag.root, dag.end
+        dag.add_node_with_two_edges(
+            start, "1", end, node_attributes=self.init_node_attributes
+        )
+        y = torch.rand((50, 1), device=global_device())
+        loss_fn = torch.nn.MSELoss()
+        actual_out = dag.forward(x)
+        actual_loss = loss_fn(actual_out, y).item()
+        acc, loss, f1 = dag.evaluate(x, y, loss_fn, with_f1score=True)
+        self.assertEqual(acc, -1)
+        self.assertEqual(f1, -1)
+        self.assertEqual(loss, actual_loss)
+
     def test_evaluate_extended(self) -> None:
         start, end = self.dag.root, self.dag.end
         self.dag.add_direct_edge(start, end)
