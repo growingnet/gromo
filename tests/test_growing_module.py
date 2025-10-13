@@ -575,6 +575,7 @@ class TestMergeGrowingModule(TorchTestCase):
         in_features = 5
         hidden_features = 3
         out_features = 2
+        # Test GrowingModule -> MergeGrowingModule -> GrowingModule
         merge1 = LinearMergeGrowingModule(
             in_features=in_features, device=global_device(), name="merge1"
         )
@@ -609,6 +610,24 @@ class TestMergeGrowingModule(TorchTestCase):
         self.assertEqual(len(merge2.next_modules), 0)
         self.assertIsNone(prev_module.next_module)
         self.assertIsNone(next_module.previous_module)
+        self.assertEqual(len(merge1.next_modules), 0)
+        self.assertEqual(len(merge3.previous_modules), 0)
+
+        # Test MergeGrowingModule -> MergeGrowingModule -> MergeGrowingModule
+        merge1 = LinearMergeGrowingModule(
+            in_features=hidden_features, device=global_device(), name="merge1"
+        )
+        merge3 = LinearMergeGrowingModule(
+            in_features=hidden_features, device=global_device(), name="merge3"
+        )
+        merge1.add_next_module(merge2)
+        merge2.add_previous_module(merge1)
+        merge2.add_next_module(merge3)
+        merge3.add_previous_module(merge2)
+
+        merge2.__del__()
+        self.assertEqual(len(merge2.previous_modules), 0)
+        self.assertEqual(len(merge2.next_modules), 0)
         self.assertEqual(len(merge1.next_modules), 0)
         self.assertEqual(len(merge3.previous_modules), 0)
 
