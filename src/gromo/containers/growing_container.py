@@ -121,6 +121,7 @@ class GrowingContainer(torch.nn.Module):
         return self.currently_updated_layer_index
 
     def dummy_select_update(self, **kwargs):
+        self.currently_updated_layer_index = 0
         return 0
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
@@ -146,10 +147,10 @@ class GrowingContainer(torch.nn.Module):
         assert isinstance(self.currently_updated_layer_index, int), "No layer to update"
         return self._growing_layers[self.currently_updated_layer_index]
 
-    def apply_change(self) -> None:
+    def apply_change(self, extension_size: int | None = None) -> None:
         """Apply changes to the model"""
         assert self.currently_updated_layer is not None, "No layer to update"
-        self.currently_updated_layer.apply_change()
+        self.currently_updated_layer.apply_change(extension_size=extension_size)
         self.currently_updated_layer.delete_update()
         self.currently_updated_layer_index = None
 
