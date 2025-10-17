@@ -2,8 +2,9 @@ import unittest
 
 import torch
 
-from gromo.containers.growing_dag import Expansion, GrowingDAG
+from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
 from gromo.modules.constant_module import ConstantModule
+from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -21,45 +22,133 @@ class TestGrowingDAG(unittest.TestCase):
         self.out_features = 2
         self.use_bias = True
         self.use_batch_norm = False
-        self.single_node_attributes = {"type": "linear", "size": self.hidden_size}
-        self.default_node_attributes = {"type": "linear", "size": 0, "activation": "selu"}
+        self.init_node_attributes = {"type": "linear", "size": self.hidden_size}
+        self.default_node_attributes = {
+            "type": "linear",
+            "size": 0,
+            "activation": "selu",
+            "kernel_size": (3, 3),
+        }
+        self.init_node_conv_attributes = {
+            "type": "convolution",
+            "size": self.hidden_size,
+            "kernel_size": (3, 3),
+            "shape": (3, 3),
+        }
+        self.default_edge_attributes = {"kernel_size": (3, 3)}
         self.dag = GrowingDAG(
             in_features=self.in_features,
             out_features=self.out_features,
             neurons=self.hidden_size,
             use_bias=self.use_bias,
             use_batch_norm=self.use_batch_norm,
-            layer_type="linear",
+            default_layer_type="linear",
+            name="dag-linear",
         )
-        self.dag.remove_edge(self.dag.root, self.dag.end)
+        self.dag.remove_direct_edge(self.dag.root, self.dag.end)
+        self.dag_conv = GrowingDAG(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            default_layer_type="convolution",
+            input_shape=(3, 3),
+            name="dag-conv",
+        )
+        self.dag_conv.remove_direct_edge(self.dag_conv.root, self.dag_conv.end)
 
     def tearDown(self) -> None:
         del self.dag
+        del self.dag_conv
         return super().tearDown()
 
     def test_init(self) -> None:
-        self.assertEqual(list(self.dag.nodes), ["start", "end"])
+        self.assertEqual(list(self.dag.nodes), [self.dag.root, self.dag.end])
         self.assertEqual(len(self.dag.edges), 0)
-        self.assertEqual(self.dag.in_degree("start"), 0)
-        self.assertEqual(self.dag.out_degree("end"), 0)
-        self.assertEqual(self.dag.id_last_node_added, 0)
+        self.assertEqual(self.dag.in_degree(self.dag.root), 0)
+        self.assertEqual(self.dag.out_degree(self.dag.root), 0)
+        self.assertEqual(self.dag.in_degree(self.dag.end), 0)
+        self.assertEqual(self.dag.out_degree(self.dag.end), 0)
+        self.assertEqual(len(self.dag._growing_layers), 2)
+
+        with self.assertRaises(ValueError):
+            # Character _ not allowed in name
+            GrowingDAG(
+                in_features=self.in_features,
+                out_features=self.out_features,
+                neurons=self.hidden_size,
+                use_bias=self.use_bias,
+                use_batch_norm=self.use_batch_norm,
+                name="test_name",
+            )
+        dag = GrowingDAG(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            DAG_parameters={},
+        )
+        self.assertEqual(len(dag.nodes), 0)
+        self.assertEqual(len(dag.edges), 0)
+        self.assertEqual(dag.ancestors, {})
+        self.assertEqual(len(dag._growing_layers), 0)
+
+    def test_edge_candidate(self) -> None:
+        with self.assertRaises(ValueError):
+            # Edge not present in the graph
+            self.dag.toggle_edge_candidate(self.dag.root, self.dag.end, True)
+        with self.assertWarns(UserWarning):
+            # Edge does not belong in the current graph
+            self.assertFalse(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+        self.dag.add_direct_edge(self.dag.root, self.dag.end)
+        self.assertFalse(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+        self.dag.toggle_edge_candidate(self.dag.root, self.dag.end, True)
+        self.assertTrue(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+        self.dag.toggle_edge_candidate(self.dag.root, self.dag.end, False)
+        self.assertFalse(self.dag.is_edge_candidate(self.dag.root, self.dag.end))
+
+    def test_node_candidate(self) -> None:
+        with self.assertRaises(ValueError):
+            # Node not present in the graph
+            self.dag.toggle_node_candidate("test", True)
+        with self.assertWarns(UserWarning):
+            # Node does not belong in the current graph
+            self.assertFalse(self.dag.is_node_candidate("test"))
+
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "test", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.assertFalse(self.dag.is_node_candidate("test"))
+
+        self.dag.toggle_node_candidate("test", True)
+        self.assertTrue(self.dag.is_node_candidate("test"))
+
+        self.dag.toggle_node_candidate("test", False)
+        self.assertFalse(self.dag.is_node_candidate("test"))
 
     def test_get_edge_module(self) -> None:
-        self.dag.add_direct_edge("start", "end")
+        self.dag.add_direct_edge(self.dag.root, self.dag.end)
         self.assertEqual(
-            self.dag.get_edge_module("start", "end"), self.dag["start"]["end"]["module"]
+            self.dag.get_edge_module(self.dag.root, self.dag.end),
+            self.dag[self.dag.root][self.dag.end]["module"],
         )
 
     def test_get_node_module(self) -> None:
         self.assertEqual(
-            self.dag.get_node_module("start"), self.dag.nodes["start"]["module"]
+            self.dag.get_node_module(self.dag.root),
+            self.dag.nodes[self.dag.root]["module"],
         )
 
     def test_get_edge_modules(self) -> None:
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
         )
-        edges = [("start", "1"), ("1", "end")]
+        edges = [(self.dag.root, "1"), ("1", self.dag.end)]
         self.assertEqual(
             self.dag.get_edge_modules(edges),
             [
@@ -70,10 +159,10 @@ class TestGrowingDAG(unittest.TestCase):
 
     def test_get_node_modules(self) -> None:
         self.assertEqual(
-            self.dag.get_node_modules(["start", "end"]),
+            self.dag.get_node_modules([self.dag.root, self.dag.end]),
             [
-                self.dag.get_node_module("start"),
-                self.dag.get_node_module("end"),
+                self.dag.get_node_module(self.dag.root),
+                self.dag.get_node_module(self.dag.end),
             ],
         )
 
@@ -82,50 +171,49 @@ class TestGrowingDAG(unittest.TestCase):
             set(self.dag.get_all_node_modules()),
             set(
                 [
-                    self.dag.get_node_module("start"),
-                    self.dag.get_node_module("end"),
+                    self.dag.get_node_module(self.dag.root),
+                    self.dag.get_node_module(self.dag.end),
                 ]
             ),
         )
         self.dag.add_node_with_two_edges(
-            self.dag.root, "test", self.dag.end, self.single_node_attributes
+            self.dag.root, "test", self.dag.end, self.init_node_attributes
         )
         self.assertEqual(
             set(self.dag.get_all_node_modules()),
             set(
                 [
-                    self.dag.get_node_module("start"),
+                    self.dag.get_node_module(self.dag.root),
                     self.dag.get_node_module("test"),
-                    self.dag.get_node_module("end"),
+                    self.dag.get_node_module(self.dag.end),
                 ]
             ),
         )
 
     def test_add_direct_edge(self) -> None:
-        self.dag.add_direct_edge(prev_node="start", next_node="end")
-        self.assertEqual(list(self.dag.edges), [("start", "end")])
-        self.assertEqual(self.dag.out_degree("start"), 1)
-        self.assertEqual(self.dag.in_degree("end"), 1)
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(prev_node=start, next_node=end)
+        self.assertEqual(list(self.dag.edges), [(start, end)])
+        self.assertEqual(self.dag.out_degree(start), 1)
+        self.assertEqual(self.dag.in_degree(end), 1)
 
-        self.assertIsInstance(
-            self.dag.get_edge_module("start", "end"), LinearGrowingModule
-        )
-        self.assertIsNotNone(self.dag.get_node_module("start").next_modules)
-        self.assertIsNotNone(self.dag.get_edge_module("start", "end").previous_module)
-        self.assertIsNotNone(self.dag.get_edge_module("start", "end").next_module)
-        self.assertIsNotNone(self.dag.get_node_module("end").previous_modules)
+        self.assertIsInstance(self.dag.get_edge_module(start, end), LinearGrowingModule)
+        self.assertIsNotNone(self.dag.get_node_module(start).next_modules)
+        self.assertIsNotNone(self.dag.get_edge_module(start, end).previous_module)
+        self.assertIsNotNone(self.dag.get_edge_module(start, end).next_module)
+        self.assertIsNotNone(self.dag.get_node_module(end).previous_modules)
 
         self.dag.add_direct_edge(
-            prev_node="start", next_node="end", edge_attributes={"constant": True}
+            prev_node=start, next_node=end, edge_attributes={"constant": True}
         )
-        self.assertIsInstance(self.dag.get_edge_module("start", "end"), ConstantModule)
+        self.assertIsInstance(self.dag.get_edge_module(start, end), ConstantModule)
 
     def test_add_node_with_two_edges(self) -> None:
         self.assertEqual(len(self.dag.nodes), 2)
-        self.assertEqual(self.dag.out_degree("start"), 0)
-        self.assertEqual(self.dag.in_degree("end"), 0)
+        self.assertEqual(self.dag.out_degree(self.dag.root), 0)
+        self.assertEqual(self.dag.in_degree(self.dag.end), 0)
 
-        params = ["start", "1", "end"]
+        params = [self.dag.root, "1", self.dag.end]
         node_attributes = {}
         with self.assertRaises(KeyError):
             self.dag.add_node_with_two_edges(*params, node_attributes=node_attributes)
@@ -136,33 +224,33 @@ class TestGrowingDAG(unittest.TestCase):
         self.dag.add_node_with_two_edges(*params, node_attributes=node_attributes)
 
         self.assertEqual(len(self.dag.nodes), 3)
-        self.assertEqual(self.dag.out_degree("start"), 1)
-        self.assertEqual(self.dag.in_degree("end"), 1)
+        self.assertEqual(self.dag.out_degree(self.dag.root), 1)
+        self.assertEqual(self.dag.in_degree(self.dag.end), 1)
 
-        self.assertIsNotNone(self.dag.get_node_module("start").next_modules)
-        self.assertIsNotNone(self.dag.get_edge_module("start", "1").previous_module)
-        self.assertIsNotNone(self.dag.get_edge_module("start", "1").next_module)
+        self.assertIsNotNone(self.dag.get_node_module(self.dag.root).next_modules)
+        self.assertIsNotNone(self.dag.get_edge_module(self.dag.root, "1").previous_module)
+        self.assertIsNotNone(self.dag.get_edge_module(self.dag.root, "1").next_module)
         self.assertIsNotNone(self.dag.get_node_module("1").previous_modules)
         self.assertIsNotNone(self.dag.get_node_module("1").next_modules)
-        self.assertIsNotNone(self.dag.get_edge_module("1", "end").previous_module)
-        self.assertIsNotNone(self.dag.get_edge_module("1", "end").next_module)
-        self.assertIsNotNone(self.dag.get_node_module("end").previous_modules)
+        self.assertIsNotNone(self.dag.get_edge_module("1", self.dag.end).previous_module)
+        self.assertIsNotNone(self.dag.get_edge_module("1", self.dag.end).next_module)
+        self.assertIsNotNone(self.dag.get_node_module(self.dag.end).previous_modules)
 
     def test_remove_direct_edge(self) -> None:
-        self.dag.add_direct_edge(prev_node="start", next_node="end")
-        self.dag.remove_direct_edge(prev_node="start", next_node="end")
+        self.dag.add_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
+        self.dag.remove_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
         self.assertEqual(len(list(self.dag.edges)), 0)
-        self.assertEqual(self.dag.out_degree("start"), 0)
-        self.assertEqual(self.dag.in_degree("end"), 0)
+        self.assertEqual(self.dag.out_degree(self.dag.root), 0)
+        self.assertEqual(self.dag.in_degree(self.dag.end), 0)
 
-        self.dag.remove_direct_edge(prev_node="start", next_node="end")
+        self.dag.remove_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
         self.assertEqual(len(list(self.dag.edges)), 0)
-        self.assertEqual(self.dag.out_degree("start"), 0)
-        self.assertEqual(self.dag.in_degree("end"), 0)
+        self.assertEqual(self.dag.out_degree(self.dag.root), 0)
+        self.assertEqual(self.dag.in_degree(self.dag.end), 0)
 
     def test_update_nodes(self) -> None:
         new_node = "new"
-        edges = [("start", new_node), (new_node, "end")]
+        edges = [(self.dag.root, new_node), (new_node, self.dag.end)]
         self.dag.add_edges_from(edges)
 
         node_attributes = {new_node: {}}
@@ -198,76 +286,177 @@ class TestGrowingDAG(unittest.TestCase):
         )
 
     def test_update_edges(self) -> None:
-        self.dag.add_edge("start", "end")
-        self.dag.update_edges([("start", "end")])
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_edge(start, end)
+        self.dag.update_edges([(start, end)])
 
-        self.assertIsInstance(
-            self.dag.get_edge_module("start", "end"), LinearGrowingModule
+        self.assertIsInstance(self.dag.get_edge_module(start, end), LinearGrowingModule)
+        self.assertEqual(
+            self.dag.get_edge_module(start, end).in_features, self.in_features
         )
         self.assertEqual(
-            self.dag.get_edge_module("start", "end").in_features, self.in_features
-        )
-        self.assertEqual(
-            self.dag.get_edge_module("start", "end").out_features, self.out_features
+            self.dag.get_edge_module(start, end).out_features, self.out_features
         )
         self.assertIsInstance(
-            self.dag.get_edge_module("start", "end").post_layer_function,
+            self.dag.get_edge_module(start, end).post_layer_function,
             torch.nn.Identity,
         )
-        self.assertIsNone(self.dag.get_edge_module("start", "end").previous_module)
-        self.assertIsNone(self.dag.get_edge_module("start", "end").next_module)
+        self.assertIsNone(self.dag.get_edge_module(start, end).previous_module)
+        self.assertIsNone(self.dag.get_edge_module(start, end).next_module)
+
+        self.dag.nodes[start]["type"] = "convolution"
+        self.dag.use_bias = False
+        self.dag.update_edges([(start, end)], zero_weights=True)
+        self.assertIsInstance(self.dag.get_edge_module(start, end), LinearGrowingModule)
+        self.assertTrue(torch.all(self.dag.get_edge_module(start, end).weight) == 0)
+        self.assertIsNone(self.dag.get_edge_module(start, end).bias)
+
+        start, end = self.dag_conv.root, self.dag_conv.end
+        self.dag_conv.add_edge(start, end)
+        with self.assertRaises(
+            KeyError
+        ):  # The kernel size of the edge should be specified at initialization
+            self.dag_conv.update_edges([(start, end)])
+        self.dag_conv.update_edges(
+            [(start, end)], edge_attributes={"kernel_size": (3, 3)}
+        )
+
+        self.assertIsInstance(
+            self.dag_conv.get_edge_module(start, end), Conv2dGrowingModule
+        )
+        self.assertEqual(
+            self.dag_conv.get_edge_module(start, end).in_channels, self.in_features
+        )
+        self.assertEqual(
+            self.dag_conv.get_edge_module(start, end).out_channels, self.out_features
+        )
+        self.assertIsInstance(
+            self.dag_conv.get_edge_module(start, end).post_layer_function,
+            torch.nn.Identity,
+        )
+        self.assertIsNone(self.dag_conv.get_edge_module(start, end).previous_module)
+        self.assertIsNone(self.dag_conv.get_edge_module(start, end).next_module)
 
     def test_update_connections(self) -> None:
         self.dag.update_connections([])
         self.assertTrue(self.dag.is_empty())
 
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
         )
 
-        self.assertEqual(self.dag.get_node_module("start").previous_modules, [])
+        self.assertEqual(self.dag.get_node_module(self.dag.root).previous_modules, [])
         self.assertEqual(
-            self.dag.get_node_module("start").next_modules,
-            [self.dag.get_edge_module("start", "1")],
+            self.dag.get_node_module(self.dag.root).next_modules,
+            [self.dag.get_edge_module(self.dag.root, "1")],
         )
 
         self.assertEqual(
-            self.dag.get_edge_module("start", "1").previous_module,
-            self.dag.get_node_module("start"),
+            self.dag.get_edge_module(self.dag.root, "1").previous_module,
+            self.dag.get_node_module(self.dag.root),
         )
         self.assertEqual(
-            self.dag.get_edge_module("start", "1").next_module,
+            self.dag.get_edge_module(self.dag.root, "1").next_module,
             self.dag.get_node_module("1"),
         )
 
         self.assertEqual(
             self.dag.get_node_module("1").previous_modules,
-            [self.dag.get_edge_module("start", "1")],
+            [self.dag.get_edge_module(self.dag.root, "1")],
         )
         self.assertEqual(
             self.dag.get_node_module("1").next_modules,
-            [self.dag.get_edge_module("1", "end")],
+            [self.dag.get_edge_module("1", self.dag.end)],
         )
 
         self.assertEqual(
-            self.dag.get_edge_module("1", "end").previous_module,
+            self.dag.get_edge_module("1", self.dag.end).previous_module,
             self.dag.get_node_module("1"),
         )
         self.assertEqual(
-            self.dag.get_edge_module("1", "end").next_module,
-            self.dag.get_node_module("end"),
+            self.dag.get_edge_module("1", self.dag.end).next_module,
+            self.dag.get_node_module(self.dag.end),
         )
 
         self.assertEqual(
-            self.dag.get_node_module("end").previous_modules,
-            [self.dag.get_edge_module("1", "end")],
+            self.dag.get_node_module(self.dag.end).previous_modules,
+            [self.dag.get_edge_module("1", self.dag.end)],
         )
-        self.assertEqual(self.dag.get_node_module("end").next_modules, [])
+        self.assertEqual(self.dag.get_node_module(self.dag.end).next_modules, [])
+
+    def test_update_size(self) -> None:
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_node_with_two_edges(
+            start, "1", end, node_attributes=self.init_node_attributes
+        )
+        alpha = torch.zeros_like(self.dag.get_edge_module(start, "1").weight)
+        omega = torch.zeros_like(self.dag.get_edge_module("1", end).weight)
+        with self.assertWarns(UserWarning):  # the size has changed
+            self.dag.get_edge_module(start, "1").add_parameters(
+                matrix_extension=alpha,
+                bias_extension=None,
+                added_out_features=self.hidden_size,
+            )
+            self.dag.get_edge_module("1", end).add_parameters(
+                matrix_extension=omega,
+                bias_extension=None,
+                added_in_features=self.hidden_size,
+            )
+        self.assertEqual(
+            self.dag.get_edge_module(start, "1").out_features, self.hidden_size * 2
+        )
+        self.assertEqual(
+            self.dag.get_edge_module("1", end).in_features, self.hidden_size * 2
+        )
+
+        self.dag.update_size()
+
+        self.assertEqual(self.dag.get_node_module("1").in_features, self.hidden_size * 2)
+        self.assertEqual(self.dag.nodes["1"]["size"], self.hidden_size * 2)
+
+    def test_remove_node(self) -> None:
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_node_with_two_edges(
+            start, "1", end, node_attributes=self.init_node_attributes
+        )
+        self.dag.remove_node("1")
+
+        self.assertNotIn("1", self.dag.nodes)
+        self.assertNotIn((start, "1"), self.dag.edges)
+        self.assertNotIn(("1", end), self.dag.edges)
+        self.assertEqual(len(self.dag.get_node_module(start).next_modules), 0)
+        self.assertEqual(len(self.dag.get_node_module(end).previous_modules), 0)
+
+        self.dag.remove_node("1")
+
+    def test_rename_nodes(self) -> None:
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_node_with_two_edges(
+            start, "1", end, node_attributes=self.init_node_attributes
+        )
+        node_module = self.dag.get_node_module("1")
+        edge_module = self.dag.get_edge_module("1", end)
+        self.dag.rename_nodes({"1": "2", "test": "0", "2": "2"})
+
+        self.assertNotIn("1", self.dag.nodes)
+        self.assertNotIn("test", self.dag.nodes)
+        self.assertNotIn("0", self.dag.nodes)
+        self.assertIn("2", self.dag.nodes)
+        self.assertNotIn((start, "1"), self.dag.edges)
+        self.assertNotIn(("1", end), self.dag.edges)
+        self.assertIn((start, "2"), self.dag.edges)
+        self.assertIn(("2", end), self.dag.edges)
+        self.assertIs(node_module, self.dag.get_node_module("2"))
+        self.assertEqual(node_module._name, "1")
+        self.assertIs(edge_module, self.dag.get_edge_module("2", end))
+
+        with self.assertRaises(ValueError):  # New node name already in the graph
+            self.dag.rename_nodes({"2": end})
 
     def test_is_empty(self) -> None:
         self.assertTrue(self.dag.is_empty())
 
-        self.dag.add_edge("start", "end")
+        self.dag.add_edge(self.dag.root, self.dag.end)
         self.assertFalse(self.dag.is_empty())
 
     def test_calculate_bottleneck(self) -> None:
@@ -282,11 +471,14 @@ class TestGrowingDAG(unittest.TestCase):
 
         x = torch.rand((50, self.in_features), device=global_device())
         y = torch.rand((50, self.out_features), device=global_device())
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y),
+            batch_size=10,
+        )
 
         bottleneck, input_B = self.dag.calculate_bottleneck(
             actions=expansions,
-            X=x,
-            Y=y,
+            dataloader=dataloader,
         )
         self.assertIn(self.dag.end, bottleneck)
         self.assertEqual(bottleneck[self.dag.end].shape, (50, self.out_features))
@@ -297,13 +489,12 @@ class TestGrowingDAG(unittest.TestCase):
             self.dag.root,
             "test",
             self.dag.end,
-            self.single_node_attributes,
+            self.init_node_attributes,
             zero_weights=True,
         )
         bottleneck, input_B = self.dag.calculate_bottleneck(
             actions=expansions,
-            X=x,
-            Y=y,
+            dataloader=dataloader,
         )
         for node_module in self.dag.get_all_node_modules():
             self.assertIsNone(node_module.activity)
@@ -311,7 +502,10 @@ class TestGrowingDAG(unittest.TestCase):
             self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer
         )
         self.assertIsNotNone(
-            expansions[0].dag.get_edge_module("test", self.dag.end).optimal_delta_layer
+            self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.weight
+        )
+        self.assertIsNotNone(
+            self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.bias
         )
         self.assertTrue(
             torch.all(
@@ -331,39 +525,42 @@ class TestGrowingDAG(unittest.TestCase):
         )
 
     def test_get_ancestors(self) -> None:
-        self.dag.add_direct_edge("start", "end")
-        self.assertEqual(self.dag.ancestors["start"], set(["start"]))
-        self.assertEqual(self.dag.ancestors["end"], set(["start", "end"]))
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(start, end)
+        self.assertEqual(self.dag.ancestors[start], set([start]))
+        self.assertEqual(self.dag.ancestors[end], set([start, end]))
 
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            start, "1", end, node_attributes=self.init_node_attributes
         )
-        self.assertEqual(self.dag.ancestors["start"], set(["start"]))
-        self.assertEqual(self.dag.ancestors["1"], set(["start", "1"]))
-        self.assertEqual(self.dag.ancestors["end"], set(["start", "1", "end"]))
+        self.assertEqual(self.dag.ancestors[start], set([start]))
+        self.assertEqual(self.dag.ancestors["1"], set([start, "1"]))
+        self.assertEqual(self.dag.ancestors[end], set([start, "1", end]))
 
         self.dag.add_node_with_two_edges(
-            "start", "2", "1", node_attributes=self.single_node_attributes
+            start, "2", "1", node_attributes=self.init_node_attributes
         )
-        self.assertEqual(self.dag.ancestors["start"], set(["start"]))
-        self.assertEqual(self.dag.ancestors["1"], set(["start", "2", "1"]))
-        self.assertEqual(self.dag.ancestors["2"], set(["start", "2"]))
-        self.assertEqual(self.dag.ancestors["end"], set(["start", "2", "1", "end"]))
+        self.assertEqual(self.dag.ancestors[start], set([start]))
+        self.assertEqual(self.dag.ancestors["1"], set([start, "2", "1"]))
+        self.assertEqual(self.dag.ancestors["2"], set([start, "2"]))
+        self.assertEqual(self.dag.ancestors[end], set([start, "2", "1", end]))
 
     def test_indirect_connection_exists(self) -> None:
-        self.assertFalse(self.dag._indirect_connection_exists("start", "end"))
+        start, end = self.dag.root, self.dag.end
+        self.assertFalse(self.dag._indirect_connection_exists(start, end))
 
-        node_attributes = self.single_node_attributes
-        self.dag.add_node_with_two_edges("start", "1", "end", node_attributes)
-        self.dag.add_node_with_two_edges("start", "2", "1", node_attributes)
-        self.assertTrue(self.dag._indirect_connection_exists("start", "end"))
-        self.assertTrue(self.dag._indirect_connection_exists("start", "1"))
-        self.assertFalse(self.dag._indirect_connection_exists("1", "start"))
+        node_attributes = self.init_node_attributes
+        self.dag.add_node_with_two_edges(start, "1", end, node_attributes)
+        self.dag.add_node_with_two_edges(start, "2", "1", node_attributes)
+        self.assertTrue(self.dag._indirect_connection_exists(start, end))
+        self.assertTrue(self.dag._indirect_connection_exists(start, "1"))
+        self.assertFalse(self.dag._indirect_connection_exists("1", start))
         self.assertFalse(self.dag._indirect_connection_exists("2", "1"))
-        self.assertTrue(self.dag._indirect_connection_exists("2", "end"))
-        self.assertFalse(self.dag._indirect_connection_exists("start", "2"))
+        self.assertTrue(self.dag._indirect_connection_exists("2", end))
+        self.assertFalse(self.dag._indirect_connection_exists(start, "2"))
 
     def test_find_possible_direct_connections(self) -> None:
+        start, end = self.dag.root, self.dag.end
         nodes_set = set(self.dag.nodes)
         possible_direct_successors = {
             node: (nodes_set.difference(self.dag.ancestors[node])).difference(
@@ -373,11 +570,17 @@ class TestGrowingDAG(unittest.TestCase):
         }
         self.assertEqual(
             self.dag._find_possible_direct_connections(possible_direct_successors),
-            [{"previous_node": "start", "next_node": "end"}],
+            [
+                {
+                    "previous_node": start,
+                    "next_node": end,
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
         )
 
-        self.dag.add_direct_edge("start", "end")
-        self.dag.add_node_with_two_edges("start", "1", "end", self.single_node_attributes)
+        self.dag.add_direct_edge(start, end)
+        self.dag.add_node_with_two_edges(start, "1", end, self.init_node_attributes)
         nodes_set = set(self.dag.nodes)
         possible_direct_successors = {
             node: (nodes_set.difference(self.dag.ancestors[node])).difference(
@@ -391,7 +594,7 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertEqual(direct_connections, [])
 
         self.dag.add_node_with_two_edges(
-            "start", "2", "1", node_attributes=self.single_node_attributes
+            start, "2", "1", node_attributes=self.init_node_attributes
         )
         nodes_set = set(self.dag.nodes)
         possible_direct_successors = {
@@ -403,135 +606,174 @@ class TestGrowingDAG(unittest.TestCase):
         direct_connections = self.dag._find_possible_direct_connections(
             possible_direct_successors
         )
-        self.assertEqual(direct_connections, [{"previous_node": "2", "next_node": "end"}])
-
-    def test_find_possible_one_hop_connections(self) -> None:
-        nodes_set = set(self.dag.nodes)
-        possible_successors = {
-            node: nodes_set.difference(self.dag.ancestors[node])
-            for node in self.dag.nodes
-        }
-        one_hop_edges = self.dag._find_possible_one_hop_connections(possible_successors)
         self.assertEqual(
-            one_hop_edges,
+            direct_connections,
             [
                 {
-                    "previous_node": "start",
-                    "new_node": "1",
-                    "next_node": "end",
-                    "node_attributes": self.default_node_attributes,
+                    "previous_node": "2",
+                    "next_node": end,
+                    "edge_attributes": self.default_edge_attributes,
                 }
             ],
         )
 
-        self.dag.add_node_with_two_edges("start", "1", "end", self.single_node_attributes)
+    def test_find_possible_one_hop_connections(self) -> None:
+        start, end = self.dag.root, self.dag.end
         nodes_set = set(self.dag.nodes)
         possible_successors = {
             node: nodes_set.difference(self.dag.ancestors[node])
             for node in self.dag.nodes
         }
-        one_hop_edges = self.dag._find_possible_one_hop_connections(possible_successors)
+        one_hop_edges = self.dag._find_possible_one_hop_connections(
+            possible_successors, size=0
+        )
         self.assertEqual(
             one_hop_edges,
             [
                 {
-                    "previous_node": "start",
+                    "previous_node": start,
+                    "new_node": "1",
+                    "next_node": end,
+                    "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
+        )
+
+        self.dag.add_node_with_two_edges(start, "1", end, self.init_node_attributes)
+        nodes_set = set(self.dag.nodes)
+        possible_successors = {
+            node: nodes_set.difference(self.dag.ancestors[node])
+            for node in self.dag.nodes
+        }
+        one_hop_edges = self.dag._find_possible_one_hop_connections(
+            possible_successors, size=0
+        )
+        self.assertEqual(
+            one_hop_edges,
+            [
+                {
+                    "previous_node": start,
                     "new_node": "2",
                     "next_node": "1",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
                 {
                     "previous_node": "1",
                     "new_node": "2",
-                    "next_node": "end",
+                    "next_node": end,
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
             ],
         )
 
     def test_find_possible_extension(self) -> None:
+        start, end = self.dag.root, self.dag.end
         direct_edges, one_hop_edges = self.dag.find_possible_extensions()
-        self.assertEqual(direct_edges, [{"previous_node": "start", "next_node": "end"}])
+        self.assertEqual(
+            direct_edges,
+            [
+                {
+                    "previous_node": start,
+                    "next_node": end,
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
+        )
         self.assertEqual(
             one_hop_edges,
             [
                 {
-                    "previous_node": "start",
+                    "previous_node": start,
                     "new_node": "1",
-                    "next_node": "end",
+                    "next_node": end,
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 }
             ],
         )
 
-        self.dag.add_node_with_two_edges(
-            "start", "hidden", "end", self.single_node_attributes
-        )
+        self.dag.add_node_with_two_edges(start, "hidden", end, self.init_node_attributes)
         direct_edges, one_hop_edges = self.dag.find_possible_extensions()
-        self.assertEqual(direct_edges, [{"previous_node": "start", "next_node": "end"}])
+        self.assertEqual(
+            direct_edges,
+            [
+                {
+                    "previous_node": start,
+                    "next_node": end,
+                    "edge_attributes": self.default_edge_attributes,
+                }
+            ],
+        )
         self.assertEqual(
             one_hop_edges,
             [
                 {
-                    "previous_node": "start",
+                    "previous_node": start,
                     "new_node": "2",
                     "next_node": "hidden",
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
                 {
                     "previous_node": "hidden",
                     "new_node": "2",
-                    "next_node": "end",
+                    "next_node": end,
                     "node_attributes": self.default_node_attributes,
+                    "edge_attributes": self.default_edge_attributes,
                 },
             ],
         )
 
     def test_forward(self) -> None:
-        self.dag.add_direct_edge("start", "end")
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(start, end)
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            start, "1", end, node_attributes=self.init_node_attributes
         )
 
         x = torch.rand((50, self.in_features), device=global_device())
-        x_a = self.dag.get_edge_module("start", "end")(x)
-        x_b = self.dag.get_edge_module("start", "1")(x)
+        x_a = self.dag.get_edge_module(start, end)(x)
+        x_b = self.dag.get_edge_module(start, "1")(x)
         x_b = self.dag.get_node_module("1")(x_b)
-        x_b = self.dag.get_edge_module("1", "end")(x_b)
+        x_b = self.dag.get_edge_module("1", end)(x_b)
         out = x_a.add(x_b)
-        out = self.dag.get_node_module("end")(out)
+        out = self.dag.get_node_module(end)(out)
 
         actual_out = self.dag(x)
         self.assertTrue(torch.all(out == actual_out))
 
     def test_extended_forward(self) -> None:
-        self.dag.add_direct_edge("start", "end")
-        self.dag.get_edge_module("start", "end").optimal_delta_layer = torch.nn.Linear(
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(start, end)
+        self.dag.get_edge_module(start, end).optimal_delta_layer = torch.nn.Linear(
             in_features=self.in_features,
             out_features=self.out_features,
             device=global_device(),
         )
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            start, "1", end, node_attributes=self.init_node_attributes
         )
-        self.dag.get_edge_module("start", "1").extended_output_layer = torch.nn.Linear(
+        self.dag.get_edge_module(start, "1").extended_output_layer = torch.nn.Linear(
             in_features=self.in_features,
             out_features=self.hidden_size,
             device=global_device(),
         )
-        self.dag.get_edge_module("1", "end").extended_input_layer = torch.nn.Linear(
+        self.dag.get_edge_module("1", end).extended_input_layer = torch.nn.Linear(
             in_features=self.hidden_size,
             out_features=self.out_features,
             device=global_device(),
         )
 
         x = torch.rand((50, self.in_features), device=global_device())
-        x_a = self.dag.get_edge_module("start", "end").extended_forward(x)[0]
-        x_b = self.dag.get_edge_module("start", "1").extended_forward(x)
+        x_a = self.dag.get_edge_module(start, end).extended_forward(x)[0]
+        x_b = self.dag.get_edge_module(start, "1").extended_forward(x)
         x_b = self.dag.get_node_module("1")(x_b)
-        x_b = self.dag.get_edge_module("1", "end").extended_forward(*x_b)
+        x_b = self.dag.get_edge_module("1", end).extended_forward(*x_b)
         out = x_a.add(x_b[0])
-        out = self.dag.get_node_module("end")(out)
+        out = self.dag.get_node_module(end)(out)
 
         actual_out = self.dag.extended_forward(x)
         self.assertTrue(torch.all(out == actual_out))
@@ -561,59 +803,104 @@ class TestGrowingDAG(unittest.TestCase):
         )
 
     def test_parameters(self) -> None:
+        start, end = self.dag.root, self.dag.end
         self.assertEqual(len(list(self.dag.parameters())), len(self.dag.edges) * 2)
 
-        self.dag.add_direct_edge("start", "end")
+        self.dag.add_direct_edge(start, end)
         self.assertEqual(len(list(self.dag.parameters())), len(self.dag.edges) * 2)
 
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            start, "1", end, node_attributes=self.init_node_attributes
         )
         self.assertEqual(len(list(self.dag.parameters())), len(self.dag.edges) * 2)
 
     def test_count_parameters_all(self) -> None:
         self.assertEqual(self.dag.count_parameters_all(), 0)
 
-        self.dag.add_direct_edge("start", "end")
+        self.dag.add_direct_edge(self.dag.root, self.dag.end)
         numel = self.in_features * self.out_features + self.out_features
         self.assertEqual(self.dag.count_parameters_all(), numel)
 
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
         )
         numel += self.in_features * self.hidden_size + self.hidden_size
         numel += self.hidden_size * self.out_features + self.out_features
         self.assertEqual(self.dag.count_parameters_all(), numel)
 
     def test_count_parameters(self) -> None:
-        self.dag.add_direct_edge("start", "end")
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(start, end)
         numel = self.in_features * self.out_features + self.out_features
-        self.assertEqual(self.dag.count_parameters([("start", "end")]), numel)
+        self.assertEqual(self.dag.count_parameters([(start, end)]), numel)
 
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            start, "1", end, node_attributes=self.init_node_attributes
         )
         numel = self.in_features * self.hidden_size + self.hidden_size
-        self.assertEqual(self.dag.count_parameters([("start", "1")]), numel)
+        self.assertEqual(self.dag.count_parameters([(start, "1")]), numel)
         numel += self.hidden_size * self.out_features + self.out_features
-        self.assertEqual(self.dag.count_parameters([("start", "1"), ("1", "end")]), numel)
+        self.assertEqual(self.dag.count_parameters([(start, "1"), ("1", end)]), numel)
+
+    def test_evaluate(self) -> None:
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(start, end)
+        self.dag.add_node_with_two_edges(
+            start, "1", end, node_attributes=self.init_node_attributes
+        )
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device()).argmax(axis=1)
+        loss_fn = torch.nn.CrossEntropyLoss()
+        actual_out = self.dag.forward(x)
+        actual_loss = loss_fn(actual_out, y).item()
+        acc, _, f1 = self.dag.evaluate(
+            x, actual_out.argmax(axis=1), loss_fn, with_f1score=True
+        )
+        self.assertEqual(acc, 1.0)
+        self.assertEqual(f1, 1.0)
+
+        _, loss = self.dag.evaluate(x, y, loss_fn, with_f1score=False)
+        self.assertEqual(actual_loss, loss)
+
+        dag = GrowingDAG(
+            in_features=self.in_features,
+            out_features=1,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            default_layer_type="linear",
+        )
+        start, end = dag.root, dag.end
+        dag.add_node_with_two_edges(
+            start, "1", end, node_attributes=self.init_node_attributes
+        )
+        y = torch.rand((50, 1), device=global_device())
+        loss_fn = torch.nn.MSELoss()
+        actual_out = dag.forward(x)
+        actual_loss = loss_fn(actual_out, y).item()
+        acc, loss, f1 = dag.evaluate(x, y, loss_fn, with_f1score=True)
+        self.assertEqual(acc, -1)
+        self.assertEqual(f1, -1)
+        self.assertEqual(loss, actual_loss)
 
     def test_evaluate_extended(self) -> None:
-        self.dag.add_direct_edge("start", "end")
-        self.dag.get_edge_module("start", "end").optimal_delta_layer = torch.nn.Linear(
+        start, end = self.dag.root, self.dag.end
+        self.dag.add_direct_edge(start, end)
+        self.dag.get_edge_module(start, end).optimal_delta_layer = torch.nn.Linear(
             in_features=self.in_features,
             out_features=self.out_features,
             device=global_device(),
         )
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            start, "1", end, node_attributes=self.init_node_attributes
         )
-        self.dag.get_edge_module("start", "1").extended_output_layer = torch.nn.Linear(
+        self.dag.get_edge_module(start, "1").extended_output_layer = torch.nn.Linear(
             in_features=self.in_features,
             out_features=self.hidden_size,
             device=global_device(),
         )
-        self.dag.get_edge_module("1", "end").extended_input_layer = torch.nn.Linear(
+        self.dag.get_edge_module("1", end).extended_input_layer = torch.nn.Linear(
             in_features=self.hidden_size,
             out_features=self.out_features,
             device=global_device(),
@@ -639,22 +926,23 @@ class TestGrowingDAG(unittest.TestCase):
             neurons=self.hidden_size,
             use_bias=self.use_bias,
             use_batch_norm=self.use_batch_norm,
-            layer_type="linear",
+            default_layer_type="linear",
         )
-        dag.get_edge_module("start", "end").optimal_delta_layer = torch.nn.Linear(
+        start, end = dag.root, dag.end
+        dag.get_edge_module(start, end).optimal_delta_layer = torch.nn.Linear(
             in_features=self.in_features,
             out_features=1,
             device=global_device(),
         )
         dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            start, "1", end, node_attributes=self.init_node_attributes
         )
-        dag.get_edge_module("start", "1").extended_output_layer = torch.nn.Linear(
+        dag.get_edge_module(start, "1").extended_output_layer = torch.nn.Linear(
             in_features=self.in_features,
             out_features=self.hidden_size,
             device=global_device(),
         )
-        dag.get_edge_module("1", "end").extended_input_layer = torch.nn.Linear(
+        dag.get_edge_module("1", end).extended_input_layer = torch.nn.Linear(
             in_features=self.hidden_size,
             out_features=1,
             device=global_device(),
@@ -725,7 +1013,7 @@ class TestGrowingDAG(unittest.TestCase):
             previous_node=self.dag.root,
             next_node=self.dag.end,
         )
-        self.assertEqual(expansion.new_edges, (self.dag.root, self.dag.end))
+        self.assertEqual(expansion.new_edges, [(self.dag.root, self.dag.end)])
         expansion.expand()
         self.assertFalse(
             torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).weight)
@@ -733,6 +1021,10 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertFalse(
             torch.any(expansion.dag.get_edge_module(self.dag.root, self.dag.end).bias)
         )
+        self.assertEqual(
+            expansion.in_edges, [self.dag.get_edge_module(self.dag.root, self.dag.end)]
+        )
+        self.assertEqual(expansion.in_edges, expansion.out_edges)
 
         # Add new node
         expansion = Expansion(
@@ -741,7 +1033,7 @@ class TestGrowingDAG(unittest.TestCase):
             expanding_node="test",
             previous_node=self.dag.root,
             next_node=self.dag.end,
-            node_attributes=self.single_node_attributes,
+            node_attributes=self.init_node_attributes,
         )
         self.assertEqual(
             expansion.new_edges,
@@ -763,13 +1055,19 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertFalse(
             torch.any(expansion.dag.get_edge_module("test", self.dag.end).bias)
         )
+        self.assertEqual(
+            expansion.in_edges, [self.dag.get_edge_module(self.dag.root, "test")]
+        )
+        self.assertEqual(
+            expansion.out_edges, [self.dag.get_edge_module("test", self.dag.end)]
+        )
 
         # Expand existing node
         self.dag.add_node_with_two_edges(
             self.dag.root,
             "test",
             self.dag.end,
-            node_attributes=self.single_node_attributes,
+            node_attributes=self.init_node_attributes,
         )
         expansion = Expansion(
             self.dag,
@@ -784,7 +1082,333 @@ class TestGrowingDAG(unittest.TestCase):
             ],
         )
         expansion.expand()
-        self.assertIsNot(self.dag, expansion.dag)
+        self.assertIs(self.dag, expansion.dag)
+        self.assertEqual(
+            expansion.in_edges, self.dag.get_node_module("test").previous_modules
+        )
+        self.assertEqual(
+            expansion.out_edges, self.dag.get_node_module("test").next_modules
+        )
+
+    def test_inter_merge_expansion_new_edges(self) -> None:
+        dag = GrowingDAG(
+            in_features=self.dag_conv.get_node_module(self.dag_conv.end).output_volume,
+            out_features=self.out_features,
+            neurons=self.hidden_size,
+            use_bias=self.use_bias,
+            use_batch_norm=self.use_batch_norm,
+            default_layer_type="linear",
+            name="dag-linear",
+        )
+        self.dag_conv.add_direct_edge(
+            self.dag_conv.root,
+            self.dag_conv.end,
+            edge_attributes=self.default_edge_attributes,
+        )
+        self.dag_conv.get_node_module(self.dag_conv.end).add_next_module(
+            dag.get_node_module(self.dag.root)
+        )
+        dag.get_node_module(self.dag.root).add_previous_module(
+            self.dag_conv.get_node_module(self.dag_conv.end)
+        )
+
+        # Add new edge
+        expansion = InterMergeExpansion(
+            dag,
+            type="new edge",
+            previous_node=dag.root,
+            next_node=dag.end,
+        )
+        expansion.expand()
+        self.assertEqual(
+            expansion.new_edges,
+            dag.get_edge_modules([(dag.root, dag.end)]),
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module(dag.root, dag.end).weight)
+        )
+        self.assertFalse(torch.any(expansion.dag.get_edge_module(dag.root, dag.end).bias))
+        self.assertEqual(
+            expansion.previous_nodes, [dag.get_node_module(expansion.previous_node)]
+        )
+        self.assertEqual(expansion.next_nodes, [dag.get_node_module(expansion.next_node)])
+        self.assertEqual(expansion.in_edges, [dag.get_edge_module(dag.root, dag.end)])
+        self.assertEqual(expansion.in_edges, expansion.out_edges)
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [None, None],
+                "edges": [dag.get_edge_module(dag.root, dag.end)._name],
+            },
+        )
+
+        # Add new node
+        expansion = InterMergeExpansion(
+            self.dag_conv,
+            type="new node",
+            expanding_node="test",
+            previous_node=self.dag_conv.root,
+            next_node=self.dag_conv.end,
+            node_attributes=self.init_node_conv_attributes,
+            edge_attributes=self.default_edge_attributes,
+        )
+        expansion.expand()
+        self.assertEqual(
+            expansion.new_edges,
+            self.dag_conv.get_edge_modules(
+                [
+                    (self.dag_conv.root, "test"),
+                    ("test", self.dag_conv.end),
+                ]
+            ),
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module(self.dag_conv.root, "test").weight)
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module(self.dag_conv.root, "test").bias)
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module("test", self.dag_conv.end).weight)
+        )
+        self.assertFalse(
+            torch.any(expansion.dag.get_edge_module("test", self.dag_conv.end).bias)
+        )
+        self.assertEqual(
+            expansion.previous_nodes,
+            [self.dag_conv.get_node_module(expansion.previous_node)],
+        )
+        self.assertEqual(
+            expansion.next_nodes, [self.dag_conv.get_node_module(expansion.next_node)]
+        )
+        self.assertEqual(
+            expansion.in_edges,
+            [self.dag_conv.get_edge_module(self.dag_conv.root, "test")],
+        )
+        self.assertEqual(
+            expansion.out_edges,
+            [self.dag_conv.get_edge_module("test", self.dag_conv.end)],
+        )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": ["test", None],
+                "edges": [
+                    self.dag_conv.get_edge_module(self.dag_conv.root, "test")._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                ],
+            },
+        )
+
+        # Expand existing node
+        self.dag_conv.add_node_with_two_edges(
+            self.dag_conv.root,
+            "test",
+            self.dag_conv.end,
+            node_attributes=self.init_node_conv_attributes,
+            edge_attributes=self.default_edge_attributes,
+        )
+        expansion = InterMergeExpansion(
+            self.dag_conv,
+            type="expanded node",
+            expanding_node="test",
+        )
+        expansion.expand()
+        self.assertTrue(self.dag_conv.is_node_candidate("test"))
+        self.assertEqual(
+            expansion.previous_nodes, [self.dag_conv.get_node_module(self.dag_conv.root)]
+        )
+        self.assertEqual(
+            expansion.next_nodes, [self.dag_conv.get_node_module(self.dag_conv.end)]
+        )
+        self.assertEqual(
+            expansion.new_edges,
+            self.dag_conv.get_edge_modules(
+                [
+                    (self.dag_conv.root, "test"),
+                    ("test", self.dag_conv.end),
+                ]
+            ),
+        )
+        self.assertEqual(
+            expansion.in_edges, self.dag_conv.get_node_module("test").previous_modules
+        )
+        self.assertEqual(
+            expansion.out_edges, self.dag_conv.get_node_module("test").next_modules
+        )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": ["test", None],
+                "edges": [
+                    self.dag_conv.get_edge_module(self.dag_conv.root, "test")._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                ],
+            },
+        )
+
+        # Expansion with the first MergeGrowingModule
+        expansion = InterMergeExpansion(
+            self.dag_conv,
+            type="expanded node",
+            expanding_node=self.dag_conv.end,
+            adjacent_expanding_node=dag.root,
+        )
+        expansion.expand()
+        self.assertEqual(
+            expansion.previous_nodes, [self.dag_conv.get_node_module(self.dag_conv.root)]
+        )
+        self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.in_edges,
+            [self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end)],
+        )
+        self.assertEqual(expansion.out_edges, [dag.get_edge_module(dag.root, dag.end)])
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [self.dag_conv.end, dag.root],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                ],
+            },
+        )
+
+        self.dag_conv.toggle_node_candidate("test", False)
+        self.assertEqual(
+            expansion.previous_nodes,
+            [
+                self.dag_conv.get_node_module(self.dag_conv.root),
+                self.dag_conv.get_node_module("test"),
+            ],
+        )
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.in_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [self.dag_conv.end, dag.root],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                ],
+            },
+        )
+
+        # Expansion with the second MergeGrowingModule
+        dag.add_node_with_two_edges(
+            dag.root,
+            "test",
+            dag.end,
+            node_attributes=self.init_node_attributes,
+        )
+        dag.toggle_node_candidate("test", True)
+        expansion = InterMergeExpansion(
+            dag,
+            type="expanded node",
+            expanding_node=dag.root,
+            adjacent_expanding_node=self.dag_conv.end,
+        )
+        expansion.expand()
+        self.assertEqual(
+            expansion.previous_nodes,
+            [
+                self.dag_conv.get_node_module(self.dag_conv.root),
+                self.dag_conv.get_node_module("test"),
+            ],
+        )
+        self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+            ],
+        )
+        self.assertEqual(
+            expansion.in_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+            ],
+        )
+        self.assertEqual(expansion.out_edges, [dag.get_edge_module(dag.root, dag.end)])
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [dag.root, self.dag_conv.end],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                ],
+            },
+        )
+
+        dag.toggle_node_candidate("test", False)
+        self.assertEqual(
+            expansion.next_nodes,
+            [dag.get_node_module(dag.end), dag.get_node_module("test")],
+        )
+        self.assertEqual(
+            expansion.new_edges,
+            [
+                self.dag_conv.get_edge_module(self.dag_conv.root, self.dag_conv.end),
+                self.dag_conv.get_edge_module("test", self.dag_conv.end),
+                dag.get_edge_module(dag.root, dag.end),
+                dag.get_edge_module(dag.root, "test"),
+            ],
+        )
+        self.assertEqual(
+            expansion.out_edges,
+            [
+                dag.get_edge_module(dag.root, dag.end),
+                dag.get_edge_module(dag.root, "test"),
+            ],
+        )
+        self.assertEqual(
+            expansion.create_mask(),
+            {
+                "nodes": [dag.root, self.dag_conv.end],
+                "edges": [
+                    self.dag_conv.get_edge_module(
+                        self.dag_conv.root, self.dag_conv.end
+                    )._name,
+                    self.dag_conv.get_edge_module("test", self.dag_conv.end)._name,
+                    dag.get_edge_module(dag.root, dag.end)._name,
+                    dag.get_edge_module(dag.root, "test")._name,
+                ],
+            },
+        )
 
 
 if __name__ == "__main__":

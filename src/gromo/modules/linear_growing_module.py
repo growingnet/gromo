@@ -1,10 +1,10 @@
+import types
 from warnings import warn
 
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.utils import global_device
 
 
 # Constants for gradient computation
@@ -70,7 +70,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         # self.use_bias = any(module.use_bias for module in self.next_modules)
         assert all(
             modules.in_features == self.out_features for modules in self.next_modules
-        ), f"The output features must match the input features of the next modules."
+        ), f"The output features of {self.name} ({self.out_features}) must match the input features of the next modules. Found {[module.in_features for module in self.next_modules]}."
 
     def set_previous_modules(
         self, previous_modules: list["MergeGrowingModule | GrowingModule"]
@@ -106,6 +106,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             if isinstance(module, LinearGrowingModule):
                 self.total_in_features += module.in_features
                 self.total_in_features += module.use_bias
+
         if self.total_in_features > 0:
             self.previous_tensor_s = TensorStatistic(
                 (
@@ -273,6 +274,8 @@ class LinearGrowingModule(GrowingModule):
         self.in_features = in_features
         self.out_features = out_features
 
+        self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
+
     # Information functions
     @property
     def activation_gradient(self) -> torch.Tensor:
@@ -340,6 +343,20 @@ class LinearGrowingModule(GrowingModule):
             )
         else:
             return super(LinearGrowingModule, self).__str__(verbose=verbose)
+
+    def __make_safe_forward(self):
+        def _forward(lin_self, input: torch.Tensor) -> torch.Tensor:
+            if self.in_features == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    self.out_features,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            return torch.nn.Linear.forward(lin_self, input)
+
+        return _forward
 
     # Statistics computation
     def compute_s_update(self) -> tuple[torch.Tensor, int]:

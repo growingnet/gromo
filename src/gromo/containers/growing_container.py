@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 
 from gromo.config.loader import load_config
@@ -31,11 +33,26 @@ class GrowingContainer(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def set_scaling_factor(self, factor: float) -> None:
+        """Assign scaling factor to all growing layers
+
+        Parameters
+        ----------
+        factor : float
+            scaling factor
+        """
+        for layer in self._growing_layers:
+            if isinstance(layer, GrowingContainer):
+                layer.set_scaling_factor(factor)
+            elif isinstance(layer, GrowingModule):
+                layer.scaling_factor = factor
+                layer._scaling_factor_next_module.data[0] = factor
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network"""
         raise NotImplementedError
 
-    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
         """Extended forward pass through the network"""
         raise NotImplementedError
 
@@ -144,3 +161,14 @@ class GrowingContainer(torch.nn.Module):
         for layer in self._growing_layers:
             if isinstance(layer, (MergeGrowingModule, GrowingContainer)):
                 layer.update_size()
+
+    def weights_statistics(self) -> dict[str, Any]:
+        """Get the statistics of the weights in the growing layers.
+        Due to the recursive nature of the containers, the returned dictionary
+        contains nested dictionaries for each layer.
+        """
+        stats = {}
+        for module in self.modules():
+            if isinstance(module, GrowingModule):
+                stats[module.name] = module.weights_statistics()
+        return stats

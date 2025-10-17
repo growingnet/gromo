@@ -203,7 +203,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             input_size=self.input_hw,
             device=global_device(),
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             m.set_previous_modules([bad_prev2])
 
         # Output volume mismatch -> ValueError
@@ -258,10 +258,9 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             input_size=m.output_size,
             device=global_device(),
         )
-        with self.assertRaises(AssertionError):
-            with self.assertWarns(UserWarning):
-                # You are setting the next modules with a non-empty tensor S
-                m.set_next_modules([n1, n3])
+        with self.assertRaises(AssertionError), self.assertWarns(UserWarning):
+            # You are setting the next modules with a non-empty tensor S
+            m.set_next_modules([n1, n3])
 
         # Kernel size mismatch between merge and next -> assertion
         m2 = Conv2dMergeGrowingModule(
@@ -1558,7 +1557,7 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
             y_ref,
             y_test,
             atol=1e-6,
-            message=f"The constructed convolution is not similar to a linear layer",
+            message="The constructed convolution is not similar to a linear layer",
         )
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))

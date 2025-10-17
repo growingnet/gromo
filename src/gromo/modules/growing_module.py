@@ -7,7 +7,7 @@ import torch
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
-from gromo.utils.utils import get_correct_device
+from gromo.utils.utils import compute_tensor_stats, get_correct_device
 
 
 class MergeGrowingModule(torch.nn.Module):
@@ -210,7 +210,11 @@ class MergeGrowingModule(torch.nn.Module):
         """
         v_proj = self.pre_activity.grad.clone().detach()
         for module in self.previous_modules:
-            v_proj -= module.optimal_delta_layer(module.input)
+            if isinstance(module, GrowingModule):
+                v_proj -= module.optimal_delta_layer(module.input)
+            elif isinstance(module, MergeGrowingModule):
+                for prev_module in module.previous_modules:
+                    v_proj -= prev_module.optimal_delta_layer(prev_module.input)
 
         return v_proj
 
@@ -297,10 +301,6 @@ class MergeGrowingModule(torch.nn.Module):
         """
         Delete the update of the optimal added parameters.
         """
-        self.optimal_delta_layer = None
-        self.extended_input_layer = None
-        self.parameter_update_decrease = None
-        self.eigenvalues_extension = None
         self.activity = None
         self.input = None
 
@@ -308,7 +308,7 @@ class MergeGrowingModule(torch.nn.Module):
             for previous_module in self.previous_modules:
                 if isinstance(previous_module, GrowingModule):
                     previous_module.delete_update(
-                        include_previous=False, include_output=True
+                        include_previous=False, delete_output=True
                     )
 
     def compute_optimal_delta(
@@ -453,12 +453,12 @@ class MergeGrowingModule(torch.nn.Module):
             return sum(
                 module.in_features + module.use_bias
                 for module in self.previous_modules
-                if not isinstance(module, MergeGrowingModule)
+                if isinstance(module, GrowingModule)
             )
         return sum(
             module.in_features
             for module in self.previous_modules
-            if not isinstance(module, MergeGrowingModule)
+            if isinstance(module, GrowingModule)
         )
 
     def sum_out_features(self) -> int:
@@ -498,6 +498,26 @@ class MergeGrowingModule(torch.nn.Module):
                 raise TypeError(
                     f"Next module must be a GrowingModule, got {type(module)}"
                 )
+
+    def __del__(self) -> None:
+        # Delete previous GrowingModules
+        for prev_module in self.previous_modules:
+            if isinstance(prev_module, GrowingModule):
+                prev_module.__del__()
+            elif isinstance(prev_module, MergeGrowingModule):
+                if self in prev_module.next_modules:
+                    prev_module.next_modules.remove(self)
+                    prev_module.update_size()
+        self.previous_modules = []
+        # Delete next GrowingModules
+        for next_module in self.next_modules:
+            if isinstance(next_module, GrowingModule):
+                next_module.__del__()
+            elif isinstance(next_module, MergeGrowingModule):
+                if self in next_module.previous_modules:
+                    next_module.previous_modules.remove(self)
+                    next_module.update_size()
+        self.next_modules = []
 
 
 class GrowingModule(torch.nn.Module):
@@ -835,7 +855,12 @@ class GrowingModule(torch.nn.Module):
         return self.post_layer_function(pre_activity)
 
     def extended_forward(
-        self, x: torch.Tensor, x_ext: torch.Tensor | None = None
+        self,
+        x: torch.Tensor,
+        x_ext: torch.Tensor | None = None,
+        use_optimal_delta: bool = True,
+        use_extended_input: bool = True,
+        use_extended_output: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Forward pass of the module with layer extension and layer update scaled
@@ -851,6 +876,12 @@ class GrowingModule(torch.nn.Module):
             input tensor
         x_ext: torch.Tensor | None
             extension tensor
+        use_optimal_delta: bool, optional
+            if True, use the optimal delta layer, default True
+        use_extended_input: bool, optional
+            if True, use the extended input layer, default True
+        use_extended_output: bool, optional
+            if True, use the extended output layer, default True
 
         Returns
         -------
@@ -863,24 +894,25 @@ class GrowingModule(torch.nn.Module):
         linear_factor = self.scaling_factor**2 * torch.sign(self.scaling_factor)
         sqrt_factor = self.scaling_factor
 
-        if self.optimal_delta_layer is not None:
+        if self.optimal_delta_layer is not None and use_optimal_delta:
             pre_activity -= linear_factor * self.optimal_delta_layer(x)
 
-        if self.extended_input_layer:
-            if x_ext is None:
-                raise ValueError(
-                    f"x_ext must be provided got None for {self.name}."
-                    f"As the input is extended, an extension is needed."
-                )
-            pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
-        else:
-            if x_ext is not None:  # TODO: and is not empty
-                warnings.warn(
-                    f"x_ext must be None got {x_ext} for {self.name}. As the input is not extended, no extension is needed.",
-                    UserWarning,
-                )
+        if use_extended_input:
+            if self.extended_input_layer:
+                if x_ext is None:
+                    raise ValueError(
+                        f"x_ext must be provided got None for {self.name}."
+                        f"As the input is extended, an extension is needed."
+                    )
+                pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
+            else:
+                if x_ext is not None:  # TODO: and is not empty
+                    warnings.warn(
+                        f"x_ext must be None got {x_ext} for {self.name}. As the input is not extended, no extension is needed.",
+                        UserWarning,
+                    )
 
-        if self.extended_output_layer:
+        if self.extended_output_layer and use_extended_output:
             supplementary_pre_activity = (
                 self._scaling_factor_next_module * self.extended_output_layer(x)
             )
@@ -1675,7 +1707,9 @@ class GrowingModule(torch.nn.Module):
     def delete_update(
         self,
         include_previous: bool = True,
-        include_output: bool = False,
+        delete_delta: bool = True,
+        delete_input: bool = True,
+        delete_output: bool = False,
     ) -> None:
         """
         Delete the updates of the layer:
@@ -1687,13 +1721,25 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        include_previous: bool
-            if True delete the extended_output_layer of the previous layer
-        include_output: bool
-            if True delete the extended_output_layer of this layer,
+        include_previous : bool, optional
+            delete the extended_output_layer of the previous layer, by default True
+        delete_delta : bool, optional
+            delete the optimal_delta_layer of the module, by default True
+        delete_input : bool, optional
+            delete the extended_input_layer of this module, by default True
+        delete_output : bool, optional
+            delete the extended_output_layer of this layer, by default False
             warning: this does not delete the extended_input_layer of the next layer
+
+        Raises
+        ------
+        NotImplementedError
+            raised when include_previous is True and the previous module is of type MergeGrowingModule
+        TypeError
+            raised when the previous module is not of type GrowingModule or MergeGrowingModule
         """
-        self.optimal_delta_layer = None
+        if delete_delta:
+            self.optimal_delta_layer = None
         self.scaling_factor = 0.0  # type: ignore
         # this type problem is due to the use of the setter to change the scaling factor
         self.parameter_update_decrease = None
@@ -1702,11 +1748,11 @@ class GrowingModule(torch.nn.Module):
         self._input = None
 
         # delete extended_output_layer
-        if include_output:
+        if delete_output:
             self.extended_output_layer = None
 
         # delete previous module extended_output_layer
-        if self.extended_input_layer is not None:
+        if self.extended_input_layer is not None and delete_input:
             # delete extended_input_layer
             self.extended_input_layer = None
             if self.previous_module is not None:
@@ -1765,6 +1811,44 @@ class GrowingModule(torch.nn.Module):
                     "module is needed.",
                     UserWarning,
                 )
+
+    def __del__(self) -> None:
+        # Unset next module of self.previous_module
+        if hasattr(self, "previous_module") and self.previous_module is not None:
+            if isinstance(self.previous_module, GrowingModule):
+                self.previous_module.next_module = None
+            elif isinstance(self.previous_module, MergeGrowingModule):
+                if self in self.previous_module.next_modules:
+                    self.previous_module.next_modules.remove(self)
+                    self.previous_module.update_size()
+            self.previous_module = None
+        # Unset previous module of self.next_module
+        if hasattr(self, "next_module") and self.next_module is not None:
+            if isinstance(self.next_module, GrowingModule):
+                self.next_module.previous_module = None
+            elif isinstance(self.next_module, MergeGrowingModule):
+                if self in self.next_module.previous_modules:
+                    self.next_module.previous_modules.remove(self)
+                    self.next_module.update_size()
+            self.next_module = None
+
+    def weights_statistics(self) -> dict[str, dict[str, float]]:
+        """
+        Get the statistics of the weights in the growing layer.
+
+        Returns
+        -------
+        dict[str, dict[str, float]]
+            A dictionary where keys are weights names and
+            values are dictionaries of weight statistics.
+        """
+        layer_stats = {
+            "weight": compute_tensor_stats(self.layer.weight),
+        }
+        if self.layer.bias is not None:
+            layer_stats["bias"] = compute_tensor_stats(self.layer.bias)
+
+        return layer_stats
 
 
 if __name__ == "__main__":
