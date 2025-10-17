@@ -1,16 +1,33 @@
 import random
-import unittest
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import torch
+import torch.nn as nn
 
-from gromo.utils.utils import *
+from gromo.utils.utils import (
+    activation_fn,
+    batch_gradient_descent,
+    calculate_true_positives,
+    compute_tensor_stats,
+    evaluate_dataset,
+    f1,
+    f1_macro,
+    f1_micro,
+    get_correct_device,
+    global_device,
+    line_search,
+    mini_batch_gradient_descent,
+    reset_device,
+    safe_forward,
+    set_device,
+    set_from_conf,
+    torch_ones,
+    torch_zeros,
+)
+from tests.torch_unittest import TorchTestCase
 
-from .unittest_tools import unittest_parametrize
 
-
-class TestUtils(unittest.TestCase):
+class TestUtils(TorchTestCase):
     @classmethod
     def setUpClass(cls):
         """Set up available devices for testing"""
@@ -106,18 +123,19 @@ class TestUtils(unittest.TestCase):
         setattr(obj, "_config_data", {"var": 1})
         set_from_conf(obj, "variable", 0)
         self.assertTrue(hasattr(obj, "variable"))
-        self.assertEqual(obj.variable, 0)
+        self.assertEqual(obj.variable, 0)  # type: ignore
         var = set_from_conf(obj, "var", 0, setter=False)
         self.assertFalse(hasattr(obj, "var"))
         self.assertEqual(var, 1)
 
     def test_activation_fn(self) -> None:
-        self.assertIsInstance(activation_fn(None), nn.Identity)
+        self.assertIsInstance(activation_fn(None), nn.Identity)  # type: ignore
         self.assertIsInstance(activation_fn("Id"), nn.Identity)
-        self.assertIsInstance(activation_fn("Test"), nn.Identity)
         self.assertIsInstance(activation_fn("Softmax"), nn.Softmax)
         self.assertIsInstance(activation_fn("SELU"), nn.SELU)
         self.assertIsInstance(activation_fn("RELU"), nn.ReLU)
+        with self.assertRaises(ValueError):
+            activation_fn("UnknownActivation")
 
     def test_mini_batch_gradient_descent(self) -> None:
         # Test on each available device
@@ -125,8 +143,8 @@ class TestUtils(unittest.TestCase):
             with self.subTest(device=device_name):
                 set_device(device_name)
 
-                callable_forward = lambda x: x**2 + 1
-                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)
+                callable_forward = lambda x: x**2 + 1  # noqa: E731
+                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)  # noqa: E731
                 x = torch.rand((5, 2), requires_grad=True, device=global_device())
                 y = torch.rand((5, 1), device=global_device())
                 lrate = 1e-3
@@ -173,7 +191,7 @@ class TestUtils(unittest.TestCase):
 
                 # Test with model
                 model = nn.Linear(2, 1, device=global_device())
-                eval_fn = lambda: None
+                eval_fn = lambda: None  # noqa: E731
                 mini_batch_gradient_descent(
                     model,
                     cost_fn,
@@ -197,6 +215,8 @@ class TestUtils(unittest.TestCase):
         factor, min_loss = line_search(quadratic_cost, return_history=False)
         self.assertIsInstance(factor, float)
         self.assertIsInstance(min_loss, float)
+        assert isinstance(factor, float)
+        assert isinstance(min_loss, float)
         self.assertGreater(min_loss, 1.0)  # Minimum value should be close to 1
         self.assertGreater(factor, 0.0)  # Factor should be positive
 
@@ -204,11 +224,13 @@ class TestUtils(unittest.TestCase):
         factors, losses = line_search(quadratic_cost, return_history=True)
         self.assertIsInstance(factors, list)
         self.assertIsInstance(losses, list)
+        assert isinstance(factors, list)
+        assert isinstance(losses, list)
         self.assertEqual(len(factors), len(losses))
         self.assertGreater(len(factors), 0)
 
         # Test that minimum is reasonable for quadratic function
-        min_idx = np.argmin(losses)
+        min_idx = int(torch.argmin(torch.tensor(losses)).item())
         best_factor = factors[min_idx]
         best_loss = losses[min_idx]
         # For quadratic function, should find factor close to 2
@@ -327,6 +349,125 @@ class TestUtils(unittest.TestCase):
         self.assertGreater(f1_macro_score, 0.0)
         self.assertLess(f1_macro_score, 1.0)
 
+    def test_safe_forward(self) -> None:
+        """Test safe_forward function for Linear layers with various input configurations."""
+        # Test on each available device
+        for device_name in self.available_devices:
+            with self.subTest(device=device_name):
+                set_device(device_name)
+                device = global_device()
+
+                # Test normal case with non-zero features
+                in_features = 5
+                out_features = 3
+                batch_size = 4
+
+                # Create a mock linear layer
+                linear_layer = nn.Linear(in_features, out_features, device=device)
+
+                # Test normal forward pass
+                input_tensor = torch.randn(batch_size, in_features, device=device)
+                output = safe_forward(linear_layer, input_tensor)
+
+                self.assertShapeEqual(output, (batch_size, out_features))
+                # Compare with normal linear forward
+                expected_output = torch.nn.functional.linear(
+                    input_tensor, linear_layer.weight, linear_layer.bias
+                )
+                self.assertAllClose(output, expected_output)
+
+                # Test with zero input features (edge case)
+                zero_in_features = 0
+                zero_linear = nn.Linear(zero_in_features, out_features, device=device)
+                zero_input = torch.empty(batch_size, zero_in_features, device=device)
+
+                zero_output = safe_forward(zero_linear, zero_input)
+                self.assertShapeEqual(zero_output, (batch_size, out_features))
+                # Should return zeros with requires_grad=True
+                self.assertTrue(torch.all(zero_output == 0))
+                self.assertTrue(zero_output.requires_grad)
+
+                # Test input shape mismatch (should raise AssertionError)
+                wrong_input = torch.randn(batch_size, in_features + 1, device=device)
+                with self.assertRaises(AssertionError) as context:
+                    safe_forward(linear_layer, wrong_input)
+
+                self.assertIn("Input shape", str(context.exception))
+                self.assertIn("must match the input feature size", str(context.exception))
+
+                # Test with different batch dimensions
+                input_3d = torch.randn(2, 3, in_features, device=device)
+                output_3d = safe_forward(linear_layer, input_3d)
+                self.assertShapeEqual(output_3d, (2, 3, out_features))
+
+                # Test with single sample
+                input_single = torch.randn(1, in_features, device=device)
+                output_single = safe_forward(linear_layer, input_single)
+                self.assertShapeEqual(output_single, (1, out_features))
+
+                # Test without bias
+                linear_no_bias = nn.Linear(
+                    in_features, out_features, bias=False, device=device
+                )
+                output_no_bias = safe_forward(linear_no_bias, input_tensor)
+                self.assertShapeEqual(output_no_bias, (batch_size, out_features))
+                expected_no_bias = torch.nn.functional.linear(
+                    input_tensor, linear_no_bias.weight, None
+                )
+                self.assertAllClose(output_no_bias, expected_no_bias)
+
+    def test_compute_tensor_stats(self) -> None:
+        """Test compute_tensor_stats function returns correct output types."""
+        # Test with normal tensor (multiple elements)
+        for tensor in [torch.randn(3, 4), torch.tensor(5.0)]:
+            stats = compute_tensor_stats(tensor)
+
+            # Check output type and keys
+            self.assertIsInstance(stats, dict)
+            expected_keys = {"min", "max", "mean", "std"}
+            self.assertEqual(set(stats.keys()), expected_keys)
+
+            # Check value types
+            for key, value in stats.items():
+                self.assertIsInstance(
+                    value, float, f"Value for key '{key}' should be float"
+                )
+
+    def test_evaluate_dataset(self) -> None:
+        batch_size = 4
+        in_features = 5
+        out_features = 2
+        model = torch.nn.Linear(in_features, out_features, device=global_device())
+
+        x = torch.rand(batch_size, in_features, device=global_device())
+        y = torch.randint(0, out_features, (batch_size,), device=global_device())
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y), batch_size=batch_size
+        )
+        loss_fn = torch.nn.CrossEntropyLoss()
+
+        accuracy, loss = evaluate_dataset(model, dataloader, loss_fn)
+        self.assertGreaterEqual(accuracy, 0)
+        self.assertLessEqual(accuracy, 1)
+        self.assertGreaterEqual(loss, 0)
+        self.assertEqual(loss, loss_fn(model(x), y).item())
+
+        out_features = 1
+        model = torch.nn.Linear(in_features, out_features, device=global_device())
+
+        y = torch.rand(batch_size, out_features, device=global_device())
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y), batch_size=batch_size
+        )
+        loss_fn = torch.nn.MSELoss()
+
+        accuracy, loss = evaluate_dataset(model, dataloader, loss_fn)
+        self.assertEqual(accuracy, -1)
+        self.assertGreaterEqual(loss, 0)
+        self.assertEqual(loss, loss_fn(model(x), y).item())
+
 
 if __name__ == "__main__":
-    unittest.main()
+    from unittest import main
+
+    main()

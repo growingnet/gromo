@@ -1,3 +1,4 @@
+import types
 from warnings import warn
 
 import torch
@@ -14,11 +15,425 @@ from gromo.utils.tools import (
     compute_output_shape_conv,
     create_bordering_effect_convolution,
 )
-from gromo.utils.utils import global_device
 
 
 class Conv2dMergeGrowingModule(MergeGrowingModule):
-    pass
+    def __init__(
+        self,
+        in_channels: int,
+        input_size: int | tuple[int, int],
+        next_kernel_size: int | tuple[int, int],
+        post_merge_function: torch.nn.Module = torch.nn.Identity(),
+        previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        allow_growing: bool = False,
+        input_volume: int | None = None,
+        device: torch.device | None = None,
+        name: str | None = None,
+    ) -> None:
+        self.use_bias = True
+        self.in_channels: int = in_channels
+        self._input_volume = input_volume
+        if isinstance(input_size, int):
+            input_size = (input_size, input_size)
+        self.input_size: tuple[int, int] = input_size
+        if isinstance(next_kernel_size, int):
+            next_kernel_size = (next_kernel_size, next_kernel_size)
+        self.kernel_size: tuple[int, int] = next_kernel_size
+        super(Conv2dMergeGrowingModule, self).__init__(
+            post_merge_function=post_merge_function,
+            previous_modules=previous_modules,
+            next_modules=next_modules,
+            allow_growing=allow_growing,
+            tensor_s_shape=(
+                in_channels * next_kernel_size[0] * next_kernel_size[1] + self.use_bias,
+                in_channels * next_kernel_size[0] * next_kernel_size[1] + self.use_bias,
+            ),
+            device=device,
+            name=name,
+        )
+
+    @property
+    def input_volume(self) -> int:
+        if self._input_volume is not None:
+            return self._input_volume
+        if self.input_size is not None:
+            return self.input_size[0] * self.input_size[1] * self.in_channels
+        if len(self.previous_modules) <= 0:
+            warn(
+                f"Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
+            )
+            return -1
+        return self.previous_modules[0].output_volume
+
+    @property
+    def output_volume(self) -> int:
+        return self.input_volume
+
+    @property
+    def out_channels(self) -> int:
+        return self.in_channels
+
+    @property
+    def in_features(self) -> int:
+        return self.in_channels
+
+    @property
+    def out_features(self) -> int:
+        return self.in_channels
+
+    @property
+    def output_size(self) -> tuple[int, int]:
+        return self.input_size  # TODO: check for exceptions!
+
+    @property
+    def padding(self) -> tuple[int, int]:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the padding of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return (0, 0)
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.padding
+        elif isinstance(self.next_modules[0], Conv2dMergeGrowingModule):
+            return self.next_modules[0].padding
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
+            return (0, 0)
+        else:
+            raise NotImplementedError
+
+    @property
+    def stride(self) -> tuple[int, int]:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the stride of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return (1, 1)
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.stride
+        elif isinstance(self.next_modules[0], Conv2dMergeGrowingModule):
+            return self.next_modules[0].stride
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
+            return (1, 1)
+        else:
+            raise NotImplementedError
+
+    @property
+    def dilation(self) -> tuple[int, int]:
+        if len(self.next_modules) <= 0:
+            warn(
+                f"Cannot derive the dilation of Conv2dMergeGrowingModule without setting at least one next module"
+            )
+            return (1, 1)
+        elif isinstance(self.next_modules[0], Conv2dGrowingModule):
+            return self.next_modules[0].layer.dilation
+        elif isinstance(self.next_modules[0], Conv2dMergeGrowingModule):
+            return self.next_modules[0].dilation
+        elif isinstance(
+            self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
+        ):
+            return (1, 1)
+        else:
+            raise NotImplementedError
+
+    @property
+    def unfolded_extended_activity(self) -> torch.Tensor:
+        """
+        Return the unfolded activity extended with a channel of ones if the bias is used.
+        Shape := (batch_size, D, L) where
+        D = in_channels * kernel_size[0] * kernel_size[1] [+1 if bias]
+        L = number of output spatial locations (e.g., H x W)
+
+        Returns
+        -------
+        torch.Tensor
+            unfolded activity extended
+        """
+        unfolded_activity = torch.nn.functional.unfold(
+            self.activity,
+            self.kernel_size,
+            padding=self.padding,
+            stride=self.stride,
+            dilation=self.dilation,
+        )
+        if self.use_bias:
+            return torch.cat(
+                (
+                    unfolded_activity,
+                    torch.ones(
+                        unfolded_activity.shape[0],
+                        1,
+                        unfolded_activity.shape[2],
+                        device=self.device,
+                    ),
+                ),
+                dim=1,
+            )
+        else:
+            return unfolded_activity
+
+    def set_next_modules(
+        self, next_modules: list[GrowingModule | MergeGrowingModule]
+    ) -> None:
+        if self.tensor_s is not None and self.tensor_s.samples > 0:
+            warn(
+                f"You are setting the next modules of {self.name} with a non-empty tensor S."
+            )
+
+        self.next_modules = next_modules if next_modules else []
+
+        # For Conv2d modules, check kernel size compatibility
+        for module in self.next_modules:
+            if isinstance(module, Conv2dGrowingModule):
+                assert tuple(module.kernel_size) == tuple(
+                    self.kernel_size
+                ), f"Kernel size of next Conv2d modules {module.kernel_size} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+
+            if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
+                assert (
+                    module.in_channels == self.out_channels
+                ), f"Next module input channels {module.in_channels} should match {self.out_channels=}"
+                # assert module.input_volume == self.output_volume, f"Next module input volume {module.input_volume} should match {self.output_volume=}"
+            elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
+                assert (
+                    module.in_features == self.output_volume
+                ), f"Next module input features {module.in_features} should match {self.output_volume=}"
+            else:
+                raise NotImplementedError(
+                    f"All next modules must be instances of Conv2dGrowingModule, Conv2dMergeGrowingModule, LinearGrowingModule or LinearMergeGrowingModule (error in {self.name})."
+                )
+
+    def set_previous_modules(
+        self, previous_modules: list[MergeGrowingModule | GrowingModule]
+    ) -> None:
+        if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."
+            )
+        if self.previous_tensor_m is not None and self.previous_tensor_m.samples > 0:
+            warn(
+                f"You are setting the previous modules of {self.name} with a non-empty previous tensor M."
+            )
+
+        self.previous_modules = previous_modules if previous_modules else []
+
+        # Then check kernel size constraints for all Conv2d modules
+        # if len(prev_list) > 0:
+        # first_ks = tuple(prev_list[0].kernel_size)
+        # assert all(
+        #     tuple(m.kernel_size) == first_ks for m in prev_list
+        # ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+        # assert (
+        #     tuple(self.kernel_size) == first_ks
+        # ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+
+        self.total_in_features = 0
+        for module in self.previous_modules:
+            if not isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
+                raise TypeError(
+                    "The previous modules must be Conv2dGrowingModule or Conv2dMergeGrowingModule."
+                )
+
+            if module.out_channels != self.in_channels:
+                raise ValueError(
+                    "The input channels must match the output channels of the previous modules."
+                )
+            if isinstance(module, Conv2dGrowingModule):
+                if module.output_volume != self.input_volume:
+                    raise ValueError(
+                        f"The output volume of the previous modules {module.output_volume} should match the input volume {self.input_volume=}."
+                    )
+                self.total_in_features += module.in_features + module.use_bias
+
+        if self.total_in_features > 0:
+            if self.input_size is None:
+                self.input_size = (
+                    self.previous_modules[0].out_width,
+                    self.previous_modules[0].out_height,
+                )
+            self.previous_tensor_s = TensorStatistic(
+                (
+                    self.total_in_features,
+                    self.total_in_features,
+                ),
+                device=self.device,
+                name=f"S[-1]({self.name})",
+                update_function=self.compute_previous_s_update,
+            )
+            self.previous_tensor_m = TensorStatistic(
+                (self.total_in_features, self.in_channels),
+                device=self.device,
+                name=f"M[-1]({self.name})",
+                update_function=self.compute_previous_m_update,
+            )
+        else:
+            self.previous_tensor_s = None
+            self.previous_tensor_m = None
+
+    def construct_full_activity(self) -> torch.Tensor:
+        """Construct the full activity tensor B from the input of all previous modules.
+        B = (B_1, B_2, ..., B_k) in (n, )
+
+        Returns
+        -------
+        torch.Tensor
+            _description_
+        """
+        assert self.previous_modules, f"No previous modules for {self.name}."
+        n = self.previous_modules[0].input.shape[0]
+        L = int(self.previous_modules[0].output_volume / self.in_channels)
+        full_activity = torch.ones(
+            (
+                n,
+                self.total_in_features,
+                L,
+            ),
+            device=self.device,
+        )
+        current_index = 0
+        for module in self.previous_modules:
+            full_activity[
+                :, current_index : current_index + module.in_features + module.use_bias, :
+            ] = (
+                module.unfolded_extended_input  # (n, in_channels*ks0*ks1+bias, w_out*h_out)
+            )
+            current_index += module.in_features + module.use_bias
+        return full_activity
+
+    def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+        full_activity = self.construct_full_activity()
+        return (
+            torch.einsum(
+                "iam, ibm -> ab",
+                full_activity,
+                full_activity,
+            ),
+            full_activity.shape[0],
+        )
+
+    def compute_previous_m_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor M for the input of all previous modules.
+        B: full activity tensor
+        M = dLoss/dA^T B
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor M
+        int
+            number of samples used to compute the update
+        """
+        full_activity = (
+            self.construct_full_activity()
+        )  # (n, total_in_parameters, W_out*H_out)
+        desired_activation = self.pre_activity.grad.flatten(start_dim=-2)
+        return (
+            torch.einsum("iam, icm -> ac", full_activity, desired_activation),
+            self.input.shape[0],
+        )
+
+    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of tensor S based on the unfolded activity tensor.
+
+        This method captures the second-order statistics from the output activity of the previous
+        convolutional layers, formatted as an unfolded tensor.
+
+        Depending on the type of the following (next) module, the tensor S is computed as follows:
+
+        - If the next module is a `Conv2dGrowingModule`:
+            The unfolded activity tensor is 3D: (batch_size, D, L), where
+                - D = output_channels * kernel_size^2 [+1 if bias]
+                - L = number of output spatial locations (e.g., H × W)
+            Then S is computed via:
+                S = ∑_{i,m} A[i,:,m] A[i,:,m]^T = einsum("iam, ibm -> ab", A, A)
+
+        - If the next module is a `LinearGrowingModule`:
+            The unfolded activity is treated as a flattened matrix of shape (batch_size, D),
+            and S is computed via:
+                S = ∑_{i} A[i]^T A[i] = einsum("ij, ik -> jk", A, A)
+
+        Returns
+        -------
+        torch.Tensor
+            second-order update matrix S of shape (D, D), where D depends on whether
+            the next module is convolutional or linear.
+        int
+            batch size used in the computation.
+
+        Raises
+        ------
+        NotImplementedError
+            ff the type of the next module is unsupported for S computation.
+        """
+        assert (
+            self.store_activity
+        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
+        assert (
+            self.activity is not None
+        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
+
+        batch_size = self.activity.shape[0]
+        unfolded_activity = self.unfolded_extended_activity
+
+        update = torch.einsum("iam, ibm -> ab", unfolded_activity, unfolded_activity)
+
+        return update, batch_size
+
+    def update_size(self) -> None:
+        if len(self.previous_modules) > 0:
+            new_channels = self.previous_modules[0].out_channels
+            self.in_channels = new_channels
+        self.total_in_features = self.sum_in_features(with_bias=True)
+
+        if self.total_in_features > 0:
+            if self.tensor_s is None or self.tensor_s._shape != (
+                self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                + self.use_bias,
+                self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                + self.use_bias,
+            ):
+                self.tensor_s = TensorStatistic(
+                    (
+                        self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                        + self.use_bias,
+                        self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                        + self.use_bias,
+                    ),
+                    update_function=self.compute_s_update,
+                    name=f"S({self.name})",
+                )
+            if self.previous_tensor_s is None or self.previous_tensor_s._shape != (
+                self.total_in_features,
+                self.total_in_features,
+            ):
+                self.previous_tensor_s = TensorStatistic(
+                    (
+                        self.total_in_features,
+                        self.total_in_features,
+                    ),
+                    device=self.device,
+                    name=f"S[-1]({self.name})",
+                    update_function=self.compute_previous_s_update,
+                )
+            if self.previous_tensor_m is None or self.previous_tensor_m._shape != (
+                self.total_in_features,
+                self.in_channels,
+            ):
+                self.previous_tensor_m = TensorStatistic(
+                    (self.total_in_features, self.in_channels),
+                    device=self.device,
+                    name=f"M[-1]({self.name})",
+                    update_function=self.compute_previous_m_update,
+                )
+        else:
+            self.previous_tensor_s = None
+            self.previous_tensor_m = None
 
 
 class Conv2dGrowingModule(GrowingModule):
@@ -59,7 +474,7 @@ class Conv2dGrowingModule(GrowingModule):
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
-        input_size: tuple[int, int] = (-1, -1),
+        input_size: tuple[int, int] | None = None,
         # groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
@@ -70,7 +485,6 @@ class Conv2dGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        device = device if device is not None else global_device()
         self.in_channels = in_channels
         self.out_channels = out_channels
         if isinstance(kernel_size, int):
@@ -102,10 +516,13 @@ class Conv2dGrowingModule(GrowingModule):
             device=device,
             name=name,
         )
+        self.layer: torch.nn.Conv2d
         self.kernel_size = self.layer.kernel_size
 
-        self.input_size: tuple[int, int] = input_size
+        self._input_size: tuple[int, int] | None = input_size
         self.use_bias = use_bias
+
+        self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
 
     # Information functions
     # TODO: implement activation_gradient ?
@@ -119,6 +536,102 @@ class Conv2dGrowingModule(GrowingModule):
     @padding.setter
     def padding(self, value):
         self.layer.padding = value
+
+    @property
+    def stride(self) -> tuple[int, int]:
+        return self.layer.stride
+
+    def __out_dimension(self, dim: int) -> int:
+        return (
+            int(
+                (self.input_size[dim] - self.kernel_size[dim] + 2 * self.padding[dim])
+                / self.stride[dim]
+            )
+            + 1
+        )
+
+    @property
+    def out_width(self) -> int:
+        """Compute the width of the output feature map.
+
+        Returns
+        -------
+        int
+            output feature map width
+        """
+        return self.__out_dimension(0)
+
+    @property
+    def out_height(self) -> int:
+        """Compute the height of the output feature map.
+
+        Returns
+        -------
+        int
+            output feature map height
+        """
+        return self.__out_dimension(1)
+
+    @property
+    def input_volume(self) -> int:
+        """Calculate total number of elements in the input tensor.
+
+        Returns
+        -------
+        int
+            total number of input elements
+        """
+        return self.in_channels * self.input_size[0] * self.input_size[1]
+
+    @property
+    def output_volume(self) -> int:
+        """Compute total number of elements in the output tensor
+
+        Returns
+        -------
+        int
+            total number of output elements
+        """
+        return self.out_channels * self.out_width * self.out_height
+
+    @property
+    def in_features(self) -> int:
+        """
+        Return the number of input features (fan-in) of this convolutional layer when
+        cast as a linear layer.
+
+        Concretely, this integer equals:
+
+            in_channels * kernel_height * kernel_width
+
+        It represents the size of the input vector obtained by unfolding the convolutional
+        input (i.e. the 'fan_in' for a flattened convolution). We use the name
+        ``in_features`` (instead of ``fan_in``) to remain consistent with the naming
+        conventions used in :class:`LinearGrowingModule`.
+
+        Returns
+        -------
+        int
+            number of input features (fan-in)
+        """
+        return self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+
+    @property
+    def out_features(self) -> int:
+        """
+        Return the number of output features (fan-out) of this convolutional layer when
+        cast as a linear layer.
+
+        Concretely, this integer equals:
+
+            out_channels
+
+        Returns
+        -------
+        int
+            number of output features (fan-out)
+        """
+        return self.out_channels
 
     @property
     def unfolded_extended_input(self) -> torch.Tensor:
@@ -181,6 +694,32 @@ class Conv2dGrowingModule(GrowingModule):
             )
         else:
             return super(Conv2dGrowingModule, self).__str__(verbose=verbose)
+
+    def __make_safe_forward(self):
+        def _forward(conv_self, input: torch.Tensor) -> torch.Tensor:
+            if self.out_channels == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    0,
+                    self.out_height,
+                    self.out_width,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            if self.in_channels == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    self.out_channels,
+                    self.out_height,
+                    self.out_width,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            return torch.nn.Conv2d.forward(conv_self, input)
+
+        return _forward
 
     # Statistics computation
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
@@ -305,7 +844,7 @@ class Conv2dGrowingModule(GrowingModule):
         """
         assert (
             weight.shape[0] == self.out_channels
-        ), f"{weight.shape[0]=} should be equal to {self.out_features=}"
+        ), f"{weight.shape[0]=} should be equal to {self.out_channels=}"
         for i in (0, 1):
             assert (
                 weight.shape[2 + i] == self.layer.kernel_size[i]
@@ -456,7 +995,12 @@ class Conv2dGrowingModule(GrowingModule):
                     f"yet for {type(self.previous_module)} as previous module."
                 )
 
-    def update_input_size(self, input_size: tuple[int, int] | None = None) -> None:
+    def update_input_size(
+        self,
+        input_size: tuple[int, int] | torch.Size | None = None,
+        compute_from_previous: bool = False,
+        force_update: bool = True,
+    ) -> tuple[int, int] | None:
         """
         Update the input size of the layer. Either according to the parameter or the input currently stored.
 
@@ -464,25 +1008,54 @@ class Conv2dGrowingModule(GrowingModule):
         ----------
         input_size: tuple[int, int] | None
             new input size
+        compute_from_previous: bool
+            whether to compute the input size from the previous module
+            assuming its output size won't be affected by the post-layer function
+        force_update: bool
+            whether to force the update even if the input size is already set
+            (_input_size is not None)
+
+        Returns
+        -------
+        tuple[int, int] | None
+            updated input size if it could be computed, None otherwise
         """
         if input_size is not None:
-            new_size = input_size
+            new_size = tuple(input_size)
         elif self.store_input and self.input is not None:
-            new_size = self.input.shape[-2:]
-        elif self.previous_module and self.previous_module.input_size != (-1, -1):
+            new_size: tuple[int, ...] = tuple(self.input.shape[2:])
+        elif not force_update and self._input_size is not None:
+            return self._input_size
+        elif (
+            compute_from_previous
+            and self.previous_module
+            and (
+                prev_input_size := self.previous_module.update_input_size(
+                    force_update=False
+                )
+            )
+        ):
+            # we get it this way instead of self.previous_module.input_size
+            # to avoid errors if the previous module input size can't be computed
             new_size = compute_output_shape_conv(
-                self.previous_module.input_size, self.previous_module.layer
+                prev_input_size, self.previous_module.layer
             )
         else:
-            raise AssertionError(f"Unable to compute the input size for {self.name}.")
+            # if we cannot compute it, just return the current value
+            return self._input_size
 
-        if self.input_size != (-1, -1) and new_size != self.input_size:
+        if self._input_size is not None and new_size != self._input_size:
             warn(
-                f"The input size of the layer {self.name} has changed from {self.input_size} to {new_size}."
+                f"The input size of the layer {self.name} has changed from {self._input_size} to {new_size}."
                 f"This may lead to errors if the size of the tensor statistics "
                 f"and of the mask tensor T are not updated."
             )
-        self.input_size = new_size
+
+        assert (
+            len(new_size) == 2
+        ), f"The input size should be a tuple of two integers, but got {new_size=}."
+        self._input_size = new_size
+        return self._input_size
 
     def update_computation(self) -> None:
         """
@@ -505,7 +1078,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
-        input_size: tuple[int, int] = (-1, -1),
+        input_size: tuple[int, int] | None = None,
         # groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
@@ -625,10 +1198,13 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
                 raise NotImplementedError
             else:
                 raise NotImplementedError
-        self.previous_module.update_input_size()
+        input_size = self.update_input_size(compute_from_previous=True)
+        assert (
+            input_size is not None
+        ), f"The input size should be known to compute the bordered unfolded input for {self.name}."
         return apply_border_effect_on_unfolded(
             unfolded_tensor=self.previous_module.unfolded_extended_input,
-            original_size=self.previous_module.input_size,
+            original_size=input_size,
             border_effect_conv=self.layer,
             identity_conv=self.bordering_convolution,
         )
@@ -901,7 +1477,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
-        input_size: tuple[int, int] = (-1, -1),
+        input_size: tuple[int, int] | None = None,
         # groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
@@ -947,10 +1523,6 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         torch.Tensor
             mask tensor T
         """
-        assert self.input_size != (-1, -1), (
-            f"The input size should be set before computing the mask tensor T "
-            f"for {self.name}."
-        )
         self.layer: torch.nn.Conv2d  # CHECK: why do we need to specify the type here?
         if self._mask_tensor_t is None:
             self._mask_tensor_t = compute_mask_tensor_t(self.input_size, self.layer).to(

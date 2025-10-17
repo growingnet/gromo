@@ -1,32 +1,10 @@
+from typing import Any
+
 import torch
 
 from gromo.config.loader import load_config
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
-from gromo.utils.utils import get_correct_device, global_device
-
-
-def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
-    """Safe Linear forward function for empty input tensors
-    Resolves bug with shape transformation when using cuda
-
-    Parameters
-    ----------
-    input : torch.Tensor
-        input tensor
-
-    Returns
-    -------
-    torch.Tensor
-        F.linear forward function output
-    """
-    assert (
-        input.shape[-1] == self.in_features
-    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
-    if self.in_features == 0:
-        return torch.zeros(
-            input.shape[0], self.out_features, device=global_device(), requires_grad=True
-        )  # TODO: change to self.device?
-    return torch.nn.functional.linear(input, self.weight, self.bias)
+from gromo.utils.utils import get_correct_device
 
 
 class GrowingContainer(torch.nn.Module):
@@ -43,51 +21,91 @@ class GrowingContainer(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self._growing_layers = list()
+        self._growing_layers: list[
+            "GrowingModule | MergeGrowingModule | GrowingContainer"
+        ] = list()
         self.currently_updated_layer_index = None
 
-    def set_growing_layers(self):
+    def set_growing_layers(self) -> None:
         """
         Reference all growable layers of the model in the _growing_layers private attribute. This method should be implemented
         in the child class and called in the __init__ method.
         """
         raise NotImplementedError
 
+    def set_scaling_factor(self, factor: float) -> None:
+        """Assign scaling factor to all growing layers
+
+        Parameters
+        ----------
+        factor : float
+            scaling factor
+        """
+        for layer in self._growing_layers:
+            if isinstance(layer, GrowingContainer):
+                layer.set_scaling_factor(factor)
+            elif isinstance(layer, GrowingModule):
+                layer.scaling_factor = factor
+                layer._scaling_factor_next_module.data[0] = factor
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network"""
         raise NotImplementedError
 
-    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
         """Extended forward pass through the network"""
         raise NotImplementedError
 
-    def init_computation(self):
+    @property
+    def first_order_improvement(self) -> torch.Tensor:
+        """Get the first order improvement of the current update."""
+        raise NotImplementedError
+
+    def init_computation(self) -> None:
         """Initialize statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
-                layer.init_computation()
+            layer.init_computation()
 
-    def update_computation(self):
+    def update_computation(self) -> None:
         """Update statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
-                layer.update_computation()
+            layer.update_computation()
 
-    def reset_computation(self):
+    def reset_computation(self) -> None:
         """Reset statistics computations for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
-                layer.reset_computation()
+            layer.reset_computation()
 
-    def compute_optimal_updates(self, *args, **kwargs):
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        force_pseudo_inverse: bool = False,
+    ) -> None:
+        """Compute optimal delta for growth procedure
+
+        Parameters
+        ----------
+        update : bool, optional
+            update the optimal delta layer attribute and the first order decrease, by default True
+        force_pseudo_inverse : bool, optional
+            use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible, by default False
+        """
+        for layer in self._growing_layers:
+            layer.compute_optimal_delta(
+                update=update,
+                force_pseudo_inverse=force_pseudo_inverse,
+            )
+
+    def compute_optimal_updates(self, *args, **kwargs) -> None:
         """Compute optimal updates for growth procedure"""
         for layer in self._growing_layers:
-            if isinstance(layer, (GrowingModule, MergeGrowingModule)):
+            if isinstance(layer, (GrowingModule, GrowingContainer)):
                 layer.compute_optimal_updates(*args, **kwargs)
 
-    def select_best_update(self):
+    def select_best_update(self) -> None:
         """Select the best update for growth procedure"""
-        first_order_improvements = [
+        first_order_improvements: list[torch.Tensor] = [
             layer.first_order_improvement for layer in self._growing_layers
         ]
         best_layer_idx = torch.argmax(torch.stack(first_order_improvements))
@@ -98,6 +116,7 @@ class GrowingContainer(torch.nn.Module):
                 layer.delete_update()
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
+        self.currently_updated_layer_index = layer_index
         for i, layer in enumerate(self._growing_layers):
             if verbose:
                 print(f"Layer {i} update: {layer.first_order_improvement}")
@@ -106,20 +125,20 @@ class GrowingContainer(torch.nn.Module):
                 )
                 print(f"Layer {i} eigenvalues extension: {layer.eigenvalues_extension}")
             if i != layer_index:
+                layer.delete_update()
                 if verbose:
                     print(f"Deleting layer {i}")
-                layer.delete_update()
-            else:
-                self.currently_updated_layer_index = i
         return self.currently_updated_layer_index
 
     @property
-    def currently_updated_layer(self):
+    def currently_updated_layer(
+        self,
+    ) -> "GrowingModule | MergeGrowingModule | GrowingContainer":
         """Get the currently updated layer"""
         assert self.currently_updated_layer_index is not None, "No layer to update"
         return self._growing_layers[self.currently_updated_layer_index]
 
-    def apply_change(self):
+    def apply_change(self) -> None:
         """Apply changes to the model"""
         assert self.currently_updated_layer is not None, "No layer to update"
         self.currently_updated_layer.apply_change()
@@ -136,3 +155,20 @@ class GrowingContainer(torch.nn.Module):
             Number of parameters.
         """
         return sum(p.numel() for p in self.parameters())
+
+    def update_size(self) -> None:
+        """Update sizes of the individual modules"""
+        for layer in self._growing_layers:
+            if isinstance(layer, (MergeGrowingModule, GrowingContainer)):
+                layer.update_size()
+
+    def weights_statistics(self) -> dict[str, Any]:
+        """Get the statistics of the weights in the growing layers.
+        Due to the recursive nature of the containers, the returned dictionary
+        contains nested dictionaries for each layer.
+        """
+        stats = {}
+        for module in self.modules():
+            if isinstance(module, GrowingModule):
+                stats[module.name] = module.weights_statistics()
+        return stats
