@@ -467,6 +467,43 @@ class GrowingGraphNetwork(GrowingContainer):
             )
             i += out_features
 
+        if amplitude_factor:
+            # Find amplitude factor that minimizes the overall loss
+            factor = self.find_amplitude_factor(
+                net=expansion.dag,
+                x=x,
+                y=y,
+                node_module=node_module,
+                next_node_modules=next_node_modules,
+            )
+        else:
+            factor = 1
+
+        # Apply final changes
+        for prev_edge_module in node_module.previous_modules:
+            # we do not need to change the _scaling_factor_next_module as it is
+            # given as a parameter of _apply_output_changes
+            # prev_edge_module._scaling_factor_next_module = factor # Warning
+            prev_edge_module._apply_output_changes(factor)
+            # Delete activities
+            prev_edge_module.delete_update(include_output=True, include_previous=False)
+
+        for next_node_module in next_node_modules:
+            for parallel_module in next_node_module.previous_modules:
+                parallel_module.scaling_factor = factor
+                parallel_module.apply_change(apply_previous=False)
+                # Delete activities
+                parallel_module.delete_update(include_previous=False)
+            # Delete activities
+            next_node_module.delete_update()
+
+        node_module.delete_update()
+
+        # Update size
+        expansion.dag.nodes[expansion.expanding_node]["size"] += self.neurons
+
+        # TODO FUTURE : Save updates to return
+
         return loss_history
 
     def update_edge_weights(
@@ -708,22 +745,38 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
     def restrict_action_space(
-        self, actions: list[Expansion], chosen_position: str
+        self,
+        actions: list[Expansion],
+        chosen_outputs: list[str] | None = None,
+        chosen_inputs: list[str] | None = None,
     ) -> list[Expansion]:
-        """Reduce action space to contribute only to specific node position
+        """Reduce action space to connect only to specific node positions
+        Can only restrict input or output one at a time
 
         Parameters
         ----------
         actions : list[Expansion]
             list with growth actions information
-        chosen_position : str
-            node position to restrict to
+        chosen_outputs : list[str], optional
+            output node position to restrict to
+        chosen_inputs : list[str], optional
+            input node position to restrict to
 
         Returns
         -------
         list[Expansion]
             reduced list with growth actions information
         """
+        if chosen_inputs is None and chosen_outputs is None:
+            warnings.warn(
+                "No input or output was given to restrict the actions. No restriction will happen.",
+                UserWarning,
+            )
+            return actions
+        if chosen_inputs is not None and chosen_outputs is not None:
+            raise NotImplementedError(
+                "You can only restrict inputs or outputs one at a time."
+            )
         new_actions = []
         for expansion in actions:
             new_node = expansion.expanding_node
