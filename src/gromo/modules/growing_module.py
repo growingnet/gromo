@@ -1191,7 +1191,7 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    # Layer edition
+    # Layer addition
     def layer_of_tensor(
         self, weight: torch.Tensor, bias: torch.Tensor | None = None
     ) -> torch.nn.Linear:
