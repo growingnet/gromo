@@ -735,6 +735,16 @@ class GrowingModule(torch.nn.Module):
         """
         return sum(p.numel() for p in self.parameters())
 
+    def set_scaling_factor(self, factor: float) -> None:
+        """Assign scaling factor to all growing layers
+
+        Parameters
+        ----------
+        factor : float
+            scaling factor
+        """
+        self.scaling_factor = factor
+
     def __str__(self, verbose=0):
         if verbose == 0:
             return f"{self.name} module with {self.number_of_parameters()} parameters."
