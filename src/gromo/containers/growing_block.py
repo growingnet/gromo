@@ -356,6 +356,54 @@ class GrowingBlock(GrowingContainer):
         """
         return self.second_layer.first_order_improvement
 
+    def create_layer_extensions(
+        self,
+        extension_size: int,
+        output_extension_size: int | None = None,
+        input_extension_size: int | None = None,
+        output_extension_init: str = "copy_uniform",
+        input_extension_init: str = "copy_uniform",
+    ) -> None:
+        """
+        Create the layer input and output extensions of given sizes.
+        Allow to have different sizes for input and output extensions,
+        this is useful for example is you connect a convolutional layer
+        to a linear layer.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        output_extension_size: int | None
+            size of the output extension to create, if None use extension_size
+        input_extension_size: int | None
+            size of the input extension to create, if None use extension_size
+        """
+        self.second_layer.create_layer_extensions(
+            extension_size=extension_size,
+            output_extension_size=output_extension_size,
+            input_extension_size=input_extension_size,
+            output_extension_init=output_extension_init,
+            input_extension_init=input_extension_init,
+        )
+
+    def normalise_optimal_updates(self, std_target: float | None = None) -> None:
+        """
+        Normalise the optimal updates so that the standard deviation of the
+        weights of the updates is equal to std_target.
+        If std_target is None, we use the standard deviation of the weights of the layer.
+        If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
+
+        Let s the target standard deviation then:
+        - optimal_delta_layer is scaled to have a std of s (so
+        by s / std(optimal_delta_layer))
+        - extended_input_layer is scaled to have a std of s (so
+        by s / std(extended_input_layer))
+        - extended_output_layer is scaled to match the scaling of the extended_input_layer
+        and the optimal_delta_layer (so by std(extended_input_layer) / std(optimal_delta_layer))
+        """
+        self.second_layer.normalise_optimal_updates(std_target=std_target)
+
 
 class LinearGrowingBlock(GrowingBlock):
     def __init__(
