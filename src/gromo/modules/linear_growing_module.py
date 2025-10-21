@@ -271,10 +271,16 @@ class LinearGrowingModule(GrowingModule):
             name=name,
         )
         self.use_bias = use_bias
-        self.in_features = in_features
-        self.out_features = out_features
 
         self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
+
+    @property
+    def in_features(self) -> int:
+        return self.layer.in_features
+
+    @property
+    def out_features(self) -> int:
+        return self.layer.out_features
 
     # Information functions
     @property
@@ -705,7 +711,6 @@ class LinearGrowingModule(GrowingModule):
             weight=torch.cat((self.weight, weight), dim=1), bias=self.bias
         )
 
-        self.in_features += weight.shape[1]
         self._tensor_s = TensorStatistic(
             (self.in_features + self.use_bias, self.in_features + self.use_bias),
             update_function=self.compute_s_update,
@@ -754,7 +759,6 @@ class LinearGrowingModule(GrowingModule):
                 weight=torch.cat((self.weight, weight), dim=0), bias=None
             )
 
-        self.out_features += weight.shape[0]
         self.tensor_m = TensorStatistic(
             (self.in_features + self.use_bias, self.out_features),
             update_function=self.compute_m_update,
@@ -875,9 +879,10 @@ class LinearGrowingModule(GrowingModule):
         assert (
             omega.shape[0] == self.out_features
         ), f"omega should have the same number of output features ({omega.shape[0]}) as the layer ({self.out_features})."
-        assert omega.shape == (self.out_features, k), (
-            f"omega should have shape {(self.out_features, k)}, " f"but got {omega.shape}"
-        )
+        assert omega.shape == (
+            self.out_features,
+            k,
+        ), f"omega should have shape {(self.out_features, k)}, but got {omega.shape}"
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]
