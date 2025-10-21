@@ -56,8 +56,34 @@ class DummyGrowingContainer(GrowingContainer):
     def first_order_improvement(self) -> torch.Tensor:
         return torch.tensor(0.0)
 
-    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
         return self.forward(x)
+
+
+class TestContainer(GrowingContainer):
+    def __init__(self, in_features, out_features):
+        super().__init__(in_features=in_features, out_features=out_features)
+        self.linear1 = LinearGrowingModule(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        self.linear2 = LinearGrowingModule(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        self.merge = LinearMergeGrowingModule(
+            in_features=self.out_features,
+            previous_modules=[self.linear1, self.linear2],
+        )
+        self.linear1.next_module = self.merge
+        self.linear2.next_module = self.merge
+        self.set_growing_layers()
+
+    def set_growing_layers(self):
+        self._growing_layers = [self.linear1, self.linear2, self.merge]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x1 = self.linear1(x)
+        x2 = self.linear2(x)
+        return self.merge(x1 + x2)
 
 
 class TestGrowingContainer(unittest.TestCase):
@@ -87,6 +113,14 @@ class TestGrowingContainer(unittest.TestCase):
             device=torch.device("cpu"),
         )
         self.loss = nn.MSELoss()
+
+    def test_dummy_select_update(self):
+        container = TestContainer(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        idx = container.dummy_select_update()
+        self.assertEqual(idx, 0, "dummy_select_update did not return the correct index")
+        self.assertIs(container.currently_updated_layer, container.linear1)
 
     def test_init_computation(self):
         self.model.init_computation()
@@ -327,31 +361,6 @@ class TestGrowingContainer(unittest.TestCase):
         )
 
     def test_update_size(self):
-        class TestContainer(GrowingContainer):
-            def __init__(self, in_features, out_features):
-                super().__init__(in_features=in_features, out_features=out_features)
-                self.linear1 = LinearGrowingModule(
-                    in_features=self.in_features, out_features=self.out_features
-                )
-                self.linear2 = LinearGrowingModule(
-                    in_features=self.in_features, out_features=self.out_features
-                )
-                self.merge = LinearMergeGrowingModule(
-                    in_features=self.out_features,
-                    previous_modules=[self.linear1, self.linear2],
-                )
-                self.linear1.next_module = self.merge
-                self.linear2.next_module = self.merge
-                self.set_growing_layers()
-
-            def set_growing_layers(self):
-                self._growing_layers = [self.linear1, self.linear2, self.merge]
-
-            def forward(self, x: torch.Tensor) -> torch.Tensor:
-                x1 = self.linear1(x)
-                x2 = self.linear2(x)
-                return self.merge(x1 + x2)
-
         container = TestContainer(
             in_features=self.in_features, out_features=self.out_features
         )
