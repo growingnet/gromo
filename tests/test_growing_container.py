@@ -362,7 +362,10 @@ class TestGrowingContainer(unittest.TestCase):
             (assumed_total_in_features, assumed_total_in_features),
         )
 
-        container.linear1.in_features += 5
+        container.linear1.layer = torch.nn.Linear(
+            in_features=container.linear1.in_features + 5,
+            out_features=container.linear1.out_features,
+        )
         container.update_size()
         assumed_total_in_features += 5
         self.assertEqual(container.merge.total_in_features, assumed_total_in_features)
