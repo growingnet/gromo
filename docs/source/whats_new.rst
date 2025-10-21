@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add `in_features` and `out_features` properties to `GrowingModule` and `LinearGrowingModule` (:gh:`160` by `Théo Rudkiewicz`_)
 - Add support for convolutional DAGs in `GrowingDAG` and `GrowingGraphNetwork` (:gh:`148` by `Stella Douka`_)
 - Handle previous and next layers when deleting `GrowingModule` and `MergeGrowingModule` objects (:gh:`148` by `Stella Douka`_)
 - Add `weights_statistics` method to `GrowingModule` and `GrowingContainer` to retrieve statistics of weights in all growing layers. (:gh:`152` by `Théo Rudkiewicz`_)
