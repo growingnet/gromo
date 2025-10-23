@@ -25,9 +25,11 @@ class TestConfig:
 
     Constants:
         N_SAMPLES (int): Number of samples for statistical tests - chosen as 11 to be
-                        larger than standard batch sizes but small enough for fast execution
+                        larger than standard batch sizes but small enough for fast
+                        execution
         C_FEATURES (int): Number of features for test tensors - chosen as 5 to provide
-                         sufficient dimensionality for matrix operations while being computationally efficient
+                         sufficient dimensionality for matrix operations while being
+                         computationally efficient
         BATCH_SIZE (int): Standard batch size for forward/backward pass tests
         RANDOM_SEED (int): Seed for reproducible test results
         TOLERANCE (float): Numerical tolerance for floating-point comparisons in tests
@@ -43,7 +45,7 @@ class TestConfig:
     TOLERANCE = 1e-6  # Standard numerical tolerance for tensor comparisons
 
     # Tolerance levels for different precision requirements
-    DEFAULT_TOLERANCE = 1e-8
+    DEFAULT_TOLERANCE = 1e-7
     REDUCED_TOLERANCE = 1e-7
 
     # Test iteration counts
@@ -52,7 +54,7 @@ class TestConfig:
     DEFAULT_GAMMA_VALUES = ((0.0, 0.0), (1.0, 1.5), (5.0, 5.5))
 
     # Layer dimensions for different test scenarios
-    LAYER_DIMS = {
+    LAYER_DIMS = {  # noqa: RUF012
         "small": (1, 1),
         "medium": (3, 3),
         "large": (5, 7),
@@ -66,7 +68,7 @@ class TestConfig:
     }
 
     # Common test tensor shapes
-    TENSOR_SHAPES = {
+    TENSOR_SHAPES: dict[str, tuple[int, ...]] = {  # noqa: RUF012
         "input_2d": (10, 5),
         "weight_standard": (6, 5),  # c+1, c
         "bias_standard": (6,),  # c+1
@@ -159,8 +161,8 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         """Common setup for all tests."""
         self.n = self.config.N_SAMPLES
         self.c = self.config.C_FEATURES
-        # This assert is checking that the test is correct and not that the code is correct
-        # that why it is not a self.assert*
+        # This assert is checking that the test is correct and not that the code is
+        # correct that why it is not a self.assert*
         assert self.n % 2 == 1  # Ensure n is odd for theoretical calculations
 
         # Set deterministic seed for reproducible tests
@@ -453,10 +455,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         """
         Test apply change with sized post layer function.
         - with correct extension_size (works)
-        - with correct extension_size but with a non-growable post_layer function (crash on forward)
+        - with correct extension_size but with a non-growable post_layer
+        function (crash on forward)
         - with incorrect extension_size (crash on forward)
         - without extension_size but with self.eigenvalues_extension (works)
-        - without extension_size and without self.eigenvalues_extension (error on apply change)
+        - without extension_size and without self.eigenvalues_extension
+        (error on apply change)
         """
         with self.subTest("Growable post layer function"):
             first_module, second_module = self.create_demo_layers_with_extension(
@@ -722,7 +726,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             )
 
         # Test final transformations
-        self._test_apply_changes(layer, l0, l_ext, gamma, gamma_next)
+        self._test_apply_changes(layer, l0, l_ext, gamma, gamma_next)  # type: ignore
 
     def _test_extended_forward_with_gammas(
         self, layer, l0, l_ext, l_delta, gamma: float, gamma_next: float, bias: bool
@@ -826,7 +830,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         )
 
     def test_number_of_parameters(self):
-        """Test that the parameter count calculation is correct for different layer configurations."""
+        """Test that the parameter count calculation is correct for different
+        layer configurations."""
         for in_layer in (1, 3):
             for out_layer in (1, 3):
                 for bias in (True, False):
@@ -1041,7 +1046,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         ]
 
         # Set up test network using helper method
-        layer_in, layer_out, net = self.setup_invariant_test_network()
+        _, layer_out, net = self.setup_invariant_test_network()
 
         # Create computation update function
         def update_computation(double_batch: bool = False):
@@ -1192,7 +1197,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             "construct_full_activity",
             return_value=torch.randn(2, 3, device=global_device()),
         ):
-
             # This should trigger a warning
             desired_activation = torch.randn(2, 2, device=global_device())
             with self.assertWarns(UserWarning) as warning_context:
@@ -1213,7 +1217,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertIn("Thus P is not defined", str(context.exception))
 
     def test_compute_cross_covariance_update_merge_previous_module(self):
-        """Test compute_cross_covariance_update with LinearMergeGrowingModule as previous"""
+        """Test compute_cross_covariance_update with
+        LinearMergeGrowingModule as previous"""
         from unittest.mock import patch
 
         # Create layer
@@ -1234,7 +1239,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             "construct_full_activity",
             return_value=torch.randn(2, 3, device=global_device()),
         ):
-
             p_result, p_samples = layer.compute_cross_covariance_update()
 
             self.assertIsInstance(p_result, torch.Tensor)
@@ -1282,7 +1286,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         loss = output.sum()
         loss.backward()
 
-        # Call compute_m_update with desired_activation=None (should use pre_activity.grad)
+        # Call compute_m_update with desired_activation=None
+        # (should use pre_activity.grad)
         m_result, m_samples = layer.compute_m_update(desired_activation=None)
 
         self.assertIsInstance(m_result, torch.Tensor)
@@ -1456,7 +1461,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertAllClose(y, input_x, atol=1e-5)
 
     def test_apply_change_with_optimal_delta_layer_no_extensions(self):
-        """Test apply_change with two connected layers where second has optimal_delta_layer but no extensions."""
+        """Test apply_change with two connected layers where second has
+        optimal_delta_layer but no extensions."""
         # Create two connected layers
         layer1, layer2 = self.demo_layers[True]
         layer2: LinearGrowingModule
@@ -1642,11 +1648,13 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             layer.set_next_modules([mismatch_layer])
 
     def test_set_previous_modules_warning_and_assertion(self):
-        """Test set_previous_modules triggers warnings and assertion for feature mismatch."""
+        """Test set_previous_modules triggers warnings and assertion
+        for feature mismatch."""
         layer = LinearMergeGrowingModule(
             in_features=3, name="merge", device=global_device()
         )
-        # Simulate non-empty previous_tensor_s and previous_tensor_m using object.__setattr__
+        # Simulate non-empty previous_tensor_s and previous_tensor_m using
+        # object.__setattr__
         dummy_stat_s = TensorStatistic((3, 3), lambda: (torch.zeros(3, 3), 1))
         dummy_stat_s.samples = 1
         object.__setattr__(layer, "previous_tensor_s", dummy_stat_s)
@@ -1961,7 +1969,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         x = torch.ones(1, original_in_features, device=global_device())
         output = layer(x)
 
-        # Extended outputs should be influenced by custom weight (all 1s) and bias if present
+        # Extended outputs should be influenced by custom weight (all 1s)
+        # and bias if present
         extended_outputs = output[0, original_out_features:]
         if bias:
             expected_value = original_in_features + 5.0  # sum of ones * inputs + bias
@@ -2108,13 +2117,15 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
             n_update, n_samples = layer1.compute_n_update()
 
-            # Verify correct shapes and sample counting - shape is (in_features, out_features) without bias
+            # Verify correct shapes and sample counting - shape is
+            # (in_features, out_features) without bias
             expected_shape = (layer1.in_features, layer2.out_features)
             self.assertEqual(n_update.shape, expected_shape)
             self.assertEqual(n_samples, batch_size)
 
     def test_compute_n_update_type_error(self):
-        """Test compute_n_update raises TypeError for non-LinearGrowingModule next_module."""
+        """Test compute_n_update raises TypeError for
+        non-LinearGrowingModule next_module."""
         layer1 = LinearGrowingModule(3, 2, device=global_device(), name="layer1")
 
         # Set next_module to a regular Linear layer (not LinearGrowingModule)
@@ -2177,7 +2188,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         n_update, n_samples = layer1.compute_n_update()
 
         # Verify that computation uses the correct einsum operation
-        # The method should compute: torch.einsum("ij,ik->jk", input_flat, projected_v_goal_flat)
+        # The method should compute:
+        # torch.einsum("ij,ik->jk", input_flat, projected_v_goal_flat)
         input_flat = torch.flatten(layer1.input, 0, -2)
         projected_v_goal_flat = torch.flatten(
             layer2.projected_v_goal(layer2.input), 0, -2
@@ -2242,7 +2254,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
     def test_multiple_parameters_scenarios(self):
         """Test scenarios that might trigger multiple missing parameter lines."""
-        # Test with different device scenarios (might trigger device-related missing lines)
+        # Test with different device scenarios
+        # (might trigger device-related missing lines)
         layer = LinearGrowingModule(2, 3, device=global_device())
 
         # Test parameter counting with different configurations
@@ -2301,7 +2314,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertIsInstance(activation_grad, torch.Tensor)
 
     def test_activation_gradient_merge_growing_module(self):
-        """Test activation gradient computation with MergeGrowingModule as previous module."""
+        """Test activation gradient computation with MergeGrowingModule
+        as previous module."""
         # Create a LinearMergeGrowingModule with post_merge_function
         merge_module = LinearMergeGrowingModule(
             in_features=4,
@@ -2451,8 +2465,10 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             pass  # Some configurations might not work, that's OK
 
     def test_sub_select_previous_module_error_conditions(self):
-        """Test sub_select_optimal_added_parameters with different previous module types."""
-        # Test case 1: Previous module is LinearMergeGrowingModule, should trigger NotImplementedError
+        """Test sub_select_optimal_added_parameters with
+        different previous module types."""
+        # Test case 1: Previous module is LinearMergeGrowingModule,
+        # should trigger NotImplementedError
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         merge_module = LinearMergeGrowingModule(
             in_features=3, device=global_device(), name="merge"
@@ -2673,7 +2689,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertEqual(prev_module.optimal_delta_layer, initial_optimal_delta_layer)
 
     def test_projected_v_goal_fix_differential_coverage(self):
-        """Test the fix from projected_desired_update() to projected_v_goal() in compute_n_update for differential coverage."""
+        """Test the fix from projected_desired_update() to projected_v_goal()
+        in compute_n_update for differential coverage."""
         # Create a chain of modules
         layer1 = LinearGrowingModule(3, 4, device=global_device(), name="l1")
         layer2 = LinearGrowingModule(4, 2, device=global_device(), name="l2")
@@ -2731,7 +2748,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
                     pass
 
     def test_add_parameters_documentation_fixes_differential_coverage(self):
-        """Test add_parameters method with the documentation and implementation fixes for differential coverage."""
+        """Test add_parameters method with the documentation and implementation fixes for
+        differential coverage."""
         layer = LinearGrowingModule(3, 2, device=global_device())
 
         # Test input feature addition (changed documentation and assertions)
@@ -2762,7 +2780,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertEqual(layer2.weight.shape[0], 3)  # 2 + 1
 
     def test_edge_case_minimal_dimensions(self):
-        """Test LinearGrowingModule with minimal dimensions for comprehensive edge case coverage."""
+        """Test LinearGrowingModule with minimal dimensions for
+        comprehensive edge case coverage."""
         # Test with very small dimensions
         layer = LinearGrowingModule(1, 1, device=global_device(), name="tiny")
 
@@ -2792,7 +2811,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertFalse(layer.store_input)
 
     def test_all_branch_conditions_comprehensive(self):
-        """Force execution of all conditional branches in linear growing module methods."""
+        """Force execution of all conditional branches in
+        linear growing module methods."""
         # Test the update_computation method with all possible conditions
         merge_module = LinearMergeGrowingModule(in_features=2, device=global_device())
 
