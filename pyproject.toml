@@ -131,7 +131,6 @@ ignore = [
     "C408",    # can initialise dict with dict(...)
     "SIM108",  # leads to decrease the actual coverage
 ]
-allowed-confusables = ["γ"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can have more relaxed type checking
