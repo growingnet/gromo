@@ -678,6 +678,14 @@ class GrowingModule(torch.nn.Module):
             name=f"C({self.name})",
         )
 
+    @property
+    def in_features(self) -> int:
+        raise NotImplementedError
+
+    @property
+    def out_features(self) -> int:
+        raise NotImplementedError
+
     # Parameters
     @property
     def input_volume(self) -> int:
