@@ -144,6 +144,13 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check that layers are connected
         self.assertIs(block.second_layer.previous_module, block.first_layer)
 
+        with self.subTest("Test __str__ method"):
+            self.assertIsInstance(str(block), str)
+            self.assertIsInstance(block.__str__(verbose=1), str)
+            self.assertIsInstance(block.__str__(verbose=2), str)
+            with self.assertRaises(ValueError):
+                block.__str__(verbose=-1)
+
     def test_init_with_positive_features(self):
         """Test initialization with >0 hidden features."""
         block = LinearGrowingBlock(
