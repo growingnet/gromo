@@ -310,16 +310,18 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
     @unittest_parametrize(({"evaluate": True}, {"evaluate": False}))
     def test_execute_expansions(self, evaluate: bool) -> None:
-        self.net.execute_expansions(
-            self.actions,
-            self.bottleneck,
-            self.input_B,
-            amplitude_factor=False,
-            evaluate=evaluate,
-            train_dataloader=self.dataloader,
-            dev_dataloader=self.dataloader,
-            val_dataloader=self.test_dataloader,
-        )
+        with self.assertWarns(UserWarning):
+            # Initializing zero-element tensors is a no-op
+            self.net.execute_expansions(
+                self.actions,
+                self.bottleneck,
+                self.input_B,
+                amplitude_factor=False,
+                evaluate=evaluate,
+                train_dataloader=self.dataloader,
+                dev_dataloader=self.dataloader,
+                val_dataloader=self.test_dataloader,
+            )
 
         for expansion in self.actions:
             if evaluate:
