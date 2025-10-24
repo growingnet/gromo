@@ -318,7 +318,6 @@ class GrowingBlock(GrowingContainer):
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
-        self.second_layer.apply_change(extension_size=extension_size)
         if extension_size is None:
             assert (
                 self.eigenvalues_extension is not None
@@ -326,6 +325,7 @@ class GrowingBlock(GrowingContainer):
             self.hidden_features += self.eigenvalues_extension.shape[0]
         else:
             self.hidden_features += extension_size
+        self.second_layer.apply_change(extension_size=extension_size)
 
     def sub_select_optimal_added_parameters(
         self,
