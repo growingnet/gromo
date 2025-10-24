@@ -871,6 +871,9 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertIsNotNone(block.first_layer.extended_output_layer)
         self.assertIsNotNone(block.second_layer.extended_input_layer)
         self.assertIsNotNone(block.eigenvalues_extension)
+        self.assertIsNotNone(block.parameter_update_decrease)
+        assert isinstance(block.parameter_update_decrease, torch.Tensor)
+        self.assertAlmostEqual(block.parameter_update_decrease.item(), 0.0, places=5)
         assert isinstance(block.first_layer.extended_output_layer, torch.nn.Linear)
         assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
         assert isinstance(block.eigenvalues_extension, torch.Tensor)
@@ -1095,6 +1098,14 @@ class TestLinearGrowingBlock(TorchTestCase):
             torch.all(torch.abs(block.eigenvalues_extension) < 1e-3),
             f"Eigenvalues should be very small for optimal block, got "
             f"{block.eigenvalues_extension}",
+        )
+
+        self.assertIsNotNone(block.parameter_update_decrease)
+        assert isinstance(block.parameter_update_decrease, torch.Tensor)
+        self.assertAlmostEqual(
+            block.parameter_update_decrease.item(),
+            2 * loss.item() / x_batch.size(0),
+            places=3,
         )
 
         # Step 9: Set scaling factor to 1
