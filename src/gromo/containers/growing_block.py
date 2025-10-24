@@ -82,9 +82,38 @@ class GrowingBlock(GrowingContainer):
         # TODO: FIX this
         self.activation_derivative = 1
 
+    def __str__(self, verbose: int = 0) -> str:
+        if verbose == 0:
+            return (
+                f"{self.name} ({self.first_layer.__str__()} -> "
+                f"{self.second_layer.__str__()})"
+            )
+        elif verbose == 1:
+            return (
+                f"{self.name}:\n"
+                f"{self.first_layer.__str__(verbose=1)}"
+                f"\n->\n"
+                f"{self.second_layer.__str__(verbose=1)}"
+            )
+        elif verbose >= 2:
+            return (
+                f"{self.name}:\n"
+                f"Pre-activation: {self.pre_activation}\n"
+                f"Downsample: {self.downsample}\n"
+                f"{self.first_layer.__str__(verbose=2)}"
+                f"\n->\n"
+                f"{self.second_layer.__str__(verbose=2)}"
+            )
+        else:
+            raise ValueError("verbose must be a non-negative integer.")
+
     @property
     def eigenvalues_extension(self):
         return self.second_layer.eigenvalues_extension
+
+    @property
+    def parameter_update_decrease(self):
+        return self.second_layer.parameter_update_decrease
 
     @property
     def scaling_factor(self):
@@ -284,16 +313,19 @@ class GrowingBlock(GrowingContainer):
             update_previous=True,
         )
 
-    def apply_change(self) -> None:
+    def apply_change(self, extension_size: int | None = None) -> None:
         """
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
-        assert (
-            self.eigenvalues_extension is not None
-        ), "No optimal added parameters computed."
-        self.second_layer.apply_change()
-        self.hidden_features += self.eigenvalues_extension.shape[0]
+        if extension_size is None:
+            assert (
+                self.eigenvalues_extension is not None
+            ), "No way to know the extension size."
+            self.hidden_features += self.eigenvalues_extension.shape[0]
+        else:
+            self.hidden_features += extension_size
+        self.second_layer.apply_change(extension_size=extension_size)
 
     def sub_select_optimal_added_parameters(
         self,
