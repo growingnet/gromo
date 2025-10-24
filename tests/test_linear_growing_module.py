@@ -1192,7 +1192,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             "construct_full_activity",
             return_value=torch.randn(2, 3, device=global_device()),
         ):
-
             # This should trigger a warning
             desired_activation = torch.randn(2, 2, device=global_device())
             with self.assertWarns(UserWarning) as warning_context:
@@ -1234,7 +1233,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             "construct_full_activity",
             return_value=torch.randn(2, 3, device=global_device()),
         ):
-
             p_result, p_samples = layer.compute_cross_covariance_update()
 
             self.assertIsInstance(p_result, torch.Tensor)
@@ -1470,7 +1468,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertAllClose(z_new, z_origin, atol=1e-5)
 
 
-class TestLinearMergeGrowingModule(TorchTestCase):
+class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
     def setUp(self):
         self.seed = 0
         torch.manual_seed(self.seed)
@@ -2916,6 +2914,67 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Verify reset worked
         self.assertFalse(layer.store_input)
         # Note: store_activity attribute doesn't exist in LinearGrowingModule
+
+
+class TestScalingMethods(TestLinearGrowingModuleBase):
+    """Test scaling and normalization methods for LinearGrowingModule."""
+
+    def test_scale_parameter_update(self) -> None:
+        """
+        Test that scale_parameter_update correctly scales optimal delta layer
+        and parameter_update_decrease.
+
+        This test verifies that both the optimal_delta_layer weights and the
+        parameter_update_decrease are correctly scaled by the specified factor.
+        """
+        # Create a LinearGrowingModule
+        layer = self.create_linear_layer(
+            in_features=5, out_features=3, bias=True, name="test_layer"
+        )
+
+        # Manually create and set an optimal delta layer with known weights
+        optimal_delta = torch.nn.Linear(5, 3, bias=True, device=global_device())
+        layer.optimal_delta_layer = optimal_delta
+
+        # Set parameter_update_decrease to a known value
+        layer.parameter_update_decrease = torch.tensor(1.0, device=global_device())
+
+        # Store initial weights for verification
+        initial_weight = optimal_delta.weight.data.clone()
+        initial_bias = optimal_delta.bias.data.clone()
+        initial_decrease = layer.parameter_update_decrease.clone()
+
+        # Apply scaling with factor 2.0
+        scale_factor = 2.0
+        layer.scale_parameter_update(scale_factor)
+
+        # Verify parameter_update_decrease is scaled
+        expected_decrease = initial_decrease * scale_factor
+        self.assertAlmostEqual(
+            layer.parameter_update_decrease.item(),
+            expected_decrease.item(),
+            places=6,
+            msg=(
+                f"parameter_update_decrease should be scaled from "
+                f"{initial_decrease.item()} to {expected_decrease.item()}"
+            ),
+        )
+
+        # Apply inverse scaling (1/2) and verify weights match original
+        inverse_scale = 1.0 / scale_factor
+        layer.scale_layer(optimal_delta, inverse_scale)
+
+        self.assertAllClose(
+            optimal_delta.weight.data,
+            initial_weight,
+            msg="After inverse scaling, weights should match original",
+        )
+
+        self.assertAllClose(
+            optimal_delta.bias.data,
+            initial_bias,
+            msg="After inverse scaling, bias should match original",
+        )
 
 
 if __name__ == "__main__":
