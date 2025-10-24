@@ -1928,14 +1928,18 @@ class GrowingModule(torch.nn.Module):
                 scales[i] = scale
         assert all(isinstance(s, float) for s in scales)
         scales: list[float]
-        self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
-        if self.extended_input_layer is not None:
-            self.scale_layer(self.extended_input_layer, scales[0])
+
         if (
-            self.previous_module is not None
-            and self.previous_module.extended_output_layer is not None
+            self.extended_input_layer is None
+            or self.previous_module is None
+            or self.previous_module.extended_output_layer is None
         ):
-            self.scale_layer(self.previous_module.extended_output_layer, scales[1])
+            raise ValueError(
+                "Cannot scale layer extension as one of the extensions is None."
+            )
+        self.scale_layer(self.extended_input_layer, scales[0])
+        self.scale_layer(self.previous_module.extended_output_layer, scales[1])
+        self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
 
     def normalise_optimal_updates(self, std_target: float | None = None) -> None:
         """
