@@ -1302,6 +1302,20 @@ class TestScalingMethods(TorchTestCase):
                 layer.bias, "Bias should remain None when layer has no bias"
             )
 
+    def test_scale_empty_layer(self) -> None:
+        """
+        Test that scale_layer correctly handles layers without weights.
+        """
+        # Create a layer without weights (e.g., nn.ReLU)
+        layer = torch.nn.ReLU()
+
+        # Apply scaling
+        scale_factor = 2.0
+        returned_layer = GrowingModule.scale_layer(layer, scale_factor)
+
+        # Verify the method returns the layer
+        self.assertIs(returned_layer, layer, "scale_layer should return the same layer")
+
 
 if __name__ == "__main__":
     from unittest import main

@@ -2976,6 +2976,14 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             msg="After inverse scaling, bias should match original",
         )
 
+        with self.subTest("no parameter_update_decrease"):
+            layer.parameter_update_decrease = None
+            layer.scale_parameter_update(scale_factor)
+
+        with self.subTest("no optimal_delta_layer"):
+            layer.optimal_delta_layer = None
+            layer.scale_parameter_update(scale_factor)
+
     def test_scale_layer_extension(self) -> None:
         """
         Test that scale_layer_extension correctly scales extension layers
@@ -3104,6 +3112,30 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             ):
                 layer_out.scale_layer_extension(
                     scale=None, scale_output=None, scale_input=2.0
+                )
+
+        with self.subTest(case="missing_in_extension"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+            # Remove extended_input_layer to trigger warning
+            layer_out.extended_input_layer = None
+
+            with self.assertRaises(ValueError):
+                layer_out.scale_layer_extension(
+                    scale=None, scale_output=2.0, scale_input=2.0
+                )
+
+        with self.subTest(case="missing_in_extension"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+            # Remove extended_input_layer to trigger warning
+            layer_out.extended_input_layer = None
+
+            with self.assertRaises(ValueError):
+                layer_out.scale_layer_extension(
+                    scale=None, scale_output=2.0, scale_input=2.0
                 )
 
 
