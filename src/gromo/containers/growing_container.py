@@ -103,17 +103,26 @@ class GrowingContainer(torch.nn.Module):
             if isinstance(layer, (GrowingModule, GrowingContainer)):
                 layer.compute_optimal_updates(*args, **kwargs)
 
-    def select_best_update(self) -> None:
+    def select_best_update(self) -> int:
         """Select the best update for growth procedure"""
         first_order_improvements: list[torch.Tensor] = [
             layer.first_order_improvement for layer in self._growing_layers
         ]
         best_layer_idx = torch.argmax(torch.stack(first_order_improvements))
-        self.currently_updated_layer_index = best_layer_idx
+        self.currently_updated_layer_index = best_layer_idx.item()
+        assert isinstance(self.currently_updated_layer_index, int), (
+            "Currently updated layer index is not an integer"
+            f" but {type(self.currently_updated_layer_index)}"
+        )
 
         for idx, layer in enumerate(self._growing_layers):
             if idx != best_layer_idx:
                 layer.delete_update()
+        return self.currently_updated_layer_index
+
+    def dummy_select_update(self, **_) -> int:
+        self.currently_updated_layer_index = 0
+        return 0
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
         self.currently_updated_layer_index = layer_index
@@ -135,13 +144,13 @@ class GrowingContainer(torch.nn.Module):
         self,
     ) -> "GrowingModule | MergeGrowingModule | GrowingContainer":
         """Get the currently updated layer"""
-        assert self.currently_updated_layer_index is not None, "No layer to update"
+        assert isinstance(self.currently_updated_layer_index, int), "No layer to update"
         return self._growing_layers[self.currently_updated_layer_index]
 
-    def apply_change(self) -> None:
+    def apply_change(self, extension_size: int | None = None) -> None:
         """Apply changes to the model"""
         assert self.currently_updated_layer is not None, "No layer to update"
-        self.currently_updated_layer.apply_change()
+        self.currently_updated_layer.apply_change(extension_size=extension_size)
         self.currently_updated_layer.delete_update()
         self.currently_updated_layer_index = None
 
