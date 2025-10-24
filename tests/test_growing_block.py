@@ -1133,3 +1133,165 @@ class TestLinearGrowingBlock(TorchTestCase):
         ]
         for obj in deleted_objects:
             self.assertIsNone(obj)
+
+    def test_apply_change(self):
+        """Test apply_change method with different scenarios.
+
+        Tests three cases:
+        1. Providing explicit extension_size parameter (overrides eigenvalues
+           shape)
+        2. Not providing extension_size but having eigenvalues_extension set
+           (uses eigenvalues shape)
+        3. Neither extension_size nor eigenvalues_extension (should raise
+           assertion)
+        """
+        # Setup: Create a block with some initial hidden features
+        initial_hidden_features = 2
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=initial_hidden_features,
+            device=self.device,
+        )
+
+        # Store original dimensions
+        original_first_out = block.first_layer.out_features
+        original_second_in = block.second_layer.in_features
+
+        with self.subTest("Case 1: Explicit extension_size parameter"):
+            # Note: extension_size just tells the block how many neurons are
+            # being added (updates hidden_features), but all neurons from the
+            # extension layer are still used
+            # Create second extension without bias as required by apply_change
+            second_extension_no_bias = torch.nn.Linear(
+                self.added_features,
+                self.in_features,
+                bias=False,
+                device=self.device,
+            )
+
+            # Manually set up the extensions using setUp-defined layers
+            block.first_layer.extended_output_layer = self.first_layer_extension
+            block.second_layer.extended_input_layer = second_extension_no_bias
+            block.second_layer.optimal_delta_layer = torch.nn.Linear(
+                initial_hidden_features,
+                self.in_features,
+                device=self.device,
+            )
+            # Set scaling factor to avoid warnings
+            block.scaling_factor = 1.0
+
+            # Apply change with explicit size
+            # This should add self.added_features (7) to the layers, and
+            # update hidden_features by extension_size
+            explicit_size = 2
+            block.apply_change(extension_size=explicit_size)
+
+            # Verify dimensions increased by the actual number of neurons
+            # in the extension layers
+            self.assertEqual(
+                block.first_layer.out_features,
+                original_first_out + self.added_features,
+            )
+            self.assertEqual(
+                block.second_layer.in_features,
+                original_second_in + self.added_features,
+            )
+            # But hidden_features is updated by extension_size
+            self.assertEqual(
+                block.hidden_features,
+                initial_hidden_features + explicit_size,
+            )
+
+            # Clean up for next test
+            block.delete_update()
+
+        with self.subTest("Case 2: Using eigenvalues_extension"):
+            # Reset to initial state for this test
+            block = LinearGrowingBlock(
+                in_features=self.in_features,
+                out_features=self.in_features,
+                hidden_features=initial_hidden_features,
+                device=self.device,
+            )
+            original_first_out = block.first_layer.out_features
+            original_second_in = block.second_layer.in_features
+
+            # Create second extension without bias
+            second_extension_no_bias = torch.nn.Linear(
+                self.added_features,
+                self.in_features,
+                bias=False,
+                device=self.device,
+            )
+
+            # Manually set up the extensions using setUp-defined layers
+            block.first_layer.extended_output_layer = self.first_layer_extension
+            block.second_layer.extended_input_layer = second_extension_no_bias
+            block.second_layer.optimal_delta_layer = torch.nn.Linear(
+                initial_hidden_features,
+                self.in_features,
+                device=self.device,
+            )
+
+            # Set eigenvalues_extension
+            block.second_layer.eigenvalues_extension = torch.empty(
+                (self.added_features,), device=self.device
+            )
+            # Set scaling factor
+            block.scaling_factor = 1.0
+
+            # Apply change without extension_size (should use eigenvalues)
+            block.apply_change(extension_size=None)
+
+            # Verify dimensions increased by number of neurons in extension
+            self.assertEqual(
+                block.first_layer.out_features,
+                original_first_out + self.added_features,
+            )
+            self.assertEqual(
+                block.second_layer.in_features,
+                original_second_in + self.added_features,
+            )
+            # And hidden_features increased by eigenvalues shape
+            self.assertEqual(
+                block.hidden_features,
+                initial_hidden_features + self.added_features,
+            )
+
+            # Clean up for next test
+            block.delete_update()
+
+        with self.subTest("Case 3: Neither extension_size nor eigenvalues"):
+            # Reset to initial state for this test
+            block = LinearGrowingBlock(
+                in_features=self.in_features,
+                out_features=self.in_features,
+                hidden_features=initial_hidden_features,
+                device=self.device,
+            )
+
+            # Create second extension without bias
+            second_extension_no_bias = torch.nn.Linear(
+                self.added_features,
+                self.in_features,
+                bias=False,
+                device=self.device,
+            )
+
+            # Manually set up the extensions WITHOUT eigenvalues_extension
+            block.first_layer.extended_output_layer = self.first_layer_extension
+            block.second_layer.extended_input_layer = second_extension_no_bias
+            block.second_layer.optimal_delta_layer = torch.nn.Linear(
+                initial_hidden_features,
+                self.in_features,
+                device=self.device,
+            )
+            # Explicitly ensure eigenvalues_extension is None
+            block.second_layer.eigenvalues_extension = None
+            # Set scaling factor
+            block.scaling_factor = 1.0
+
+            # Should raise AssertionError
+            with self.assertRaises(AssertionError):
+                block.apply_change(extension_size=None)
