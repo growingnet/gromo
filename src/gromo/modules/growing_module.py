@@ -26,7 +26,6 @@ class MergeGrowingModule(torch.nn.Module):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-
         super(MergeGrowingModule, self).__init__()
         self._name = name
         self.name = (
@@ -982,9 +981,9 @@ class GrowingModule(torch.nn.Module):
     def input(self) -> torch.Tensor:
         if self.store_input:
             if self._internal_store_input:
-                assert self._input is not None, (
-                    "The input is not stored." "Apparently it was not computed yet."
-                )
+                assert (
+                    self._input is not None
+                ), "The input is not stored.Apparently it was not computed yet."
                 return self._input
             else:
                 assert self.previous_module, (
@@ -1014,10 +1013,9 @@ class GrowingModule(torch.nn.Module):
     def pre_activity(self) -> torch.Tensor:
         if self.store_pre_activity:
             if self._internal_store_pre_activity:
-                assert self._pre_activity is not None, (
-                    "The pre-activity is not stored."
-                    "Apparently it was not computed yet."
-                )
+                assert (
+                    self._pre_activity is not None
+                ), "The pre-activity is not stored.Apparently it was not computed yet."
                 return self._pre_activity
             else:
                 assert self.next_module, (
@@ -1931,8 +1929,8 @@ class GrowingModule(torch.nn.Module):
         assert all(isinstance(s, float) for s in scales)
         scales: list[float]
         self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
-        if self.extended_output_layer is not None:
-            self.scale_layer(self.extended_output_layer, scales[0])
+        if self.extended_input_layer is not None:
+            self.scale_layer(self.extended_input_layer, scales[0])
         if (
             self.previous_module is not None
             and self.previous_module.extended_output_layer is not None
@@ -1952,7 +1950,8 @@ class GrowingModule(torch.nn.Module):
         - extended_input_layer is scaled to have a std of s (so
         by s / std(extended_input_layer))
         - extended_output_layer is scaled to match the scaling of the extended_input_layer
-        and the optimal_delta_layer (so by std(extended_input_layer) / std(optimal_delta_layer))
+        and the optimal_delta_layer
+        (so by std(extended_input_layer) / std(optimal_delta_layer))
         """
         # Determine target standard deviation
         if std_target is None:

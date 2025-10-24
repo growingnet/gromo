@@ -2976,6 +2976,136 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             msg="After inverse scaling, bias should match original",
         )
 
+    def test_scale_layer_extension(self) -> None:
+        """
+        Test that scale_layer_extension correctly scales extension layers
+        and eigenvalues.
+
+        This test verifies scaling with uniform factors, separate factors,
+        and assertion error handling.
+        """
+        # Subtest 1: Uniform scale
+        with self.subTest(case="uniform_scale"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Add output extension for layer_out
+            layer_out.extended_output_layer = torch.nn.Linear(
+                3, 2, device=global_device()
+            )
+
+            # Set specific values to 1.0 for testing
+            assert isinstance(layer_out.extended_output_layer, torch.nn.Linear)
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            assert layer_out.eigenvalues_extension is not None
+            layer_out.extended_output_layer.weight.data[0, 0] = 1.0
+            layer_in.extended_output_layer.weight.data[0, 0] = 1.0
+            layer_out.extended_input_layer.weight.data[0, 0] = 1.0
+            layer_out.eigenvalues_extension[0] = 1.0
+
+            # Apply uniform scaling
+            scale_factor = 2.0
+            layer_out.scale_layer_extension(
+                scale=scale_factor, scale_output=None, scale_input=None
+            )
+
+            self.assertAlmostEqual(
+                layer_out.extended_output_layer.weight.data[0, 0].item(),
+                1.0,
+                places=6,
+                msg="extended_output_layer should not be scaled",
+            )
+
+            # Verify extended_output_layer scaled by 2.0
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.data[0, 0].item(),
+                2.0,
+                places=6,
+                msg="extended_input_layer should be scaled by 2.0",
+            )
+
+            # Verify extended_input_layer (previous module's output) scaled by 2.0
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.data[0, 0].item(),
+                2.0,
+                places=6,
+                msg="extended_input_layer should be scaled by 2.0",
+            )
+
+            # Verify eigenvalues scaled by sqrt(2.0 * 2.0) = 2.0
+            expected_eigenvalue = 1.0 * (scale_factor * scale_factor) ** 0.5
+            self.assertAlmostEqual(
+                layer_out.eigenvalues_extension[0].item(),
+                expected_eigenvalue,
+                places=6,
+                msg=(
+                    f"eigenvalues should be scaled by sqrt({scale_factor}*{scale_factor})"
+                ),
+            )
+
+        # Subtest 2: Separate scales
+        with self.subTest(case="separate_scales"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Set specific values to 1.0 for testing
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+            assert layer_out.eigenvalues_extension is not None
+            layer_out.extended_input_layer.weight.data[0, 0] = 1.0
+            layer_in.extended_output_layer.weight.data[0, 0] = 1.0
+            layer_out.eigenvalues_extension[0] = 1.0
+
+            # Apply separate scaling factors
+            scale_output = 3.0
+            scale_input = 2.0
+            layer_out.scale_layer_extension(
+                scale=None, scale_output=scale_output, scale_input=scale_input
+            )
+
+            # Verify extended_input_layer scaled by 3.0
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.data[0, 0].item(),
+                3.0,
+                places=6,
+                msg="extended_input_layer should be scaled by 3.0",
+            )
+
+            # Verify previous module's extended_output_layer scaled by 2.0
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.data[0, 0].item(),
+                2.0,
+                places=6,
+                msg="previous module's extended_output_layer should be scaled by 2.0",
+            )
+
+            # Verify eigenvalues scaled by sqrt(3.0 * 2.0) = sqrt(6.0)
+            expected_eigenvalue = 1.0 * (scale_output * scale_input) ** 0.5
+            self.assertAlmostEqual(
+                layer_out.eigenvalues_extension[0].item(),
+                expected_eigenvalue,
+                places=6,
+                msg="eigenvalues should be scaled by sqrt(3.0*2.0)",
+            )
+
+        # Subtest 3: Assertion error
+        with self.subTest(case="assertion_error"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Call with invalid parameters (scale=None, scale_output=None)
+            with self.assertRaises(
+                AssertionError,
+                msg="Should raise AssertionError when scale is missing",
+            ):
+                layer_out.scale_layer_extension(
+                    scale=None, scale_output=None, scale_input=2.0
+                )
+
 
 if __name__ == "__main__":
     from unittest import main
