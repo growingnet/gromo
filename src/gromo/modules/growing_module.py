@@ -751,7 +751,7 @@ class GrowingModule(torch.nn.Module):
         factor : float
             scaling factor
         """
-        self.scaling_factor = factor
+        self.scaling_factor = factor  # type: ignore
 
     def __str__(self, verbose=0):
         if verbose == 0:
