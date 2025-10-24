@@ -1004,6 +1004,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                                 "size": size,
                                 "activation": self.activation,
                                 "kernel_size": (3, 3),
+                                "shape": self.input_shape,
                             },
                             "edge_attributes": {
                                 "kernel_size": (3, 3),

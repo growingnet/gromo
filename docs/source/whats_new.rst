@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add setter for scaling factor in `GrowingModule` (:gh:`157` by `Stella Douka`_)
 - Minor improvements of `GrowingContainer` (:gh:`161` by `Théo Rudkiewicz`_)
 - Add `in_features` and `out_features` properties to `GrowingModule` and `LinearGrowingModule` (:gh:`160` by `Théo Rudkiewicz`_)
 - Add support for convolutional DAGs in `GrowingDAG` and `GrowingGraphNetwork` (:gh:`148` by `Stella Douka`_)
