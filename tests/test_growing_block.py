@@ -42,7 +42,8 @@ class TestGrowingBlock(TorchTestCase):
         self.assertEqual(kwargs_first, kwargs_layer)
         self.assertEqual(kwargs_second, kwargs_layer)
 
-        # Test with explicit kwargs_first_layer and kwargs_second_layer (covers lines 116 and 126)
+        # Test with explicit kwargs_first_layer and kwargs_second_layer
+        # (covers lines 116 and 126)
         kwargs_first_explicit = {"use_bias": True, "device": "cpu"}
         kwargs_second_explicit = {"use_bias": False, "device": "cuda"}
 
@@ -284,7 +285,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertAllClose(output, expected_output)
 
     def test_input_storage_zero_features_no_downsample(self):
-        """Test input and pre-activity storage with 0 hidden features and no downsample."""
+        """Test input and pre-activity storage with 0 hidden features and no
+        downsample."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
@@ -333,7 +335,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertAllClose(block.first_layer.input, expected_stored_input)
 
     def test_input_storage_positive_features_no_downsample(self):
-        """Test input and pre-activity storage with >0 hidden features and no downsample."""
+        """Test input and pre-activity storage with >0 hidden features and no
+        downsample."""
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
@@ -469,7 +472,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
 
         with self.subTest("No extension"):
-            # With positive features and no extension, should use normal forward through layers
+            # With positive features and no extension, should use normal forward
+            # through layers
             output = block.extended_forward(x)
             # Use the already tested forward method
             expected_output = block(x)
@@ -477,7 +481,8 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.assertAllClose(output, expected_output)
 
         with self.subTest("With extension"):
-            # With positive features and extension, should use extended_forward method
+            # With positive features and extension, should use extended_forward
+            # method
             block.scaling_factor = self.scaling_factor
             # Set up extensions for both layers
             block.first_layer.extended_output_layer = self.first_layer_extension
@@ -485,14 +490,18 @@ class TestLinearGrowingBlock(TorchTestCase):
                 self.second_layer_extension_no_downsample
             )
 
-            # The extended forward for positive features should call the layers' extended_forward methods
+            # The extended forward for positive features should call the
+            # layers' extended_forward methods
             output = block.extended_forward(x)
 
-            # For positive features, the block should call first_layer.extended_forward and second_layer.extended_forward
-            # This is complex to replicate exactly, so we'll just verify the shape and that it runs without error
+            # For positive features, the block should call
+            # first_layer.extended_forward and second_layer.extended_forward
+            # This is complex to replicate exactly, so we'll just verify the
+            # shape and that it runs without error
             self.assertShapeEqual(output, (self.batch_size, self.in_features))
 
-            # Now test exact computation by manually calling the layers' extended_forward methods
+            # Now test exact computation by manually calling the layers'
+            # extended_forward methods
             identity = x  # identity downsample
             pre_activated = block.pre_activation(x)
             first_out, first_ext = block.first_layer.extended_forward(pre_activated)
@@ -517,7 +526,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
 
         with self.subTest("No extension"):
-            # With positive features and no extension, should use normal forward through layers
+            # With positive features and no extension, should use normal forward
+            # through layers
             output = block.extended_forward(x)
             # Use the already tested forward method
             expected_output = block(x)
@@ -525,20 +535,25 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.assertAllClose(output, expected_output)
 
         with self.subTest("With extension"):
-            # With positive features and extension, should use extended_forward method
+            # With positive features and extension, should use extended_forward
+            # method
             block.scaling_factor = self.scaling_factor
             # Set up extensions for both layers
             block.first_layer.extended_output_layer = self.first_layer_extension
             block.second_layer.extended_input_layer = self.second_layer_extension
 
-            # The extended forward for positive features should call the layers' extended_forward methods
+            # The extended forward for positive features should call the
+            # layers' extended_forward methods
             output = block.extended_forward(x)
 
-            # For positive features, the block should call first_layer.extended_forward and second_layer.extended_forward
-            # This is complex to replicate exactly, so we'll just verify the shape and that it runs without error
+            # For positive features, the block should call
+            # first_layer.extended_forward and second_layer.extended_forward
+            # This is complex to replicate exactly, so we'll just verify the
+            # shape and that it runs without error
             self.assertShapeEqual(output, (self.batch_size, self.out_features))
 
-            # Now test exact computation by manually calling the layers' extended_forward methods
+            # Now test exact computation by manually calling the layers'
+            # extended_forward methods
             identity = self.downsample(x)
             pre_activated = block.pre_activation(x)
             first_out, first_ext = block.first_layer.extended_forward(pre_activated)
@@ -602,7 +617,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Forward pass
         output = block(x)
 
-        # For zero features with downsample, pre_activity should be zeros with same shape as downsample(x)
+        # For zero features with downsample, pre_activity should be zeros
+        # with same shape as downsample(x)
         expected_stored_pre_activity = torch.zeros_like(self.downsample(x))
 
         # Check that pre-activity is stored correctly
@@ -679,7 +695,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Forward pass
         output = block(x)
 
-        # For positive features with downsample, pre_activity should be output of first_layer
+        # For positive features with downsample, pre_activity should be
+        # output of first_layer
         pre_activated = block.pre_activation(x)
         expected_stored_pre_activity = block.second_layer.layer(
             block.first_layer(pre_activated)
@@ -809,10 +826,12 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.assertIsNotNone(param.grad)
 
     def test_full_addition_loop_with_indicator_batch(self):
-        """Test complete addition loop starting with 0 features using indicator batch data.
+        """Test complete addition loop starting with 0 features using
+        indicator batch data.
 
-        We start with 0 hidden features and no downsampling, and train the block to learn the zero function.
-        As the residual stream adds the identity, the optimal extension should learn the negative identity.
+        We start with 0 hidden features and no downsampling, and train the
+        block to learn the zero function. As the residual stream adds the
+        identity, the optimal extension should learn the negative identity.
         """
 
         # Step 1: Create the block with no downsampling, no activation
@@ -1005,7 +1024,8 @@ class TestLinearGrowingBlock(TorchTestCase):
             if block.first_layer.use_bias:
                 block.first_layer.bias.data.zero_()
 
-            # Second layer: zero transformation (to make the whole block identity when added to residual)
+            # Second layer: zero transformation (to make the whole block
+            # identity when added to residual)
             block.second_layer.weight.data.zero_()
             if block.second_layer.use_bias:
                 block.second_layer.bias.data.zero_()
@@ -1057,18 +1077,24 @@ class TestLinearGrowingBlock(TorchTestCase):
                 block.second_layer.optimal_delta_layer.weight,
                 expected_delta_weight,
                 atol=1e-5,
-                msg="Optimal delta weight should be approximately the identity matrix for already optimal layer",
+                msg=(
+                    "Optimal delta weight should be approximately the "
+                    "identity matrix for already optimal layer"
+                ),
             )
 
         # Step 7: Check that no new neurons are proposed
-        # Since the block is already optimal (identity), eigenvalues should be very small or zero
+        # Since the block is already optimal (identity), eigenvalues should
+        # be very small or zero
         self.assertIsNotNone(block.eigenvalues_extension)
         assert isinstance(block.eigenvalues_extension, torch.Tensor)
 
-        # All eigenvalues should be very small (ideally zero) since no improvement is possible
+        # All eigenvalues should be very small (ideally zero) since no
+        # improvement is possible
         self.assertTrue(
             torch.all(torch.abs(block.eigenvalues_extension) < 1e-3),
-            f"Eigenvalues should be very small for optimal block, got {block.eigenvalues_extension}",
+            f"Eigenvalues should be very small for optimal block, got "
+            f"{block.eigenvalues_extension}",
         )
 
         # Step 9: Set scaling factor to 1
