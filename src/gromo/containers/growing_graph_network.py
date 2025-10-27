@@ -1,6 +1,5 @@
 import copy
 import operator
-import warnings
 from typing import Callable, Iterator, Sequence
 
 import numpy as np
@@ -20,7 +19,6 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.utils import (
-    evaluate_extended_dataset,
     line_search,
     mini_batch_gradient_descent,
 )
@@ -53,6 +51,9 @@ class GrowingGraphNetwork(GrowingContainer):
         out_features: int,
         loss_fn: torch.nn.Module,
         neurons: int = 20,
+        neuron_epochs: int = 100,
+        neuron_lrate: float = 1e-3,
+        neuron_batch_size: int = 256,
         use_bias: bool = True,
         use_batch_norm: bool = False,
         layer_type: str = "linear",
@@ -70,7 +71,12 @@ class GrowingGraphNetwork(GrowingContainer):
         self.layer_type = layer_type
         self._name = name
         self.input_shape = input_shape
+
+        # Neuron addition
         self.neurons = neurons
+        self.neuron_epochs = neuron_epochs
+        self.neuron_lrate = neuron_lrate
+        self.neuron_batch_size = neuron_batch_size
 
         self.global_step = 0
         self.global_epoch = 0
@@ -290,9 +296,9 @@ class GrowingGraphNetwork(GrowingContainer):
             cost_fn=self.bottleneck_loss,
             X=B,
             Y=bottleneck,
-            batch_size=256,
-            lrate=1e-3,
-            max_epochs=100,
+            batch_size=self.neuron_batch_size,
+            lrate=self.neuron_lrate,
+            max_epochs=self.neuron_epochs,
             fast=True,
             verbose=verbose,
             # loss_name="expected bottleneck",
@@ -543,9 +549,9 @@ class GrowingGraphNetwork(GrowingContainer):
             cost_fn=self.bottleneck_loss,
             X=activity,
             Y=bottleneck,
-            batch_size=256,
-            lrate=1e-3,
-            max_epochs=100,
+            batch_size=self.neuron_batch_size,
+            lrate=self.neuron_lrate,
+            max_epochs=self.neuron_epochs,
             fast=True,
             verbose=verbose,
         )
