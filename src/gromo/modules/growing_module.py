@@ -1937,15 +1937,33 @@ class GrowingModule(torch.nn.Module):
             raise ValueError(
                 "Cannot scale layer extension as one of the extensions is None."
             )
-        self.scale_layer(self.extended_input_layer, scales[0])
-        self.scale_layer(self.previous_module.extended_output_layer, scales[1])
+        self.scale_layer(self.extended_input_layer, scales[1])
+        self.scale_layer(self.previous_module.extended_output_layer, scales[0])
         self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
+
+    @staticmethod
+    def get_fan_in_from_layer(layer: torch.nn.Module) -> int:
+        """
+        Get the fan_in (number of input features) from a given layer.
+
+        Parameters
+        ----------
+        layer: torch.nn.Module
+            layer to get the fan_in from
+
+        Returns
+        -------
+        int
+            fan_in of the layer
+        """
+        raise NotImplementedError
 
     def normalise_optimal_updates(self, std_target: float | None = None) -> None:
         """
         Normalise the optimal updates so that the standard deviation of the
         weights of the updates is equal to std_target.
-        If std_target is None, we use the standard deviation of the weights of the layer.
+        If std_target is None, we automatically determine it.
+        We use the standard deviation of the weights of the layer if it has weights.
         If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
 
         Let s the target standard deviation then:
@@ -1956,14 +1974,30 @@ class GrowingModule(torch.nn.Module):
         - extended_output_layer is scaled to match the scaling of the extended_input_layer
         and the optimal_delta_layer
         (so by std(extended_input_layer) / std(optimal_delta_layer))
+
+        Parameters
+        ----------
+        std_target : float | None
+            target standard deviation for the weights of the updates
         """
         # Determine target standard deviation
         if std_target is None:
-            if hasattr(self.layer, "weight") and self.layer.weight is not None:
+            if (
+                hasattr(self.layer, "weight")
+                and self.layer.weight is not None
+                and self.layer.weight.numel() > 0
+            ):
                 std_target = self.layer.weight.std().item()
             else:
                 # Use 1 / sqrt(in_features) as default
-                std_target = 1.0 / (self.in_features**0.5)
+                assert self.extended_input_layer is not None, (
+                    "Cannot determine std_target automatically as the layer has no "
+                    "weights and there is no extended_input_layer to get the "
+                    "number of input features from."
+                )
+                std_target = 1.0 / (
+                    self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
+                )
 
         # Track scaling factors for extensions
         delta_scale = 1.0
@@ -1993,8 +2027,9 @@ class GrowingModule(torch.nn.Module):
         if self.optimal_delta_layer is not None and delta_scale != 1.0:
             self.scale_parameter_update(delta_scale)
 
-        if self.extended_input_layer is not None or (
-            self.previous_module is not None
+        if (
+            self.extended_input_layer is not None
+            and self.previous_module is not None
             and hasattr(self.previous_module, "extended_output_layer")
             and self.previous_module.extended_output_layer is not None
         ):
