@@ -914,3 +914,23 @@ class LinearGrowingModule(GrowingModule):
                 )
 
         return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
+
+    @staticmethod
+    def get_fan_in_from_layer(layer: torch.nn.Linear) -> int:  # type: ignore
+        """
+        Get the fan_in (number of input features) from a given layer.
+
+        Parameters
+        ----------
+        layer: torch.nn.Linear
+            layer to get the fan_in from
+
+        Returns
+        -------
+        int
+            fan_in of the layer
+        """
+        assert isinstance(
+            layer, torch.nn.Linear
+        ), f"The layer should be a torch.nn.Linear but got {type(layer)}."
+        return layer.in_features
