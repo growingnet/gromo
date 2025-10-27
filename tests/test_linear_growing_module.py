@@ -3151,6 +3151,7 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
         def check_target_std_reached(
             layer: LinearGrowingModule,
             std_target: float,
+            include_extension: bool = True,
             include_delta: bool = True,
         ) -> None:
             """
@@ -3163,6 +3164,8 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 The layer to check.
             std_target : float
                 The target standard deviation.
+            include_extension : bool, optional
+                Whether to check the extended_input_layer, by default True.
             include_delta : bool, optional
                 Whether to check the optimal_delta_layer, by default True.
             """
@@ -3177,13 +3180,14 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     places=5,
                     msg=f"optimal_delta_layer std should be {std_target}",
                 )
-            assert isinstance(layer.extended_input_layer, torch.nn.Linear)
-            self.assertAlmostEqual(
-                layer.extended_input_layer.weight.std().item(),
-                std_target,
-                places=5,
-                msg=f"extended_input_layer std should be {std_target}",
-            )
+            if include_extension:
+                assert isinstance(layer.extended_input_layer, torch.nn.Linear)
+                self.assertAlmostEqual(
+                    layer.extended_input_layer.weight.std().item(),
+                    std_target,
+                    places=5,
+                    msg=f"extended_input_layer std should be {std_target}",
+                )
 
         # Subtest 1: Explicit std target
         with self.subTest(case="explicit_std_target"):
@@ -3255,6 +3259,41 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 std_target,
                 include_delta=False,
             )
+
+        # Subtest 4: Only delta layer
+        with self.subTest(case="only_delta_layer"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+            layer_in.extended_output_layer = None  # Remove extension layers
+            layer_out.extended_input_layer = None
+
+            # Create optimal_delta_layer with random weights
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
+                layer_out.in_features,
+                layer_out.out_features,
+                bias=layer_out.use_bias,
+            )
+
+            # Call normalise_optimal_updates
+            layer_out.normalise_optimal_updates(std_target=None)
+
+            # Verify std of layers is approximately std_target
+            check_target_std_reached(
+                layer_out, layer_out.weight.std().item(), include_extension=False
+            )
+
+        # 0 std case
+        with self.subTest(case="zero_std_case"):
+            layer_in = self.create_linear_layer(in_features=1, out_features=1)
+            layer_out = self.create_linear_layer(in_features=1, out_features=1)
+            layer_out.previous_module = layer_in
+            layer_out.extended_input_layer = self.create_standard_nn_linear(1, 1)
+            layer_in.extended_output_layer = self.create_standard_nn_linear(1, 1)
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(1, 1)
+
+            # Everything works fine if std is zero (no scaling applied)
+            layer_out.normalise_optimal_updates(std_target=None)
 
 
 if __name__ == "__main__":
