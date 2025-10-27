@@ -1939,7 +1939,8 @@ class GrowingModule(torch.nn.Module):
             )
         self.scale_layer(self.extended_input_layer, scales[1])
         self.scale_layer(self.previous_module.extended_output_layer, scales[0])
-        self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
+        if self.eigenvalues_extension is not None:
+            self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
 
     @staticmethod
     def get_fan_in_from_layer(layer: torch.nn.Module) -> int:
@@ -1986,8 +1987,9 @@ class GrowingModule(torch.nn.Module):
                 hasattr(self.layer, "weight")
                 and self.layer.weight is not None
                 and self.layer.weight.numel() > 0
+                and (std_target := self.layer.weight.std().item()) > 0
             ):
-                std_target = self.layer.weight.std().item()
+                std_target = std_target
             else:
                 # Use 1 / sqrt(in_features) as default
                 assert self.extended_input_layer is not None, (
@@ -1999,10 +2001,7 @@ class GrowingModule(torch.nn.Module):
                     self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
                 )
 
-        # Track scaling factors for extensions
         delta_scale = 1.0
-        input_extension_scale = 1.0
-
         # Get current standard deviations and calculate scaling factors
         if self.optimal_delta_layer is not None and hasattr(
             self.optimal_delta_layer, "weight"
@@ -2017,11 +2016,15 @@ class GrowingModule(torch.nn.Module):
             current_std = self.extended_input_layer.weight.std().item()
             if current_std > 0:
                 input_extension_scale = std_target / current_std
+            else:
+                input_extension_scale = 1.0 / (
+                    self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
+                )
+        else:
+            input_extension_scale = 1.0
 
         # Calculate output extension scale to maintain relationship
-        output_extension_scale = (
-            input_extension_scale / delta_scale if delta_scale > 0 else 1.0
-        )
+        output_extension_scale = input_extension_scale / delta_scale
 
         # Apply scaling using existing methods
         if self.optimal_delta_layer is not None and delta_scale != 1.0:
