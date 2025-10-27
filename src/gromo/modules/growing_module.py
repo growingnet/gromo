@@ -743,6 +743,16 @@ class GrowingModule(torch.nn.Module):
         """
         return sum(p.numel() for p in self.parameters())
 
+    def set_scaling_factor(self, factor: float) -> None:
+        """Assign scaling factor to all growing layers
+
+        Parameters
+        ----------
+        factor : float
+            scaling factor
+        """
+        self.scaling_factor = factor  # type: ignore
+
     def __str__(self, verbose=0):
         if verbose == 0:
             return f"{self.name} module with {self.number_of_parameters()} parameters."
@@ -1189,7 +1199,7 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    # Layer edition
+    # Layer addition
     def layer_of_tensor(
         self, weight: torch.Tensor, bias: torch.Tensor | None = None
     ) -> torch.nn.Linear:

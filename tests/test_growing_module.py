@@ -480,6 +480,11 @@ class TestGrowingModule(TorchTestCase):
                             f"Stat '{stat_name}' for '{param_name}' should be float",
                         )
 
+    def test_set_scaling_factor(self) -> None:
+        self.assertEqual(self.model.scaling_factor, 0.0)
+        self.model.set_scaling_factor(0.5)
+        self.assertEqual(self.model.scaling_factor, 0.5)
+
 
 class TestMergeGrowingModule(TorchTestCase):
     """Test MergeGrowingModule base class functionality to cover missing lines."""
