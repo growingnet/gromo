@@ -605,6 +605,18 @@ class TestConv2dGrowingModule(TorchTestCase):
             )
             self.demo_couple[bias] = (demo_in, demo_out)
 
+    def test_get_fan_in_from_layer(self):
+        """Test get_fan_in_from_layer method."""
+        layer = self.demo_couple[True][0]
+        self.assertEqual(
+            layer.get_fan_in_from_layer(torch.nn.Conv2d(3, 7, kernel_size=(2, 5))),
+            3 * 2 * 5,
+        )
+        self.assertEqual(
+            layer.get_fan_in_from_layer(torch.nn.Conv2d(2, 3, kernel_size=(7, 5))),
+            2 * 7 * 5,
+        )
+
     def test_init(self):
         # no bias
         m = Conv2dGrowingModule(
@@ -1556,7 +1568,7 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
             y_ref,
             y_test,
             atol=1e-6,
-            message=f"The constructed convolution is not similar to a linear layer",
+            message="The constructed convolution is not similar to a linear layer",
         )
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))

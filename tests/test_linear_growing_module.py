@@ -404,18 +404,19 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
         first_layer_extended_post_layer: torch.nn.Module | None = None,
         include_eigenvalues: bool = False,
+        hidden_features: int = 3,
     ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
         """Create demo layers with extension for testing."""
         layer_in = LinearGrowingModule(
             in_features=5,
-            out_features=3,
+            out_features=hidden_features,
             name="layer_in",
             post_layer_function=first_layer_post_layer,
             extended_post_layer_function=first_layer_extended_post_layer,
             device=global_device(),
         )
         layer_out = LinearGrowingModule(
-            in_features=3,
+            in_features=hidden_features,
             out_features=7,
             name="layer_out",
             previous_module=layer_in,
@@ -448,6 +449,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.demo_layers = {}
         for bias in (True, False):
             self.demo_layers[bias] = self.create_demo_layers(bias)
+
+    def test_get_fan_in_from_layer(self):
+        """Test get_fan_in_from_layer method."""
+        layer = self.demo_layers[True][0]
+        self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(3, 1)), 3)
+        self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(2, 3)), 2)
 
     def test_apply_change_with_sized_post_layer_function(self):
         """
@@ -3077,7 +3084,7 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             # Verify extended_input_layer scaled by 3.0
             self.assertAlmostEqual(
                 layer_out.extended_input_layer.weight.data[0, 0].item(),
-                3.0,
+                scale_input,
                 places=6,
                 msg="extended_input_layer should be scaled by 3.0",
             )
@@ -3085,7 +3092,7 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             # Verify previous module's extended_output_layer scaled by 2.0
             self.assertAlmostEqual(
                 layer_in.extended_output_layer.weight.data[0, 0].item(),
-                2.0,
+                scale_output,
                 places=6,
                 msg="previous module's extended_output_layer should be scaled by 2.0",
             )
@@ -3126,17 +3133,128 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     scale=None, scale_output=2.0, scale_input=2.0
                 )
 
-        with self.subTest(case="missing_in_extension"):
+        with self.subTest(case="missing_out_extension"):
             layer_in, layer_out = self.create_demo_layers_with_extension(
                 include_eigenvalues=True
             )
-            # Remove extended_input_layer to trigger warning
-            layer_out.extended_input_layer = None
+            # Remove extended_output_layer to trigger warning
+            layer_in.extended_output_layer = None
 
             with self.assertRaises(ValueError):
                 layer_out.scale_layer_extension(
                     scale=None, scale_output=2.0, scale_input=2.0
                 )
+
+    def test_normalise_optimal_updates(self) -> None:
+        """Test normalise_optimal_updates method."""
+
+        def check_target_std_reached(
+            layer: LinearGrowingModule,
+            std_target: float,
+            include_delta: bool = True,
+        ) -> None:
+            """
+            Checks that `layer.optimal_delta_layer` and `layer.extended_input_layer`
+            reach the target standard deviation after normalization.
+
+            Parameters
+            ----------
+            layer : LinearGrowingModule
+                The layer to check.
+            std_target : float
+                The target standard deviation.
+            include_delta : bool, optional
+                Whether to check the optimal_delta_layer, by default True.
+            """
+            if include_delta:
+                assert isinstance(layer.optimal_delta_layer, torch.nn.Linear), (
+                    f"optimal_delta_layer should be a Linear layer in "
+                    f"{layer.name} (is {type(layer.optimal_delta_layer)})"
+                )
+                self.assertAlmostEqual(
+                    layer.optimal_delta_layer.weight.std().item(),
+                    std_target,
+                    places=5,
+                    msg=f"optimal_delta_layer std should be {std_target}",
+                )
+            assert isinstance(layer.extended_input_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer.extended_input_layer.weight.std().item(),
+                std_target,
+                places=5,
+                msg=f"extended_input_layer std should be {std_target}",
+            )
+
+        # Subtest 1: Explicit std target
+        with self.subTest(case="explicit_std_target"):
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Create optimal_delta_layer with random weights
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
+                layer_out.in_features,
+                layer_out.out_features,
+                bias=layer_out.use_bias,
+            )
+
+            # Set target std
+            std_target = 0.1
+
+            # Call normalise_optimal_updates
+            layer_out.normalise_optimal_updates(std_target=std_target)
+
+            # Verify std of layers is approximately std_target
+            check_target_std_reached(layer_out, std_target)
+
+        # Subtest 2: Default std from layer weights
+        with self.subTest(case="default_from_layer_weights"):
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Set layer weights to have specific std
+            target_std = 5.0
+            layer_out.layer.weight.data = (
+                torch.randn_like(layer_out.layer.weight) * target_std
+            )
+
+            # Create optimal_delta_layer
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
+                layer_out.in_features,
+                layer_out.out_features,
+                bias=layer_out.use_bias,
+            )
+            std_target = layer_out.layer.weight.std().item()
+
+            # Call normalise_optimal_updates without std_target
+            layer_out.normalise_optimal_updates(std_target=None)
+
+            # Verify std of optimal_delta_layer matches layer weights std
+            check_target_std_reached(layer_out, std_target)
+
+        # Subtest 3: Only extension layer normalization (no optimal_delta_layer)
+        with self.subTest(case="only_extension_normalization"):
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True,
+                hidden_features=0,
+            )
+
+            # Remove optimal_delta_layer so only extension is normalized
+            layer_out.optimal_delta_layer = None
+
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            std_target = 1 / layer_out.extended_input_layer.in_features**0.5
+
+            # Call normalise_optimal_updates
+            layer_out.normalise_optimal_updates(std_target=None)
+
+            # Verify only extended_input_layer std matches target
+            check_target_std_reached(
+                layer_out,
+                std_target,
+                include_delta=False,
+            )
 
 
 if __name__ == "__main__":
