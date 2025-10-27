@@ -993,7 +993,7 @@ class GrowingModule(torch.nn.Module):
             if self._internal_store_input:
                 assert (
                     self._input is not None
-                ), "The input is not stored.Apparently it was not computed yet."
+                ), "The input is not stored. Apparently it was not computed yet."
                 return self._input
             else:
                 assert self.previous_module, (
@@ -1025,7 +1025,7 @@ class GrowingModule(torch.nn.Module):
             if self._internal_store_pre_activity:
                 assert (
                     self._pre_activity is not None
-                ), "The pre-activity is not stored.Apparently it was not computed yet."
+                ), "The pre-activity is not stored. Apparently it was not computed yet."
                 return self._pre_activity
             else:
                 assert self.next_module, (
