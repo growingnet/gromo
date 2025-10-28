@@ -13,21 +13,17 @@ def gaussian_kernel(X, sigma=None):
     dist = torch.cdist(X, X) ** 2
     if sigma is None:
         var = torch.median(dist)
-        # print(f"Automatic variance selection with Median Heuristic: {var}")
     else:
         var = sigma**2
     return torch.exp(-dist / (2 * var))
 
 
 def slow_gaussian_kernel(X, sigma_sq=None):
-    # G = torch.sum(X**2, axis=1).reshape(-1, 1)
-    # pairwise_sq_dists = G + G.T - 2 * np.dot(X, X.T)
 
     pairwise_sq_dists = torch.sum((X[:, torch.newaxis] - X) ** 2, axis=-1)  # (n,n)
 
     if sigma_sq is None:
         sigma_sq = torch.median(pairwise_sq_dists)
-        # print(f"Automatic variance selection with Median Heuristic: {sigma_sq}")
 
     K = torch.exp(-pairwise_sq_dists / (2 * sigma_sq))
     return K
