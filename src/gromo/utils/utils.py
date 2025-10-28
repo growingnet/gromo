@@ -318,8 +318,6 @@ def mini_batch_gradient_descent(
         train loss history, train accuracy history
     """
     loss_history, acc_history = [], []
-    full_loss = []
-    gradients = []
 
     dataset = torch.utils.data.TensorDataset(X, Y)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -343,7 +341,6 @@ def mini_batch_gradient_descent(
             output = model(x_batch)
             loss = cost_fn(output, y_batch)
             epoch_loss += loss.item()
-            full_loss.append(loss.item())
 
             if not fast:
                 correct += (output.argmax(axis=1) == y_batch).int().sum().item()
@@ -351,15 +348,6 @@ def mini_batch_gradient_descent(
 
             loss.backward()
 
-            if isinstance(model, nn.Module):
-                avg_grad_norm = 0.0
-                for param in model.parameters():
-                    assert isinstance(
-                        param.grad, torch.Tensor
-                    ), f"Gradient was None for some parameter of the model {model}"
-                    avg_grad_norm += param.grad.norm().item()
-                avg_grad_norm /= len(saved_parameters)
-                gradients.append(torch.tensor(avg_grad_norm))
             optimizer.step()
 
         loss_history.append(epoch_loss / len(dataloader))
