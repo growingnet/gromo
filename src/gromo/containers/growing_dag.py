@@ -701,12 +701,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def delete_update(self) -> None:
         """Delete extended input and output layers and optimal added parameters on the whole network"""
         for edge_module in self.get_all_edge_modules():
-            edge_module.delete_update(include_output=True)
+            edge_module.delete_update(delete_output=True, include_previous=False)
         for node_module in self.get_all_node_modules():
             node_module.delete_update()
 
     def is_empty(self) -> bool:
         return nx.is_empty(self)
+
     def update_size(self) -> None:
         super().update_size()
         for node in self.nodes():

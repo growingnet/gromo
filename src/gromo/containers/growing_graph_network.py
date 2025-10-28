@@ -1,5 +1,6 @@
 import copy
 import operator
+import warnings
 from typing import Callable, Iterator, Sequence
 
 import numpy as np
@@ -473,43 +474,6 @@ class GrowingGraphNetwork(GrowingContainer):
             )
             i += out_features
 
-        if amplitude_factor:
-            # Find amplitude factor that minimizes the overall loss
-            factor = self.find_amplitude_factor(
-                net=expansion.dag,
-                x=x,
-                y=y,
-                node_module=node_module,
-                next_node_modules=next_node_modules,
-            )
-        else:
-            factor = 1
-
-        # Apply final changes
-        for prev_edge_module in node_module.previous_modules:
-            # we do not need to change the _scaling_factor_next_module as it is
-            # given as a parameter of _apply_output_changes
-            # prev_edge_module._scaling_factor_next_module = factor # Warning
-            prev_edge_module._apply_output_changes(factor)
-            # Delete activities
-            prev_edge_module.delete_update(include_output=True, include_previous=False)
-
-        for next_node_module in next_node_modules:
-            for parallel_module in next_node_module.previous_modules:
-                parallel_module.scaling_factor = factor
-                parallel_module.apply_change(apply_previous=False)
-                # Delete activities
-                parallel_module.delete_update(include_previous=False)
-            # Delete activities
-            next_node_module.delete_update()
-
-        node_module.delete_update()
-
-        # Update size
-        expansion.dag.nodes[expansion.expanding_node]["size"] += self.neurons
-
-        # TODO FUTURE : Save updates to return
-
         return loss_history
 
     def update_edge_weights(
@@ -786,15 +750,26 @@ class GrowingGraphNetwork(GrowingContainer):
         new_actions = []
         for expansion in actions:
             new_node = expansion.expanding_node
-            next_nodes = expansion.next_nodes
-            if new_node == chosen_position:
-                # Case: expand current node
-                new_actions.append(expansion)
-            elif chosen_position in next_nodes:
-                # Case: expand immediate previous node or add new previous node or direct edge
-                new_actions.append(expansion)
-            else:
-                del expansion
+            next_node = expansion.next_nodes
+            prev_node = expansion.previous_nodes
+            if not isinstance(next_node, list):
+                next_node = [next_node]
+            if not isinstance(prev_node, list):
+                prev_node = [prev_node]
+            if chosen_outputs is not None:
+                if new_node in chosen_outputs:
+                    # Case: expand current node
+                    new_actions.append(expansion)
+                    continue
+                elif len(set(chosen_outputs).intersection(next_node)) != 0:
+                    # Case: expand or add immediate previous node
+                    new_actions.append(expansion)
+                    continue
+            elif chosen_inputs is not None:
+                # Case: connect previous node
+                if len(set(chosen_inputs).intersection(prev_node)) != 0:
+                    new_actions.append(expansion)
+                    continue
         return new_actions
 
     def choose_growth_best_action(

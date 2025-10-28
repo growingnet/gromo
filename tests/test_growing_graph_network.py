@@ -389,29 +389,39 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.assertListEqual(gens, self.actions)
 
         # Restricting based on outputs
-        gens = self.net.restrict_action_space(self.actions, chosen_outputs=["end"])
+        gens = self.net.restrict_action_space(
+            self.actions, chosen_outputs=[self.net.dag.end]
+        )
         self.assertEqual(len(gens), 3)
 
         gens = self.net.restrict_action_space(self.actions, chosen_outputs=["1"])
         self.assertEqual(len(gens), 2)
 
-        gens = self.net.restrict_action_space(self.actions, chosen_outputs=["start"])
+        gens = self.net.restrict_action_space(
+            self.actions, chosen_outputs=[self.net.dag.root]
+        )
         self.assertEqual(len(gens), 0)
 
         # Restricting based on both inputs and outputs should raise NotImplementedError
         with self.assertRaises(NotImplementedError):
             self.net.restrict_action_space(
-                self.actions, chosen_outputs=["end"], chosen_inputs=["start"]
+                self.actions,
+                chosen_outputs=[self.net.dag.end],
+                chosen_inputs=[self.net.dag.root],
             )
 
         # Restricting based on inputs
-        gens = self.net.restrict_action_space(self.actions, chosen_inputs=["start"])
+        gens = self.net.restrict_action_space(
+            self.actions, chosen_inputs=[self.net.dag.root]
+        )
         self.assertEqual(len(gens), 3)
 
         gens = self.net.restrict_action_space(self.actions, chosen_inputs=["1"])
         self.assertEqual(len(gens), 1)
 
-        gens = self.net.restrict_action_space(self.actions, chosen_inputs=["end"])
+        gens = self.net.restrict_action_space(
+            self.actions, chosen_inputs=[self.net.dag.end]
+        )
         self.assertEqual(len(gens), 0)
 
     def test_grow_step(self) -> None:

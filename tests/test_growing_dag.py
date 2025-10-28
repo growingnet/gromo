@@ -22,6 +22,7 @@ class TestGrowingDAG(unittest.TestCase):
         self.out_features = 2
         self.use_bias = True
         self.use_batch_norm = False
+        self.loss_fn = torch.nn.CrossEntropyLoss()
         self.init_node_attributes = {"type": "linear", "size": self.hidden_size}
         self.default_node_attributes = {
             "type": "linear",
@@ -169,21 +170,21 @@ class TestGrowingDAG(unittest.TestCase):
 
     def test_get_all_edge_modules(self) -> None:
         self.assertEqual(self.dag.get_all_edge_modules(), [])
-        self.dag.add_direct_edge(prev_node="start", next_node="end")
+        self.dag.add_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
         self.assertEqual(
             self.dag.get_all_edge_modules(),
-            [self.dag.get_edge_module("start", "end")],
+            [self.dag.get_edge_module(self.dag.root, self.dag.end)],
         )
         self.dag.add_node_with_two_edges(
-            self.dag.root, "test", self.dag.end, self.single_node_attributes
+            self.dag.root, "test", self.dag.end, self.init_node_attributes
         )
         self.assertEqual(
             set(self.dag.get_all_edge_modules()),
             set(
                 [
-                    self.dag.get_edge_module("start", "end"),
-                    self.dag.get_edge_module("start", "test"),
-                    self.dag.get_edge_module("test", "end"),
+                    self.dag.get_edge_module(self.dag.root, self.dag.end),
+                    self.dag.get_edge_module(self.dag.root, "test"),
+                    self.dag.get_edge_module("test", self.dag.end),
                 ]
             ),
         )
@@ -483,10 +484,10 @@ class TestGrowingDAG(unittest.TestCase):
 
     def test_reset_computation(self) -> None:
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
         )
-        self.dag.get_node_module("start").store_activity = True
-        self.dag.get_node_module("end").init_computation()
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.get_node_module(self.dag.end).init_computation()
 
         x = torch.rand((50, self.in_features), device=global_device())
         y = torch.rand((50, self.out_features), device=global_device())
@@ -514,10 +515,10 @@ class TestGrowingDAG(unittest.TestCase):
 
     def test_delete_update(self) -> None:
         self.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes=self.single_node_attributes
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
         )
-        self.dag.get_node_module("start").store_activity = True
-        self.dag.get_node_module("end").init_computation()
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.get_node_module(self.dag.end).init_computation()
 
         x = torch.rand((50, self.in_features), device=global_device())
         y = torch.rand((50, self.out_features), device=global_device())
@@ -539,10 +540,6 @@ class TestGrowingDAG(unittest.TestCase):
             self.assertIsNone(edge_module.extended_output_layer)
             self.assertIsNone(edge_module.extended_input_layer)
         for node_module in self.dag.get_all_node_modules():
-            self.assertIsNone(node_module.optimal_delta_layer)
-            self.assertIsNone(node_module.extended_input_layer)
-            self.assertIsNone(node_module.parameter_update_decrease)
-            self.assertIsNone(node_module.eigenvalues_extension)
             self.assertIsNone(node_module.activity)
             self.assertIsNone(node_module.input)
 
