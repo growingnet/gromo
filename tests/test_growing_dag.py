@@ -28,6 +28,7 @@ class TestGrowingDAG(unittest.TestCase):
             "size": 0,
             "activation": "selu",
             "kernel_size": (3, 3),
+            "shape": None,
         }
         self.init_node_conv_attributes = {
             "type": "convolution",

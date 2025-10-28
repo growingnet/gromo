@@ -129,6 +129,7 @@ ignore = [
     "COM812",  # Trailing comma missing (conflicts with formatter)
     "COM819",  # Trailing comma prohibited (conflicts with formatter)
     "C408",    # can initialise dict with dict(...)
+    "SIM108",  # leads to decrease the actual coverage
 ]
 
 [tool.ruff.lint.per-file-ignores]
