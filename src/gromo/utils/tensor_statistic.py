@@ -1,5 +1,4 @@
 from typing import Any, Callable
-from warnings import warn
 
 import numpy as np
 import torch
@@ -78,8 +77,9 @@ class TensorStatistic:
             assert (self._shape is None or self._shape == update.size()) and (
                 self._tensor is None or self._tensor.size() == update.size()
             ), (
-                f"The update tensor has a different size than the tensor statistic {self.name} :"
-                f"self._shape={None if self._shape is None else self._shape}, update.size()={update.size()}, self._tensor.shape={None if self._tensor is None else self._tensor.size()}"
+                f"The update tensor has a different size than the tensor statistic "
+                f"{self.name} : {self._shape=}, {update.size()=}, "
+                f"{None if self._tensor is None else self._tensor.size()=}"
             )
             if self._tensor is None:
                 self._tensor = update
@@ -102,18 +102,21 @@ class TensorStatistic:
         else:
             assert (
                 self._tensor is not None
-            ), f"If the number of samples is not zero the tensor should not be None."
+            ), "If the number of samples is not zero the tensor should not be None."
             return self._tensor / self.samples
 
 
 class TensorStatiticWithEstimationError(TensorStatistic):
     """
-    Extends TensorStatistic to compute an estimation of the quadratic error of the current estimate to the true expectation.
-    This is done by computing the trace of the covariance matrix of the random variable averaged on a batch.
-    The trace is computed incrementally using a stopping criterion based on a relative precision.
+    Extends TensorStatistic to compute an estimation of the quadratic error of the current
+    estimate to the true expectation. This is done by computing the trace of the
+    covariance matrix of the random variable averaged on a batch. The trace is computed
+    incrementally using a stopping criterion based on a relative precision.
 
-    Note that the precision of the trace computation can be controlled by the user, and the true precision of the trace
-    will not be guaranteed to be below this value, indeed if trace_precision is set to eps, the expected relative precision
+    Note that the precision of the trace computation can be controlled by the user, and
+    the true precision of the trace
+    will not be guaranteed to be below this value, indeed if trace_precision is set to
+    eps, the expected relative precision
     on the trace computation will be of order sqrt(eps).
 
     Example:
@@ -166,7 +169,8 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         # relative precision stopping criterion for the trace computation
         self._compute_trace = True  # whether to continue computing the trace covariance
         self._batches = 0
-        self._trace = None  # trace of the covariance matrix (of the random variable obtain when averaging on a batch)
+        self._trace = None  # trace of the covariance matrix
+        # (of the random variable obtain when averaging on a batch)
 
     def reset(self):
         super().reset()
@@ -177,13 +181,17 @@ class TensorStatiticWithEstimationError(TensorStatistic):
 
     def error(self) -> float:
         """
-        Returns an estimation of the quadratic error of the current estimate to the true expectation.
-        If the trace has not been computed accurately enough, NO warning is raised and the error estimate may be inaccurate.
+        Returns an estimation of the quadratic error of the current estimate to the true
+        expectation.
+        If the trace has not been computed accurately enough, NO warning is
+        raised and the error estimate may be inaccurate.
         If only one batch has been used to compute the statistic, returns infinity.
+
         Returns
         -------
         float
-            estimation of the quadratic error of the current estimate to the true expectation
+            estimation of the quadratic error of the current estimate to the true
+            expectation
         """
         assert self._trace is not None, "The trace has not been computed yet."
         if self._batches == 1:
