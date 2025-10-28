@@ -1969,9 +1969,11 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def normalise_optimal_updates(self, std_target: float | None = None) -> None:
+    def normalize_optimal_updates(self, std_target: float | None = None) -> None:
         """
-        Normalise the optimal updates so that the standard deviation of the
+        Normalize optimal update to target standard deviation
+
+        Normalize the optimal updates so that the standard deviation of the
         weights of the updates is equal to std_target.
         If std_target is None, we automatically determine it.
         We use the standard deviation of the weights of the layer if it has weights.

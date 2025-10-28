@@ -3167,8 +3167,8 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     scale=None, scale_output=2.0, scale_input=2.0
                 )
 
-    def test_normalise_optimal_updates(self) -> None:
-        """Test normalise_optimal_updates method."""
+    def test_normalize_optimal_updates(self) -> None:
+        """Test normalize_optimal_updates method."""
 
         def check_target_std_reached(
             layer: LinearGrowingModule,
@@ -3227,8 +3227,8 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             # Set target std
             std_target = 0.1
 
-            # Call normalise_optimal_updates
-            layer_out.normalise_optimal_updates(std_target=std_target)
+            # Call normalize_optimal_updates
+            layer_out.normalize_optimal_updates(std_target=std_target)
 
             # Verify std of layers is approximately std_target
             check_target_std_reached(layer_out, std_target)
@@ -3253,8 +3253,8 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             )
             std_target = layer_out.layer.weight.std().item()
 
-            # Call normalise_optimal_updates without std_target
-            layer_out.normalise_optimal_updates(std_target=None)
+            # Call normalize_optimal_updates without std_target
+            layer_out.normalize_optimal_updates(std_target=None)
 
             # Verify std of optimal_delta_layer matches layer weights std
             check_target_std_reached(layer_out, std_target)
@@ -3272,8 +3272,8 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
             std_target = 1 / layer_out.extended_input_layer.in_features**0.5
 
-            # Call normalise_optimal_updates
-            layer_out.normalise_optimal_updates(std_target=None)
+            # Call normalize_optimal_updates
+            layer_out.normalize_optimal_updates(std_target=None)
 
             # Verify only extended_input_layer std matches target
             check_target_std_reached(
@@ -3297,8 +3297,8 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 bias=layer_out.use_bias,
             )
 
-            # Call normalise_optimal_updates
-            layer_out.normalise_optimal_updates(std_target=None)
+            # Call normalize_optimal_updates
+            layer_out.normalize_optimal_updates(std_target=None)
 
             # Verify std of layers is approximately std_target
             check_target_std_reached(
@@ -3315,7 +3315,7 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             layer_out.optimal_delta_layer = self.create_standard_nn_linear(1, 1)
 
             # Everything works fine if std is zero (no scaling applied)
-            layer_out.normalise_optimal_updates(std_target=None)
+            layer_out.normalize_optimal_updates(std_target=None)
 
 
 if __name__ == "__main__":

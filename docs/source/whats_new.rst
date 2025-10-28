@@ -20,7 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-- Add a method `normalise_optimal_updates` in `GrowingModule` to normalise the optimal weight updates before applying them (:gh:`164` by `Théo Rudkiewicz`_)
+- Add a method `normalize_optimal_updates` in `GrowingModule` to normalize the optimal weight updates before applying them (:gh:`164` by `Théo Rudkiewicz`_)
 - Add setter for scaling factor in `GrowingModule` (:gh:`157` by `Stella Douka`_)
 - Minor improvements of `GrowingContainer` (:gh:`161` by `Théo Rudkiewicz`_)
 - Add `in_features` and `out_features` properties to `GrowingModule` and `LinearGrowingModule` (:gh:`160` by `Théo Rudkiewicz`_)
