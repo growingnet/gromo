@@ -203,7 +203,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             input_size=self.input_hw,
             device=global_device(),
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             m.set_previous_modules([bad_prev2])
 
         # Output volume mismatch -> ValueError

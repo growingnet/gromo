@@ -33,6 +33,59 @@ def gather_statistics(dataloader, model, loss):
         model.update_computation()
 
 
+# Create a dummy GrowingContainer to test the base class method
+class DummyGrowingContainer(GrowingContainer):
+    def __init__(self, in_features, out_features):
+        super().__init__(in_features=in_features, out_features=out_features)
+        # Add some GrowingModule instances
+        self.layer1 = LinearGrowingModule(
+            in_features=in_features, out_features=4, name="layer1"
+        )
+        self.layer2 = LinearGrowingModule(
+            in_features=4, out_features=out_features, name="layer2"
+        )
+        self.set_growing_layers()
+
+    def set_growing_layers(self):
+        self._growing_layers = [self.layer1, self.layer2]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.layer2(self.layer1(x))
+
+    @property
+    def first_order_improvement(self) -> torch.Tensor:
+        return torch.tensor(0.0)
+
+    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
+        return self.forward(x)
+
+
+class TestContainer(GrowingContainer):
+    def __init__(self, in_features, out_features):
+        super().__init__(in_features=in_features, out_features=out_features)
+        self.linear1 = LinearGrowingModule(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        self.linear2 = LinearGrowingModule(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        self.merge = LinearMergeGrowingModule(
+            in_features=self.out_features,
+            previous_modules=[self.linear1, self.linear2],
+        )
+        self.linear1.next_module = self.merge
+        self.linear2.next_module = self.merge
+        self.set_growing_layers()
+
+    def set_growing_layers(self):
+        self._growing_layers = [self.linear1, self.linear2, self.merge]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x1 = self.linear1(x)
+        x2 = self.linear2(x)
+        return self.merge(x1 + x2)
+
+
 class TestGrowingContainer(unittest.TestCase):
     """
     Test the GrowingContainer class. We only test the function calls to
@@ -60,6 +113,14 @@ class TestGrowingContainer(unittest.TestCase):
             device=torch.device("cpu"),
         )
         self.loss = nn.MSELoss()
+
+    def test_dummy_select_update(self):
+        container = TestContainer(
+            in_features=self.in_features, out_features=self.out_features
+        )
+        idx = container.dummy_select_update()
+        self.assertEqual(idx, 0, "dummy_select_update did not return the correct index")
+        self.assertIs(container.currently_updated_layer, container.linear1)
 
     def test_init_computation(self):
         self.model.init_computation()
@@ -292,31 +353,6 @@ class TestGrowingContainer(unittest.TestCase):
         )
 
     def test_update_size(self):
-        class TestContainer(GrowingContainer):
-            def __init__(self, in_features, out_features):
-                super().__init__(in_features=in_features, out_features=out_features)
-                self.linear1 = LinearGrowingModule(
-                    in_features=self.in_features, out_features=self.out_features
-                )
-                self.linear2 = LinearGrowingModule(
-                    in_features=self.in_features, out_features=self.out_features
-                )
-                self.merge = LinearMergeGrowingModule(
-                    in_features=self.out_features,
-                    previous_modules=[self.linear1, self.linear2],
-                )
-                self.linear1.next_module = self.merge
-                self.linear2.next_module = self.merge
-                self.set_growing_layers()
-
-            def set_growing_layers(self):
-                self._growing_layers = [self.linear1, self.linear2, self.merge]
-
-            def forward(self, x: torch.Tensor) -> torch.Tensor:
-                x1 = self.linear1(x)
-                x2 = self.linear2(x)
-                return self.merge(x1 + x2)
-
         container = TestContainer(
             in_features=self.in_features, out_features=self.out_features
         )
@@ -327,13 +363,31 @@ class TestGrowingContainer(unittest.TestCase):
             (assumed_total_in_features, assumed_total_in_features),
         )
 
-        container.linear1.in_features += 5
+        container.linear1.layer = torch.nn.Linear(
+            in_features=container.linear1.in_features + 5,
+            out_features=container.linear1.out_features,
+        )
         container.update_size()
         assumed_total_in_features += 5
         self.assertEqual(container.merge.total_in_features, assumed_total_in_features)
         self.assertEqual(
             container.merge.previous_tensor_s._shape,
             (assumed_total_in_features, assumed_total_in_features),
+        )
+
+    def test_weights_statistics(self):
+        """Test that weights_statistics method runs and returns a dictionary."""
+
+        # Test the dummy container
+        container = DummyGrowingContainer(
+            in_features=self.in_features, out_features=self.out_features
+        )
+
+        stats = container.weights_statistics()
+
+        # Check that the result is a dictionary
+        self.assertIsInstance(
+            stats, dict, "weights_statistics should return a dictionary"
         )
 
 

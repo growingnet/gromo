@@ -1,10 +1,10 @@
+import types
 from warnings import warn
 
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.utils import global_device
 
 
 # Constants for gradient computation
@@ -70,7 +70,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         # self.use_bias = any(module.use_bias for module in self.next_modules)
         assert all(
             modules.in_features == self.out_features for modules in self.next_modules
-        ), f"The output features must match the input features of the next modules."
+        ), f"The output features of {self.name} ({self.out_features}) must match the input features of the next modules. Found {[module.in_features for module in self.next_modules]}."
 
     def set_previous_modules(
         self, previous_modules: list["MergeGrowingModule | GrowingModule"]
@@ -106,6 +106,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             if isinstance(module, LinearGrowingModule):
                 self.total_in_features += module.in_features
                 self.total_in_features += module.use_bias
+
         if self.total_in_features > 0:
             self.previous_tensor_s = TensorStatistic(
                 (
@@ -270,8 +271,16 @@ class LinearGrowingModule(GrowingModule):
             name=name,
         )
         self.use_bias = use_bias
-        self.in_features = in_features
-        self.out_features = out_features
+
+        self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
+
+    @property
+    def in_features(self) -> int:
+        return self.layer.in_features
+
+    @property
+    def out_features(self) -> int:
+        return self.layer.out_features
 
     # Information functions
     @property
@@ -340,6 +349,20 @@ class LinearGrowingModule(GrowingModule):
             )
         else:
             return super(LinearGrowingModule, self).__str__(verbose=verbose)
+
+    def __make_safe_forward(self):
+        def _forward(lin_self, input: torch.Tensor) -> torch.Tensor:
+            if self.in_features == 0:
+                n = input.shape[0]
+                return torch.zeros(
+                    n,
+                    self.out_features,
+                    device=self.device,
+                    requires_grad=True,
+                )
+            return torch.nn.Linear.forward(lin_self, input)
+
+        return _forward
 
     # Statistics computation
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
@@ -688,7 +711,6 @@ class LinearGrowingModule(GrowingModule):
             weight=torch.cat((self.weight, weight), dim=1), bias=self.bias
         )
 
-        self.in_features += weight.shape[1]
         self._tensor_s = TensorStatistic(
             (self.in_features + self.use_bias, self.in_features + self.use_bias),
             update_function=self.compute_s_update,
@@ -737,7 +759,6 @@ class LinearGrowingModule(GrowingModule):
                 weight=torch.cat((self.weight, weight), dim=0), bias=None
             )
 
-        self.out_features += weight.shape[0]
         self.tensor_m = TensorStatistic(
             (self.in_features + self.use_bias, self.out_features),
             update_function=self.compute_m_update,
@@ -858,9 +879,10 @@ class LinearGrowingModule(GrowingModule):
         assert (
             omega.shape[0] == self.out_features
         ), f"omega should have the same number of output features ({omega.shape[0]}) as the layer ({self.out_features})."
-        assert omega.shape == (self.out_features, k), (
-            f"omega should have shape {(self.out_features, k)}, " f"but got {omega.shape}"
-        )
+        assert omega.shape == (
+            self.out_features,
+            k,
+        ), f"omega should have shape {(self.out_features, k)}, but got {omega.shape}"
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]

@@ -21,6 +21,13 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Add `TensorStatisticWithError` and corresponding class `TestTensorStatisticWithError`. It computes an estimation of the quadratic error done when estimating the given tensor statistic. Modify `TensorStatistic` so that there is no need to call init (:gh:`149` by `Félix Houdouin`_).
+- Add setter for scaling factor in `GrowingModule` (:gh:`157` by `Stella Douka`_)
+- Minor improvements of `GrowingContainer` (:gh:`161` by `Théo Rudkiewicz`_)
+- Add `in_features` and `out_features` properties to `GrowingModule` and `LinearGrowingModule` (:gh:`160` by `Théo Rudkiewicz`_)
+- Add support for convolutional DAGs in `GrowingDAG` and `GrowingGraphNetwork` (:gh:`148` by `Stella Douka`_)
+- Handle previous and next layers when deleting `GrowingModule` and `MergeGrowingModule` objects (:gh:`148` by `Stella Douka`_)
+- Add `weights_statistics` method to `GrowingModule` and `GrowingContainer` to retrieve statistics of weights in all growing layers. (:gh:`152` by `Théo Rudkiewicz`_)
+- Add `ruff` linter to pre-commit hooks and to the CI (:gh:`151` by `Théo Rudkiewicz`_)
 - Add `GrowingBlock` to mimic a ResNet 18/34 block. (:gh:`106` by `Théo Rudkiewicz`_)
 - fix(RestrictedConv2dGrowingModule.bordered_unfolded_extended_prev_input): Use the correct input size to compute the border effect of the convolution. (:gh:`147` by `Théo Rudkiewicz`_)
 - Create a `input_size` property in GrowingModule. (:gh:`143` by `Théo Rudkiewicz`_)
@@ -80,6 +87,8 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- Allow growth between two `GrowingDAG` modules (:gh:`148` by `Stella Douka`_)
+- Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
 - Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)
 - Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)
 - Added support for configuration files that override default class arguments (:gh:`38` by `Stella Douka`_)
