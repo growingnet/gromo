@@ -2102,23 +2102,6 @@ class GrowingModule(torch.nn.Module):
 
         return tensor
 
-    @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Module) -> int:
-        """
-        Get the fan_in (number of input features) from a given layer.
-
-        Parameters
-        ----------
-        layer: torch.nn.Module
-            layer to get the fan_in from
-
-        Returns
-        -------
-        int
-            fan_in of the layer
-        """
-        raise NotImplementedError
-
     @torch.no_grad()
     def create_layer_extensions(
         self,
