@@ -1,12 +1,11 @@
-import time
 import unittest
 
 import torch
 
-from gromo.utils.locate_dependence import *
+from gromo.utils.dependence_estimator import *
 
 
-class TestLocateDependence(unittest.TestCase):
+class TestDependenceEstimator(unittest.TestCase):
     def setUp(self) -> None:
         self.X = torch.rand((10, 500))
 

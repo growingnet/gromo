@@ -1,7 +1,5 @@
 import torch
 
-from gromo.utils.utils import global_device
-
 
 def linear_kernel(X):
     """Computes the linear kernel matrix: K = X X^T"""
