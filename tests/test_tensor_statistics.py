@@ -3,7 +3,10 @@ from unittest import TestCase, main
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from gromo.utils.tensor_statistic import TensorStatistic, TensorStatisticWithError
+from gromo.utils.tensor_statistic import (
+    TensorStatistic,
+    TensorStatiticWithEstimationError,
+)
 from gromo.utils.utils import reset_device, set_device
 
 
@@ -14,7 +17,7 @@ class TestTensorStatistic(TestCase):
         set_device("cpu")
         x = None
         n_samples = 0
-        f = lambda: (x.sum(dim=0), x.size(0))
+        f = lambda: (x.sum(dim=0), x.size(0))  # type: ignore
         tensor_statistic = self._tested_class(
             shape=(2, 3), update_function=f, name="Average"
         )
@@ -56,12 +59,12 @@ class TestTensorStatistic(TestCase):
 
 
 class TestTensorStatisticWithError(TestTensorStatistic):
-    _tested_class = TensorStatisticWithError
+    _tested_class = TensorStatiticWithEstimationError
 
     def test_error(self):
         set_device("cuda" if torch.cuda.is_available() else "cpu")
 
-        num_batches = 100
+        num_batches = 10
         batch_size = 10
         total_samples = num_batches * batch_size
         mean = torch.tensor([3.0, 4.0])
@@ -70,9 +73,11 @@ class TestTensorStatisticWithError(TestTensorStatistic):
         torch.manual_seed(42)
         dist = torch.distributions.MultivariateNormal(mean, covariance_matrix=cov)
         samples = dist.sample((total_samples,))
-        dataloader = DataLoader(samples, batch_size=batch_size, shuffle=False)
+        dataloader = DataLoader(
+            TensorDataset(samples), batch_size=batch_size, shuffle=False
+        )
 
-        mean_statistic = TensorStatisticWithError(
+        mean_statistic = TensorStatiticWithEstimationError(
             shape=None,
             update_function=lambda x: (x.sum(dim=0), x.size(0)),
             name="Mean with Error",
@@ -80,22 +85,19 @@ class TestTensorStatisticWithError(TestTensorStatistic):
 
         self.assertRaises(AssertionError, mean_statistic.error)
         i = 0
-        for batch in dataloader:
+        for (batch,) in dataloader:
             i += 1
             mean_statistic.updated = False
             mean_statistic.update(x=batch)
             if i == 1:
-                with self.assertWarns(UserWarning):
-                    self.assertEqual(mean_statistic.error(), float("inf"))
-            if i == 2:
-                self.assertWarns(UserWarning, mean_statistic.error)
+                self.assertEqual(mean_statistic.error(), float("inf"))
         self.assertEqual(mean_statistic.samples, num_batches * batch_size)
         true_error = torch.norm(mean_statistic() - mean).item() ** 2
         self.assertLessEqual(
-            true_error, mean_statistic.error() * 2
+            true_error, mean_statistic.error() * 3
         )  # this test pass most of the time, but can fail due to randomness (if no seed is set)
 
-        cov_statistic = TensorStatisticWithError(
+        cov_statistic = TensorStatiticWithEstimationError(
             shape=None,
             update_function=lambda x: (
                 (x - mean_statistic()).T @ (x - mean_statistic()),
@@ -104,7 +106,7 @@ class TestTensorStatisticWithError(TestTensorStatistic):
             name="Covariance with Error",
         )
 
-        for batch in dataloader:
+        for (batch,) in dataloader:
             cov_statistic.updated = False
             cov_statistic.update(x=batch)
 

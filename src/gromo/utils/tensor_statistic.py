@@ -74,7 +74,7 @@ class TensorStatistic:
     @torch.no_grad()
     def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
         if self.updated is False:
-            update, nb_sample = self._update_function(**kwargs)
+            update, nb_sample = self._update_function(**kwargs)  # type: ignore
             assert (self._shape is None or self._shape == update.size()) and (
                 self._tensor is None or self._tensor.size() == update.size()
             ), (
@@ -106,7 +106,7 @@ class TensorStatistic:
             return self._tensor / self.samples
 
 
-class TensorStatisticWithError(TensorStatistic):
+class TensorStatiticWithEstimationError(TensorStatistic):
     """
     Extends TensorStatistic to compute an estimation of the quadratic error of the current estimate to the true expectation.
     This is done by computing the trace of the covariance matrix of the random variable averaged on a batch.
@@ -178,7 +178,8 @@ class TensorStatisticWithError(TensorStatistic):
     def error(self) -> float:
         """
         Returns an estimation of the quadratic error of the current estimate to the true expectation.
-
+        If the trace has not been computed accurately enough, NO warning is raised and the error estimate may be inaccurate.
+        If only one batch has been used to compute the statistic, returns infinity.
         Returns
         -------
         float
@@ -186,15 +187,7 @@ class TensorStatisticWithError(TensorStatistic):
         """
         assert self._trace is not None, "The trace has not been computed yet."
         if self._batches == 1:
-            warn(
-                "The trace has not been computed yet. We give an infinite error estimate."
-            )
             return float("inf")
-        if self._compute_trace:
-            warn(
-                f"The desired trace precision has not been reached for the tensor statistic {self.name}. "
-                f"The error estimate may be inaccurate."
-            )
         return self._trace / self._batches
 
     @torch.no_grad()
