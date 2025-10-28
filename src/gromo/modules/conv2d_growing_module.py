@@ -1064,6 +1064,26 @@ class Conv2dGrowingModule(GrowingModule):
         self.update_input_size()
         super(Conv2dGrowingModule, self).update_computation()
 
+    @staticmethod
+    def get_fan_in_from_layer(layer: torch.nn.Conv2d) -> int:  # type: ignore
+        """
+        Get the fan_in (number of input features) from a given layer.
+
+        Parameters
+        ----------
+        layer: torch.nn.Conv2d
+            layer to get the fan_in from
+
+        Returns
+        -------
+        int
+            fan_in of the layer
+        """
+        assert isinstance(
+            layer, torch.nn.Conv2d
+        ), f"The layer should be a torch.nn.Conv2d but got {type(layer)}."
+        return layer.in_channels * layer.kernel_size[0] * layer.kernel_size[1]
+
 
 class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
     """
