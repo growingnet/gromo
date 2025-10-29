@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add `TensorStatisticWithEstimationError` and corresponding class `TestTensorStatisticWithEstimationError`. It computes an estimation of the quadratic error done when estimating the given tensor statistic. Modify `TensorStatistic` so that there is no need to call init (:gh:`149` by `Félix Houdouin`_).
 - Add a method `normalize_optimal_updates` in `GrowingModule` to normalize the optimal weight updates before applying them (:gh:`164` by `Théo Rudkiewicz`_)
 - Add setter for scaling factor in `GrowingModule` (:gh:`157` by `Stella Douka`_)
 - Minor improvements of `GrowingContainer` (:gh:`161` by `Théo Rudkiewicz`_)
