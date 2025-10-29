@@ -126,7 +126,7 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         loader `data_loader`. We can use the following code:
 
             ```python
-            tensor_statistic = TensorStatisticWithError(
+            tensor_statistic = TensorStatisticWithEstimationError(
                 update_function=lambda data: (data.sum(dim=0), data.size(0)),
                 name="Average",
             )
