@@ -108,6 +108,8 @@ class TensorStatistic:
 
 class TensorStatiticWithEstimationError(TensorStatistic):
     """
+    Extends TensorStatistic with estimated quadratic error.
+
     Extends TensorStatistic to compute an estimation of the quadratic error of the current
     estimate to the true expectation. This is done by computing the trace of the
     covariance matrix of the random variable averaged on a batch. The trace is computed
