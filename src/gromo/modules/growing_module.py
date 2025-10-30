@@ -2077,21 +2077,32 @@ class GrowingModule(torch.nn.Module):
         raise NotImplementedError
 
     @torch.no_grad()
-    def copy_uniform_initialization(self, tensor: torch.Tensor, fan_in: int) -> None:
+    def copy_uniform_initialization(
+        self, tensor: torch.Tensor, reference_tensor: torch.Tensor, fan_in: int
+    ) -> None:
         """
         Initialize the tensor with a uniform law with bounds
         -sqrt(std(W)), sqrt(std(W))
-        where std(W) is the empirical variance of the weights of the layer
-        if the layer has weights, otherwise use
+        where std(W) is the empirical variance of the reference_tensor
+        if the reference_tensor has a non-zero variance.
+        Otherwise, use bounds
         -1 / sqrt(fan_in), 1 / sqrt(fan_in)
         where fan_in is the number of input features of the
         extension.
+
+        Parameters
+        ----------
+        tensor: torch.Tensor
+            tensor to initialize
+        reference_tensor: torch.Tensor
+            tensor to get the standard deviation from
+        fan_in: int
+            number of input features of the extension
         """
-        # Get the standard deviation from the main layer weights
+        # Get the standard deviation from the reference_tensor
         if (
-            hasattr(self.layer, "weight")
-            and self.layer.weight is not None
-            and (std_dev := self.layer.weight.std().item()) > 0
+            reference_tensor is not None
+            and (std_dev := reference_tensor.std().item()) > 0
         ):
             std_dev = std_dev
         else:
@@ -2140,7 +2151,7 @@ class GrowingModule(torch.nn.Module):
 
         known_inits = {
             "copy_uniform": self.copy_uniform_initialization,
-            "zeros": lambda tensor, _: torch.nn.init.zeros_(tensor),
+            "zeros": lambda tensor, _, __: torch.nn.init.zeros_(tensor),
             # Future initializations can be added here
         }
 
@@ -2159,10 +2170,12 @@ class GrowingModule(torch.nn.Module):
         )
         init = input_extension_init
 
-        known_inits[init](layer_to_init.weight, self.get_fan_in_from_layer(layer_to_init))
+        known_inits[init](
+            layer_to_init.weight, self.weight, self.get_fan_in_from_layer(layer_to_init)
+        )
         if layer_to_init.bias is not None:
             known_inits[init](
-                layer_to_init.bias, self.get_fan_in_from_layer(layer_to_init)
+                layer_to_init.bias, self.bias, self.get_fan_in_from_layer(layer_to_init)
             )
 
         # Initialize output extension
@@ -2174,11 +2187,13 @@ class GrowingModule(torch.nn.Module):
         init = output_extension_init
         known_inits[init](
             layer_to_init.weight,
+            self.previous_module.weight,
             self.previous_module.get_fan_in_from_layer(layer_to_init),
         )
         if layer_to_init.bias is not None:
             known_inits[init](
                 layer_to_init.bias,
+                self.previous_module.bias,
                 self.previous_module.get_fan_in_from_layer(layer_to_init),
             )
 
