@@ -727,10 +727,10 @@ class Conv2dGrowingModule(GrowingModule):
 
     # Statistics computation
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
-        """
+        r"""
         Compute the update of the tensor S.
         With the input tensor B, the update is
-        S := (B^c_F)^T B^c_F in (C d[+1]d[+1], C d[+1]d[+1]).
+        S := (B^c_F)^T B^c_F \in (C d[+1]d[+1], C d[+1]d[+1]).
 
         Returns
         -------
@@ -791,7 +791,7 @@ class Conv2dGrowingModule(GrowingModule):
         )
 
     # Layer edition
-    def layer_of_tensor(
+    def layer_of_tensor(  # type: ignore[override]
         self, weight: torch.Tensor, bias: torch.Tensor | None = None
     ) -> torch.nn.Conv2d:
         """
@@ -1306,10 +1306,12 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             raise ValueError(
                 f"No previous module for {self.name}. Thus M_{-2} is not defined."
             )
-        elif isinstance(self.previous_module, LinearGrowingModule) or isinstance(
-            self.previous_module, LinearMergeGrowingModule
-        ):
-            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement M_prev for LinearGrowingModule")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError(
+                "TODO: implement M_prev for LinearMergeGrowingModule"
+            )
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             unfolded_extended_input = self.bordered_unfolded_extended_prev_input
             assert unfolded_extended_input.shape[0] == desired_activation.shape[0], (
@@ -1354,10 +1356,12 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             raise ValueError(
                 f"No previous module for {self.name}. Thus the cross covariance is not defined."
             )
-        elif isinstance(self.previous_module, LinearGrowingModule) or isinstance(
-            self.previous_module, LinearMergeGrowingModule
-        ):
-            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement cross cov for LinearGrowingModule")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError(
+                "TODO: implement cross cov for LinearMergeGrowingModule"
+            )
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             return (
                 torch.einsum(
@@ -1409,13 +1413,13 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         assert isinstance(
             self.delta_raw, torch.Tensor
         ), f"The optimal delta should be a tensor for {self.name}, is {type(self.delta_raw)}."
-        assert (
-            self.delta_raw.shape[1]
-            == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
-            + self.use_bias
-        ), (
-            f"Expected delta_raw.shape[1] == {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, "
-            f"but got {self.delta_raw.shape[1]} (full shape: {self.delta_raw.shape})."
+        _expected_delta_shape_1 = (
+            self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
+        )
+        assert self.delta_raw.shape[1] == _expected_delta_shape_1, (
+            f"Expected delta_raw.shape[1] == "
+            f"{_expected_delta_shape_1}, but got {self.delta_raw.shape[1]} "
+            f"(full shape: {self.delta_raw.shape})."
         )
         assert (
             self.delta_raw.shape[0] == self.out_channels
@@ -1500,12 +1504,12 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             self.out_channels,
             k,
         ), (
-            f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, {self.kernel_size[1]})"
-            f"but got {omega.shape}."
+            f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, "
+            f"{self.kernel_size[1]}) but got {omega.shape}."
         )
         assert (
             alpha.shape[0] == k
-        ), f"alpha should have shape ({k}, ...)but got {alpha.shape}."
+        ), f"alpha should have shape ({k}, ...) but got {alpha.shape}."
 
         self.extended_input_layer = self.linear_layer_of_tensor(
             omega,
@@ -1656,10 +1660,12 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             raise ValueError(
                 f"No previous module for {self.name}. Thus M_{-2} is not defined."
             )
-        elif isinstance(self.previous_module, LinearGrowingModule) or isinstance(
-            self.previous_module, LinearMergeGrowingModule
-        ):
-            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement M_prev for LinearGrowingModule")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError(
+                "TODO: implement M_prev for LinearMergeGrowingModule"
+            )
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             return (
                 torch.einsum(
@@ -1678,10 +1684,10 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             )
 
     def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
-        """
+        r"""
         Compute the update of the tensor S_growth.
         With the input tensor B, the update is
-        S_growth := (Bt)^T Bt in (C dd, C dd).
+        S_growth := (Bt)^T Bt \in (C dd, C dd).
 
         Returns
         -------
@@ -1717,10 +1723,12 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             raise ValueError(
                 f"No previous module for {self.name}. Thus the cross covariance is not defined."
             )
-        elif isinstance(self.previous_module, LinearGrowingModule) or isinstance(
-            self.previous_module, LinearMergeGrowingModule
-        ):
-            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement cross cov for LinearGrowingModule")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError(
+                "TODO: implement cross cov for LinearMergeGrowingModule"
+            )
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             return (
                 torch.einsum(
@@ -1856,7 +1864,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         )
         assert (
             alpha.shape[0] == k
-        ), f"alpha should have shape ({k}, ...)but got {alpha.shape}."
+        ), f"alpha should have shape ({k}, ...) but got {alpha.shape}."
 
         self.extended_input_layer = self.layer_of_tensor(
             omega,
