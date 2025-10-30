@@ -302,12 +302,12 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         """
         assert self.previous_modules, f"No previous modules for {self.name}."
         n = self.previous_modules[0].input.shape[0]
-        L = int(self.previous_modules[0].output_volume / self.in_channels)
+        nb_patch = int(self.previous_modules[0].output_volume / self.in_channels)
         full_activity = torch.ones(
             (
                 n,
                 self.total_in_features,
-                L,
+                nb_patch,
             ),
             device=self.device,
         )
@@ -717,7 +717,7 @@ class Conv2dGrowingModule(GrowingModule):
             return super(Conv2dGrowingModule, self).__str__(verbose=verbose)
 
     def __make_safe_forward(self):
-        def _forward(conv_self, input: torch.Tensor) -> torch.Tensor:
+        def _forward(conv_self, input: torch.Tensor) -> torch.Tensor:  # noqa: A002
             if self.out_channels == 0:
                 n = input.shape[0]
                 return torch.zeros(
