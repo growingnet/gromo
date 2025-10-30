@@ -3461,6 +3461,110 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
 
+    def test_create_layer_extensions_mixed_initializations(self) -> None:
+        """Test create_layer_extensions with mixed initializations."""
+        # Create two connected growing modules without extensions
+        layer_in, layer_out = self.create_demo_layers(bias=True, hidden_features=5)
+
+        # Store existing weight std for comparison
+        layer_in_weight_std = layer_in.layer.weight.std().item()
+
+        # Call create_layer_extensions with different extension sizes
+        # and different initializations
+        output_extension_size = 3
+        input_extension_size = 2
+
+        layer_out.create_layer_extensions(
+            extension_size=-1,
+            output_extension_size=output_extension_size,
+            input_extension_size=input_extension_size,
+            output_extension_init="copy_uniform",
+            input_extension_init="zeros",
+        )
+
+        # Verify extensions were created
+        self.assertIsInstance(
+            layer_in.extended_output_layer,
+            torch.nn.Linear,
+            msg="extended_output_layer should be created",
+        )
+        self.assertIsInstance(
+            layer_out.extended_input_layer,
+            torch.nn.Linear,
+            msg="extended_input_layer should be created",
+        )
+
+        # Type assertions for linter
+        assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+        assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+
+        # Verify copy_uniform initialization (extended_output_layer)
+        # The std should approximately match the layer weights
+        self.assertAlmostEqual(
+            layer_in.extended_output_layer.weight.std().item(),
+            layer_in_weight_std,
+            delta=layer_in_weight_std * 0.5,
+            msg="extended_output_layer std should match layer_in weights std",
+        )
+
+        # Verify zeros initialization (extended_input_layer)
+        self.assertAlmostEqual(
+            layer_out.extended_input_layer.weight.abs().max().item(),
+            0.0,
+            places=6,
+            msg="extended_input_layer std should be zero",
+        )
+        if layer_out.use_bias and layer_out.extended_input_layer.bias is not None:
+            self.assertAllClose(
+                layer_out.extended_input_layer.bias,
+                torch.zeros_like(layer_out.extended_input_layer.bias),
+                msg="extended_input_layer bias should be zero",
+            )
+
+        # Perform extended forward pass with random input
+        y, y_ext = layer_in.extended_forward(x=self.input_x)
+        assert y_ext is not None  # For type narrowing
+
+        # Verify intermediate extended results have correct shapes
+        self.assertShapeEqual(
+            y,
+            (self.n, layer_in.out_features),
+            msg="layer_in standard output has correct shape",
+        )
+        self.assertShapeEqual(
+            y_ext,
+            (self.n, output_extension_size),
+            msg="Intermediate extended result has correct shape",
+        )
+
+        # Sub-select the first 2 components to forward through the second module
+        y_ext_selected = y_ext[:, :input_extension_size]
+
+        # Extended forward through layer_out with sub-selected extension
+        z, z_ext = layer_out.extended_forward(x=y, x_ext=y_ext_selected)
+        self.assertShapeEqual(
+            z,
+            (self.n, layer_out.out_features),
+            msg="layer_out standard output has correct shape",
+        )
+        self.assertIsNone(
+            z_ext,
+            msg="layer_out has no extended output when only input extension is added",
+        )
+
+    def test_create_layer_extensions_unknown_initialization(self) -> None:
+        """Test create_layer_extensions with unknown initialization raises exception."""
+        # Create two connected growing modules without extensions
+        _, layer_out = self.create_demo_layers(bias=True, hidden_features=5)
+
+        # Test with unknown output_extension_init
+        with self.assertRaises(ValueError):
+            layer_out.create_layer_extensions(
+                extension_size=2,
+                output_extension_init="unknown_init",
+                input_extension_init="copy_uniform",
+            )
+
 
 if __name__ == "__main__":
     from unittest import main
