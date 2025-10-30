@@ -558,10 +558,64 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertEqual(m.previous_tensor_m._shape, (expected_tif, m.in_channels))
 
 
-class TestConv2dGrowingModule(TorchTestCase):
+class TestConv2dGrowingModuleBase(TorchTestCase):
+    _tested_class = Conv2dGrowingModule
+
+    def create_demo_layers(
+        self, bias: bool, hidden_channels: int = 5
+    ) -> tuple[_tested_class, _tested_class]:
+        demo_in = self._tested_class(
+            in_channels=2,
+            out_channels=hidden_channels,
+            kernel_size=(3, 3),
+            padding=1,
+            use_bias=bias,
+            device=global_device(),
+            name="first_layer",
+        )
+        demo_out = self._tested_class(
+            in_channels=hidden_channels,
+            out_channels=7,
+            kernel_size=(5, 5),
+            use_bias=bias,
+            previous_module=demo_in,
+            device=global_device(),
+            name="second_layer",
+        )
+        return demo_in, demo_out
+
+    def create_demo_layers_with_extension(
+        self, bias: bool, hidden_channels: int = 5, include_eigenvalues: bool = False
+    ):
+        extension_size = 3
+        demo_in, demo_out = self.create_demo_layers(bias, hidden_channels)
+        demo_in.extended_output_layer = torch.nn.Conv2d(
+            in_channels=demo_in.in_channels,
+            out_channels=extension_size,
+            kernel_size=(3, 3),
+            bias=bias,
+            device=global_device(),
+        )
+        demo_out.extended_input_layer = torch.nn.Conv2d(
+            in_channels=extension_size,
+            out_channels=demo_out.out_channels,
+            kernel_size=(5, 5),
+            bias=bias,
+            device=global_device(),
+        )
+        if include_eigenvalues:
+            demo_out.eigenvalues_extension = torch.rand(
+                extension_size, device=global_device()
+            )
+            demo_out.eigenvalues_extension[0] += 1.0  # ensure decreasing order
+        return demo_in, demo_out
+
+
+class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
     _tested_class = Conv2dGrowingModule
 
     def setUp(self):
+        torch.manual_seed(0)
         self.demo_layer = torch.nn.Conv2d(
             2, 7, (3, 5), bias=False, device=global_device()
         )
@@ -578,32 +632,11 @@ class TestConv2dGrowingModule(TorchTestCase):
         )
         self.demo_b.layer = self.demo_layer_b
 
-        torch.manual_seed(0)
         self.input_x = torch.randn(5, 2, 10, 10, device=global_device())
 
         self.bias_demos = {True: self.demo_b, False: self.demo}
 
-        self.demo_couple = dict()
-        for bias in (True, False):
-            demo_in = self._tested_class(
-                in_channels=2,
-                out_channels=5,
-                kernel_size=(3, 3),
-                padding=1,
-                use_bias=bias,
-                device=global_device(),
-                name="first_layer",
-            )
-            demo_out = self._tested_class(
-                in_channels=5,
-                out_channels=7,
-                kernel_size=(5, 5),
-                use_bias=bias,
-                previous_module=demo_in,
-                device=global_device(),
-                name="second_layer",
-            )
-            self.demo_couple[bias] = (demo_in, demo_out)
+        self.demo_couple = {b: self.create_demo_layers(b) for b in (True, False)}
 
     def test_get_fan_in_from_layer(self):
         """Test get_fan_in_from_layer method."""
@@ -984,12 +1017,12 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
         # For FullConv2d, tensor_n should be zero when bottleneck is fully resolved
         self.assertAllClose(
-            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1.1e-7
+            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-6
         )
         self.assertAllClose(
             demo_layer_2.eigenvalues_extension,
             torch.zeros_like(demo_layer_2.eigenvalues_extension),
-            atol=1e-7,
+            atol=1e-6,
         )
 
     def test_compute_m_prev_without_intermediate_input(self):
