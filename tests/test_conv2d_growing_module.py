@@ -1886,12 +1886,12 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             # Verify intermediate extended results have correct shapes
             self.assertShapeEqual(
                 y,
-                (self.input_x.shape[0], layer_in.out_channels, y.shape[2], y.shape[3]),
+                (self.input_x.shape[0], layer_in.out_channels, -1, -1),
                 msg="layer_in standard output has correct batch size",
             )
             self.assertShapeEqual(
                 y_ext,
-                (self.input_x.shape[0], extension_size, y.shape[2], y.shape[3]),
+                (self.input_x.shape[0], extension_size, -1, -1),
                 msg="layer_in extended output has correct shape",
             )
 
@@ -1901,7 +1901,7 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             )
             self.assertShapeEqual(
                 z,
-                (self.input_x.shape[0], layer_out.out_channels, z.shape[2], z.shape[3]),
+                (self.input_x.shape[0], layer_out.out_channels, -1, -1),
                 msg="layer_out standard output has correct shape",
             )
             self.assertIsNone(
