@@ -239,10 +239,16 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         # first_ks = tuple(prev_list[0].kernel_size)
         # assert all(
         #     tuple(m.kernel_size) == first_ks for m in prev_list
-        # ), f"All previous modules must have the same kernel_size (error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+        # ), (
+        #     f"All previous modules must have the same kernel_size "
+        #     f"(error in {self.name}). Got {[m.kernel_size for m in prev_list]}"
+        # )
         # assert (
         #     tuple(self.kernel_size) == first_ks
-        # ), f"Kernel size of previous modules {first_ks} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+        # ), (
+        #     f"Kernel size of previous modules {first_ks} must match "
+        #     f"this module's kernel_size {self.kernel_size} (error in {self.name})."
+        # )
 
         self.total_in_features = 0
         for module in self.previous_modules:
@@ -388,12 +394,14 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         NotImplementedError
             ff the type of the next module is unsupported for S computation.
         """
-        assert (
-            self.store_activity
-        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
-        assert (
-            self.activity is not None
-        ), f"The activity must be stored to compute the update of S. (error in {self.name})"
+        assert self.store_activity, (
+            f"The activity must be stored to compute the update of S. "
+            f"(error in {self.name})"
+        )
+        assert self.activity is not None, (
+            f"The activity must be stored to compute the update of S. "
+            f"(error in {self.name})"
+        )
 
         batch_size = self.activity.shape[0]
         unfolded_activity = self.unfolded_extended_activity
@@ -543,8 +551,9 @@ class Conv2dGrowingModule(GrowingModule):
 
     # Information functions
     # TODO: implement activation_gradient ?
-    # this function is used to estimate the F.O. improvement of the loss after the extension of the network
-    # however this won't work if we do not have only the activation function as the post_layer_function
+    # this function is used to estimate the F.O. improvement of the loss after the
+    # extension of the network however this won't work if we do not have only the
+    # activation function as the post_layer_function
 
     @property
     def padding(self):
@@ -664,13 +673,14 @@ class Conv2dGrowingModule(GrowingModule):
         torch.Tensor
             unfolded input extended
         """
-        # TODO: maybe we could compute it only once if we use it multiple times (e.g. in S, S_prev, M, M_prev, P...)
+        # TODO: maybe we could compute it only once if we use it multiple times
+        # (e.g. in S, S_prev, M, M_prev, P...)
         unfolded_input = torch.nn.functional.unfold(
             self.input,
-            self.layer.kernel_size,
-            padding=self.padding,
-            stride=self.layer.stride,
-            dilation=self.layer.dilation,
+            self.kernel_size,
+            padding=self.padding,  # pyright: ignore[reportArgumentType]
+            stride=self.stride,
+            dilation=self.dilation,
         )
         if self.use_bias:
             return torch.cat(
@@ -795,9 +805,10 @@ class Conv2dGrowingModule(GrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
-            assert isinstance(
-                desired_activation, torch.Tensor
-            ), f"The gradient of the pre-activity must be a torch.Tensor (error in {self.name})."
+            assert isinstance(desired_activation, torch.Tensor), (
+                f"The gradient of the pre-activity must be a torch.Tensor "
+                f"(error in {self.name})."
+            )
         desired_activation = desired_activation.flatten(start_dim=-2)
 
         return (
@@ -835,19 +846,16 @@ class Conv2dGrowingModule(GrowingModule):
             assert (
                 weight.shape[2 + i] == self.layer.kernel_size[i]
             ), f"{weight.shape[2 + i]=} should be equal to {self.layer.kernel_size[i]=}"
-        self.layer.kernel_size: tuple[int, int]
-        self.layer.stride: tuple[int, int]
-        self.layer.dilation: tuple[int, int]
 
         new_layer = torch.nn.Conv2d(
             weight.shape[1],
             weight.shape[0],
             bias=self.use_bias,
             device=self.device,
-            kernel_size=self.layer.kernel_size,
-            stride=self.layer.stride,
-            padding=self.layer.padding,
-            dilation=self.layer.dilation,
+            kernel_size=self.kernel_size,  # pyright: ignore[reportArgumentType]
+            stride=self.stride,  # pyright: ignore[reportArgumentType]
+            padding=self.padding,  # pyright: ignore[reportArgumentType]
+            dilation=self.dilation,  # pyright: ignore[reportArgumentType]
         )
         new_layer.weight = torch.nn.Parameter(weight)
         if self.use_bias:
@@ -935,7 +943,8 @@ class Conv2dGrowingModule(GrowingModule):
         else:
             if bias is not None:
                 warn(
-                    "The bias of the extension should not be provided because the layer has no bias.",
+                    "The bias of the extension should not be provided "
+                    "because the layer has no bias.",
                     UserWarning,
                 )
             self.layer = self.layer_of_tensor(
@@ -958,9 +967,10 @@ class Conv2dGrowingModule(GrowingModule):
         keep_neurons: int
             number of neurons to keep
         """
-        assert (
-            self.extended_output_layer is not None
-        ), "The layer should have an extended output layer to sub-select the output dimension."
+        assert self.extended_output_layer is not None, (
+            "The layer should have an extended output layer "
+            "to sub-select the output dimension."
+        )
         self.extended_output_layer = self.layer_of_tensor(
             self.extended_output_layer.weight[:keep_neurons],
             bias=(
@@ -1015,8 +1025,9 @@ class Conv2dGrowingModule(GrowingModule):
                 raise NotImplementedError("TODO")
             else:
                 raise NotImplementedError(
-                    f"The sub-selection of the optimal added parameters is not implemented "
-                    f"yet for {type(self.previous_module)} as previous module."
+                    f"The sub-selection of the optimal added parameters "
+                    f"is not implemented yet for {type(self.previous_module)} "
+                    f"as previous module."
                 )
 
     def update_input_size(
@@ -1026,7 +1037,9 @@ class Conv2dGrowingModule(GrowingModule):
         force_update: bool = True,
     ) -> tuple[int, int] | None:
         """
-        Update the input size of the layer. Either according to the parameter or the input currently stored.
+        Update the input size of the layer.
+
+        Either according to the parameter or the input currently stored.
 
         Parameters
         ----------
@@ -1070,7 +1083,8 @@ class Conv2dGrowingModule(GrowingModule):
 
         if self._input_size is not None and new_size != self._input_size:
             warn(
-                f"The input size of the layer {self.name} has changed from {self._input_size} to {new_size}."
+                f"The input size of the layer {self.name} has changed "
+                f"from {self._input_size} to {new_size}."
                 f"This may lead to errors if the size of the tensor statistics "
                 f"and of the mask tensor T are not updated."
             )
@@ -1121,10 +1135,10 @@ class Conv2dGrowingModule(GrowingModule):
         self.extended_input_layer = torch.nn.Conv2d(
             extension_size,
             self.out_channels,
-            kernel_size=self.kernel_size,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
+            kernel_size=self.kernel_size,  # pyright: ignore[reportArgumentType]
+            stride=self.stride,  # pyright: ignore[reportArgumentType]
+            padding=self.padding,  # pyright: ignore[reportArgumentType]
+            dilation=self.dilation,  # pyright: ignore[reportArgumentType]
             bias=self.use_bias,
             device=self.device,
         )
@@ -1142,10 +1156,10 @@ class Conv2dGrowingModule(GrowingModule):
         self.extended_output_layer = torch.nn.Conv2d(
             self.in_channels,
             extension_size,
-            kernel_size=self.kernel_size,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
+            kernel_size=self.kernel_size,  # pyright: ignore[reportArgumentType]
+            stride=self.stride,  # pyright: ignore[reportArgumentType]
+            padding=self.padding,  # pyright: ignore[reportArgumentType]
+            dilation=self.dilation,  # pyright: ignore[reportArgumentType]
             bias=self.use_bias,
             device=self.device,
         )
@@ -1225,16 +1239,12 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             4,
         ), f"weight should have 2 or 4 dimensions, but got {weight.dim()=}."
         assert weight.dim() == 2 or weight.shape[2:] == (1, 1), (
-            f"weight should have 2 dimensions or the last two dimensions should be (1, 1), "
-            f"but got {weight.shape=}."
+            f"weight should have 2 dimensions or the last two dimensions "
+            f"should be (1, 1), but got {weight.shape=}."
         )
 
         if weight.dim() == 2:
             weight = weight.unsqueeze(-1).unsqueeze(-1)
-
-        self.layer.kernel_size: tuple[int, int]
-        self.layer.stride: tuple[int, int]
-        self.layer.dilation: tuple[int, int]
 
         full_weight = torch.zeros(
             weight.shape[0],
@@ -1251,10 +1261,10 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             weight.shape[0],
             bias=self.use_bias,
             device=self.device,
-            kernel_size=self.layer.kernel_size,
-            stride=self.layer.stride,
-            padding=self.layer.padding,
-            dilation=self.layer.dilation,
+            kernel_size=self.kernel_size,  # pyright: ignore[reportArgumentType]
+            stride=self.stride,  # pyright: ignore[reportArgumentType]
+            padding=self.padding,  # pyright: ignore[reportArgumentType]
+            dilation=self.dilation,  # pyright: ignore[reportArgumentType]
         )
         new_layer.weight = torch.nn.Parameter(full_weight)
         if self.use_bias:
@@ -1269,7 +1279,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         """
         if self.previous_module is None:
             raise ValueError(
-                f"Cannot compute the bordered unfolded input without a previous module for {self.name}."
+                f"Cannot compute the bordered unfolded input without a previous "
+                f"module for {self.name}."
             )
         if self.bordering_convolution is None:
             if isinstance(self.previous_module, Conv2dGrowingModule):
@@ -1285,9 +1296,10 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             else:
                 raise NotImplementedError
         input_size = self.update_input_size(compute_from_previous=True)
-        assert (
-            input_size is not None
-        ), f"The input size should be known to compute the bordered unfolded input for {self.name}."
+        assert input_size is not None, (
+            f"The input size should be known to compute the bordered unfolded "
+            f"input for {self.name}."
+        )
         return apply_border_effect_on_unfolded(
             unfolded_tensor=self.previous_module.unfolded_extended_input,
             original_size=input_size,
@@ -1317,6 +1329,10 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
+            assert isinstance(desired_activation, torch.Tensor), (
+                f"The gradient of the pre-activity must be a torch.Tensor "
+                f"(error in {self.name})."
+            )
         desired_activation = desired_activation.flatten(start_dim=-2)
 
         if self.previous_module is None:
@@ -1332,11 +1348,13 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             unfolded_extended_input = self.bordered_unfolded_extended_prev_input
             assert unfolded_extended_input.shape[0] == desired_activation.shape[0], (
-                f"The number of samples is incoherent: {unfolded_extended_input.shape[0]=} "
+                f"The number of samples is incoherent: "
+                f"{unfolded_extended_input.shape[0]=} "
                 f"and {desired_activation.shape[0]=} should be equal."
             )
             assert unfolded_extended_input.shape[2] == desired_activation.shape[2], (
-                f"The number of features is incoherent: {unfolded_extended_input.shape[2]=} "
+                f"The number of features is incoherent: "
+                f"{unfolded_extended_input.shape[2]=} "
                 f"and {desired_activation.shape[2]=} should be equal."
             )
             return (
@@ -1371,7 +1389,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         """
         if self.previous_module is None:
             raise ValueError(
-                f"No previous module for {self.name}. Thus the cross covariance is not defined."
+                f"No previous module for {self.name}. Thus the cross covariance is "
+                f"not defined."
             )
         elif isinstance(self.previous_module, LinearGrowingModule):
             raise NotImplementedError("TODO: implement cross cov for LinearGrowingModule")
@@ -1409,27 +1428,30 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.tensor_m_prev() is not None
         ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
-        assert (
-            self.cross_covariance() is not None
-        ), f"The cross covariance should be computed before the tensor N for {self.name}."
-        assert isinstance(
-            self.cross_covariance(), torch.Tensor
-        ), f"The cross covariance should be a tensor for {self.name}, is {type(self.cross_covariance())}."
+        assert self.cross_covariance() is not None, (
+            f"The cross covariance should be computed before the "
+            f"tensor N for {self.name}."
+        )
+        assert isinstance(self.cross_covariance(), torch.Tensor), (
+            f"The cross covariance should be a tensor for {self.name}, is "
+            f"{type(self.cross_covariance())}."
+        )
         assert (
             self.cross_covariance().shape[1]
             == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
             + self.use_bias
         ), (
             f"The cross covariance should have shape "
-            f"(..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias})"
+            f"(..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias})"  # noqa: E501
             f" but got {self.cross_covariance().shape}."
         )
         assert (
             self.delta_raw is not None
         ), f"The optimal delta should be computed before the tensor N for {self.name}."
-        assert isinstance(
-            self.delta_raw, torch.Tensor
-        ), f"The optimal delta should be a tensor for {self.name}, is {type(self.delta_raw)}."
+        assert isinstance(self.delta_raw, torch.Tensor), (
+            f"The optimal delta should be a tensor for {self.name}, "
+            f"is {type(self.delta_raw)}."
+        )
         _expected_delta_shape_1 = (
             self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias
         )
@@ -1438,9 +1460,10 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             f"{_expected_delta_shape_1}, but got {self.delta_raw.shape[1]} "
             f"(full shape: {self.delta_raw.shape})."
         )
-        assert (
-            self.delta_raw.shape[0] == self.out_channels
-        ), f"Expected delta_raw.shape[0] == {self.out_channels}, but got {self.delta_raw.shape[0]}."
+        assert self.delta_raw.shape[0] == self.out_channels, (
+            f"Expected delta_raw.shape[0] == {self.out_channels}, "
+            f"but got {self.delta_raw.shape[0]}."
+        )
         return -self.tensor_m_prev() + torch.einsum(
             "ab, cb -> ac", self.cross_covariance(), self.delta_raw
         )
@@ -1460,7 +1483,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+            threshold to consider an eigenvalue as zero in the square root of the
+            inverse of S
         statistical_threshold: float
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
@@ -1475,7 +1499,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
-            optimal added weights (alpha weights, alpha bias, omega) and eigenvalues lambda
+            optimal added weights (alpha weights, alpha bias, omega) and
+            eigenvalues lambda
         """
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
@@ -1645,8 +1670,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             raise NotImplementedError("TODO: implement this")
         else:
             raise NotImplementedError(
-                f"The computation of the previous masked unfolded activation is not implemented yet "
-                f"for {type(self.previous_module)} as previous module."
+                f"The computation of the previous masked unfolded activation is not "
+                f"implemented yet for {type(self.previous_module)} as previous module."
             )
 
     def compute_m_prev_update(
@@ -1671,6 +1696,10 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
+            assert isinstance(desired_activation, torch.Tensor), (
+                f"The gradient of the pre-activity must be a torch.Tensor "
+                f"(error in {self.name})."
+            )
         desired_activation = desired_activation.flatten(start_dim=-2)
 
         if self.previous_module is None:
@@ -1738,7 +1767,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         """
         if self.previous_module is None:
             raise ValueError(
-                f"No previous module for {self.name}. Thus the cross covariance is not defined."
+                f"No previous module for {self.name}. Thus the cross covariance"
+                f" is not defined."
             )
         elif isinstance(self.previous_module, LinearGrowingModule):
             raise NotImplementedError("TODO: implement cross cov for LinearGrowingModule")
@@ -1766,7 +1796,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
     @property
     def tensor_s_growth(self) -> TensorStatistic:
         """
-        Override `tensor_s_growth` to redirect to `self._tensor_s_growth` instead of `self.previous_module.tensor_s`.
+        Override `tensor_s_growth` to redirect to `self._tensor_s_growth` instead
+        of `self.previous_module.tensor_s`.
         """
         return self._tensor_s_growth
 
@@ -1783,9 +1814,10 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.tensor_m_prev() is not None
         ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
-        assert (
-            self.cross_covariance() is not None
-        ), f"The cross covariance should be computed before the tensor N for {self.name}."
+        assert self.cross_covariance() is not None, (
+            f"The cross covariance should be computed before "
+            f"the tensor N for {self.name}."
+        )
         assert (
             self.delta_raw is not None
         ), f"The optimal delta should be computed before the tensor N for {self.name}."
@@ -1808,7 +1840,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+            threshold to consider an eigenvalue as zero in the square root of
+            the inverse of S
         statistical_threshold: float
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
@@ -1823,7 +1856,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
-            optimal added weights (alpha weights, alpha bias, omega) and eigenvalues lambda
+            optimal added weights (alpha weights, alpha bias, omega) and
+            eigenvalues lambda
         """
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
@@ -1876,8 +1910,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             self.kernel_size[0],
             self.kernel_size[1],
         ), (
-            f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, {self.kernel_size[1]})"
-            f"but got {omega.shape}."
+            f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, "
+            f"{self.kernel_size[1]}) but got {omega.shape}."
         )
         assert (
             alpha.shape[0] == k
