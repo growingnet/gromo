@@ -2088,8 +2088,12 @@ class GrowingModule(torch.nn.Module):
         extension.
         """
         # Get the standard deviation from the main layer weights
-        if hasattr(self.layer, "weight") and self.layer.weight is not None:
-            std_dev = self.layer.weight.std().item()
+        if (
+            hasattr(self.layer, "weight")
+            and self.layer.weight is not None
+            and (std_dev := self.layer.weight.std().item()) > 0
+        ):
+            std_dev = std_dev
         else:
             # Fallback to Kaiming uniform initialization bounds
             std_dev = 1.0 / (fan_in**0.5)
