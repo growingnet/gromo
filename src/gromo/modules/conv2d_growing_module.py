@@ -61,7 +61,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             return self.input_size[0] * self.input_size[1] * self.in_channels
         if len(self.previous_modules) <= 0:
             warn(
-                "Cannot derive the number of features of Conv2dMergeGrowingModule without setting at least one previous module"
+                "Cannot derive the number of features of Conv2dMergeGrowingModule "
+                "without setting at least one previous module"
             )
             return -1
         return self.previous_modules[0].output_volume
@@ -90,7 +91,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def padding(self) -> tuple[int, int]:
         if len(self.next_modules) <= 0:
             warn(
-                "Cannot derive the padding of Conv2dMergeGrowingModule without setting at least one next module"
+                "Cannot derive the padding of Conv2dMergeGrowingModule without setting "
+                "at least one next module"
             )
             return (0, 0)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
@@ -108,7 +110,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def stride(self) -> tuple[int, int]:
         if len(self.next_modules) <= 0:
             warn(
-                "Cannot derive the stride of Conv2dMergeGrowingModule without setting at least one next module"
+                "Cannot derive the stride of Conv2dMergeGrowingModule without setting "
+                "at least one next module"
             )
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
@@ -126,7 +129,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def dilation(self) -> tuple[int, int]:
         if len(self.next_modules) <= 0:
             warn(
-                "Cannot derive the dilation of Conv2dMergeGrowingModule without setting at least one next module"
+                "Cannot derive the dilation of Conv2dMergeGrowingModule without setting "
+                "at least one next module"
             )
             return (1, 1)
         elif isinstance(self.next_modules[0], Conv2dGrowingModule):
@@ -181,7 +185,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     ) -> None:
         if self.tensor_s is not None and self.tensor_s.samples > 0:
             warn(
-                f"You are setting the next modules of {self.name} with a non-empty tensor S."
+                f"You are setting the next modules of {self.name} with a "
+                f"non-empty tensor S."
             )
 
         self.next_modules = next_modules if next_modules else []
@@ -189,22 +194,28 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         # For Conv2d modules, check kernel size compatibility
         for module in self.next_modules:
             if isinstance(module, Conv2dGrowingModule):
-                assert tuple(module.kernel_size) == tuple(
-                    self.kernel_size
-                ), f"Kernel size of next Conv2d modules {module.kernel_size} must match this module's kernel_size {self.kernel_size} (error in {self.name})."
+                assert tuple(module.kernel_size) == tuple(self.kernel_size), (
+                    f"Kernel size of next Conv2d modules {module.kernel_size} must match "
+                    f"this module's kernel_size {self.kernel_size} (error in {self.name})"
+                )
 
             if isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
-                assert (
-                    module.in_channels == self.out_channels
-                ), f"Next module input channels {module.in_channels} should match {self.out_channels=}"
-                # assert module.input_volume == self.output_volume, f"Next module input volume {module.input_volume} should match {self.output_volume=}"
+                assert module.in_channels == self.out_channels, (
+                    f"Next module input channels {module.in_channels} should match "
+                    f"{self.out_channels=}"
+                )
+                # assert module.input_volume == self.output_volume, f"Next module input
+                # volume {module.input_volume} should match {self.output_volume=}"
             elif isinstance(module, (LinearGrowingModule, LinearMergeGrowingModule)):
-                assert (
-                    module.in_features == self.output_volume
-                ), f"Next module input features {module.in_features} should match {self.output_volume=}"
+                assert module.in_features == self.output_volume, (
+                    f"Next module input features {module.in_features} should match "
+                    f"{self.output_volume=}"
+                )
             else:
                 raise NotImplementedError(
-                    f"All next modules must be instances of Conv2dGrowingModule, Conv2dMergeGrowingModule, LinearGrowingModule or LinearMergeGrowingModule (error in {self.name})."
+                    f"All next modules must be instances of Conv2dGrowingModule, "
+                    f"Conv2dMergeGrowingModule, LinearGrowingModule or "
+                    f"LinearMergeGrowingModule (error in {self.name})."
                 )
 
     def set_previous_modules(
@@ -212,11 +223,13 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     ) -> None:
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
-                f"You are setting the previous modules of {self.name} with a non-empty previous tensor S."
+                f"You are setting the previous modules of {self.name} with a "
+                f"non-empty previous tensor S."
             )
         if self.previous_tensor_m is not None and self.previous_tensor_m.samples > 0:
             warn(
-                f"You are setting the previous modules of {self.name} with a non-empty previous tensor M."
+                f"You are setting the previous modules of {self.name} with a "
+                f"non-empty previous tensor M."
             )
 
         self.previous_modules = previous_modules if previous_modules else []
@@ -235,17 +248,21 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         for module in self.previous_modules:
             if not isinstance(module, (Conv2dGrowingModule, Conv2dMergeGrowingModule)):
                 raise TypeError(
-                    "The previous modules must be Conv2dGrowingModule or Conv2dMergeGrowingModule."
+                    "The previous modules must be Conv2dGrowingModule or "
+                    "Conv2dMergeGrowingModule."
                 )
 
             if module.out_channels != self.in_channels:
                 raise ValueError(
-                    "The input channels must match the output channels of the previous modules."
+                    "The input channels must match the output channels of "
+                    "the previous modules."
                 )
             if isinstance(module, Conv2dGrowingModule):
                 if module.output_volume != self.input_volume:
                     raise ValueError(
-                        f"The output volume of the previous modules {module.output_volume} should match the input volume {self.input_volume=}."
+                        f"The output volume of the previous modules "
+                        f"{module.output_volume} should match the "
+                        f"input volume {self.input_volume=}."
                     )
                 self.total_in_features += module.in_features + module.use_bias
 
@@ -298,9 +315,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         for module in self.previous_modules:
             full_activity[
                 :, current_index : current_index + module.in_features + module.use_bias, :
-            ] = (
-                module.unfolded_extended_input
-            )  # (n, in_channels*ks0*ks1+bias, w_out*h_out)
+            ] = module.unfolded_extended_input
+            # (n, in_channels*ks0*ks1+bias, w_out*h_out)
             current_index += module.in_features + module.use_bias
         return full_activity
 
@@ -341,21 +357,22 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         """
         Compute the update of tensor S based on the unfolded activity tensor.
 
-        This method captures the second-order statistics from the output activity of the previous
-        convolutional layers, formatted as an unfolded tensor.
+        This method captures the second-order statistics from the output
+        activity of the previous convolutional layers, formatted as an unfolded tensor.
 
-        Depending on the type of the following (next) module, the tensor S is computed as follows:
+        Depending on the type of the following (next) module, the tensor S is computed
+        as follows:
 
         - If the next module is a `Conv2dGrowingModule`:
             The unfolded activity tensor is 3D: (batch_size, D, L), where
                 - D = output_channels * kernel_size^2 [+1 if bias]
-                - L = number of output spatial locations (e.g., H × W)
+                - L = number of output spatial locations (e.g., H x W)
             Then S is computed via:
                 S = ∑_{i,m} A[i,:,m] A[i,:,m]^T = einsum("iam, ibm -> ab", A, A)
 
         - If the next module is a `LinearGrowingModule`:
-            The unfolded activity is treated as a flattened matrix of shape (batch_size, D),
-            and S is computed via:
+            The unfolded activity is treated as a flattened matrix of
+            shape (batch_size, D), and S is computed via:
                 S = ∑_{i} A[i]^T A[i] = einsum("ij, ik -> jk", A, A)
 
         Returns
