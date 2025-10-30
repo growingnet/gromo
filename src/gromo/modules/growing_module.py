@@ -2083,7 +2083,7 @@ class GrowingModule(torch.nn.Module):
         """
         Initialize the tensor with a uniform law with bounds
         -sqrt(std(W)), sqrt(std(W))
-        where std(W) is the empirical variance of the reference_tensor
+        where std(W) is the empirical standard deviation of the reference_tensor
         if the reference_tensor has a non-zero variance.
         Otherwise, use bounds
         -1 / sqrt(fan_in), 1 / sqrt(fan_in)
@@ -2126,7 +2126,7 @@ class GrowingModule(torch.nn.Module):
         """
         Create the layer input and output extensions of given sizes.
         Allow to have different sizes for input and output extensions,
-        this is useful for example is you connect a convolutional layer
+        this is useful for example if you connect a convolutional layer
         to a linear layer.
 
         Parameters
@@ -2137,6 +2137,12 @@ class GrowingModule(torch.nn.Module):
             size of the output extension to create, if None use extension_size
         input_extension_size: int | None
             size of the input extension to create, if None use extension_size
+        output_extension_init: str
+            Initialization method for the output extension. Must be one of the keys
+            in `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+        input_extension_init: str
+            Initialization method for the input extension. Must be one of the keys in
+            `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
         """
         if output_extension_size is None:
             output_extension_size = extension_size
