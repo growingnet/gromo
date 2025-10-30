@@ -2077,9 +2077,7 @@ class GrowingModule(torch.nn.Module):
         raise NotImplementedError
 
     @torch.no_grad()
-    def copy_uniform_initialization(
-        self, tensor: torch.Tensor, fan_in: int
-    ) -> torch.Tensor:
+    def copy_uniform_initialization(self, tensor: torch.Tensor, fan_in: int) -> None:
         """
         Initialize the tensor with a uniform law with bounds
         -sqrt(std(W)), sqrt(std(W))
@@ -2093,14 +2091,13 @@ class GrowingModule(torch.nn.Module):
         if hasattr(self.layer, "weight") and self.layer.weight is not None:
             std_dev = self.layer.weight.std().item()
         else:
-            # Fallback to Xavier uniform initialization bounds
+            # Fallback to Kaiming uniform initialization bounds
             std_dev = 1.0 / (fan_in**0.5)
 
         # Initialize with uniform distribution
-        bound = std_dev**0.5
+        # bound = std_dev**0.5
+        bound = 3.0**0.5 * std_dev
         torch.nn.init.uniform_(tensor, -bound, bound)
-
-        return tensor
 
     @torch.no_grad()
     def create_layer_extensions(
@@ -2139,7 +2136,7 @@ class GrowingModule(torch.nn.Module):
 
         known_inits = {
             "copy_uniform": self.copy_uniform_initialization,
-            "zeros": lambda tensor, size: torch.zeros_like(tensor),
+            "zeros": lambda tensor, _: torch.nn.init.zeros_(tensor),
             # Future initializations can be added here
         }
 
@@ -2171,9 +2168,15 @@ class GrowingModule(torch.nn.Module):
             "Therefore, it can't be initialized."
         )
         init = output_extension_init
-        known_inits[init](layer_to_init.weight, self.previous_module.in_features)
+        known_inits[init](
+            layer_to_init.weight,
+            self.previous_module.get_fan_in_from_layer(layer_to_init),
+        )
         if layer_to_init.bias is not None:
-            known_inits[init](layer_to_init.bias, self.previous_module.in_features)
+            known_inits[init](
+                layer_to_init.bias,
+                self.previous_module.get_fan_in_from_layer(layer_to_init),
+            )
 
 
 if __name__ == "__main__":
