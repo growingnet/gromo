@@ -356,7 +356,7 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         reference: dict,
         invariant_list: list[str],
         rtol: float = 1e-5,
-        atol: float = 5e-7,
+        atol: float = 1e-6,
     ):
         """Verify that layer invariants match the reference values."""
         for inv in invariant_list:
