@@ -561,6 +561,10 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
 class TestConv2dGrowingModuleBase(TorchTestCase):
     _tested_class = Conv2dGrowingModule
 
+    def setUp(self) -> None:
+        torch.manual_seed(0)
+        self.input_x = torch.randn(5, 2, 10, 10, device=global_device())
+
     def create_demo_layers(
         self, bias: bool, hidden_channels: int = 5
     ) -> tuple[_tested_class, _tested_class]:
@@ -615,7 +619,7 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
     _tested_class = Conv2dGrowingModule
 
     def setUp(self):
-        torch.manual_seed(0)
+        super().setUp()
         self.demo_layer = torch.nn.Conv2d(
             2, 7, (3, 5), bias=False, device=global_device()
         )
@@ -631,8 +635,6 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
             in_channels=2, out_channels=7, kernel_size=3, padding=1, use_bias=True
         )
         self.demo_b.layer = self.demo_layer_b
-
-        self.input_x = torch.randn(5, 2, 10, 10, device=global_device())
 
         self.bias_demos = {True: self.demo_b, False: self.demo}
 
@@ -1815,6 +1817,167 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
                 output.shape[2] * output.shape[3],
             ),
         )
+
+
+class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
+    """Test create_layer_extensions method for Conv2dGrowingModule."""
+
+    def test_create_layer_extensions_with_copy_uniform(self) -> None:
+        """Test create_layer_extensions with copy_uniform initialization."""
+
+        # Subtest 1: With features
+        with self.subTest(case="with_features"):
+            # Create two connected growing modules without extensions
+            layer_in, layer_out = self.create_demo_layers(bias=True, hidden_channels=5)
+
+            # Store existing weight stds for comparison
+            layer_in_weight_std = layer_in.layer.weight.std().item()
+            layer_out_weight_std = layer_out.layer.weight.std().item()
+
+            # Call create_layer_extensions with copy_uniform initialization
+            extension_size = 3
+            layer_out.create_layer_extensions(
+                extension_size=extension_size,
+                output_extension_init="copy_uniform",
+                input_extension_init="copy_uniform",
+            )
+
+            # Verify extensions were created
+            self.assertIsInstance(
+                layer_in.extended_output_layer,
+                torch.nn.Conv2d,
+                msg="extended_output_layer should be created",
+            )
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
+
+            self.assertIsInstance(
+                layer_out.extended_input_layer,
+                torch.nn.Conv2d,
+                msg="extended_input_layer should be created",
+            )
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
+
+            # Verify newly added weights std match existing weights
+            # For copy_uniform: bound = sqrt(3) * std(W_next)
+            # For extended_output_layer, it uses layer_out weights
+            # For extended_input_layer, it uses layer_in weights
+
+            # The std should approximately match the layer weights
+            # Allow some tolerance due to random initialization
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.std().item(),
+                layer_in_weight_std,
+                delta=layer_out_weight_std * 0.5,
+                msg="extended_output_layer std should match layer_out weights std",
+            )
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                layer_out_weight_std,
+                delta=layer_out_weight_std * 0.5,
+                msg="extended_input_layer std should match layer_out weights std",
+            )
+
+            # Perform extended forward pass with random input
+            # Extended forward through layer_in to get both standard and extended
+            # outputs
+            y, y_ext = layer_in.extended_forward(x=self.input_x)
+            assert isinstance(y_ext, torch.Tensor)
+
+            # Verify intermediate extended results have correct shapes
+            self.assertShapeEqual(
+                y,
+                (self.input_x.shape[0], layer_in.out_channels, y.shape[2], y.shape[3]),
+                msg="layer_in standard output has correct batch size",
+            )
+            self.assertShapeEqual(
+                y_ext,
+                (self.input_x.shape[0], extension_size, y.shape[2], y.shape[3]),
+                msg="layer_in extended output has correct shape",
+            )
+
+            # Extended forward through layer_out
+            z, z_ext = layer_out.extended_forward(
+                x=y, x_ext=y_ext, use_optimal_delta=False
+            )
+            self.assertShapeEqual(
+                z,
+                (self.input_x.shape[0], layer_out.out_channels, z.shape[2], z.shape[3]),
+                msg="layer_out standard output has correct shape",
+            )
+            self.assertIsNone(
+                z_ext,
+                msg="layer_out has no extended output when only input extension added",
+            )
+
+        # Subtest 2: Without features (hidden_channels=0)
+        with self.subTest(case="without_features"):
+            # Create two connected growing modules with 0 hidden channels
+            layer_in, layer_out = self.create_demo_layers(bias=False, hidden_channels=0)
+
+            # When out_channels=0, the layer has no weights
+            # So copy_uniform should fallback to 1/sqrt(fan_in)
+            extension_size = 3
+
+            with self.assertWarns(UserWarning):
+                # UserWarning: std(): degrees of freedom is <= 0.
+                # This happens because the layer has no weights to compute std from.
+                layer_out.create_layer_extensions(
+                    extension_size=extension_size,
+                    output_extension_init="copy_uniform",
+                    input_extension_init="copy_uniform",
+                )
+
+            # Verify extensions were created
+            self.assertIsInstance(
+                layer_in.extended_output_layer,
+                torch.nn.Conv2d,
+                msg="extended_output_layer should be created",
+            )
+            self.assertIsInstance(
+                layer_out.extended_input_layer,
+                torch.nn.Conv2d,
+                msg="extended_input_layer should be created",
+            )
+
+            # Type assertions for linter
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
+
+            # When there are no hidden channels, the std should be 1/sqrt(fan_in)
+            # For Conv2d: fan_in = in_channels * kernel_h * kernel_w
+            # For extended_output_layer:
+            # fan_in = layer_in.in_channels * kernel_h * kernel_w
+            expected_output_ext_std = (
+                1.0
+                / (
+                    layer_in.in_channels
+                    * layer_in.kernel_size[0]
+                    * layer_in.kernel_size[1]
+                )
+                ** 0.5
+            )
+            # For extended_input_layer:
+            # fan_in = extension_size * kernel_h * kernel_w
+            expected_input_ext_std = (
+                1.0
+                / (extension_size * layer_out.kernel_size[0] * layer_out.kernel_size[1])
+                ** 0.5
+            )
+
+            # Verify std matches expected values
+            # Allow tolerance for small sample statistics
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.std().item(),
+                expected_output_ext_std,
+                delta=expected_output_ext_std * 0.5,
+                msg=f"extended_output_layer std should be ~{expected_output_ext_std}",
+            )
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                expected_input_ext_std,
+                delta=expected_input_ext_std * 0.5,
+                msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
+            )
 
 
 if __name__ == "__main__":
