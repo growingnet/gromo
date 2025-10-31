@@ -44,7 +44,7 @@ class SequentialGrowingContainer(GrowingContainer):
         """
         if isinstance(index, int):
             if index < 0 or index >= len(self._growable_layers):
-                raise ValueError(
+                raise IndexError(
                     f"Index {index} is out of bounds for _growable_layers with length "
                     f"{len(self._growable_layers)}."
                 )
