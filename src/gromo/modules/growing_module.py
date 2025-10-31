@@ -2081,6 +2081,8 @@ class GrowingModule(torch.nn.Module):
         self, tensor: torch.Tensor, reference_tensor: torch.Tensor, fan_in: int
     ) -> None:
         """
+        Initialize tensor with uniform law aligned on reference
+
         Initialize the tensor with a uniform law with bounds
         -sqrt(std(W)), sqrt(std(W))
         where std(W) is the empirical standard deviation of the reference_tensor
