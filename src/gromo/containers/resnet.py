@@ -327,13 +327,8 @@ def init_full_resnet_structure(
         blocks_per_stage = number_of_blocks_per_stage
     elif isinstance(number_of_blocks_per_stage, int):
         blocks_per_stage = (number_of_blocks_per_stage,) * 4
-    elif (
-        isinstance(number_of_blocks_per_stage, (list, tuple))
-        and len(number_of_blocks_per_stage) != 4
-    ):
-        raise ValueError("If a tuple is provided, it must contain exactly four integers.")
     else:
-        raise ValueError(
+        raise TypeError(
             "number_of_blocks_per_stage must be an int or a tuple of four ints."
         )
     # Append additional blocks to match ResNet-18 architecture
