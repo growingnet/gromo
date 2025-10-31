@@ -1,7 +1,13 @@
+from typing import TYPE_CHECKING
+
 import torch
 
 from gromo.containers.resnet import ResNetBasicBlock, init_full_resnet_structure
 from gromo.utils.utils import global_device
+
+
+if TYPE_CHECKING:
+    from gromo.containers.growing_block import RestrictedConv2dGrowingBlock
 
 
 try:
@@ -144,6 +150,7 @@ class TestResNet(TorchTestCase):
 
         # Verify initial number of blocks in each stage
         for stage_idx, stage in enumerate(model.stages):  # type: ignore
+            stage: torch.nn.Sequential
             self.assertEqual(
                 len(stage), 1, f"Stage {stage_idx} should initially have 1 block"
             )
@@ -201,3 +208,105 @@ class TestResNet(TorchTestCase):
 
         with self.assertRaises(IndexError):
             model.append_block(stage_index=-1, hidden_channels=64)
+
+    def test_extended_forward_with_layer_extensions(self):
+        """
+        Test extended_forward method and verify that creating layer extensions
+        changes the output.
+        """
+        # Use CPU device for testing
+        device = torch.device("cpu")
+
+        # Create a network with non-zero hidden features
+        model = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            reduction_factor=0.5,
+            device=device,
+        )
+
+        # Create a random input on the same device
+        x = torch.randn(2, 3, 32, 32, device=device)
+
+        # Initial extended forward pass
+        output1 = model.extended_forward(x)
+        self.assertShapeEqual(output1, (2, 10))
+
+        # Get the first block from the first stage
+        first_block: RestrictedConv2dGrowingBlock = model.stages[0][0]  # type: ignore
+
+        # Create layer extensions for the first block
+        extension_size = 8  # Add 8 channels
+        first_block.create_layer_extensions(
+            extension_size=extension_size,
+            output_extension_init="copy_uniform",
+            input_extension_init="copy_uniform",
+        )
+
+        # Verify that extensions were created
+        # create_layer_extensions creates:
+        # - extended_output_layer for first_layer (previous module)
+        # - extended_input_layer for second_layer (current module)
+        self.assertIsNotNone(
+            first_block.first_layer.extended_output_layer,
+            "Extended output layer should be created for first_layer",
+        )
+        self.assertIsNotNone(
+            first_block.second_layer.extended_input_layer,
+            "Extended input layer should be created for second_layer",
+        )
+
+        # Do another extended forward pass with the extensions but scaling_factor=0
+        # This should produce the same output as before
+        output2 = model.extended_forward(x)
+        self.assertShapeEqual(output2, (2, 10))
+        self.assertAllClose(
+            output1,
+            output2,
+            message="With scaling_factor=0, output should not change",
+        )
+
+        # Now set a non-zero scaling factor to activate the extensions
+        first_block.scaling_factor = 1.0
+
+        # Do another extended forward pass with non-zero scaling_factor
+        output3 = model.extended_forward(x)
+        self.assertShapeEqual(output3, (2, 10))
+
+        # Now the outputs should be different because the extensions are active
+        max_diff = torch.abs(output1 - output3).max().item()
+
+        # Check that there is a measurable difference
+        self.assertGreater(
+            max_diff,
+            1e-2,
+            f"Outputs should differ after adding extensions with non-zero scaling, "
+            f"but max diff is {max_diff}",
+        )
+
+    def test_number_of_neurons_to_add(self):
+        """Test the number_of_neurons_to_add method."""
+        device = torch.device("cpu")
+
+        # Create a network with specific reduction factor
+        model = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            reduction_factor=0.5,
+            device=device,
+        )
+
+        # The first growable layer is the first block of the first stage
+        # With reduction_factor=0.5, it should have 32 hidden features (64 * 0.5)
+        # And out_features is 64 for the first stage
+        # So number to add should be (64 - 32) = 32 with growth_step=1
+        model.layer_to_grow_index = 0
+
+        neurons_to_add = model.number_of_neurons_to_add(growth_step=5)
+        self.assertIsInstance(
+            neurons_to_add,
+            int,
+            "number_of_neurons_to_add should return an integer",
+        )
