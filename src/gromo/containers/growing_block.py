@@ -154,9 +154,9 @@ class GrowingBlock(GrowingContainer):
             kwargs_second_layer = kwargs_layer
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
-    def extended_forward(
+    def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, x: torch.Tensor
-    ) -> torch.Tensor:  # pyright: ignore[reportIncompatibleMethodOverride]
+    ) -> torch.Tensor:
         """
         Forward pass of the block with the current modifications.
 
@@ -374,7 +374,7 @@ class GrowingBlock(GrowingContainer):
         Create the layer input and output extensions of given sizes.
 
         Allow to have different sizes for input and output extensions,
-        this is useful for example is you connect a convolutional layer
+        this is useful for example if you connect a convolutional layer
         to a linear layer.
 
         Parameters
@@ -385,6 +385,12 @@ class GrowingBlock(GrowingContainer):
             size of the output extension to create, if None use extension_size
         input_extension_size: int | None
             size of the input extension to create, if None use extension_size
+        output_extension_init: str
+            Initialization method for the output extension. Possible values include
+            "copy_uniform", "zeros", or other supported initialization strategies.
+        input_extension_init: str
+            Initialization method for the input extension. Possible values include
+            "copy_uniform", "zeros", or other supported initialization strategies.
         """
         self.second_layer.create_layer_extensions(
             extension_size=extension_size,
