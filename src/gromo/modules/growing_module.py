@@ -2126,6 +2126,8 @@ class GrowingModule(torch.nn.Module):
         input_extension_init: str = "copy_uniform",
     ) -> None:
         """
+        Create extension for layer input and output.
+
         Create the layer input and output extensions of given sizes.
         Allow to have different sizes for input and output extensions,
         this is useful for example if you connect a convolutional layer
