@@ -1,6 +1,7 @@
 import torch
 
 from gromo.containers.resnet import ResNetBasicBlock, init_full_resnet_structure
+from gromo.utils.utils import global_device
 
 
 try:
@@ -102,3 +103,101 @@ class TestResNet(TorchTestCase):
                 input_shape=(3, 32, 32),
                 number_of_blocks_per_stage=(2, 2, 2),  # type: ignore
             )
+
+    def test_forward_backward(self):
+        """Test forward and backward pass of the ResNet model."""
+        model = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            number_of_blocks_per_stage=2,
+            reduction_factor=0.5,
+        )
+        x = torch.randn(4, 3, 32, 32, device=global_device())
+        output = model(x)
+        self.assertShapeEqual(output, (4, 10), "Output shape should be (4, 10)")
+        loss = output.sum()
+        loss.backward()  # Check that backward pass works without error
+
+    def test_append_block(self):
+        """
+        Test appending blocks with 0 and non-zero features and verify forward
+        behavior.
+        """
+        # Use CPU device for testing
+        device = torch.device("cpu")
+
+        # Create a simple network with small input
+        model = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            reduction_factor=0.5,
+            device=device,
+        )
+
+        # Create a random input on the same device
+        x = torch.randn(2, 3, 32, 32, device=device)
+
+        # Initial forward pass
+        output1 = model(x)
+        self.assertShapeEqual(output1, (2, 10))
+
+        # Verify initial number of blocks in each stage
+        for stage_idx, stage in enumerate(model.stages):  # type: ignore
+            self.assertEqual(
+                len(stage), 1, f"Stage {stage_idx} should initially have 1 block"
+            )
+
+        # Add a block with 0 hidden features to stage 0
+        model.append_block(stage_index=0, hidden_channels=0)
+
+        # Verify number of blocks increased
+        self.assertEqual(len(model.stages[0]), 2, "Stage 0 should now have 2 blocks")  # type: ignore
+        for stage_idx in range(1, 4):
+            self.assertEqual(
+                len(model.stages[stage_idx]),  # type: ignore
+                1,
+                f"Stage {stage_idx} should still have 1 block",
+            )
+
+        # Forward pass after adding block with 0 features
+        # The output should be the same since the block has 0 hidden features
+        output2 = model(x)
+        self.assertShapeEqual(output2, (2, 10))
+        self.assertAllClose(
+            output1,
+            output2,
+            message="Output should not change when adding block with 0 features",
+        )
+
+        # Add a block with non-zero hidden features to stage 1
+        model.append_block(stage_index=1, hidden_channels=32)
+
+        # Verify number of blocks increased
+        self.assertEqual(len(model.stages[0]), 2, "Stage 0 should still have 2 blocks")  # type: ignore
+        self.assertEqual(len(model.stages[1]), 2, "Stage 1 should now have 2 blocks")  # type: ignore
+        for stage_idx in range(2, 4):
+            self.assertEqual(
+                len(model.stages[stage_idx]),  # type: ignore
+                1,
+                f"Stage {stage_idx} should still have 1 block",
+            )
+
+        # Forward pass after adding block with features
+        # The output should change since the block has non-zero hidden features
+        output3 = model(x)
+        self.assertShapeEqual(output3, (2, 10))
+
+        # Check that outputs are different (with high probability due to random init)
+        # We use a small tolerance to allow for numerical errors but expect difference
+        self.assertFalse(
+            torch.allclose(output2, output3, atol=1e-6, rtol=1e-5),
+            "Output should change when adding block with non-zero features",
+        )
+
+        # Test invalid stage index
+        with self.assertRaises(IndexError):
+            model.append_block(stage_index=10, hidden_channels=64)
+
+        with self.assertRaises(IndexError):
+            model.append_block(stage_index=-1, hidden_channels=64)
