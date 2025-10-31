@@ -236,11 +236,9 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         x = self.pre_net(x)
         for stage in self.stages:  # type: ignore
             stage: nn.Sequential
-            for block in stage:
-                if hasattr(block, "extended_forward"):
-                    x = block.extended_forward(x)
-                else:
-                    x = block(x)
+            for block in stage:  # type: ignore
+                block: RestrictedConv2dGrowingBlock
+                x = block.extended_forward(x)
         x = self.post_net(x)
         return x
 
