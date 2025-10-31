@@ -45,7 +45,8 @@ class GrowingBlock(GrowingContainer):
         second_layer: GrowingModule
             second layer of the block
         in_features: int
-            number of input features, in case of convolutional layer, the number of channels
+            number of input features, in case of convolutional layer,
+            the number of channels
         out_features: int
             number of output features
         hidden_features: int
@@ -62,8 +63,9 @@ class GrowingBlock(GrowingContainer):
         assert in_features == out_features or not isinstance(
             downsample, torch.nn.Identity
         ), (
-            f"Incompatible dimensions: in_features ({in_features}) must match out_features ({out_features}) "
-            f"or downsample ({downsample}) must be a non-identity module."
+            f"Incompatible dimensions: in_features ({in_features}) must match "
+            f"out_features ({out_features}) or downsample ({downsample}) "
+            f"must be a non-identity module."
         )
         super(GrowingBlock, self).__init__(
             in_features=in_features,
@@ -152,7 +154,9 @@ class GrowingBlock(GrowingContainer):
             kwargs_second_layer = kwargs_layer
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
-    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, x: torch.Tensor
+    ) -> torch.Tensor:
         """
         Forward pass of the block with the current modifications.
 
@@ -179,9 +183,10 @@ class GrowingBlock(GrowingContainer):
         elif self.first_layer.extended_output_layer is not None:
             x = self.scaling_factor * self.first_layer.extended_output_layer(x)
             x = self.first_layer.extended_post_layer_function(x)
-            assert (
-                self.second_layer.extended_input_layer is not None
-            ), f"Second layer {self.second_layer.name} should have an extended output layer."
+            assert self.second_layer.extended_input_layer is not None, (
+                f"Second layer {self.second_layer.name} should have an "
+                f"extended output layer."
+            )
             x = self.scaling_factor * self.second_layer.extended_input_layer(x)
             x = self.second_layer.extended_post_layer_function(x)
 
@@ -288,7 +293,8 @@ class GrowingBlock(GrowingContainer):
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+            threshold to consider an eigenvalue as zero in the square root
+            of the inverse of S
         statistical_threshold: float
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
@@ -356,6 +362,64 @@ class GrowingBlock(GrowingContainer):
         """
         return self.second_layer.first_order_improvement
 
+    def create_layer_extensions(
+        self,
+        extension_size: int,
+        output_extension_size: int | None = None,
+        input_extension_size: int | None = None,
+        output_extension_init: str = "copy_uniform",
+        input_extension_init: str = "copy_uniform",
+    ) -> None:
+        """
+        Create the layer input and output extensions of given sizes.
+
+        Allow to have different sizes for input and output extensions,
+        this is useful for example if you connect a convolutional layer
+        to a linear layer.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        output_extension_size: int | None
+            size of the output extension to create, if None use extension_size
+        input_extension_size: int | None
+            size of the input extension to create, if None use extension_size
+        output_extension_init: str
+            Initialization method for the output extension. Possible values include
+            "copy_uniform", "zeros", or other supported initialization strategies.
+        input_extension_init: str
+            Initialization method for the input extension. Possible values include
+            "copy_uniform", "zeros", or other supported initialization strategies.
+        """
+        self.second_layer.create_layer_extensions(
+            extension_size=extension_size,
+            output_extension_size=output_extension_size,
+            input_extension_size=input_extension_size,
+            output_extension_init=output_extension_init,
+            input_extension_init=input_extension_init,
+        )
+
+    def normalize_optimal_updates(self, std_target: float | None = None) -> None:
+        """
+        Normalize the optimal updates.
+
+        Ensure that the standard deviation of the weights of the updates is equal to
+        std_target.
+        If std_target is None, we use the standard deviation of the weights of the layer.
+        If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
+
+        Let s the target standard deviation then:
+        - optimal_delta_layer is scaled to have a std of s (so
+        by s / std(optimal_delta_layer))
+        - extended_input_layer is scaled to have a std of s (so
+        by s / std(extended_input_layer))
+        - extended_output_layer is scaled to match the scaling of the extended_input_layer
+        and the optimal_delta_layer
+        (so by std(extended_input_layer) / std(optimal_delta_layer))
+        """
+        self.second_layer.normalize_optimal_updates(std_target=std_target)
+
 
 class LinearGrowingBlock(GrowingBlock):
     def __init__(
@@ -388,11 +452,14 @@ class LinearGrowingBlock(GrowingBlock):
         activation: torch.nn.Module | None
             activation function to use, if None use the identity function
         pre_activation: torch.nn.Module | None
-            activation function to use before the first layer, if None use the activation function
+            activation function to use before the first layer,
+            if None use the activation function
         mid_activation: torch.nn.Module | None
-            activation function to use between the two layers, if None use the activation function
+            activation function to use between the two layers,
+            if None use the activation function
         extended_mid_activation: torch.nn.Module | None
-            activation function to use between the two layers in the extended forward, if None use the mid_activation
+            activation function to use between the two layers in the extended forward,
+            if None use the mid_activation
         name: str
             name of the block
         kwargs_layer: dict | None
@@ -485,9 +552,11 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         activation: torch.nn.Module | None
             activation function to use, if None use the identity function
         pre_activation: torch.nn.Module | None
-            activation function to use before the first layer, if None use the activation function
+            activation function to use before the first layer,
+            if None use the activation function
         mid_activation: torch.nn.Module | None
-            activation function to use between the two layers, if None use the activation function
+            activation function to use between the two layers,
+            if None use the activation function
         name: str
             name of the block
         kwargs_layer: dict | None
@@ -519,7 +588,8 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
                 kwargs["kernel_size"] = kernel_size
             elif kernel_size is not None:
                 warn(
-                    f"kernel_size specified in both arguments and kwargs for {name}, using value from kwargs."
+                    f"kernel_size specified in both arguments and kwargs for {name}, "
+                    f"using value from kwargs."
                 )
 
         first_layer = RestrictedConv2dGrowingModule(
