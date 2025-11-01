@@ -338,7 +338,7 @@ class TestTools(TorchTestCase):
         matrix_s_nonsym = torch.tensor([[1.0, 0.5], [0.3, 1.0]])
         matrix_n = torch.tensor([[1.0], [1.0]])
 
-        with self.assertWarns(UserWarning):
+        with self.assertWarns(UserWarning):  # The input matrix S is not symmetric
             alpha, omega, eigenvalues = compute_optimal_added_parameters(
                 matrix_s_nonsym, matrix_n
             )
