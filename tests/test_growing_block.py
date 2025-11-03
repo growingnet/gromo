@@ -1295,3 +1295,84 @@ class TestLinearGrowingBlock(TorchTestCase):
             # Should raise AssertionError
             with self.assertRaises(AssertionError):
                 block.apply_change(extension_size=None)
+
+    def test_create_layer_extensions(self):
+        """
+        Test `create_layer_extensions` method.
+
+        Create some layer extensions and check that they have an
+        effect when used in extended_forward.
+        """
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+
+        # Input tensor
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+
+        # Extended forward without extensions should match normal forward
+        block.second_layer.weight.data.fill_(0.0)
+        block.second_layer.bias.data.fill_(0.0)
+
+        output_no_ext = block.extended_forward(x)
+        self.assertAllClose(output_no_ext, x)
+
+        # Now use the extensions in extended forward
+        block.scaling_factor = self.scaling_factor
+        block.create_layer_extensions(self.added_features)
+
+        output_with_ext = block.extended_forward(x)
+        self.assertFalse(torch.allclose(output_with_ext, output_no_ext))
+
+    def test_normalize_optimal_updates(self):
+        """
+        Test `normalize_optimal_updates` method.
+
+        Create a block with extensions, normalize the updates,
+        check that the std of the extension weights is close
+        to the one of the original weights.
+        """
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+        block.first_layer.weight.data *= 2.0
+        block.second_layer.weight.data *= 0.1
+
+        # Create layer extensions
+        block.create_layer_extensions(self.added_features)
+        assert isinstance(block.first_layer.extended_output_layer, torch.nn.Linear)
+        assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
+
+        # Normalize optimal updates
+        block.normalize_optimal_updates()
+
+        # Check std of extension weights
+        self.assertAlmostEqual(
+            block.second_layer.extended_input_layer.weight.std().item(),
+            block.second_layer.weight.std().item(),
+            places=2,
+            msg="Second layer extension weights std should match original weights std",
+        )
+
+    def test_weights_statistics(self):
+        """Test that weights_statistics method runs and returns a dictionary."""
+
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+
+        stats = block.weights_statistics()
+
+        # Check that the result is a dictionary
+        self.assertIsInstance(
+            stats, dict, "weights_statistics should return a dictionary"
+        )

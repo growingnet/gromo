@@ -21,6 +21,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Introduce a `SequentialGrowingContainer` structure specialized for container with sequential layers.  Introduce a `ResNetBasicBlock` class to create resnet 18/34 like structure with growable blocks and the possibility of adding blocks. (:gh:`168` by `Théo Rudkiewicz`_)
+- Allow to create layer extension with different simple initialization (different random and zero). (:gh:`165` by `Théo Rudkiewicz`_)
 - Add `TensorStatisticWithEstimationError` and corresponding class `TestTensorStatisticWithEstimationError`. It computes an estimation of the quadratic error done when estimating the given tensor statistic. Modify `TensorStatistic` so that there is no need to call init (:gh:`149` by `Félix Houdouin`_).
 - Add a method `normalize_optimal_updates` in `GrowingModule` to normalize the optimal weight updates before applying them (:gh:`164` by `Théo Rudkiewicz`_)
 - Add setter for scaling factor in `GrowingModule` (:gh:`157` by `Stella Douka`_)
