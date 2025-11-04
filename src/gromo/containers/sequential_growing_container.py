@@ -28,8 +28,10 @@ class SequentialGrowingContainer(GrowingContainer):
         self, scheduling_method: str = "all", index: int | None = None
     ) -> None:
         """
-        Update the list of growable layers. This method should be called after a growth
-        step is performed.
+        Update the list of growable layers.
+
+        This method should be called after a growth step is performed.
+
         Parameters
         ----------
         scheduling_method : str
