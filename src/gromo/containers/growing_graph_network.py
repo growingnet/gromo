@@ -160,7 +160,6 @@ class GrowingGraphNetwork(GrowingContainer):
         nodes_added : list, optional
             list of nodes that were added, by default []
         """
-        # TODO: keep track of updated edges/neurons_updated
         if self.global_step not in self.growth_history:
             self.growth_history[self.global_step] = {}
 
@@ -245,9 +244,9 @@ class GrowingGraphNetwork(GrowingContainer):
         alpha: torch.Tensor,
         omega: torch.Tensor,
         bias: torch.Tensor,
-        B_file: str,
+        B: torch.Tensor | str,
         sigma: nn.Module,
-        bottleneck_file: str,
+        bottleneck: torch.Tensor | str,
         input_keys: list[str],
         target_keys: list[str],
         linear: bool = True,
@@ -295,8 +294,8 @@ class GrowingGraphNetwork(GrowingContainer):
             model=forward_fn,
             parameters=[alpha, omega, bias],
             cost_fn=self.bottleneck_loss,
-            X=B_file,
-            Y=bottleneck_file,
+            X=B,
+            Y=bottleneck,
             x_keys=input_keys,
             y_keys=target_keys,
             batch_size=self.neuron_batch_size,
@@ -322,8 +321,8 @@ class GrowingGraphNetwork(GrowingContainer):
     def expand_node(
         self,
         expansion,
-        bottleneck_file: str,
-        activities_file: str,
+        bottlenecks: dict[str, torch.Tensor] | str,
+        activities: dict[str, torch.Tensor] | str,
         verbose: bool = True,
     ) -> list:
         """Increase block dimension by expanding node with more neurons
@@ -357,11 +356,35 @@ class GrowingGraphNetwork(GrowingContainer):
             prev_node_modules = self.dag.get_node_modules(expansion.previous_nodes)
             next_node_modules = self.dag.get_node_modules(expansion.next_nodes)
 
+        if type(bottlenecks) != type(activities):
+            raise TypeError(
+                f"Bottleneck and activities variables should have the same type. Got {type(bottlenecks)=} and {type(activities)=}"
+            )
+
         bottleneck_keys, input_x_keys = [], []
-        for next_node_module in next_node_modules:
-            bottleneck_keys.append(next_node_module._name)
-        for prev_node_module in prev_node_modules:
-            input_x_keys.append(prev_node_module._name)
+        if isinstance(bottlenecks, str):
+            assert isinstance(activities, str)
+            bottleneck = bottlenecks
+            input_x = activities
+            for next_node_module in next_node_modules:
+                bottleneck_keys.append(next_node_module._name)
+            for prev_node_module in prev_node_modules:
+                input_x_keys.append(prev_node_module._name)
+        elif isinstance(bottlenecks, dict):
+            assert isinstance(activities, dict)
+            bottleneck, input_x = [], []
+            for next_node_module in next_node_modules:
+                assert next_node_module._name is not None
+                bottleneck.append(bottlenecks[next_node_module._name])
+            bottleneck = torch.cat(bottleneck, dim=1)  # (batch_size, total_out_features)
+            for prev_node_module in prev_node_modules:
+                assert prev_node_module._name is not None
+                input_x.append(activities[prev_node_module._name])
+            input_x = torch.cat(input_x, dim=1)  # (batch_size, total_in_features)
+        else:
+            raise TypeError(
+                f"Inappropriate type for `bottlenecks` variable. Expected dict[str, torch.Tensor] or str. Got {type(bottleneck_keys)}"
+            )
 
         total_in_features = sum([edge.in_features if isinstance(edge, LinearGrowingModule) else edge.in_channels for edge in expansion.in_edges])  # type: ignore
         total_out_features = sum([edge.out_features if isinstance(edge, LinearGrowingModule) else edge.out_channels for edge in expansion.out_edges])  # type: ignore
@@ -395,9 +418,9 @@ class GrowingGraphNetwork(GrowingContainer):
             alpha=alpha,
             omega=omega,
             bias=bias,
-            B_file=activities_file,
+            B=input_x,
             sigma=node_module.post_merge_function,
-            bottleneck_file=bottleneck_file,
+            bottleneck=bottleneck,
             input_keys=input_x_keys,
             target_keys=bottleneck_keys,
             linear=isinstance(node_module, LinearMergeGrowingModule),
@@ -471,8 +494,8 @@ class GrowingGraphNetwork(GrowingContainer):
     def update_edge_weights(
         self,
         expansion: Expansion,
-        bottleneck_file: str,
-        activities_file: str,
+        bottlenecks: dict[str, torch.Tensor] | str,
+        activities: dict[str, torch.Tensor] | str,
         verbose: bool = True,
     ) -> list:
         """Update weights of a single layer edge
@@ -503,8 +526,26 @@ class GrowingGraphNetwork(GrowingContainer):
         assert prev_node_module._name is not None
         assert next_node_module._name is not None
 
-        bottleneck_keys = [next_node_module._name]
-        activity_keys = [prev_node_module._name]
+        if type(bottlenecks) != type(activities):
+            raise TypeError(
+                f"Bottleneck and activities variables should have the same type. Got {type(bottlenecks)=} and {type(activities)=}"
+            )
+
+        if isinstance(bottlenecks, str):
+            assert isinstance(activities, str)
+            bottleneck_keys = [next_node_module._name]
+            activity_keys = [prev_node_module._name]
+            bottleneck = bottlenecks
+            activity = activities
+        elif isinstance(bottlenecks, dict):
+            assert isinstance(activities, dict)
+            bottleneck = bottlenecks[next_node_module._name]
+            activity = activities[prev_node_module._name]
+            bottleneck_keys, activity_keys = [], []
+        else:
+            raise TypeError(
+                f"Inappropriate type for `bottlenecks` variable. Expected dict[str, torch.Tensor] or str. Got {type(bottleneck_keys)}"
+            )
 
         linear = isinstance(new_edge_module, LinearGrowingModule)
 
@@ -538,8 +579,8 @@ class GrowingGraphNetwork(GrowingContainer):
             model=forward_fn,
             parameters=[weight, bias],
             cost_fn=self.bottleneck_loss,
-            X=activities_file,
-            Y=bottleneck_file,
+            X=activity,
+            Y=bottleneck,
             x_keys=activity_keys,
             y_keys=bottleneck_keys,
             batch_size=self.neuron_batch_size,
@@ -596,8 +637,8 @@ class GrowingGraphNetwork(GrowingContainer):
     def execute_expansions(
         self,
         actions: Sequence[Expansion],
-        bottleneck_file: str,
-        input_B_file: str,
+        bottleneck: dict[str, torch.Tensor] | str,
+        input_B: dict[str, torch.Tensor] | str,
         amplitude_factor: bool,
         evaluate: bool,
         train_dataloader: DataLoader = None,
@@ -660,8 +701,8 @@ class GrowingGraphNetwork(GrowingContainer):
                 # Update weight of next_node's incoming edge
                 bott_loss_history = self.update_edge_weights(
                     expansion=expansion,
-                    bottleneck_file=bottleneck_file,
-                    activities_file=input_B_file,
+                    bottlenecks=bottleneck,
+                    activities=input_B,
                     verbose=verbose,
                 )
 
@@ -678,8 +719,8 @@ class GrowingGraphNetwork(GrowingContainer):
                 # Update weights of new edges
                 bott_loss_history = self.expand_node(
                     expansion=expansion,
-                    bottleneck_file=bottleneck_file,
-                    activities_file=input_B_file,
+                    bottlenecks=bottleneck,
+                    activities=input_B,
                     verbose=verbose,
                 )
 

@@ -338,7 +338,7 @@ def mini_batch_gradient_descent(
         dataset = torch.utils.data.TensorDataset(X, Y)
     else:
         raise TypeError(
-            f"Inappropriate type for X. Expected torch.tensor or str. Got {type(X)}"
+            f"Inappropriate type for X. Expected torch.Tensor or str. Got {type(X)}"
         )
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
