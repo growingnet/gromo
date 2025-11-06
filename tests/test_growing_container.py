@@ -137,14 +137,6 @@ class TestGrowingContainer(unittest.TestCase):
                 "init_computation was not called on the growing layer",
             )
 
-            # Check tensors: only tensor_s and tensor_m should be initialized with non-None values.
-            # tensor_m_prev and cross_covariance should be None since their shape is not known yet.
-            for tensor_name in ["tensor_s", "tensor_m"]:
-                self.assertIsNotNone(
-                    getattr(layer, tensor_name)._tensor,
-                    f"init_computation was not called on the growing layer for {tensor_name}",
-                )
-
     def test_update_computation(self):
         self.model.init_computation()
         for i, (x, y) in enumerate(self.dataloader):

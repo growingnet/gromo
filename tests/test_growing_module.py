@@ -1245,6 +1245,83 @@ class TestMergeGrowingModuleComputeOptimalDelta(TorchTestCase):
             self.merge_module.compute_optimal_delta()
 
 
+class TestScalingMethods(TorchTestCase):
+    """Test scaling and normalization methods for GrowingModule."""
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_scale_layer(self, bias: bool = True) -> None:
+        """
+        Test that scale_layer correctly scales weights and biases of a layer.
+
+        This test verifies that the static method `GrowingModule.scale_layer`
+        correctly multiplies both weights and biases (if present) by the
+        specified scale factor.
+        """
+        # Create a linear layer
+        layer = torch.nn.Linear(3, 2, bias=bias, device=global_device())
+
+        # Set known values for testing
+        layer.weight.data[0, 0] = 1.0
+        if bias:
+            layer.bias.data[0] = 1.0
+
+        # Store original values for verification
+        original_weight_value = layer.weight.data[0, 0].item()
+        original_bias_value = layer.bias.data[0].item() if bias else None
+
+        # Apply scaling
+        scale_factor = 2.0
+        returned_layer = GrowingModule.scale_layer(layer, scale_factor)
+
+        # Verify the method returns the layer
+        self.assertIs(returned_layer, layer, "scale_layer should return the same layer")
+
+        # Verify weight is scaled
+        expected_weight = original_weight_value * scale_factor
+        actual_weight = layer.weight.data[0, 0].item()
+        self.assertAlmostEqual(
+            actual_weight,
+            expected_weight,
+            places=6,
+            msg=(
+                f"Weight should be scaled from {original_weight_value} "
+                f"to {expected_weight}"
+            ),
+        )
+
+        # Verify bias is scaled (if present)
+        if bias:
+            assert original_bias_value is not None
+            expected_bias = original_bias_value * scale_factor
+            actual_bias = layer.bias.data[0].item()
+            self.assertAlmostEqual(
+                actual_bias,
+                expected_bias,
+                places=6,
+                msg=(
+                    f"Bias should be scaled from {original_bias_value} to {expected_bias}"
+                ),
+            )
+        else:
+            self.assertIsNone(
+                layer.bias, "Bias should remain None when layer has no bias"
+            )
+
+    def test_scale_empty_layer(self) -> None:
+        """
+        Test that scale_layer correctly handles layers without weights.
+        """
+        # Create a layer without weights (e.g., nn.ReLU)
+        layer = torch.nn.ReLU()
+
+        # Apply scaling
+        scale_factor = 2.0
+        returned_layer = GrowingModule.scale_layer(layer, scale_factor)
+
+        # Verify the method returns the layer
+        self.assertIs(returned_layer, layer, "scale_layer should return the same layer")
+
+
 if __name__ == "__main__":
     from unittest import main
 

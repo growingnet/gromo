@@ -914,3 +914,51 @@ class LinearGrowingModule(GrowingModule):
                 )
 
         return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
+
+    @staticmethod
+    def get_fan_in_from_layer(layer: torch.nn.Linear) -> int:  # type: ignore
+        """
+        Get the fan_in (number of input features) from a given layer.
+
+        Parameters
+        ----------
+        layer: torch.nn.Linear
+            layer to get the fan_in from
+
+        Returns
+        -------
+        int
+            fan_in of the layer
+        """
+        assert isinstance(
+            layer, torch.nn.Linear
+        ), f"The layer should be a torch.nn.Linear but got {type(layer)}."
+        return layer.in_features
+
+    def create_layer_in_extension(self, extension_size: int) -> None:
+        """
+        Create the layer input extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        # Create a linear layer for input extension
+        self.extended_input_layer = torch.nn.Linear(
+            extension_size, self.out_features, bias=self.use_bias, device=self.device
+        )
+
+    def create_layer_out_extension(self, extension_size: int) -> None:
+        """
+        Create the layer output extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        # Create a linear layer for output extension
+        self.extended_output_layer = torch.nn.Linear(
+            self.in_features, extension_size, bias=self.use_bias, device=self.device
+        )

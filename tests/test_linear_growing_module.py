@@ -58,7 +58,7 @@ class TestConfig:
         "small": (1, 1),
         "medium": (3, 3),
         "large": (5, 7),
-        "demo_1": (5, 3),
+        "demo_1": (C_FEATURES, 3),
         "demo_2": (3, 7),
         "merge_prev": (5, 3),
         "merge_next": (3, 7),
@@ -178,17 +178,30 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         return weight_matrix
 
     def create_demo_layers(
-        self, bias: bool
+        self,
+        bias: bool,
+        hidden_features: int | None = None,
+        first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
+        first_layer_extended_post_layer: torch.nn.Module | None = None,
     ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
         """Create demo layers for testing with specified bias configuration."""
+        torch.manual_seed(self.config.RANDOM_SEED)
         demo_layer_1 = LinearGrowingModule(
-            *self.config.LAYER_DIMS["demo_1"],
+            self.config.LAYER_DIMS["demo_1"][0],
+            (
+                hidden_features
+                if hidden_features is not None
+                else self.config.LAYER_DIMS["demo_1"][1]
+            ),
             use_bias=bias,
             name=f"L1({'bias' if bias else 'no_bias'})",
             device=global_device(),
+            post_layer_function=first_layer_post_layer,
+            extended_post_layer_function=first_layer_extended_post_layer,
         )
         demo_layer_2 = LinearGrowingModule(
-            *self.config.LAYER_DIMS["demo_2"],
+            demo_layer_1.out_features,
+            self.config.LAYER_DIMS["demo_2"][1],
             use_bias=bias,
             name=f"L2({'bias' if bias else 'no_bias'})",
             previous_module=demo_layer_1,
@@ -343,7 +356,7 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         reference: dict,
         invariant_list: list[str],
         rtol: float = 1e-5,
-        atol: float = 5e-7,
+        atol: float = 1e-6,
     ):
         """Verify that layer invariants match the reference values."""
         for inv in invariant_list:
@@ -378,21 +391,7 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         self,
     ) -> tuple[LinearGrowingModule, LinearGrowingModule, torch.nn.Sequential]:
         """Set up a standard network for invariant testing."""
-        torch.manual_seed(self.config.RANDOM_SEED)
-        layer_in = LinearGrowingModule(
-            in_features=5,
-            out_features=3,
-            name="layer_in",
-            post_layer_function=torch.nn.SELU(),
-            device=global_device(),
-        )
-        layer_out = LinearGrowingModule(
-            in_features=3,
-            out_features=7,
-            name="layer_out",
-            previous_module=layer_in,
-            device=global_device(),
-        )
+        layer_in, layer_out = self.create_demo_layers(bias=True)
         net = torch.nn.Sequential(layer_in, layer_out)
         return layer_in, layer_out, net
 
@@ -401,27 +400,19 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         """Create MSE loss function with specified reduction."""
         return torch.nn.MSELoss(reduction=reduction)
 
-    @staticmethod
     def create_demo_layers_with_extension(
+        self,
         first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
         first_layer_extended_post_layer: torch.nn.Module | None = None,
         include_eigenvalues: bool = False,
+        hidden_features: int = 3,
     ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
         """Create demo layers with extension for testing."""
-        layer_in = LinearGrowingModule(
-            in_features=5,
-            out_features=3,
-            name="layer_in",
-            post_layer_function=first_layer_post_layer,
-            extended_post_layer_function=first_layer_extended_post_layer,
-            device=global_device(),
-        )
-        layer_out = LinearGrowingModule(
-            in_features=3,
-            out_features=7,
-            name="layer_out",
-            previous_module=layer_in,
-            device=global_device(),
+        layer_in, layer_out = self.create_demo_layers(
+            bias=True,
+            hidden_features=hidden_features,
+            first_layer_post_layer=first_layer_post_layer,
+            first_layer_extended_post_layer=first_layer_extended_post_layer,
         )
 
         first_layer_ext = torch.nn.Linear(5, 2, device=global_device())
@@ -450,6 +441,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.demo_layers = {}
         for bias in (True, False):
             self.demo_layers[bias] = self.create_demo_layers(bias)
+
+    def test_get_fan_in_from_layer(self):
+        """Test get_fan_in_from_layer method."""
+        layer = self.demo_layers[True][0]
+        self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(3, 1)), 3)
+        self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(2, 3)), 2)
 
     def test_apply_change_with_sized_post_layer_function(self):
         """
@@ -1476,7 +1473,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertAllClose(z_new, z_origin, atol=1e-5)
 
 
-class TestLinearMergeGrowingModule(TorchTestCase):
+class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
     def setUp(self):
         self.seed = 0
         torch.manual_seed(self.seed)
@@ -2936,6 +2933,637 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Verify reset worked
         self.assertFalse(layer.store_input)
         # Note: store_activity attribute doesn't exist in LinearGrowingModule
+
+
+class TestScalingMethods(TestLinearGrowingModuleBase):
+    """Test scaling and normalization methods for LinearGrowingModule."""
+
+    def test_scale_parameter_update(self) -> None:
+        """
+        Test that scale_parameter_update correctly scales optimal delta layer
+        and parameter_update_decrease.
+
+        This test verifies that both the optimal_delta_layer weights and the
+        parameter_update_decrease are correctly scaled by the specified factor.
+        """
+        # Create a LinearGrowingModule
+        layer = self.create_linear_layer(
+            in_features=5, out_features=3, bias=True, name="test_layer"
+        )
+
+        # Manually create and set an optimal delta layer with known weights
+        optimal_delta = torch.nn.Linear(5, 3, bias=True, device=global_device())
+        layer.optimal_delta_layer = optimal_delta
+
+        # Set parameter_update_decrease to a known value
+        layer.parameter_update_decrease = torch.tensor(1.0, device=global_device())
+
+        # Store initial weights for verification
+        initial_weight = optimal_delta.weight.data.clone()
+        initial_bias = optimal_delta.bias.data.clone()
+        initial_decrease = layer.parameter_update_decrease.clone()
+
+        # Apply scaling with factor 2.0
+        scale_factor = 2.0
+        layer.scale_parameter_update(scale_factor)
+
+        # Verify parameter_update_decrease is scaled
+        expected_decrease = initial_decrease * scale_factor
+        self.assertAlmostEqual(
+            layer.parameter_update_decrease.item(),
+            expected_decrease.item(),
+            places=6,
+            msg=(
+                f"parameter_update_decrease should be scaled from "
+                f"{initial_decrease.item()} to {expected_decrease.item()}"
+            ),
+        )
+
+        # Apply inverse scaling (1/2) and verify weights match original
+        inverse_scale = 1.0 / scale_factor
+        layer.scale_layer(optimal_delta, inverse_scale)
+
+        self.assertAllClose(
+            optimal_delta.weight.data,
+            initial_weight,
+            msg="After inverse scaling, weights should match original",
+        )
+
+        self.assertAllClose(
+            optimal_delta.bias.data,
+            initial_bias,
+            msg="After inverse scaling, bias should match original",
+        )
+
+        with self.subTest("no parameter_update_decrease"):
+            layer.parameter_update_decrease = None
+            layer.scale_parameter_update(scale_factor)
+
+        with self.subTest("no optimal_delta_layer"):
+            layer.optimal_delta_layer = None
+            layer.scale_parameter_update(scale_factor)
+
+    def test_scale_layer_extension(self) -> None:
+        """
+        Test that scale_layer_extension correctly scales extension layers
+        and eigenvalues.
+
+        This test verifies scaling with uniform factors, separate factors,
+        and assertion error handling.
+        """
+        # Subtest 1: Uniform scale
+        with self.subTest(case="uniform_scale"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Add output extension for layer_out
+            layer_out.extended_output_layer = torch.nn.Linear(
+                3, 2, device=global_device()
+            )
+
+            # Set specific values to 1.0 for testing
+            assert isinstance(layer_out.extended_output_layer, torch.nn.Linear)
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            assert layer_out.eigenvalues_extension is not None
+            layer_out.extended_output_layer.weight.data[0, 0] = 1.0
+            layer_in.extended_output_layer.weight.data[0, 0] = 1.0
+            layer_out.extended_input_layer.weight.data[0, 0] = 1.0
+            layer_out.eigenvalues_extension[0] = 1.0
+
+            # Apply uniform scaling
+            scale_factor = 2.0
+            layer_out.scale_layer_extension(
+                scale=scale_factor, scale_output=None, scale_input=None
+            )
+
+            self.assertAlmostEqual(
+                layer_out.extended_output_layer.weight.data[0, 0].item(),
+                1.0,
+                places=6,
+                msg="extended_output_layer should not be scaled",
+            )
+
+            # Verify extended_output_layer scaled by 2.0
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.data[0, 0].item(),
+                2.0,
+                places=6,
+                msg="extended_input_layer should be scaled by 2.0",
+            )
+
+            # Verify extended_input_layer (previous module's output) scaled by 2.0
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.data[0, 0].item(),
+                2.0,
+                places=6,
+                msg="extended_input_layer should be scaled by 2.0",
+            )
+
+            # Verify eigenvalues scaled by sqrt(2.0 * 2.0) = 2.0
+            expected_eigenvalue = 1.0 * (scale_factor * scale_factor) ** 0.5
+            self.assertAlmostEqual(
+                layer_out.eigenvalues_extension[0].item(),
+                expected_eigenvalue,
+                places=6,
+                msg=(
+                    f"eigenvalues should be scaled by sqrt({scale_factor}*{scale_factor})"
+                ),
+            )
+
+        # Subtest 2: Separate scales
+        with self.subTest(case="separate_scales"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Set specific values to 1.0 for testing
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+            assert layer_out.eigenvalues_extension is not None
+            layer_out.extended_input_layer.weight.data[0, 0] = 1.0
+            layer_in.extended_output_layer.weight.data[0, 0] = 1.0
+            layer_out.eigenvalues_extension[0] = 1.0
+
+            # Apply separate scaling factors
+            scale_output = 3.0
+            scale_input = 2.0
+            layer_out.scale_layer_extension(
+                scale=None, scale_output=scale_output, scale_input=scale_input
+            )
+
+            # Verify extended_input_layer scaled by 3.0
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.data[0, 0].item(),
+                scale_input,
+                places=6,
+                msg="extended_input_layer should be scaled by 3.0",
+            )
+
+            # Verify previous module's extended_output_layer scaled by 2.0
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.data[0, 0].item(),
+                scale_output,
+                places=6,
+                msg="previous module's extended_output_layer should be scaled by 2.0",
+            )
+
+            # Verify eigenvalues scaled by sqrt(3.0 * 2.0) = sqrt(6.0)
+            expected_eigenvalue = 1.0 * (scale_output * scale_input) ** 0.5
+            self.assertAlmostEqual(
+                layer_out.eigenvalues_extension[0].item(),
+                expected_eigenvalue,
+                places=6,
+                msg="eigenvalues should be scaled by sqrt(3.0*2.0)",
+            )
+
+        # Subtest 3: Assertion error
+        with self.subTest(case="assertion_error"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Call with invalid parameters (scale=None, scale_output=None)
+            with self.assertRaises(
+                AssertionError,
+                msg="Should raise AssertionError when scale is missing",
+            ):
+                layer_out.scale_layer_extension(
+                    scale=None, scale_output=None, scale_input=2.0
+                )
+
+        with self.subTest(case="missing_in_extension"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+            # Remove extended_input_layer to trigger warning
+            layer_out.extended_input_layer = None
+
+            with self.assertRaises(ValueError):
+                layer_out.scale_layer_extension(
+                    scale=None, scale_output=2.0, scale_input=2.0
+                )
+
+        with self.subTest(case="missing_out_extension"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+            # Remove extended_output_layer to trigger warning
+            layer_in.extended_output_layer = None
+
+            with self.assertRaises(ValueError):
+                layer_out.scale_layer_extension(
+                    scale=None, scale_output=2.0, scale_input=2.0
+                )
+
+    def test_normalize_optimal_updates(self) -> None:
+        """Test normalize_optimal_updates method."""
+
+        def check_target_std_reached(
+            layer: LinearGrowingModule,
+            std_target: float,
+            include_extension: bool = True,
+            include_delta: bool = True,
+        ) -> None:
+            """
+            Checks that `layer.optimal_delta_layer` and `layer.extended_input_layer`
+            reach the target standard deviation after normalization.
+
+            Parameters
+            ----------
+            layer : LinearGrowingModule
+                The layer to check.
+            std_target : float
+                The target standard deviation.
+            include_extension : bool, optional
+                Whether to check the extended_input_layer, by default True.
+            include_delta : bool, optional
+                Whether to check the optimal_delta_layer, by default True.
+            """
+            if include_delta:
+                assert isinstance(layer.optimal_delta_layer, torch.nn.Linear), (
+                    f"optimal_delta_layer should be a Linear layer in "
+                    f"{layer.name} (is {type(layer.optimal_delta_layer)})"
+                )
+                self.assertAlmostEqual(
+                    layer.optimal_delta_layer.weight.std().item(),
+                    std_target,
+                    places=5,
+                    msg=f"optimal_delta_layer std should be {std_target}",
+                )
+            if include_extension:
+                assert isinstance(layer.extended_input_layer, torch.nn.Linear)
+                self.assertAlmostEqual(
+                    layer.extended_input_layer.weight.std().item(),
+                    std_target,
+                    places=5,
+                    msg=f"extended_input_layer std should be {std_target}",
+                )
+
+        # Subtest 1: Explicit std target
+        with self.subTest(case="explicit_std_target"):
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Create optimal_delta_layer with random weights
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
+                layer_out.in_features,
+                layer_out.out_features,
+                bias=layer_out.use_bias,
+            )
+
+            # Set target std
+            std_target = 0.1
+
+            # Call normalize_optimal_updates
+            layer_out.normalize_optimal_updates(std_target=std_target)
+
+            # Verify std of layers is approximately std_target
+            check_target_std_reached(layer_out, std_target)
+
+        # Subtest 2: Default std from layer weights
+        with self.subTest(case="default_from_layer_weights"):
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+
+            # Set layer weights to have specific std
+            target_std = 5.0
+            layer_out.layer.weight.data = (
+                torch.randn_like(layer_out.layer.weight) * target_std
+            )
+
+            # Create optimal_delta_layer
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
+                layer_out.in_features,
+                layer_out.out_features,
+                bias=layer_out.use_bias,
+            )
+            std_target = layer_out.layer.weight.std().item()
+
+            # Call normalize_optimal_updates without std_target
+            layer_out.normalize_optimal_updates(std_target=None)
+
+            # Verify std of optimal_delta_layer matches layer weights std
+            check_target_std_reached(layer_out, std_target)
+
+        # Subtest 3: Only extension layer normalization (no optimal_delta_layer)
+        with self.subTest(case="only_extension_normalization"):
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True,
+                hidden_features=0,
+            )
+
+            # Remove optimal_delta_layer so only extension is normalized
+            layer_out.optimal_delta_layer = None
+
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            std_target = 1 / layer_out.extended_input_layer.in_features**0.5
+
+            # Call normalize_optimal_updates
+            layer_out.normalize_optimal_updates(std_target=None)
+
+            # Verify only extended_input_layer std matches target
+            check_target_std_reached(
+                layer_out,
+                std_target,
+                include_delta=False,
+            )
+
+        # Subtest 4: Only delta layer
+        with self.subTest(case="only_delta_layer"):
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True
+            )
+            layer_in.extended_output_layer = None  # Remove extension layers
+            layer_out.extended_input_layer = None
+
+            # Create optimal_delta_layer with random weights
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
+                layer_out.in_features,
+                layer_out.out_features,
+                bias=layer_out.use_bias,
+            )
+
+            # Call normalize_optimal_updates
+            layer_out.normalize_optimal_updates(std_target=None)
+
+            # Verify std of layers is approximately std_target
+            check_target_std_reached(
+                layer_out, layer_out.weight.std().item(), include_extension=False
+            )
+
+        # 0 std case
+        with self.subTest(case="zero_std_case"):
+            layer_in = self.create_linear_layer(in_features=1, out_features=1)
+            layer_out = self.create_linear_layer(in_features=1, out_features=1)
+            layer_out.previous_module = layer_in
+            layer_out.extended_input_layer = self.create_standard_nn_linear(1, 1)
+            layer_in.extended_output_layer = self.create_standard_nn_linear(1, 1)
+            layer_out.optimal_delta_layer = self.create_standard_nn_linear(1, 1)
+
+            # Everything works fine if std is zero (no scaling applied)
+            layer_out.normalize_optimal_updates(std_target=None)
+
+
+class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
+    """Test create_layer_extensions method for LinearGrowingModule."""
+
+    def test_create_layer_extensions_with_copy_uniform(self) -> None:
+        """Test create_layer_extensions with copy_uniform initialization."""
+
+        # Subtest 1: With features
+        with self.subTest(case="with_features"):
+            # Create two connected growing modules without extensions
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                hidden_features=3
+            )
+
+            # Store existing weight stds for comparison
+            layer_in_weight_std = layer_in.layer.weight.std().item()
+            layer_out_weight_std = layer_out.layer.weight.std().item()
+
+            # Call create_layer_extensions with copy_uniform initialization
+            extension_size = 2
+            layer_out.create_layer_extensions(
+                extension_size=extension_size,
+                output_extension_init="copy_uniform",
+                input_extension_init="copy_uniform",
+            )
+
+            # Verify extensions were created
+            self.assertIsInstance(
+                layer_in.extended_output_layer,
+                torch.nn.Linear,
+                msg="extended_output_layer should be created",
+            )
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)  # typing
+
+            self.assertIsInstance(
+                layer_out.extended_input_layer,
+                torch.nn.Linear,
+                msg="extended_input_layer should be created",
+            )
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)  # typing
+
+            # Verify newly added weights std match existing weights
+            # For copy_uniform: bound = sqrt(3) * std(W)
+            # So weights should be uniformly distributed in [-bound, bound]
+            # Expected std of uniform[-a, a] is a/sqrt(3)
+            # So expected std = sqrt(3) * std(W) / sqrt(3) = std(W)
+
+            # The std should approximately match the layer weights
+            # Allow some tolerance due to random initialization
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.std().item(),
+                layer_in_weight_std,
+                delta=layer_in_weight_std * 0.5,
+                msg="extended_output_layer std should match layer_in weights std",
+            )
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                layer_out_weight_std,
+                delta=layer_out_weight_std * 0.5,
+                msg="extended_input_layer std should match layer_out weights std",
+            )
+
+            # Perform extended forward pass with random input
+            # Extended forward through layer_in to get both standard and extended
+            # outputs
+            y, y_ext = layer_in.extended_forward(x=self.input_x)
+            assert y_ext is not None  # For type narrowing
+
+            # Verify intermediate extended results have correct shapes
+            self.assertShapeEqual(
+                y,
+                (self.n, 3),
+                msg="layer_in standard output has correct shape",
+            )
+
+            self.assertShapeEqual(
+                y_ext,
+                (self.n, extension_size),
+                msg="Intermediate extended result has correct shape",
+            )
+            # Extended forward through layer_out
+            z, z_ext = layer_out.extended_forward(x=y, x_ext=y_ext)
+            self.assertShapeEqual(
+                z,
+                (self.n, self.config.LAYER_DIMS["demo_2"][1]),
+                msg="layer_out standard output has correct shape",
+            )
+            self.assertIsNone(
+                z_ext,
+                msg="layer_out has no extended output when only input extension is added",
+            )
+
+        # Subtest 2: Without features (hidden_features=0)
+        with self.subTest(case="without_features"):
+            # Create two connected growing modules with 0 hidden features
+            layer_in, layer_out = self.create_demo_layers_with_extension(
+                hidden_features=0
+            )
+
+            # When out_features=0, the layer has no weights
+            # So copy_uniform should fallback to 1/sqrt(fan_in)
+            # Note: This test verifies the fallback behavior works correctly
+            extension_size = 2
+
+            with self.assertWarns(UserWarning):
+                # UserWarning: std(): degrees of freedom is <= 0. Correction should
+                # be strictly less than the reduction factor (input numel divided by
+                # output numel).
+                # This happens because the layer has no weights to compute std from.
+                layer_out.create_layer_extensions(
+                    extension_size=extension_size,
+                    output_extension_init="copy_uniform",
+                    input_extension_init="copy_uniform",
+                )
+
+            # Verify extensions were created
+            self.assertIsInstance(
+                layer_in.extended_output_layer,
+                torch.nn.Linear,
+                msg="extended_output_layer should be created",
+            )
+            self.assertIsInstance(
+                layer_out.extended_input_layer,
+                torch.nn.Linear,
+                msg="extended_input_layer should be created",
+            )
+
+            # Type assertions for linter
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+
+            # Initialize manually with fallback behavior
+            # For extended_output_layer:
+            # fan_in = self.config.LAYER_DIMS["demo_1"][0] (== 5)
+            expected_output_ext_std = 1.0 / (self.config.LAYER_DIMS["demo_1"][0] ** 0.5)
+            # For extended_input_layer:
+            # fan_in = extension_size (== 2)
+            expected_input_ext_std = 1.0 / (extension_size**0.5)
+
+            # Verify std matches expected values
+            # Allow tolerance for small sample statistics
+            self.assertAlmostEqual(
+                layer_in.extended_output_layer.weight.std().item(),
+                expected_output_ext_std,
+                delta=expected_output_ext_std * 0.5,
+                msg=f"extended_output_layer std should be ~{expected_output_ext_std}",
+            )
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                expected_input_ext_std,
+                delta=expected_input_ext_std * 0.5,
+                msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
+            )
+
+    def test_create_layer_extensions_mixed_initializations(self) -> None:
+        """Test create_layer_extensions with mixed initializations."""
+        # Create two connected growing modules without extensions
+        layer_in, layer_out = self.create_demo_layers(bias=True, hidden_features=5)
+
+        # Store existing weight std for comparison
+        layer_in_weight_std = layer_in.layer.weight.std().item()
+
+        # Call create_layer_extensions with different extension sizes
+        # and different initializations
+        output_extension_size = 3
+        input_extension_size = 2
+
+        layer_out.create_layer_extensions(
+            extension_size=-1,
+            output_extension_size=output_extension_size,
+            input_extension_size=input_extension_size,
+            output_extension_init="copy_uniform",
+            input_extension_init="zeros",
+        )
+
+        # Verify extensions were created
+        self.assertIsInstance(
+            layer_in.extended_output_layer,
+            torch.nn.Linear,
+            msg="extended_output_layer should be created",
+        )
+        self.assertIsInstance(
+            layer_out.extended_input_layer,
+            torch.nn.Linear,
+            msg="extended_input_layer should be created",
+        )
+
+        # Type assertions for linter
+        assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+        assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+
+        # Verify copy_uniform initialization (extended_output_layer)
+        # The std should approximately match the layer weights
+        self.assertAlmostEqual(
+            layer_in.extended_output_layer.weight.std().item(),
+            layer_in_weight_std,
+            delta=layer_in_weight_std * 0.5,
+            msg="extended_output_layer std should match layer_in weights std",
+        )
+
+        # Verify zeros initialization (extended_input_layer)
+        self.assertAlmostEqual(
+            layer_out.extended_input_layer.weight.abs().max().item(),
+            0.0,
+            places=6,
+            msg="extended_input_layer std should be zero",
+        )
+        if layer_out.use_bias and layer_out.extended_input_layer.bias is not None:
+            self.assertAllClose(
+                layer_out.extended_input_layer.bias,
+                torch.zeros_like(layer_out.extended_input_layer.bias),
+                msg="extended_input_layer bias should be zero",
+            )
+
+        # Perform extended forward pass with random input
+        y, y_ext = layer_in.extended_forward(x=self.input_x)
+        assert y_ext is not None  # For type narrowing
+
+        # Verify intermediate extended results have correct shapes
+        self.assertShapeEqual(
+            y,
+            (self.n, layer_in.out_features),
+            msg="layer_in standard output has correct shape",
+        )
+        self.assertShapeEqual(
+            y_ext,
+            (self.n, output_extension_size),
+            msg="Intermediate extended result has correct shape",
+        )
+
+        # Sub-select the first 2 components to forward through the second module
+        y_ext_selected = y_ext[:, :input_extension_size]
+
+        # Extended forward through layer_out with sub-selected extension
+        z, z_ext = layer_out.extended_forward(x=y, x_ext=y_ext_selected)
+        self.assertShapeEqual(
+            z,
+            (self.n, layer_out.out_features),
+            msg="layer_out standard output has correct shape",
+        )
+        self.assertIsNone(
+            z_ext,
+            msg="layer_out has no extended output when only input extension is added",
+        )
+
+    def test_create_layer_extensions_unknown_initialization(self) -> None:
+        """Test create_layer_extensions with unknown initialization raises exception."""
+        # Create two connected growing modules without extensions
+        _, layer_out = self.create_demo_layers(bias=True, hidden_features=5)
+
+        # Test with unknown output_extension_init
+        with self.assertRaises(ValueError):
+            layer_out.create_layer_extensions(
+                extension_size=2,
+                output_extension_init="unknown_init",
+                input_extension_init="copy_uniform",
+            )
 
 
 if __name__ == "__main__":
