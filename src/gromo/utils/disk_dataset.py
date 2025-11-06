@@ -1,3 +1,4 @@
+import warnings
 from typing import Iterator
 
 import numpy as np
@@ -78,8 +79,14 @@ class MemMapDataset(Dataset):
         return len(self.input_map)
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
-        x = torch.from_numpy(self.input_map[index])
-        y = torch.from_numpy(self.target_map[index])
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                category=UserWarning,
+                message="The given NumPy array is not writable",
+                action="ignore",
+            )
+            x = torch.from_numpy(self.input_map[index])
+            y = torch.from_numpy(self.target_map[index])
         return x, y
 
 
