@@ -22,6 +22,7 @@ class TestGrowingDAG(unittest.TestCase):
         self.out_features = 2
         self.use_bias = True
         self.use_batch_norm = False
+        self.loss_fn = torch.nn.CrossEntropyLoss()
         self.init_node_attributes = {"type": "linear", "size": self.hidden_size}
         self.default_node_attributes = {
             "type": "linear",
@@ -165,6 +166,27 @@ class TestGrowingDAG(unittest.TestCase):
                 self.dag.get_node_module(self.dag.root),
                 self.dag.get_node_module(self.dag.end),
             ],
+        )
+
+    def test_get_all_edge_modules(self) -> None:
+        self.assertEqual(self.dag.get_all_edge_modules(), [])
+        self.dag.add_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
+        self.assertEqual(
+            self.dag.get_all_edge_modules(),
+            [self.dag.get_edge_module(self.dag.root, self.dag.end)],
+        )
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "test", self.dag.end, self.init_node_attributes
+        )
+        self.assertEqual(
+            set(self.dag.get_all_edge_modules()),
+            set(
+                [
+                    self.dag.get_edge_module(self.dag.root, self.dag.end),
+                    self.dag.get_edge_module(self.dag.root, "test"),
+                    self.dag.get_edge_module("test", self.dag.end),
+                ]
+            ),
         )
 
     def test_get_all_node_modules(self) -> None:
@@ -459,6 +481,67 @@ class TestGrowingDAG(unittest.TestCase):
 
         self.dag.add_edge(self.dag.root, self.dag.end)
         self.assertFalse(self.dag.is_empty())
+
+    def test_reset_computation(self) -> None:
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.get_node_module(self.dag.end).init_computation()
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device())
+
+        pred = self.dag(x)
+        loss = self.loss_fn(pred, y)
+        loss.backward()
+
+        self.dag.reset_computation()
+
+        for edge_module in self.dag.get_all_edge_modules():
+            self.assertFalse(edge_module.store_input)
+            self.assertFalse(edge_module.store_pre_activity)
+            self.assertIsNone(edge_module.tensor_s._tensor)
+            self.assertIsNone(edge_module.tensor_m._tensor)
+            self.assertIsNone(edge_module.tensor_m_prev._tensor)
+            self.assertIsNone(edge_module.cross_covariance._tensor)
+        for node_module in self.dag.get_all_node_modules():
+            self.assertFalse(node_module.store_input)
+            self.assertFalse(node_module.store_activity)
+            if node_module.previous_tensor_s is not None:
+                self.assertIsNone(node_module.previous_tensor_s._tensor)
+            if node_module.previous_tensor_m is not None:
+                self.assertIsNone(node_module.previous_tensor_m._tensor)
+
+    def test_delete_update(self) -> None:
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.get_node_module(self.dag.end).init_computation()
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device())
+
+        pred = self.dag(x)
+        loss = self.loss_fn(pred, y)
+        loss.backward()
+
+        self.dag.reset_computation()
+        self.dag.delete_update()
+
+        for edge_module in self.dag.get_all_edge_modules():
+            self.assertIsNone(edge_module.optimal_delta_layer)
+            self.assertEqual(edge_module.scaling_factor, 0.0)
+            self.assertIsNone(edge_module.parameter_update_decrease)
+            self.assertIsNone(edge_module.eigenvalues_extension)
+            self.assertIsNone(edge_module._pre_activity)
+            self.assertIsNone(edge_module._input)
+            self.assertIsNone(edge_module.extended_output_layer)
+            self.assertIsNone(edge_module.extended_input_layer)
+        for node_module in self.dag.get_all_node_modules():
+            self.assertIsNone(node_module.activity)
+            self.assertIsNone(node_module.input)
 
     def test_calculate_bottleneck(self) -> None:
         expansions = [
