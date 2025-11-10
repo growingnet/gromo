@@ -832,21 +832,22 @@ class LinearGrowingModule(GrowingModule):
                 f"The eigenvalues of the extension should be computed before "
                 f"sub-selecting the optimal added parameters for {self.name}."
             )
-            self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
-
             if not zeros_if_not_enough:
+                self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
                 self.extended_input_layer = self.layer_of_tensor(
                     self.extended_input_layer.weight[:, :keep_neurons],
                     bias=self.extended_input_layer.bias,
                 )
-            elif zeros_fan_out:
+            else:
+                self.eigenvalues_extension[keep_neurons:] = 0.0
                 assert zeros_fan_in or zeros_fan_out, (
                     "At least one of zeros_fan_in or zeros_fan_out must be True "
                     "if zeros_if_not_enough is True."
                 )
-                self.extended_input_layer.weight.data[:, keep_neurons:] = 0.0
-                if self.extended_input_layer.bias is not None:
-                    self.extended_input_layer.bias.data[keep_neurons:] = 0.0
+                if zeros_fan_out:
+                    self.extended_input_layer.weight.data[:, keep_neurons:] = 0.0
+                    if self.extended_input_layer.bias is not None:
+                        self.extended_input_layer.bias.data[keep_neurons:] = 0.0
 
         zeros_fan_in = zeros_fan_in and zeros_if_not_enough
         if sub_select_previous:
