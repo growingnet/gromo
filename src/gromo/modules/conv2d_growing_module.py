@@ -1033,6 +1033,10 @@ class Conv2dGrowingModule(GrowingModule):
                     bias=self.extended_input_layer.bias,
                 )
             elif zeros_fan_out:
+                assert zeros_fan_in or zeros_fan_out, (
+                    "At least one of zeros_fan_in or zeros_fan_out must be True "
+                    "if zeros_if_not_enough is True."
+                )
                 self.extended_input_layer.weight.data[:, keep_neurons:] = 0.0
                 if self.extended_input_layer.bias is not None:
                     self.extended_input_layer.bias.data[keep_neurons:] = 0.0
