@@ -846,8 +846,6 @@ class LinearGrowingModule(GrowingModule):
                 )
                 if zeros_fan_out:
                     self.extended_input_layer.weight.data[:, keep_neurons:] = 0.0
-                    if self.extended_input_layer.bias is not None:
-                        self.extended_input_layer.bias.data[keep_neurons:] = 0.0
 
         zeros_fan_in = zeros_fan_in and zeros_if_not_enough
         if sub_select_previous:

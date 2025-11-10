@@ -1087,10 +1087,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             self.assertTrue(
                 torch.all(layer_out.extended_input_layer.weight[:, select:] == 0)
             )
-            if second_layer_bias and layer_out.extended_input_layer.bias is not None:
-                self.assertTrue(
-                    torch.all(layer_out.extended_input_layer.bias[select:] == 0)
-                )
 
     def test_sample_number_invariant(self):
         """Test that layer invariants remain consistent across different batch sizes."""
