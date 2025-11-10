@@ -1040,9 +1040,9 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     @unittest_parametrize(
         (
-            {"zero_fan_in": True, "zero_fan_out": True},
-            {"zero_fan_in": False, "zero_fan_out": True},
-            {"zero_fan_in": True, "zero_fan_out": False},
+            {"zero_fan_in": True, "zero_fan_out": True, "first_layer_bias": True},
+            {"zero_fan_in": False, "zero_fan_out": True, "first_layer_bias": True},
+            {"zero_fan_in": True, "zero_fan_out": False, "first_layer_bias": False},
         )
     )
     def test_sub_select_optimal_added_parameters_zeroing(

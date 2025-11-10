@@ -994,9 +994,9 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
 
     @unittest_parametrize(
         (
-            {"zero_fan_in": True, "zero_fan_out": True},
-            {"zero_fan_in": False, "zero_fan_out": True},
-            {"zero_fan_in": True, "zero_fan_out": False},
+            {"zero_fan_in": True, "zero_fan_out": True, "bias": True},
+            {"zero_fan_in": False, "zero_fan_out": True, "bias": True},
+            {"zero_fan_in": True, "zero_fan_out": False, "bias": False},
         )
     )
     def test_sub_select_optimal_added_parameters_zeroing(
