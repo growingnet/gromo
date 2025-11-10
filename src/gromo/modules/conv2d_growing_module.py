@@ -958,7 +958,9 @@ class Conv2dGrowingModule(GrowingModule):
             name=self.tensor_m.name,
         )
 
-    def _sub_select_added_output_dimension(self, keep_neurons: int) -> None:
+    def _sub_select_added_output_dimension(
+        self, keep_neurons: int, zeros_if_not_enough: bool = False
+    ) -> None:
         """
         Select the first `keep_neurons` neurons of the optimal added output dimension.
 
@@ -966,27 +968,38 @@ class Conv2dGrowingModule(GrowingModule):
         ----------
         keep_neurons: int
             number of neurons to keep
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
         """
         assert self.extended_output_layer is not None, (
             "The layer should have an extended output layer "
             "to sub-select the output dimension."
         )
-        self.extended_output_layer = self.layer_of_tensor(
-            self.extended_output_layer.weight[:keep_neurons],
-            bias=(
-                self.extended_output_layer.bias[:keep_neurons]
-                if self.extended_output_layer.bias is not None
-                else None
-            ),
-        )
+        if not zeros_if_not_enough:
+            self.extended_output_layer = self.layer_of_tensor(
+                self.extended_output_layer.weight[:keep_neurons],
+                bias=(
+                    self.extended_output_layer.bias[:keep_neurons]
+                    if self.extended_output_layer.bias is not None
+                    else None
+                ),
+            )
+        else:
+            self.extended_output_layer.weight.data[keep_neurons:] = 0.0
+            if self.extended_output_layer.bias is not None:
+                self.extended_output_layer.bias.data[keep_neurons:] = 0.0
 
     def sub_select_optimal_added_parameters(
         self,
         keep_neurons: int,
         sub_select_previous: bool = True,
+        zeros_if_not_enough: bool = False,
+        zeros_fan_in: bool = True,
+        zeros_fan_out: bool = False,
     ) -> None:
         """
-        Select the first `keep_neurons` neurons of the optimal added parameters.
+        Select the first keep_neurons neurons of the optimal added parameters
+        linked to this layer.
 
         Parameters
         ----------
@@ -994,21 +1007,37 @@ class Conv2dGrowingModule(GrowingModule):
             number of neurons to keep
         sub_select_previous: bool
             if True, sub-select the previous layer added parameters as well
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
+            (either first or last depending on zeros_fan_in and zeros_fan_out)
+        zeros_fan_in: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-in parameters to zero
+        zeros_fan_out: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-out parameters to zero
         """
         assert (self.extended_input_layer is None) ^ (
             self.extended_output_layer is None
         ), "The layer should have an extended input xor output layer."
         if self.extended_input_layer is not None:
-            self.extended_input_layer = self.layer_of_tensor(
-                self.extended_input_layer.weight[:, :keep_neurons],
-                bias=self.extended_input_layer.bias,
-            )
             assert self.eigenvalues_extension is not None, (
                 "The eigenvalues of the extension should be computed before "
                 "sub-selecting the optimal added parameters."
             )
             self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
 
+            if not zeros_if_not_enough:
+                self.extended_input_layer = self.layer_of_tensor(
+                    self.extended_input_layer.weight[:, :keep_neurons],
+                    bias=self.extended_input_layer.bias,
+                )
+            elif zeros_fan_out:
+                self.extended_input_layer.weight.data[:, keep_neurons:] = 0.0
+                if self.extended_input_layer.bias is not None:
+                    self.extended_input_layer.bias.data[keep_neurons:] = 0.0
+
+        zeros_fan_in = zeros_fan_in and zeros_if_not_enough
         if sub_select_previous:
             if self.previous_module is None:
                 raise ValueError(
@@ -1016,11 +1045,15 @@ class Conv2dGrowingModule(GrowingModule):
                     "Therefore new neurons cannot be sub-selected."
                 )
             elif isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module._sub_select_added_output_dimension(keep_neurons)
+                self.previous_module._sub_select_added_output_dimension(
+                    keep_neurons, zeros_if_not_enough=zeros_fan_in
+                )
             elif isinstance(self.previous_module, LinearMergeGrowingModule):
                 raise NotImplementedError("TODO")
             elif isinstance(self.previous_module, Conv2dGrowingModule):
-                self.previous_module._sub_select_added_output_dimension(keep_neurons)
+                self.previous_module._sub_select_added_output_dimension(
+                    keep_neurons, zeros_if_not_enough=zeros_fan_in
+                )
             elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
                 raise NotImplementedError("TODO")
             else:
