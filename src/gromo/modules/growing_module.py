@@ -10,6 +10,10 @@ from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
 from gromo.utils.utils import compute_tensor_stats, get_correct_device
 
 
+# Constants for gradient computation
+GRADIENT_COMPUTATION_EPSILON = 1e-5  # Small perturbation for gradient computation
+
+
 class MergeGrowingModule(torch.nn.Module):
     """
     Module to connect multiple modules with an merge operation.
@@ -713,7 +717,19 @@ class GrowingModule(torch.nn.Module):
         torch.Tensor
             derivative of the activation function before this layer at 0+
         """
-        raise NotImplementedError
+        if isinstance(self.previous_module, GrowingModule):
+            return torch.func.grad(self.previous_module.post_layer_function)(
+                torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device)
+            )
+        elif isinstance(self.previous_module, MergeGrowingModule):
+            return torch.func.grad(self.previous_module.post_merge_function)(
+                torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device)
+            )
+        else:
+            raise NotImplementedError(
+                f"The computation of the activation gradient is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         """
