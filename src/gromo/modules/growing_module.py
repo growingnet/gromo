@@ -1275,7 +1275,9 @@ class GrowingModule(torch.nn.Module):
         if delta_biases is not None:
             self.layer.bias.data += delta_biases
 
-    def _sub_select_added_output_dimension(self, keep_neurons: int) -> None:
+    def _sub_select_added_output_dimension(
+        self, keep_neurons: int, zeros_if_not_enough: bool = False
+    ) -> None:
         """
         Select the first `keep_neurons` neurons of the optimal added output dimension.
 
@@ -1283,6 +1285,8 @@ class GrowingModule(torch.nn.Module):
         ----------
         keep_neurons: int
             number of neurons to keep
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
         """
         raise NotImplementedError
 
@@ -1290,6 +1294,9 @@ class GrowingModule(torch.nn.Module):
         self,
         keep_neurons: int,
         sub_select_previous: bool = True,
+        zeros_if_not_enough: bool = False,
+        zeros_fan_in: bool = True,
+        zeros_fan_out: bool = False,
     ) -> None:
         """
         Select the first keep_neurons neurons of the optimal added parameters
@@ -1301,6 +1308,15 @@ class GrowingModule(torch.nn.Module):
             number of neurons to keep
         sub_select_previous: bool
             if True, sub-select the previous layer added parameters as well
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
+            (either first or last depending on zeros_fan_in and zeros_fan_out)
+        zeros_fan_in: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-in parameters to zero
+        zeros_fan_out: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-out parameters to zero
         """
         raise NotImplementedError
 
