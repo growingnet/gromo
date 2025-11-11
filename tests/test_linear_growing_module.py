@@ -1019,7 +1019,10 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         if bias:
             self.assertAllClose(layer.extended_output_layer.bias, new_layer.bias)
 
-    def test_sub_select_optimal_added_parameters_in(self, bias: bool = False):
+    @unittest_parametrize(({"sub_select_previous": True}, {"sub_select_previous": False}))
+    def test_sub_select_optimal_added_parameters_in(
+        self, bias: bool = False, sub_select_previous: bool = False
+    ):
         layer = LinearGrowingModule(1, 3, use_bias=bias, name="layer1")
         layer.extended_input_layer = torch.nn.Linear(2, 3, bias=bias)
         layer.eigenvalues_extension = torch.tensor([2.0, 1.0])
@@ -1029,7 +1032,15 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         if bias:
             new_layer.bias.data = layer.extended_input_layer.bias.data
 
-        layer.sub_select_optimal_added_parameters(1, sub_select_previous=False)
+        if sub_select_previous:
+            with self.assertRaises(ValueError):
+                layer.sub_select_optimal_added_parameters(
+                    1, sub_select_previous=sub_select_previous
+                )
+        else:
+            layer.sub_select_optimal_added_parameters(
+                1, sub_select_previous=sub_select_previous
+            )
 
         self.assertAllClose(layer.extended_input_layer.weight, new_layer.weight)
 
@@ -1061,7 +1072,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         layer_out.eigenvalues_extension = torch.tensor([1.0, 0.1])
 
         layer_out.sub_select_optimal_added_parameters(
-            keep_neurons=select,
+            threshold=[0.0, 0.5, 2.0][select],
             zeros_if_not_enough=True,
             zeros_fan_in=zero_fan_in,
             zeros_fan_out=zero_fan_out,
