@@ -17,8 +17,7 @@ def gaussian_kernel(X, sigma=None):
 
 
 def slow_gaussian_kernel(X, sigma_sq=None):
-
-    pairwise_sq_dists = torch.sum((X[:, torch.newaxis] - X) ** 2, axis=-1)  # (n,n)
+    pairwise_sq_dists = torch.sum((X[:, None] - X) ** 2, axis=-1)  # (n,n)
 
     if sigma_sq is None:
         sigma_sq = torch.median(pairwise_sq_dists)
