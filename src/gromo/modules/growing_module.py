@@ -739,7 +739,7 @@ class GrowingModule(torch.nn.Module):
                     device=self.device,
                 )
             elif isinstance(inspected_function, torch.nn.Sequential):
-                value = 1.0
+                value = torch.tensor(1.0, device=self.device)
                 for module in inspected_function:
                     if type(module) in known_activations_zero_plus_gradient:
                         value *= known_activations_zero_plus_gradient[type(module)]
@@ -755,16 +755,15 @@ class GrowingModule(torch.nn.Module):
 
                         value *= (
                             torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
-                                inspected_function
+                                module
                             )(
                                 torch.tensor(
                                     GRADIENT_COMPUTATION_EPSILON, device=self.device
                                 )
                             )
                         )
-                self._activation_gradient_previous_module = torch.tensor(
-                    value, device=self.device
-                )
+                self._activation_gradient_previous_module = value
+
             else:
                 warnings.warn(
                     f"The computation of the activation gradient does not work "
