@@ -1,5 +1,6 @@
 import copy
 import operator
+import warnings
 from typing import Callable, Iterator, Sequence
 
 import numpy as np
@@ -714,34 +715,61 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
     def restrict_action_space(
-        self, actions: list[Expansion], chosen_position: str
+        self,
+        actions: list[Expansion],
+        chosen_outputs: list[str] | None = None,
+        chosen_inputs: list[str] | None = None,
     ) -> list[Expansion]:
-        """Reduce action space to contribute only to specific node position
+        """Reduce action space to connect only to specific node positions
+        Can only restrict input or output one at a time
 
         Parameters
         ----------
         actions : list[Expansion]
             list with growth actions information
-        chosen_position : str
-            node position to restrict to
+        chosen_outputs : list[str], optional
+            output node position to restrict to
+        chosen_inputs : list[str], optional
+            input node position to restrict to
 
         Returns
         -------
         list[Expansion]
             reduced list with growth actions information
         """
+        if chosen_inputs is None and chosen_outputs is None:
+            warnings.warn(
+                "No input or output was given to restrict the actions. No restriction will happen.",
+                UserWarning,
+            )
+            return actions
+        if chosen_inputs is not None and chosen_outputs is not None:
+            raise NotImplementedError(
+                "You can only restrict inputs or outputs one at a time."
+            )
         new_actions = []
         for expansion in actions:
             new_node = expansion.expanding_node
-            next_nodes = expansion.next_nodes
-            if new_node == chosen_position:
-                # Case: expand current node
-                new_actions.append(expansion)
-            elif chosen_position in next_nodes:
-                # Case: expand immediate previous node or add new previous node or direct edge
-                new_actions.append(expansion)
-            else:
-                del expansion
+            next_node = expansion.next_nodes
+            prev_node = expansion.previous_nodes
+            if not isinstance(next_node, list):
+                next_node = [next_node]
+            if not isinstance(prev_node, list):
+                prev_node = [prev_node]
+            if chosen_outputs is not None:
+                if new_node in chosen_outputs:
+                    # Case: expand current node
+                    new_actions.append(expansion)
+                    continue
+                elif len(set(chosen_outputs).intersection(next_node)) != 0:
+                    # Case: expand or add immediate previous node
+                    new_actions.append(expansion)
+                    continue
+            elif chosen_inputs is not None:
+                # Case: connect previous node
+                if len(set(chosen_inputs).intersection(prev_node)) != 0:
+                    new_actions.append(expansion)
+                    continue
         return new_actions
 
     def choose_growth_best_action(

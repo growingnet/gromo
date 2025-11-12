@@ -20,6 +20,10 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Introduce a `SequentialGrowingContainer` structure specialized for container with sequential layers.  Introduce a `ResNetBasicBlock` class to create resnet 18/34 like structure with growable blocks and the possibility of adding blocks. (:gh:`168` by `Théo Rudkiewicz`_)
+- Allow to create layer extension with different simple initialization (different random and zero). (:gh:`165` by `Théo Rudkiewicz`_)
+- Add `TensorStatisticWithEstimationError` and corresponding class `TestTensorStatisticWithEstimationError`. It computes an estimation of the quadratic error done when estimating the given tensor statistic. Modify `TensorStatistic` so that there is no need to call init (:gh:`149` by `Félix Houdouin`_).
+- Add a method `normalize_optimal_updates` in `GrowingModule` to normalize the optimal weight updates before applying them (:gh:`164` by `Théo Rudkiewicz`_)
 - Add setter for scaling factor in `GrowingModule` (:gh:`157` by `Stella Douka`_)
 - Minor improvements of `GrowingContainer` (:gh:`161` by `Théo Rudkiewicz`_)
 - Add `in_features` and `out_features` properties to `GrowingModule` and `LinearGrowingModule` (:gh:`160` by `Théo Rudkiewicz`_)
@@ -32,6 +36,7 @@ Enhancements
 - Create a `input_size` property in GrowingModule. (:gh:`143` by `Théo Rudkiewicz`_)
 - Improve `GrowingContainer` to allow `GrowingContainer` as submodules (:gh:`133` by `Théo Rudkiewicz`_ and `Stella Douka`_).
 - Fix sign errors in `compute_optimal_added_parameters` when using `tensor_m_prev` and in `tensor_n` computation. Add unit tests to cover these cases (:gh:`118` and :gh:`115` by `Théo Rudkiewicz`_).
+- Estimate dependencies between activities for faster expansion (:gh:`100` by `Stella Douka`_)
 - Makes flattening of input optional in GrowingMLP. Default value is True for backward compatibility (:gh:`108` by `Stéphane Rivaud`_).
 - Add the option to handle post layer function that need to grow like BatchNorm (:gh:`105` by `Théo Rudkiewicz`_).
 - Add robust `compute_optimal_delta` function to `gromo.utils.tools` with comprehensive dtype handling, automatic LinAlgError fallback to pseudo-inverse, float64 retry mechanism for negative decrease scenarios, and extensive test suite achieving 95% coverage. Function computes optimal weight updates for layer expansion using mathematical formula dW* = M S⁻¹ with full backward compatibility (:gh:`114` by `Stéphane Rivaud`_)
@@ -69,7 +74,7 @@ Bugs
 
 - Fix memory leak in tensor updates (:gh:`138` by `Stella Douka`_)
 - Device handling in GrowingMLP, GrowingMLPMixer, and GrowingResidualMLP (:gh:`129` by `Stella Douka`_)
-- Delete leftover activity tensors (:gh:`78` by `Stella Douka`_)
+- Delete leftover activity tensors (:gh:`78` & `100` by `Stella Douka`_)
 - Fix inconsistency with torch.empty not creating empty tensors (:gh:`78` by `Stella Douka`_)
 - Expansion of existing nodes not executed in GrowingDAG (:gh:`78` by `Stella Douka`_)
 - Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)

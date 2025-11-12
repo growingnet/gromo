@@ -2,8 +2,6 @@
 Growing Batch Normalization module for extending batch normalization layers dynamically.
 """
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 
@@ -23,8 +21,8 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         momentum: float = 0.1,
         affine: bool = True,
         track_running_stats: bool = True,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         name: str = "growing_batch_norm",
     ):
         """
@@ -64,7 +62,7 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         self,
         param_name: str,
         additional_features: int,
-        new_values: Optional[torch.Tensor],
+        new_values: torch.Tensor | None,
         default_value_fn,
         device: torch.device,
         as_parameter: bool = True,
@@ -81,7 +79,8 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         new_values : torch.Tensor, optional
             Custom values for the new features. If None, uses default_value_fn.
         default_value_fn : callable
-            Function to generate default values: fn(additional_features, device, dtype) -> torch.Tensor
+            Function to generate default values:
+            fn(additional_features, device, dtype) -> torch.Tensor
         device : torch.device
             Device to place new parameters on
         as_parameter : bool, default=True
@@ -98,7 +97,8 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         else:
             if new_values.shape[0] != additional_features:
                 raise ValueError(
-                    f"new_{param_name} must have {additional_features} elements, got {new_values.shape[0]}"
+                    f"new_{param_name} must have {additional_features} elements, "
+                    f"got {new_values.shape[0]}"
                 )
             # Ensure new_values is on the correct device
             if new_values.device != device:
@@ -117,11 +117,11 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
     def grow(
         self,
         additional_features: int,
-        new_weights: Optional[torch.Tensor] = None,
-        new_biases: Optional[torch.Tensor] = None,
-        new_running_mean: Optional[torch.Tensor] = None,
-        new_running_var: Optional[torch.Tensor] = None,
-        device: Optional[torch.device] = None,
+        new_weights: torch.Tensor | None = None,
+        new_biases: torch.Tensor | None = None,
+        new_running_mean: torch.Tensor | None = None,
+        new_running_var: torch.Tensor | None = None,
+        device: torch.device | None = None,
     ) -> None:
         """
         Grow the batch normalization layer by adding more features.
@@ -171,6 +171,9 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
 
         # Extend running statistics if enabled
         if getattr(self, "track_running_stats", False):
+            assert isinstance(
+                self.running_mean, torch.Tensor
+            ), "running_mean is not initialized while track_running_stats is True"
             device = self.running_mean.device
             self._extend_parameter(
                 "running_mean",
