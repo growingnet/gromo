@@ -44,6 +44,7 @@ class TestGrowingModule(TorchTestCase):
             post_layer_function=torch.nn.Sequential(
                 torch.nn.ReLU(),
                 ReLUSigmoid(),
+                ReLUSigmoid(),
             ),
             allow_growing=False,
         )
@@ -55,7 +56,7 @@ class TestGrowingModule(TorchTestCase):
         with self.assertWarns(UserWarning):
             value = model_out.activation_gradient.item()
         self.assertIsInstance(value, float)
-        self.assertAlmostEqual(value, 0.25, places=2)
+        self.assertAlmostEqual(value, 0.0625, places=2)
 
     def test_activation_gradient_automatic_differentiation(self):
         model_in = GrowingModule(
@@ -75,7 +76,7 @@ class TestGrowingModule(TorchTestCase):
 
         model_in.post_layer_function = torch.nn.ReLU()
 
-        # no automatic update of the activation gradient
+        # The activation gradient is cached and does not update when post_layer_function changes
         value = model_out.activation_gradient.item()
         self.assertIsInstance(value, float)
         self.assertAlmostEqual(value, 0.25, places=2)
