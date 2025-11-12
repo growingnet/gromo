@@ -7,7 +7,15 @@ import torch
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
-from gromo.utils.utils import compute_tensor_stats, get_correct_device
+from gromo.utils.utils import (
+    compute_tensor_stats,
+    get_correct_device,
+    known_activations_zero_plus_gradient,
+)
+
+
+# Constants for gradient computation
+GRADIENT_COMPUTATION_EPSILON = 1e-5  # Small perturbation for gradient computation
 
 
 class MergeGrowingModule(torch.nn.Module):
@@ -639,7 +647,6 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"M({self.name})",
         )
-        # self.tensor_n = TensorStatistic(output_shape, update_function=self.compute_n_update)
 
         # the optimal update used to compute v_projected
         self.optimal_delta_layer: torch.nn.Module | None = None
@@ -652,14 +659,16 @@ class GrowingModule(torch.nn.Module):
         self.extended_input_layer: torch.nn.Module | None = None
         self.extended_output_layer: torch.nn.Module | None = None
 
-        # when updating a layer with t * optimal_delta_layer having a change of activity of dA
-        # we have L(A + dA) = L(A) - t * parameter_update_decrease + o(t)
+        # when updating a layer with t * optimal_delta_layer having a change of activity
+        # of dA we have L(A + dA) = L(A) - t * parameter_update_decrease + o(t)
         self.parameter_update_decrease: torch.Tensor | None = None
 
         # when increasing this layer with sqrt(t) * extended_input_layer and
-        # the previous with sqrt(t) * extended_output_layer having a change of activity of dA
-        # we have L(A + dA) = L(A) - t * sigma'(0) * (eigenvalues_extension ** 2).sum() + o(t)
+        # the previous with sqrt(t) * extended_output_layer having a change of activity
+        # of dA we have (with sigma the activation function in post_layer_function):
+        # L(A + dA) = L(A) - t * sigma'(0) * (eigenvalues_extension ** 2).sum() + o(t)
         self.eigenvalues_extension: torch.Tensor | None = None
+        self._activation_gradient_previous_module: torch.Tensor | None = None
 
         self.delta_raw: torch.Tensor | None = None
 
@@ -708,12 +717,72 @@ class GrowingModule(torch.nn.Module):
         """
         Return the derivative of the activation function before this layer at 0+.
 
+        /!/ A caching mechanism is used to avoid recomputing the value multiple times.
+        Therefore, if the previous module changes its post layer function,
+        the cache must be cleared manually by setting
+        _activation_gradient_previous_module to None.
+
         Returns
         -------
         torch.Tensor
             derivative of the activation function before this layer at 0+
         """
-        raise NotImplementedError
+        if self._activation_gradient_previous_module is None:
+            if isinstance(self.previous_module, GrowingModule):
+                inspected_function = self.previous_module.post_layer_function
+            elif isinstance(self.previous_module, MergeGrowingModule):
+                inspected_function = self.previous_module.post_merge_function
+            else:
+                raise NotImplementedError(
+                    f"The computation of the activation gradient is not implemented yet "
+                    f"for {type(self.previous_module)} as previous module."
+                )
+
+            if type(inspected_function) in known_activations_zero_plus_gradient:
+                self._activation_gradient_previous_module = torch.tensor(
+                    known_activations_zero_plus_gradient[type(inspected_function)],
+                    device=self.device,
+                )
+            elif isinstance(inspected_function, torch.nn.Sequential):
+                value = torch.tensor(1.0, device=self.device)
+                for module in inspected_function:
+                    if type(module) in known_activations_zero_plus_gradient:
+                        value *= known_activations_zero_plus_gradient[type(module)]
+                    elif isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+                        pass
+                    else:
+                        warnings.warn(
+                            f"The computation of the activation gradient does not work "
+                            f"necessarily with {type(module)} in a Sequential. "
+                            f"We will try to compute it numerically.",
+                            UserWarning,
+                        )
+
+                        value *= (
+                            torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
+                                module
+                            )(
+                                torch.tensor(
+                                    GRADIENT_COMPUTATION_EPSILON, device=self.device
+                                )
+                            )
+                        )
+                self._activation_gradient_previous_module = value
+
+            else:
+                warnings.warn(
+                    f"The computation of the activation gradient does not work "
+                    f"necessarily with {type(inspected_function)}. "
+                    f"We will try to compute it numerically.",
+                    UserWarning,
+                )
+                self._activation_gradient_previous_module = (
+                    torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
+                        inspected_function
+                    )(torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device))
+                )
+        assert self._activation_gradient_previous_module is not None
+        return self._activation_gradient_previous_module
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         """

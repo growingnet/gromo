@@ -158,6 +158,17 @@ def set_from_conf(self, name: str, default: Any = None, setter: bool = True) -> 
     return value
 
 
+known_activations_zero_plus_gradient: dict[type[torch.nn.Module], float] = {
+    torch.nn.ReLU: 1.0,
+    torch.nn.GELU: 0.5,
+    torch.nn.SELU: 1.0507,
+    torch.nn.SiLU: 0.5,
+    torch.nn.Tanh: 1.0,
+    torch.nn.Sigmoid: 0.25,
+    torch.nn.Identity: 1.0,
+}
+
+
 def activation_fn(fn_name: str) -> nn.Module:
     """Create activation function module by name
 

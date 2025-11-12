@@ -310,3 +310,36 @@ class TestResNet(TorchTestCase):
             int,
             "number_of_neurons_to_add should return an integer",
         )
+
+    def test_get_first_order_improvement(self):
+        """Test the get_first_order_improvement method."""
+        device = torch.device("cpu")
+
+        # Create a network
+        model = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            reduction_factor=0.5,
+            device=device,
+        )
+
+        # The first growable layer is the first block of the first stage
+        layer = model.stages[0][0]  # type: ignore
+
+        update_decrease = 1.0
+        eigenvalues = [10.0, 5.0]
+        layer.second_layer.parameter_update_decrease = torch.tensor(update_decrease)
+        layer.second_layer.eigenvalues_extension = torch.tensor(eigenvalues)
+
+        improvement = layer.first_order_improvement
+        self.assertIsInstance(
+            improvement.item(),
+            float,
+            "get_first_order_improvement should return a float",
+        )
+        self.assertAlmostEqual(
+            improvement.item(),
+            update_decrease + sum(x**2 for x in eigenvalues),
+            msg="First order improvement calculation is incorrect",
+        )
