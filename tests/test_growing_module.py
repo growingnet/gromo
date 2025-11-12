@@ -13,6 +13,11 @@ from tests.torch_unittest import SizedIdentity, TorchTestCase
 from tests.unittest_tools import unittest_parametrize
 
 
+class ReLUSigmoid(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sigmoid(torch.relu(x))
+
+
 class TestGrowingModule(TorchTestCase):
     def setUp(self):
         torch.manual_seed(0)
@@ -32,6 +37,48 @@ class TestGrowingModule(TorchTestCase):
         self.second_layer = torch.nn.Linear(2, 5, device=global_device())
         self.first_layer_ext = torch.nn.Linear(3, 7, device=global_device())
         self.second_layer_ext = torch.nn.Linear(7, 5, device=global_device(), bias=False)
+
+    def test_activation_gradient_sequential(self):
+        model_in = GrowingModule(
+            layer=torch.nn.Identity(),
+            post_layer_function=torch.nn.Sequential(
+                torch.nn.ReLU(),
+                ReLUSigmoid(),
+            ),
+            allow_growing=False,
+        )
+
+        model_out = GrowingModule(
+            layer=torch.nn.Identity(),
+            previous_module=model_in,
+        )
+        with self.assertWarns(UserWarning):
+            value = model_out.activation_gradient.item()
+        self.assertIsInstance(value, float)
+        self.assertAlmostEqual(value, 0.25, places=2)
+
+    def test_activation_gradient_automatic_differentiation(self):
+        model_in = GrowingModule(
+            layer=torch.nn.Identity(),
+            post_layer_function=ReLUSigmoid(),
+            allow_growing=False,
+        )
+
+        model_out = GrowingModule(
+            layer=torch.nn.Identity(),
+            previous_module=model_in,
+        )
+        with self.assertWarns(UserWarning):
+            value = model_out.activation_gradient.item()
+        self.assertIsInstance(value, float)
+        self.assertAlmostEqual(value, 0.25, places=2)
+
+        model_in.post_layer_function = torch.nn.ReLU()
+
+        # no automatic update of the activation gradient
+        value = model_out.activation_gradient.item()
+        self.assertIsInstance(value, float)
+        self.assertAlmostEqual(value, 1.0, places=2)
 
     def test_extended_forward_with_sized_post_layer_function(self):
         """
