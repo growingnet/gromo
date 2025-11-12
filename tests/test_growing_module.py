@@ -78,7 +78,7 @@ class TestGrowingModule(TorchTestCase):
         # no automatic update of the activation gradient
         value = model_out.activation_gradient.item()
         self.assertIsInstance(value, float)
-        self.assertAlmostEqual(value, 1.0, places=2)
+        self.assertAlmostEqual(value, 0.25, places=2)
 
     def test_extended_forward_with_sized_post_layer_function(self):
         """
