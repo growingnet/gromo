@@ -746,16 +746,32 @@ class GrowingModule(torch.nn.Module):
                     elif isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
                         pass
                     else:
-                        raise TypeError(
+                        warnings.warn(
                             f"The computation of the activation gradient does not work "
-                            f"automatically with {type(module)} in a Sequential. "
-                            f"Set manually the attribute "
-                            f"_activation_gradient_previous_module."
+                            f"necessarily with {type(module)} in a Sequential. "
+                            f"We will try to compute it numerically.",
+                            UserWarning,
+                        )
+
+                        value *= (
+                            torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
+                                inspected_function
+                            )(
+                                torch.tensor(
+                                    GRADIENT_COMPUTATION_EPSILON, device=self.device
+                                )
+                            )
                         )
                 self._activation_gradient_previous_module = torch.tensor(
                     value, device=self.device
                 )
             else:
+                warnings.warn(
+                    f"The computation of the activation gradient does not work "
+                    f"necessarily with {type(inspected_function)}. "
+                    f"We will try to compute it numerically.",
+                    UserWarning,
+                )
                 self._activation_gradient_previous_module = (
                     torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
                         inspected_function
