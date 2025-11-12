@@ -717,6 +717,11 @@ class GrowingModule(torch.nn.Module):
         """
         Return the derivative of the activation function before this layer at 0+.
 
+        /!/ A caching mechanism is used to avoid recomputing the value multiple times.
+        Therefore, if the previous module changes its post layer function,
+        the cache must be cleared manually by setting
+        _activation_gradient_previous_module to None.
+
         Returns
         -------
         torch.Tensor
