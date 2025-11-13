@@ -17,6 +17,19 @@ class GrowingMLPBlock(GrowingContainer):
     - Layer first
     - Activation mid
     - Layer second
+
+    Parameters
+    ----------
+    num_features : int
+        Number of input and output features, in case of convolutional layer, the number of channels.
+    hidden_features : int
+        Number of hidden features, if zero the block is the zero function.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the block.
+    kwargs_layer : Optional[Dict[str, Any]]
+        Dictionary of arguments for the layers (e.g., bias, ...).
     """
 
     def __init__(
@@ -27,22 +40,6 @@ class GrowingMLPBlock(GrowingContainer):
         name: Optional[str] = None,
         kwargs_layer: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """
-        Initialize the block.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of input and output features, in case of convolutional layer, the number of channels.
-        hidden_features : int
-            Number of hidden features, if zero the block is the zero function.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the block.
-        kwargs_layer : Optional[Dict[str, Any]]
-            Dictionary of arguments for the layers (e.g., bias, ...).
-        """
         if kwargs_layer is None:
             kwargs_layer = {}
 
@@ -163,6 +160,21 @@ class GrowingMLPBlock(GrowingContainer):
 class GrowingTokenMixer(GrowingContainer):
     """
     Represents a token mixer in a growing network.
+
+    Parameters
+    ----------
+    num_patches : int
+        Number of patches.
+    num_features : int
+        Number of features.
+    hidden_features : int
+        Number of hidden features.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the token mixer.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -174,24 +186,6 @@ class GrowingTokenMixer(GrowingContainer):
         name: Optional[str] = None,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the token mixer.
-
-        Parameters
-        ----------
-        num_patches : int
-            Number of patches.
-        num_features : int
-            Number of features.
-        hidden_features : int
-            Number of hidden features.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the token mixer.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
             in_features=num_features, out_features=num_features, device=device
         )
@@ -258,6 +252,19 @@ class GrowingTokenMixer(GrowingContainer):
 class GrowingChannelMixer(GrowingContainer):
     """
     Represents a channel mixer in a growing network.
+
+    Parameters
+    ----------
+    num_features : int
+        Number of features.
+    hidden_features : int
+        Number of hidden features.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the channel mixer.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -268,22 +275,6 @@ class GrowingChannelMixer(GrowingContainer):
         name: Optional[str] = None,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the channel mixer.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of features.
-        hidden_features : int
-            Number of hidden features.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the channel mixer.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
             in_features=num_features, out_features=num_features, device=device
         )
@@ -346,6 +337,23 @@ class GrowingChannelMixer(GrowingContainer):
 class GrowingMixerLayer(GrowingContainer):
     """
     Represents a mixer layer in a growing network.
+
+    Parameters
+    ----------
+    num_patches : int
+        Number of patches.
+    num_features : int
+        Number of features.
+    hidden_dim_token : int
+        Number of hidden token features.
+    hidden_dim_channel : int
+        Number of hidden channel features.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the mixer layer.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -358,26 +366,6 @@ class GrowingMixerLayer(GrowingContainer):
         name: Optional[str] = "Mixer Layer",
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the mixer layer.
-
-        Parameters
-        ----------
-        num_patches : int
-            Number of patches.
-        num_features : int
-            Number of features.
-        hidden_dim_token : int
-            Number of hidden token features.
-        hidden_dim_channel : int
-            Number of hidden channel features.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the mixer layer.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
             in_features=num_features, out_features=num_features, device=device
         )
@@ -454,6 +442,27 @@ def check_sizes(image_size, patch_size):
 class GrowingMLPMixer(GrowingContainer):
     """
     Represents a growing MLP mixer network.
+
+    Parameters
+    ----------
+    in_features : tuple[int, int, int]
+        Input features (channels, height, width).
+    out_features : int
+        Number of output features.
+    patch_size : int
+        Size of each patch.
+    num_features : int
+        Number of features.
+    hidden_dim_token : int
+        Number of hidden token features.
+    hidden_dim_channel : int
+        Number of hidden channel features.
+    num_blocks : int
+        Number of mixer blocks.
+    dropout : float
+        Dropout rate.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -468,30 +477,6 @@ class GrowingMLPMixer(GrowingContainer):
         dropout: float = 0.0,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the growing MLP mixer.
-
-        Parameters
-        ----------
-        in_features : tuple[int, int, int]
-            Input features (channels, height, width).
-        out_features : int
-            Number of output features.
-        patch_size : int
-            Size of each patch.
-        num_features : int
-            Number of features.
-        hidden_dim_token : int
-            Number of hidden token features.
-        hidden_dim_channel : int
-            Number of hidden channel features.
-        num_blocks : int
-            Number of mixer blocks.
-        dropout : float
-            Dropout rate.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         in_channels, image_size, _ = in_features
         num_patches = check_sizes(image_size, patch_size)
         super().__init__(

@@ -40,9 +40,16 @@ class SequentialGrowingContainer(GrowingContainer):
             growing_layers list.
             "all": all layers in the _growable_layers list are added to the
             _growing_layers list.
-        index : int, optional
+        index : int | None, optional
             If scheduling_method is "sequential", this index specifies which layer to
             grow next.
+
+        Raises
+        ------
+        IndexError
+            if index is out of bounds for the number og growing_layers in the module
+        ValueError
+            if argument scheduling_method is not 'sequential' or 'all'
         """
         if isinstance(index, int):
             if index < 0 or index >= len(self._growable_layers):
