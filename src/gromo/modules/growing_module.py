@@ -556,7 +556,7 @@ class MergeGrowingModule(torch.nn.Module):
 
 class GrowingModule(torch.nn.Module):
     """
-    Initialize a GrowingModule.
+    Abstract class for a Module of dynamic size
 
     Parameters
     ----------
