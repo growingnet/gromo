@@ -121,6 +121,8 @@ select = [
     "N",     # pep8-naming
     # "UP",  # pyupgrade
     "RUF",   # Ruff-specific rules
+    "D101",  # docstring in public class
+    "D103",  # docstring in public function
 ]
 
 # Ignore some rules that might be too strict for existing codebase
@@ -134,9 +136,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can have more relaxed type checking
-"tests/**/*.py" = ["ANN", "ARG"]
+"tests/**/*.py" = ["ANN", "ARG", "D"]
 # Examples can ignore type annotations
-"examples/**/*.py" = ["ANN"]
+"examples/**/*.py" = ["ANN", "D"]
 # Init files can ignore unused imports
 "**/__init__.py" = ["F401"]
 
