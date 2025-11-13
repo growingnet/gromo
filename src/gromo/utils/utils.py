@@ -39,13 +39,14 @@ def global_device() -> torch.device:
     return __global_device
 
 
-def get_correct_device(self, device: torch.device | str | None) -> torch.device:
+def get_correct_device(self: object, device: torch.device | str | None) -> torch.device:
     """Get the correct device based on precedence order
     Precedence works as follows:
         argument > config file > global_device
 
     Parameters
     ----------
+    self : object
     device : torch.device | str | None
         chosen device argument, leave empty to use config file
 
@@ -67,8 +68,9 @@ def torch_zeros(*size: tuple[int, int], **kwargs) -> torch.Tensor:
 
     Parameters
     ----------
-    size : tuple[int, int]
+    *size : tuple[int, int]
         size of tensor
+    **kwargs
 
     Returns
     -------
@@ -87,8 +89,9 @@ def torch_ones(*size: tuple[int, int], **kwargs) -> torch.Tensor:
 
     Parameters
     ----------
-    size : tuple[int, int]
+    *size : tuple[int, int]
         size of tensor
+    **kwargs
 
     Returns
     -------
@@ -129,11 +132,15 @@ def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
     return torch.nn.functional.linear(input, self.weight, self.bias)
 
 
-def set_from_conf(self, name: str, default: Any = None, setter: bool = True) -> Any:
+def set_from_conf(
+    self: object, name: str, default: Any = None, setter: bool = True
+) -> Any:
     """Standardize private argument setting from config file
 
     Parameters
     ----------
+    self : object
+        object where load_config() has been called
     name : str
         name of variable
     default : Any, optional
@@ -168,8 +175,13 @@ def activation_fn(fn_name: str) -> nn.Module:
 
     Returns
     -------
-    torch.nn.Module
+    nn.Module
         activation function module
+
+    Raises
+    ------
+    ValueError
+        if the function is unknown
     """
     known_activations = {
         "relu": nn.ReLU(),
@@ -289,7 +301,7 @@ def mini_batch_gradient_descent(
 
     Parameters
     ----------
-    model : nn.Module
+    model : nn.Module | Callable
         pytorch model or forwards function
     cost_fn : Callable
         cost function
@@ -303,7 +315,7 @@ def mini_batch_gradient_descent(
         maximum epochs
     batch_size : int
         batch size
-    parameters: iterable | None, optional
+    parameters: Iterable | None, optional
         list of torch parameters in case the model is just a forward function, by default None
     fast : bool, optional
         fast implementation without evaluation, by default False
@@ -316,6 +328,11 @@ def mini_batch_gradient_descent(
     -------
     tuple[list[float], list[float]]
         train loss history, train accuracy history
+
+    Raises
+    ------
+    AttributeError
+        When the model is just a forward function, the parameters argument must not be None or empty
     """
     loss_history, acc_history = [], []
 
@@ -329,7 +346,6 @@ def mini_batch_gradient_descent(
             )
     else:
         parameters = model.parameters()
-        saved_parameters = list(model.parameters())
     optimizer = torch.optim.AdamW(parameters, lr=lrate, weight_decay=0)
 
     for epoch in range(max_epochs):
@@ -372,7 +388,7 @@ def batch_gradient_descent(
     forward_fn: Callable,
     cost_fn: Callable,
     target: torch.Tensor,
-    optimizer,
+    optimizer: torch.optim.Optimizer,
     max_epochs: int = 100,
     tol: float = 1e-5,
     fast: bool = True,
@@ -401,15 +417,15 @@ def batch_gradient_descent(
 
     Returns
     -------
-    list[float]
-        _description_
+    tuple[list[float], list[float]]
+        loss history, accuracy history
     """
     # print(target, target.shape)
     # temp = (target**2).sum()
     # print(temp)
     loss_history, acc_history = [], []
     min_loss = np.inf
-    prev_loss = np.inf
+    # prev_loss = np.inf
 
     for _ in range(max_epochs):
         output = forward_fn()
@@ -432,7 +448,7 @@ def batch_gradient_descent(
         #     break
         if loss.item() < min_loss:
             min_loss = loss.item()
-        prev_loss = loss.item()
+        # prev_loss = loss.item()
         # target.detach_()
 
     return loss_history, acc_history
@@ -569,7 +585,7 @@ def evaluate_dataset(
 
     Parameters
     ----------
-    model : torch.nn.Module
+    model : nn.Module
         network to evaluate
     dataloader : torch.utils.data.DataLoader
         dataloader containing the data
@@ -618,7 +634,7 @@ def evaluate_extended_dataset(
 
     Parameters
     ----------
-    model : torch.nn.Module
+    model : nn.Module
         network to evaluate
     dataloader : torch.utils.data.DataLoader
         dataloader containing the data
