@@ -324,7 +324,6 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion,
         bottlenecks: dict,
         activities: dict,
-        parallel: bool = True,
         verbose: bool = True,
     ) -> list:
         """Increase block dimension by expanding node with more neurons
@@ -339,8 +338,6 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
-        parallel : bool, optional
-            take into account parallel connections, by default True
         verbose : bool, optional
             print info, by default True
 

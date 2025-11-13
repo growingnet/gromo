@@ -363,16 +363,16 @@ class LinearGrowingModule(GrowingModule):
             return super(LinearGrowingModule, self).__str__(verbose=verbose)
 
     def __make_safe_forward(self):
-        def _forward(lin_self, input: torch.Tensor) -> torch.Tensor:
+        def _forward(lin_self, x: torch.Tensor) -> torch.Tensor:
             if self.in_features == 0:
-                n = input.shape[0]
+                n = x.shape[0]
                 return torch.zeros(
                     n,
                     self.out_features,
                     device=self.device,
                     requires_grad=True,
                 )
-            return torch.nn.Linear.forward(lin_self, input)
+            return torch.nn.Linear.forward(lin_self, x)
 
         return _forward
 

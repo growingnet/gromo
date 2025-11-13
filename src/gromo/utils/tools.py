@@ -161,7 +161,7 @@ def compute_optimal_added_parameters(
     # matrix_n = matrix_n.t()
     s_1, s_2 = matrix_s.shape
     assert s_1 == s_2, "The input matrix S must be square."
-    n_1, n_2 = matrix_n.shape
+    n_1, _ = matrix_n.shape
     assert s_2 == n_1, (
         f"The input matrices S and N must have compatible shapes."
         f"(got {matrix_s.shape=} and {matrix_n.shape=})"
