@@ -2006,7 +2006,7 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
                 added_out_features=1,
             )
         self.assertIn(
-            "cannot add input and output features at the same time",
+            "Cannot add input and output features at the same time",
             str(context.exception),
         )
 

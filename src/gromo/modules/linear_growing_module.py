@@ -18,9 +18,9 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         previous_modules=None,
         next_modules=None,
         allow_growing: bool = False,
-        in_features: int = None,
+        in_features: int | None = None,
         device: torch.device | None = None,
-        name: str = None,
+        name: str | None = None,
     ) -> None:
         self.use_bias = True
         self.total_in_features: int = -1
@@ -59,7 +59,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
 
         Parameters
         ----------
-        next_modules
+        next_modules: list[MergeGrowingModule | GrowingModule]
             list of next modules
         """
         if self.tensor_s is not None and self.tensor_s.samples > 0:
@@ -80,8 +80,15 @@ class LinearMergeGrowingModule(MergeGrowingModule):
 
         Parameters
         ----------
-        previous_modules
+        previous_modules: list[MergeGrowingModule | GrowingModule]
             list of previous modules
+
+        Raises
+        ------
+        TypeError
+            if the previous module is not of type LinearGrowingModule or MergeGrowingModule
+        ValueError
+            if the input features do not match the output volume of the previous modules
         """
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
@@ -130,7 +137,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         else:
             self.previous_tensor_m = None
 
-    def construct_full_activity(self):
+    def construct_full_activity(self) -> torch.Tensor:
         """
         Construct the full activity tensor B from the input of all previous modules.
         B = (B_1, B_2, ..., B_k) in (n, C1 + C2 + ... + Ck) with Ck the number
@@ -205,7 +212,7 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             self.input.shape[0],
         )
 
-    def compute_s_update(self):
+    def compute_s_update(self) -> torch.Tensor:
         """
         Compute the update of the tensor S.
         With the input tensor X, the update is U^{j k} = X^{i j} X^{i k}.
@@ -292,6 +299,11 @@ class LinearGrowingModule(GrowingModule):
         -------
         torch.Tensor
             derivative of the activation function before this layer at 0+
+
+        Raises
+        ------
+        NotImplementedError
+            if the previous module is not of type GrowingModule or MergeGrowingModule
         """
         if isinstance(self.previous_module, GrowingModule):
             return torch.func.grad(self.previous_module.post_layer_function)(
@@ -443,6 +455,13 @@ class LinearGrowingModule(GrowingModule):
             update of the tensor M_{-2}
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        ValueError
+            if there is no previous module
+        NotImplementedError
+            if the previous module is not of type LinearGrowingModule or LinearMergeGrowingModule
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
@@ -487,6 +506,13 @@ class LinearGrowingModule(GrowingModule):
             update of the tensor P
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        ValueError
+            if there is no previous module
+        NotImplementedError
+            if the previous module is not of type LinearGrowingModule or LinearMergeGrowingModule
         """
         if self.previous_module is None:
             raise ValueError(
@@ -528,6 +554,11 @@ class LinearGrowingModule(GrowingModule):
             update of the tensor N
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        TypeError
+            if the next module is not of type LinearGrowingModule
         """
         if isinstance(self.next_module, LinearGrowingModule):
             return (
@@ -625,30 +656,30 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        matrix_extension: torch.Tensor
+        matrix_extension: torch.Tensor | None
             extension of the weight matrix of the layer if None,
             the layer is extended with zeros
             should be of shape:
             - (out_features, added_in_features) if added_in_features > 0
             - (added_out_features, in_features) if added_out_features > 0
-        bias_extension: torch.Tensor of shape (added_out_features,)
-            extension of the bias vector of the layer if None,
-            the layer is extended with zeros
-        added_in_features: int >= 0
+        bias_extension: torch.Tensor | None
+            extension of the bias vector of the layer
+            shape (added_out_features,)
+            if None the layer is extended with zeros
+        added_in_features: int, optional
             number of input features added if None, the number of input
-            features is not changed
-        added_out_features: int >= 0
+            features is not changed, by default 0
+        added_out_features: int, optional
             number of output features added if None, the number of output
-            features is not changed
+            features is not changed, by default 0
 
         Raises
         ------
         AssertionError
             if we try to add input and output features at the same time
         """
-        assert (added_in_features > 0) ^ (
-            added_out_features > 0
-        ), "cannot add input and output features at the same time"
+        if (added_in_features > 0) and (added_out_features > 0):
+            raise AssertionError("Cannot add input and output features at the same time")
         if added_in_features > 0:
             if matrix_extension is None:
                 matrix_extension = torch.zeros(
@@ -701,8 +732,8 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        weight: torch.Tensor (out_features, K)
-            weight of the extension
+        weight: torch.Tensor
+            weight of the extension of shape (out_features, K)
         """
         assert (
             weight.shape[0] == self.out_features
@@ -731,10 +762,10 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        weight: torch.Tensor (K, in_features)
-            weight of the extension
-        bias: torch.Tensor (K) | None
-            bias of the extension if needed
+        weight: torch.Tensor
+            weight of the extension with shape (K, in_features)
+        bias: torch.Tensor | None, optional
+            bias of the extension if needed with shape (K)
         """
         assert (
             weight.shape[1] == self.in_features
@@ -801,6 +832,11 @@ class LinearGrowingModule(GrowingModule):
             number of neurons to keep
         sub_select_previous: bool
             if True, sub-select the previous layer added parameters as well
+
+        Raises
+        ------
+        NotImplementedError
+            if the previous module is not of type LinearGrowingModule
         """
         assert (self.extended_input_layer is None) ^ (
             self.extended_output_layer is None
@@ -859,6 +895,13 @@ class LinearGrowingModule(GrowingModule):
         -------
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
             optimal added weights alpha weights, alpha bias, omega and eigenvalues lambda
+
+        Raises
+        ------
+        ValueError
+            if there is no previous module
+        NotImplementedError
+            if the previous module is not of type LinearGrowingModule
         """
         if self.previous_module is None:
             raise ValueError(
