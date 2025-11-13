@@ -36,12 +36,24 @@ class GrowingGraphNetwork(GrowingContainer):
         size of output dimension
     loss_fn : torch.nn.Module
         loss function
+    neurons : int, optional
+        default number of neurons to add at each step, by default 20
+    neuron_epochs : int, optional
+        number of epochs to train the new neurons for, by default 100
+    neuron_lrate : float, optional
+        learning rate used when training the new neurons, by default 1e-3
+    neuron_batch_size : int, optional
+        batch size used when training the new neurons, by default 256
     use_bias : bool, optional
         automatically use bias in the layers, by default True
     use_batch_norm : bool, optional
         use batch normalization on the last layer, by default False
-    neurons : int, optional
-        default number of neurons to add at each step, by default 20
+    layer_type : str, optional
+        the type of the layers used to choose between "linear" and "convolution", by default "linear"
+    name : str, optional
+        name of the growing dag, by default ""
+    input_shape : tuple[int, int], optional
+        the expected shape of the input excluding batch size and channels, by default None
     device : str | None, optional
         default device, by default None
     """
@@ -209,6 +221,7 @@ class GrowingGraphNetwork(GrowingContainer):
             input vector (*in_features, batch_size)
         sigma : nn.Module
             activation function
+        **kwargs
 
         Returns
         -------
@@ -269,6 +282,10 @@ class GrowingGraphNetwork(GrowingContainer):
             activation function
         bottleneck : torch.Tensor
             expressivity bottleneck on the output of the block
+        linear : bool, optional
+            if the functions are linear or convolution, by default True
+        operation_args : dict, optional
+            extra arguments for convolution, for example 'padding', by default {}
         verbose : bool, optional
             print info, by default True
 
@@ -321,7 +338,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def expand_node(
         self,
-        expansion,
+        expansion: Expansion,
         bottlenecks: dict,
         activities: dict,
         verbose: bool = True,
@@ -724,15 +741,20 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         actions : list[Expansion]
             list with growth actions information
-        chosen_outputs : list[str], optional
+        chosen_outputs : list[str] | None, optional
             output node position to restrict to
-        chosen_inputs : list[str], optional
+        chosen_inputs : list[str] | None, optional
             input node position to restrict to
 
         Returns
         -------
         list[Expansion]
             reduced list with growth actions information
+
+        Raises
+        ------
+        NotImplementedError
+            if chosen_outputs and chosen_inputs are not None at the same time
         """
         if chosen_inputs is None and chosen_outputs is None:
             warnings.warn(
@@ -908,7 +930,7 @@ class GrowingGraphNetwork(GrowingContainer):
     def parameters(self) -> Iterator:
         """Iterator of network parameters
 
-        Yields
+        Returns
         ------
         Iterator
             parameters iterator
