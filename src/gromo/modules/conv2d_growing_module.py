@@ -417,6 +417,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = self.sum_in_features(with_bias=True)
 
         if self.total_in_features > 0:
+            if self._input_volume is not None:
+                self._input_volume = None  # reset calculation of input volume
             if self.tensor_s is None or self.tensor_s._shape != (
                 self.in_channels * self.kernel_size[0] * self.kernel_size[1]
                 + self.use_bias,
@@ -510,8 +512,6 @@ class Conv2dGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        self.in_channels = in_channels
-        self.out_channels = out_channels
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
         super(Conv2dGrowingModule, self).__init__(
@@ -554,6 +554,14 @@ class Conv2dGrowingModule(GrowingModule):
     # this function is used to estimate the F.O. improvement of the loss after the
     # extension of the network however this won't work if we do not have only the
     # activation function as the post_layer_function
+
+    @property
+    def in_channels(self):
+        return self.layer.in_channels
+
+    @property
+    def out_channels(self):
+        return self.layer.out_channels
 
     @property
     def padding(self):
@@ -887,7 +895,6 @@ class Conv2dGrowingModule(GrowingModule):
             weight=torch.cat((self.weight, weight), dim=1), bias=self.bias
         )
 
-        self.in_channels += weight.shape[1]
         self._tensor_s = TensorStatistic(
             (
                 (self.in_channels + self.use_bias)
@@ -951,7 +958,6 @@ class Conv2dGrowingModule(GrowingModule):
                 weight=torch.cat((self.weight, weight), dim=0), bias=None
             )
 
-        self.out_channels += weight.shape[0]
         self.tensor_m = TensorStatistic(
             (self.in_channels + self.use_bias, self.out_channels),
             update_function=self.compute_m_update,

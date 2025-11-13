@@ -132,27 +132,6 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.assertEqual(self.net.dag.nodes[self.net.dag.end]["type"], "linear")
         self.assertFalse(self.net.dag.nodes[self.net.dag.end]["use_batch_norm"])
 
-    def test_growth_history_step(self) -> None:
-        self.net.growth_history_step(
-            neurons_added=[(self.net.dag.root, "1"), ("1", self.net.dag.end)],
-            # neurons_updated=[(self.net.dag.root, self.net.dag.end)],
-        )
-
-        for edge in self.net.dag.edges:
-            self.assertIn(str(edge), self.net.growth_history[self.net.global_step])
-        self.assertEqual(
-            self.net.growth_history[self.net.global_step][str((self.net.dag.root, "1"))],
-            2,
-        )
-        self.assertEqual(
-            self.net.growth_history[self.net.global_step][str(("1", self.net.dag.end))], 2
-        )
-        self.assertEqual(self.net.growth_history[self.net.global_step]["1"], 0)
-
-        self.net.growth_history_step(nodes_added=["1", "2"])
-        self.assertEqual(self.net.growth_history[self.net.global_step]["1"], 2)
-        self.assertNotIn("2", self.net.growth_history[self.net.global_step])
-
     def test_expand_node(self) -> None:
         node = "1"
         prev_nodes = self.net.dag.root

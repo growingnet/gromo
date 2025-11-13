@@ -115,6 +115,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def update_size(self) -> None:
         super().update_size()
+        self.dag.update_size()
         self.in_features = self.dag.nodes[self.dag.root]["size"]
         self.out_features = self.dag.nodes[self.dag.end]["size"]
 
@@ -144,42 +145,6 @@ class GrowingGraphNetwork(GrowingContainer):
         self.global_step = 0
         self.global_epoch = 0
         self.growth_history = {}
-        self.growth_history_step()
-
-    def growth_history_step(
-        self, neurons_added: list = [], neurons_updated: list = [], nodes_added: list = []
-    ) -> None:
-        """Record recent modifications on history dictionary
-
-        Parameters
-        ----------
-        neurons_added : list, optional
-            list of edges that were added or increased in dimension, by default []
-        neurons_updated : list, optional
-            list of edges whose weights were updated, by default []
-        nodes_added : list, optional
-            list of nodes that were added, by default []
-        """
-        # TODO: keep track of updated edges/neurons_updated
-        if self.global_step not in self.growth_history:
-            self.growth_history[self.global_step] = {}
-
-        keep_max = lambda new_value, key: max(
-            self.growth_history[self.global_step].get(key, 0), new_value
-        )
-
-        step = {}
-        for edge in self.dag.edges:
-            new_value = (
-                2 if edge in neurons_added else 1 if edge in neurons_updated else 0
-            )
-            step[str(edge)] = keep_max(new_value, str(edge))
-
-        for node in self.dag.nodes:
-            new_value = 2 if node in nodes_added else 0
-            step[str(node)] = keep_max(new_value, str(node))
-
-        self.growth_history[self.global_step].update(step)
 
     def block_forward(
         self,
@@ -662,7 +627,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 expansion.growth_history = copy.copy(self.growth_history)
                 expansion.expand()
                 expansion.update_growth_history(
-                    self.global_step, neurons_added=expansion.new_edges
+                    self.global_step,
                 )
 
                 # Update weight of next_node's incoming edge
@@ -679,8 +644,6 @@ class GrowingGraphNetwork(GrowingContainer):
                 expansion.expand()
                 expansion.update_growth_history(
                     self.global_step,
-                    nodes_added=[expansion.expanding_node],
-                    neurons_added=expansion.new_edges,
                 )
 
                 # Update weights of new edges

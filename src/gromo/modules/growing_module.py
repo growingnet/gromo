@@ -1350,6 +1350,10 @@ class GrowingModule(torch.nn.Module):
             elif hasattr(self.post_layer_function, "grow"):
                 self.post_layer_function.grow(extension_size)
 
+            # Update the size of the next module
+            if isinstance(self.next_module, MergeGrowingModule):
+                self.next_module.update_size()
+
     def apply_change(
         self,
         scaling_factor: float | torch.Tensor | None = None,

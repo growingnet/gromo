@@ -1616,7 +1616,7 @@ class Expansion:
             self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes, zero_weights=True)  # type: ignore
             self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
 
-    def update_growth_history(
+    def __update_growth_history(
         self,
         current_step: int,
         neurons_added: list = [],
@@ -1643,7 +1643,6 @@ class Expansion:
             self.growth_history[current_step].get(key, 0), new_value
         )
 
-        # TODO: automate
         step_update = {}
         for edge in self.dag.edges:
             new_value = (
@@ -1655,6 +1654,18 @@ class Expansion:
             new_value = 2 if node in nodes_added else 0
             step_update[str(node)] = keep_max(new_value, str(node))
         self.growth_history[current_step].update(step_update)
+
+    def update_growth_history(self, current_step: int) -> None:
+        """Record recent modifications on history dictionary"""
+        nodes_added = [self.expanding_node]
+        neurons_added = self.new_edges
+        neurons_updated = list(self.dag.edges)
+        self.__update_growth_history(
+            current_step=current_step,
+            nodes_added=nodes_added,
+            neurons_added=neurons_added,
+            neurons_updated=neurons_updated,
+        )
 
     def create_mask(self) -> dict:
         mask = {
