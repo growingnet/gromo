@@ -122,6 +122,7 @@ select = [
     # "UP",  # pyupgrade
     "RUF",   # Ruff-specific rules
     "D101",  # docstring in public class
+    "D102",  # docstring in public method
     "D103",  # docstring in public function
 ]
 

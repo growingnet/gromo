@@ -732,9 +732,9 @@ class Conv2dGrowingModule(GrowingModule):
             return super(Conv2dGrowingModule, self).__str__(verbose=verbose)
 
     def __make_safe_forward(self):
-        def _forward(conv_self, input: torch.Tensor) -> torch.Tensor:  # noqa: A002
+        def _forward(conv_self, x: torch.Tensor) -> torch.Tensor:
             if self.out_channels == 0:
-                n = input.shape[0]
+                n = x.shape[0]
                 return torch.zeros(
                     n,
                     0,
@@ -744,7 +744,7 @@ class Conv2dGrowingModule(GrowingModule):
                     requires_grad=True,
                 )
             if self.in_channels == 0:
-                n = input.shape[0]
+                n = x.shape[0]
                 return torch.zeros(
                     n,
                     self.out_channels,
@@ -753,7 +753,7 @@ class Conv2dGrowingModule(GrowingModule):
                     device=self.device,
                     requires_grad=True,
                 )
-            return torch.nn.Conv2d.forward(conv_self, input)
+            return torch.nn.Conv2d.forward(conv_self, x)
 
         return _forward
 
