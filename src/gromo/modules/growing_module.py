@@ -1887,9 +1887,9 @@ class GrowingModule(torch.nn.Module):
         Raises
         ------
         NotImplementedError
-            raised when include_previous is True and the previous module is of type MergeGrowingModule
+            if include_previous is True and the previous module is of type MergeGrowingModule
         TypeError
-            raised when the previous module is not of type GrowingModule or MergeGrowingModule
+            if previous module is not of type GrowingModule or MergeGrowingModule
         """
         if delete_delta:
             self.optimal_delta_layer = None

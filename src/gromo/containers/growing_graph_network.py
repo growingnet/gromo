@@ -52,7 +52,7 @@ class GrowingGraphNetwork(GrowingContainer):
         the type of the layers used to choose between "linear" and "convolution", by default "linear"
     name : str, optional
         name of the growing dag, by default ""
-    input_shape : tuple[int, int], optional
+    input_shape : tuple[int, int] | None, optional
         the expected shape of the input excluding batch size and channels, by default None
     device : str | None, optional
         default device, by default None
@@ -71,7 +71,7 @@ class GrowingGraphNetwork(GrowingContainer):
         use_batch_norm: bool = False,
         layer_type: str = "linear",
         name: str = "",
-        input_shape: tuple[int, int] = None,
+        input_shape: tuple[int, int] | None = None,
         device: str | None = None,
     ) -> None:
         super(GrowingGraphNetwork, self).__init__(
@@ -99,15 +99,21 @@ class GrowingGraphNetwork(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self):
+        """
+        Reference all growable layers of the model in the _growing_layers private attribute.
+        """
         self._growing_layers.append(self.dag)
 
     def init_computation(self):
+        """Initialize statistics computations for growth procedure"""
         self.dag.init_computation()
 
     def update_computation(self):
+        """Update statistics computations for growth procedure"""
         self.dag.update_computation()
 
     def reset_computation(self):
+        """Reset statistics computations for growth procedure"""
         self.dag.reset_computation()
 
     def compute_optimal_delta(
@@ -116,6 +122,18 @@ class GrowingGraphNetwork(GrowingContainer):
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
     ):
+        """Compute optimal delta for growth procedure
+
+        Parameters
+        ----------
+        update : bool, optional
+            update the optimal delta layer attribute and the first order decrease, by default True
+        return_deltas: bool, optional
+            placeholder argument as this function does not return anything
+        force_pseudo_inverse : bool, optional
+            use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible, by default False
+        """
         self.dag.compute_optimal_delta(
             update=update,
             return_deltas=return_deltas,
@@ -123,9 +141,11 @@ class GrowingGraphNetwork(GrowingContainer):
         )
 
     def delete_update(self) -> None:
+        """Delete tensor updates"""
         self.dag.delete_update()
 
     def update_size(self) -> None:
+        """Update the sizes of the layers and the input and output features of the graph"""
         super().update_size()
         self.in_features = self.dag.nodes[self.dag.root]["size"]
         self.out_features = self.dag.nodes[self.dag.end]["size"]
@@ -331,8 +351,28 @@ class GrowingGraphNetwork(GrowingContainer):
         existing_activity: torch.Tensor,
         desired_update: torch.Tensor,
     ) -> float:
-        # Joint optimization of new and existing weights with respect to the expressivity bottleneck
-        # Calculates f = ||A + dW*B - dLoss/dA||^2
+        """Joint optimization of new and existing weights with respect to the expressivity bottleneck
+        Calculates f = ||A + dW*B - dLoss/dA||^2
+
+        Parameters
+        ----------
+        activity : torch.Tensor
+            input tensor
+        existing_activity : torch.Tensor
+            current output
+        desired_update : torch.Tensor
+            desired update
+
+        Returns
+        -------
+        float
+            bottleneck loss
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         # TODO
         raise NotImplementedError("Joint optimization of weights is not implemented yet!")
 
@@ -862,6 +902,7 @@ class GrowingGraphNetwork(GrowingContainer):
             )
 
     def apply_change(self) -> None:
+        """Apply all changes to the graph"""
         # Apply changes
         for prev_node, next_node in self.dag.edges:
             factor = self.chosen_action.metrics["scaling_factor"]

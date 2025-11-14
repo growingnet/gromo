@@ -332,7 +332,7 @@ def mini_batch_gradient_descent(
     Raises
     ------
     AttributeError
-        When the model is just a forward function, the parameters argument must not be None or empty
+        if the model is just a forward function, the parameters argument must not be None or empty
     """
     loss_history, acc_history = [], []
 
