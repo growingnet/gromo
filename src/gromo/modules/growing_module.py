@@ -64,18 +64,56 @@ class MergeGrowingModule(torch.nn.Module):
 
     @property
     def input_volume(self) -> int:
+        """Expected input volume
+
+        Returns
+        -------
+        int
+            input volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     @property
     def output_volume(self) -> int:
+        """Expected output volume
+
+        Returns
+        -------
+        int
+            output volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     @property
-    def number_of_successors(self):
+    def number_of_successors(self) -> int:
+        """Get the number of succeeding modules
+
+        Returns
+        -------
+        int
+            number of next modules
+        """
         return len(self.next_modules)
 
     @property
-    def number_of_predecessors(self):
+    def number_of_predecessors(self) -> int:
+        """Get the number of preceding modules
+
+        Returns
+        -------
+        int
+            number of previous modules
+        """
         return len(self.previous_modules)
 
     def grow(self):
@@ -92,7 +130,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        module
+        module: MergeGrowingModule | GrowingModule
             next module to add
         """
         self.next_modules.append(module)
@@ -106,7 +144,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        module
+        module: MergeGrowingModule | GrowingModule
             previous module to add
         """
         self.previous_modules.append(module)
@@ -120,8 +158,13 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        next_modules
+        next_modules: list[MergeGrowingModule | GrowingModule]
             list of next modules
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -133,8 +176,13 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        previous_modules
+        previous_modules: list[MergeGrowingModule | GrowingModule]
             list of previous modules
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -171,6 +219,19 @@ class MergeGrowingModule(torch.nn.Module):
         return self.__str__(*args, **kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the module.
+        If needed, store the activity and pre-activity tensors.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output tensor
+        """
         for t in (self.tensor_s, self.previous_tensor_s, self.previous_tensor_m):
             if t:
                 t.updated = False
@@ -191,7 +252,14 @@ class MergeGrowingModule(torch.nn.Module):
         return y
 
     @property
-    def pre_activity(self):
+    def pre_activity(self) -> torch.Tensor:
+        """Get the pre activity of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            pre activity tensor
+        """
         return self.input
 
     def projected_v_goal(self) -> torch.Tensor:
@@ -227,6 +295,11 @@ class MergeGrowingModule(torch.nn.Module):
             update of the tensor S
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -240,6 +313,11 @@ class MergeGrowingModule(torch.nn.Module):
             update of the tensor S
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -253,6 +331,11 @@ class MergeGrowingModule(torch.nn.Module):
             update of the tensor M
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -323,12 +406,12 @@ class MergeGrowingModule(torch.nn.Module):
         Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
         Parameters
         ----------
-        update: bool, default True
-            if True update the optimal delta layer attribute
-        return_deltas: bool, default False
-            if True return the deltas
-        force_pseudo_inverse: bool, default False
-            if True, use the pseudo-inverse to compute the optimal delta even if the
+        update: bool, optional
+            if True update the optimal delta layer attribute, by default True
+        return_deltas: bool, optional
+            if True return the deltas, by default False
+        force_pseudo_inverse: bool, optional
+            if True, use the pseudo-inverse to compute the optimal delta even if the, by default False
             matrix is invertible
         dtype: torch.dtype
             dtype for S and M during the computation
@@ -398,7 +481,8 @@ class MergeGrowingModule(torch.nn.Module):
 
     def update_size(self) -> None:
         """
-        Update the input and output size of the module
+        Update the size of the module
+        Check number of previous modules and update input channels and tensor sizes
         """
         if len(self.previous_modules) > 0:
             new_size = self.previous_modules[0].out_features
@@ -434,7 +518,14 @@ class MergeGrowingModule(torch.nn.Module):
             self.previous_tensor_m = None
 
     @property
-    def number_of_parameters(self):
+    def number_of_parameters(self) -> int:
+        """Get the number of parameters of the layer
+
+        Returns
+        -------
+        int
+            number of parameters
+        """
         return 0
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
@@ -442,6 +533,11 @@ class MergeGrowingModule(torch.nn.Module):
 
     def sum_in_features(self, with_bias: bool = False) -> int:
         """Count total in_features of previous modules
+
+        Parameters
+        ----------
+        with_bias : bool, optional
+            add bias to the sum, by default False
 
         Returns
         -------
@@ -480,6 +576,11 @@ class MergeGrowingModule(torch.nn.Module):
         ----------
         scaling_factor: torch.Tensor | float
             scaling factor to apply to the optimal delta
+
+        Raises
+        ------
+        TypeError
+            if the previous and next modules are not of type GrowingModule
         """
         if isinstance(scaling_factor, torch.Tensor):
             scaling_factor = scaling_factor.item()
@@ -520,6 +621,33 @@ class MergeGrowingModule(torch.nn.Module):
 
 
 class GrowingModule(torch.nn.Module):
+    """
+    Abstract class for a Module of dynamic size
+
+    Parameters
+    ----------
+    layer: torch.nn.Module
+        layer of the module
+    tensor_s_shape: tuple[int, int] | None
+        shape of the tensor S
+    tensor_m_shape: tuple[int, int] | None
+        shape of the tensor M
+    post_layer_function: torch.nn.Module, optional
+        function to apply after the layer, by default torch.nn.Identity()
+    extended_post_layer_function: torch.nn.Module | None, optional
+        extended function to apply after the layer, by default None
+    allow_growing: bool
+        if True, the module can grow (require a previous GrowingModule)
+    previous_module: torch.nn.Module | None
+        previous module
+    next_module: torch.nn.Module | None
+        next module
+    device: torch.device | None
+        device to use
+    name: str | None
+        name of the module
+    """
+
     def __init__(
         self,
         layer: torch.nn.Module,
@@ -533,30 +661,6 @@ class GrowingModule(torch.nn.Module):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        """
-        Initialize a GrowingModule.
-
-        Parameters
-        ----------
-        layer: torch.nn.Module
-            layer of the module
-        tensor_s_shape: tuple[int, int] | None
-            shape of the tensor S
-        tensor_m_shape: tuple[int, int] | None
-            shape of the tensor M
-        post_layer_function: torch.nn.Module
-            function to apply after the layer
-        allow_growing: bool
-            if True, the module can grow (require a previous GrowingModule)
-        previous_module: torch.nn.Module | None
-            previous module
-        next_module: torch.nn.Module | None
-            next module
-        device: torch.device | None
-            device to use
-        name: str | None
-            name of the module
-        """
         if tensor_s_shape is None:
             warnings.warn(
                 "The tensor S shape is not provided."
@@ -679,28 +783,90 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def in_features(self) -> int:
+        """Fan-in size
+
+        Returns
+        -------
+        int
+            fan-in size
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     @property
     def out_features(self) -> int:
+        """Fan-out size
+
+        Returns
+        -------
+        int
+            fan-out size
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     # Parameters
     @property
     def input_volume(self) -> int:
-        return self.layer.in_features
+        """Expected input volume
+
+        Returns
+        -------
+        int
+            input volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
+        raise NotImplementedError
 
     @property
     def output_volume(self) -> int:
-        return self.layer.out_features
+        """Expected output volume
+
+        Returns
+        -------
+        int
+            output volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
+        raise NotImplementedError
 
     # Information functions
     @property
-    def weight(self):
+    def weight(self) -> torch.Tensor:
+        """Get the weight of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            weight tensor
+        """
         return self.layer.weight
 
     @property
-    def bias(self):
+    def bias(self) -> torch.Tensor:
+        """Get the bias of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            bias tensor
+        """
         return self.layer.bias
 
     @property
@@ -712,6 +878,11 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             derivative of the activation function before this layer at 0+
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -726,7 +897,7 @@ class GrowingModule(torch.nn.Module):
 
         Returns
         -------
-        Iterator[Parameter]
+        Iterator[torch.nn.Parameter]
             iterator over the parameters of the layer
         """
         return self.layer.parameters(recurse=recurse)
@@ -837,7 +1008,7 @@ class GrowingModule(torch.nn.Module):
             torch.nn.Module.__setattr__(self, key, value)
 
     # Forward and storing
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the module.
         If needed, store the activity and pre-activity tensors.
@@ -902,8 +1073,13 @@ class GrowingModule(torch.nn.Module):
 
         Returns
         -------
-        tuple[torch.Tensor, torch.Tensor]
+        tuple[torch.Tensor, torch.Tensor | None]
             output tensor and extension tensor
+
+        Raises
+        ------
+        ValueError
+            if the input is extended and x_ext is not provided
         """
         pre_activity = self.layer(x)
 
@@ -967,11 +1143,28 @@ class GrowingModule(torch.nn.Module):
         -------
         tuple[int, ...] | None
             updated input size if it could be computed, None otherwise
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
     @property
     def input_size(self) -> tuple[int, ...]:
+        """Get the expected shape of the input excluding batch size and channels
+
+        Returns
+        -------
+        tuple[int, ...]
+            input shape
+
+        Raises
+        ------
+        ValueError
+            if the input size is not given and cannot be calculated
+        """
         if self._input_size is None:
             self.update_input_size()
             if self._input_size is None:
@@ -989,6 +1182,18 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def input(self) -> torch.Tensor:
+        """Get the input of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            input tensor
+
+        Raises
+        ------
+        ValueError
+            if the input is not stored
+        """
         if self.store_input:
             if self._internal_store_input:
                 assert (
@@ -1013,6 +1218,11 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             input extended
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method if bias is used
         """
         if self.use_bias:
             raise NotImplementedError
@@ -1021,6 +1231,18 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def pre_activity(self) -> torch.Tensor:
+        """Get the pre activity of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            pre activity tensor
+
+        Raises
+        ------
+        ValueError
+            if the pre activity is not stored
+        """
         if self.store_pre_activity:
             if self._internal_store_pre_activity:
                 assert (
@@ -1046,8 +1268,8 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        input_vector: torch.Tensor of shape (n_samples, in_features)
-            input vector B[-1]
+        input_vector: torch.Tensor
+            input vector B[-1] of shape (n_samples, in_features)
 
         Returns
         -------
@@ -1071,6 +1293,11 @@ class GrowingModule(torch.nn.Module):
             update of the tensor S
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1112,7 +1339,7 @@ class GrowingModule(torch.nn.Module):
             )
 
     @tensor_s_growth.setter
-    def tensor_s_growth(self, value) -> None:
+    def tensor_s_growth(self, value) -> None:  # noqa: ARG002
         """
         Allow to set the tensor_s_growth but has no effect.
         """
@@ -1138,6 +1365,11 @@ class GrowingModule(torch.nn.Module):
             update of the tensor M
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1158,6 +1390,11 @@ class GrowingModule(torch.nn.Module):
             update of the tensor M_{-2}
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1171,10 +1408,15 @@ class GrowingModule(torch.nn.Module):
             update of the tensor C
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
-    def compute_n_update(self):
+    def compute_n_update(self) -> torch.Tensor:
         """
         Compute the update of the tensor N. Should be added to the type of layer.
 
@@ -1182,6 +1424,11 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             update of the tensor N
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1194,6 +1441,11 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             N
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1216,17 +1468,27 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.nn.Linear
             layer with the same characteristics
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
-    def add_parameters(self, **kwargs) -> None:
+    def add_parameters(self, **kwargs: dict) -> None:
         """
         Grow the module by adding new parameters to the layer.
 
         Parameters
         ----------
-        kwargs: dict
+        **kwargs: dict
             typically include the values of the new parameters to add to the layer
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1239,6 +1501,11 @@ class GrowingModule(torch.nn.Module):
         ----------
         weight: torch.Tensor
             weight of the extension
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1255,6 +1522,11 @@ class GrowingModule(torch.nn.Module):
             weight of the extension
         bias: torch.Tensor | None
             bias of the extension if needed
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1283,6 +1555,11 @@ class GrowingModule(torch.nn.Module):
         ----------
         keep_neurons: int
             number of neurons to keep
+
+        Raises
+        ------
+        NotImplementedError
+            abstarct method
         """
         raise NotImplementedError
 
@@ -1301,6 +1578,11 @@ class GrowingModule(torch.nn.Module):
             number of neurons to keep
         sub_select_previous: bool
             if True, sub-select the previous layer added parameters as well
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1313,8 +1595,10 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        scaling_factor: float | torch.Tensor
+        scaling_factor: float | torch.Tensor | None, optional
             scaling factor to apply to the optimal delta
+        extension_size: int, optional
+            size of extension, by default 0
         """
         if scaling_factor is None:
             scaling_factor = self._scaling_factor_next_module
@@ -1380,6 +1664,13 @@ class GrowingModule(torch.nn.Module):
         extension_size: int | None
             size of the extension to apply, by default None and get automatically
             determined using `self.eigenvalues_extension.shape[0]`
+
+        Raises
+        ------
+        ValueError
+            if the layer has no extension but an extension_size above zero was requested
+        NotImplementedError
+            if the previous module is not of type GrowingModule
         """
         # print(f"==================== Applying change to {self.name} ====================")
         if scaling_factor is not None:
@@ -1588,6 +1879,11 @@ class GrowingModule(torch.nn.Module):
         -------
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
             optimal added weights alpha weights, alpha bias, omega and eigenvalues lambda
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -1644,6 +1940,11 @@ class GrowingModule(torch.nn.Module):
         -------
         tuple[torch.Tensor, torch.Tensor | None]
             optimal extension for the previous layer (weights and biases)
+
+        Raises
+        ------
+        NotImplementedError
+            if the previous module is not of type GrowingModule
         """
         self.compute_optimal_delta(dtype=dtype)
 
@@ -1750,9 +2051,9 @@ class GrowingModule(torch.nn.Module):
         Raises
         ------
         NotImplementedError
-            raised when include_previous is True and the previous module is of type MergeGrowingModule
+            if include_previous is True and the previous module is of type MergeGrowingModule
         TypeError
-            raised when the previous module is not of type GrowingModule or MergeGrowingModule
+            if previous module is not of type GrowingModule or MergeGrowingModule
         """
         if delete_delta:
             self.optimal_delta_layer = None
@@ -1928,6 +2229,11 @@ class GrowingModule(torch.nn.Module):
         scale_input : float | None
             The factor by which to scale the layer input extension.
             If not None, scale must be None.
+
+        Raises
+        ------
+        ValueError
+            Cannot scale layer extension if one of the extensions is None
         """
         scales: list[float | None] = [scale_output, scale_input]  # type: ignore
         for i, specific_scale in enumerate(scales):
@@ -1966,6 +2272,11 @@ class GrowingModule(torch.nn.Module):
         -------
         int
             fan_in of the layer
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -2062,6 +2373,11 @@ class GrowingModule(torch.nn.Module):
         ----------
         extension_size: int
             size of the extension to create
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -2073,6 +2389,11 @@ class GrowingModule(torch.nn.Module):
         ----------
         extension_size: int
             size of the extension to create
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
         """
         raise NotImplementedError
 
@@ -2147,6 +2468,11 @@ class GrowingModule(torch.nn.Module):
         input_extension_init: str
             Initialization method for the input extension. Must be one of the keys in
             `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+
+        Raises
+        ------
+        ValueError
+            if unknown initialization method
         """
         if output_extension_size is None:
             output_extension_size = extension_size

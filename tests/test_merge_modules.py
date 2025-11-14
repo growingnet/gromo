@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from gromo.containers.growing_dag import InterMergeExpansion
+from gromo.containers.growing_dag import ExpansionType, InterMergeExpansion
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
@@ -345,7 +345,9 @@ class TestMergeGrowingModules(unittest.TestCase):
         )
 
         out_early_exit = torch.softmax(torch.flatten(out_early_exit, start_dim=1), dim=1)
-        loss_early_exit = self.loss_fn(out_early_exit, y_early_exit)
+        with self.assertWarns(UserWarning):
+            # Using a target size that is different to the input size
+            loss_early_exit = self.loss_fn(out_early_exit, y_early_exit)
 
         loss = self.loss_fn(out, self.y)
         loss = loss + loss_early_exit
@@ -775,7 +777,7 @@ class TestMergeGrowingModules(unittest.TestCase):
         # You should grow the node that has pooling as a post_merge_function
         expansion = InterMergeExpansion(
             dag=dag1.dag,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node=dag1.dag.end,
             adjacent_expanding_node=dag2.dag.root,
         )

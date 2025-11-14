@@ -10,6 +10,30 @@ from gromo.modules.linear_growing_module import LinearGrowingModule
 class GrowingMLP(GrowingContainer):
     """
     Represents a growing MLP network.
+
+    Parameters
+    ----------
+    in_features : int | list[int] | tuple[int]
+        Number of input features.
+    out_features : int
+        Number of output features.
+    hidden_size : int
+        Size of hidden layers.
+    number_hidden_layers : int
+        Number of hidden layers.
+    activation : nn.Module
+        Activation function.
+    use_bias : bool
+        Whether to use bias in layers.
+    flatten : bool
+        Whether to flatten the input before passing it through the network.
+    device : Optional[torch.device]
+        Device to use for computation.
+
+    Raises
+    ------
+    TypeError
+        if input features are not of type int, list or tuple
     """
 
     def __init__(
@@ -23,28 +47,6 @@ class GrowingMLP(GrowingContainer):
         flatten: bool = True,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the growing MLP.
-
-        Parameters
-        ----------
-        in_features : int | list | tuple
-            Number of input features.
-        out_features : int
-            Number of output features.
-        hidden_size : int
-            Size of hidden layers.
-        number_hidden_layers : int
-            Number of hidden layers.
-        activation : nn.Module
-            Activation function.
-        use_bias : bool
-            Whether to use bias in layers.
-        flatten : bool
-            Whether to flatten the input before passing it through the network.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
         )

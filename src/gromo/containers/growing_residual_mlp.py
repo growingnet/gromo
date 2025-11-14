@@ -21,6 +21,19 @@ class GrowingResidualBlock(GrowingContainer):
     - Layer first
     - Activation mid
     - Layer second
+
+    Parameters
+    ----------
+    num_features : int
+        Number of input and output features, in case of convolutional layer, the number of channels.
+    hidden_features : int
+        Number of hidden features, if zero the block is the zero function.
+    activation : Optional[nn.Module]
+        Activation function to use, if None use the identity function.
+    name : str
+        Name of the block.
+    kwargs_layer : Optional[Dict[str, Any]]
+        Dictionary of arguments for the layers (e.g., bias, ...).
     """
 
     def __init__(
@@ -31,22 +44,6 @@ class GrowingResidualBlock(GrowingContainer):
         name: str = "block",
         kwargs_layer: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """
-        Initialize the block.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of input and output features, in case of convolutional layer, the number of channels.
-        hidden_features : int
-            Number of hidden features, if zero the block is the zero function.
-        activation : Optional[nn.Module]
-            Activation function to use, if None use the identity function.
-        name : str
-            Name of the block.
-        kwargs_layer : Optional[Dict[str, Any]]
-            Dictionary of arguments for the layers (e.g., bias, ...).
-        """
         if kwargs_layer is None:
             kwargs_layer = {}
 

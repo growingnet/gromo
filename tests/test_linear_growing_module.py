@@ -421,6 +421,10 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         layer_in.extended_output_layer = first_layer_ext
         layer_out.extended_input_layer = second_layer_ext
 
+        layer_in.scaling_factor.data[0] = 1
+        layer_in._scaling_factor_next_module.data[0] = 1
+        layer_out.scaling_factor.data[0] = 1
+
         if include_eigenvalues:
             layer_out.eigenvalues_extension = torch.empty(2, device=global_device())
 
@@ -738,7 +742,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assert_tensor_close_with_context(
             layer(x),
             l0(x),
-            context=f"Standard forward with γ={gamma}, γ_next={gamma_next}",
+            context=f"Standard forward with {gamma=}, {gamma_next=}",
         )
 
         # Test extended forward pass
@@ -746,7 +750,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         expected_ext_1 = l0(x) - gamma**2 * l_delta(x)
         self.assert_tensor_close_with_context(
-            y_ext_1, expected_ext_1, context=f"Extended forward 1 with γ={gamma}"
+            y_ext_1, expected_ext_1, context=f"Extended forward 1 with {gamma=}"
         )
 
         if y_ext_2 is not None:
@@ -755,7 +759,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
                 y_ext_2,
                 expected_ext_2,
                 tolerance=self.config.REDUCED_TOLERANCE,
-                context=f"Extended forward 2 with γ_next={gamma_next}",
+                context=f"Extended forward 2 with {gamma_next=}",
             )
 
     def _test_apply_changes(self, layer, l0, l_ext, gamma: float, gamma_next: float):
@@ -1409,7 +1413,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         if first_layer_bias:
             self.assertIsNotNone(layer1.extended_output_layer.bias)
 
-        layer2.apply_change()
+        layer2.apply_change(scaling_factor=1)
         y = layer2(layer1(self.input_x))
         self.assertIsNotNone(y)
         self.assertIsInstance(y, torch.Tensor)
@@ -1642,7 +1646,8 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
             5, 4, device=global_device(), name="mismatch"
         )
         with self.assertRaises(AssertionError):
-            layer.set_next_modules([mismatch_layer])
+            with self.assertWarns(UserWarning):  # Next modules with non-empty tensor S
+                layer.set_next_modules([mismatch_layer])
 
     def test_set_previous_modules_warning_and_assertion(self):
         """Test set_previous_modules triggers warnings and assertion
@@ -1849,12 +1854,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         added_in_features = 2
 
         # This should trigger the added_in_features > 0 branch
-        layer.add_parameters(
-            matrix_extension=None,
-            bias_extension=None,
-            added_in_features=added_in_features,
-            added_out_features=0,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=None,
+                bias_extension=None,
+                added_in_features=added_in_features,
+                added_out_features=0,
+            )
 
         # Verify layer dimensions changed correctly
         self.assertEqual(layer.in_features, original_in_features + added_in_features)
@@ -1884,12 +1891,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         )
 
         # This should trigger the custom matrix_extension branch
-        layer.add_parameters(
-            matrix_extension=custom_matrix,
-            bias_extension=None,
-            added_in_features=added_in_features,
-            added_out_features=0,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=custom_matrix,
+                bias_extension=None,
+                added_in_features=added_in_features,
+                added_out_features=0,
+            )
 
         # Verify layer dimensions
         self.assertEqual(layer.in_features, original_in_features + added_in_features)
@@ -1915,12 +1924,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         added_out_features = 2
 
         # This should trigger the added_out_features > 0 branch
-        layer.add_parameters(
-            matrix_extension=None,
-            bias_extension=None,
-            added_in_features=0,
-            added_out_features=added_out_features,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=None,
+                bias_extension=None,
+                added_in_features=0,
+                added_out_features=added_out_features,
+            )
 
         # Verify layer dimensions changed correctly
         self.assertEqual(layer.in_features, original_in_features)
@@ -1951,12 +1962,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         )
 
         # This should trigger the custom matrix/bias extension branches
-        layer.add_parameters(
-            matrix_extension=custom_weight,
-            bias_extension=custom_bias,
-            added_in_features=0,
-            added_out_features=added_out_features,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=custom_weight,
+                bias_extension=custom_bias,
+                added_in_features=0,
+                added_out_features=added_out_features,
+            )
 
         # Verify layer dimensions
         self.assertEqual(layer.in_features, original_in_features)
@@ -1993,7 +2006,7 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
                 added_out_features=1,
             )
         self.assertIn(
-            "cannot add input and output features at the same time",
+            "Cannot add input and output features at the same time",
             str(context.exception),
         )
 
@@ -2591,9 +2604,11 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         object.__setattr__(merge_module, "previous_tensor_m", mock_tensor_m)
 
         # This should trigger the LinAlgError exception and force pseudo-inverse
-        deltas = merge_module.compute_optimal_delta(
-            return_deltas=True, force_pseudo_inverse=False
-        )
+        with self.assertWarns(UserWarning):
+            # Using the pseudo-inverse for the computation of the optimal delta
+            deltas = merge_module.compute_optimal_delta(
+                return_deltas=True, force_pseudo_inverse=False
+            )
 
         # Verify that deltas were computed using pseudo-inverse
         self.assertIsInstance(deltas, list)
@@ -2750,29 +2765,33 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         layer = LinearGrowingModule(3, 2, device=global_device())
 
         # Test input feature addition (changed documentation and assertions)
-        layer.add_parameters(
-            matrix_extension=torch.randn(
-                2, 2, device=global_device()
-            ),  # (out_features, added_in_features)
-            bias_extension=None,
-            added_in_features=2,
-            added_out_features=0,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer.add_parameters(
+                matrix_extension=torch.randn(
+                    2, 2, device=global_device()
+                ),  # (out_features, added_in_features)
+                bias_extension=None,
+                added_in_features=2,
+                added_out_features=0,
+            )
         # Verify the addition worked
         self.assertEqual(layer.weight.shape[1], 5)  # 3 + 2
 
         # Test output feature addition (changed documentation and assertions)
         layer2 = LinearGrowingModule(3, 2, device=global_device())
-        layer2.add_parameters(
-            matrix_extension=torch.randn(
-                1, 3, device=global_device()
-            ),  # (added_out_features, in_features)
-            bias_extension=torch.randn(
-                1, device=global_device()
-            ),  # (added_out_features,)
-            added_in_features=0,
-            added_out_features=1,
-        )
+        with self.assertWarns(UserWarning):
+            # It is up to the user to change the connected layers
+            layer2.add_parameters(
+                matrix_extension=torch.randn(
+                    1, 3, device=global_device()
+                ),  # (added_out_features, in_features)
+                bias_extension=torch.randn(
+                    1, device=global_device()
+                ),  # (added_out_features,)
+                added_in_features=0,
+                added_out_features=1,
+            )
         # Verify the addition worked
         self.assertEqual(layer2.weight.shape[0], 3)  # 2 + 1
 
@@ -3251,10 +3270,12 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
 
         # Subtest 3: Only extension layer normalization (no optimal_delta_layer)
         with self.subTest(case="only_extension_normalization"):
-            _, layer_out = self.create_demo_layers_with_extension(
-                include_eigenvalues=True,
-                hidden_features=0,
-            )
+            with self.assertWarns(UserWarning):
+                # Initializing zero-element tensors is a no-op
+                _, layer_out = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=0,
+                )
 
             # Remove optimal_delta_layer so only extension is normalized
             layer_out.optimal_delta_layer = None
@@ -3305,7 +3326,11 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             layer_out.optimal_delta_layer = self.create_standard_nn_linear(1, 1)
 
             # Everything works fine if std is zero (no scaling applied)
-            layer_out.normalize_optimal_updates(std_target=None)
+            with self.assertWarns(UserWarning):
+                # UserWarning: std(): degrees of freedom is <= 0. Correction should
+                # be strictly less than the reduction factor (input numel divided by
+                # output numel).
+                layer_out.normalize_optimal_updates(std_target=None)
 
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
@@ -3402,9 +3427,11 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
         # Subtest 2: Without features (hidden_features=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden features
-            layer_in, layer_out = self.create_demo_layers_with_extension(
-                hidden_features=0
-            )
+            with self.assertWarns(UserWarning):
+                # Initializing zero-element tensors is a no-op
+                layer_in, layer_out = self.create_demo_layers_with_extension(
+                    hidden_features=0
+                )
 
             # When out_features=0, the layer has no weights
             # So copy_uniform should fallback to 1/sqrt(fan_in)

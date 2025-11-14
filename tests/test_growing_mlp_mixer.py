@@ -40,7 +40,9 @@ class TestGrowingMLPMixer(unittest.TestCase):
 
         # Compute the optimal updates
         gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
+        with self.assertWarns(UserWarning):
+            # The input matrix S is not symmetric
+            self.model.compute_optimal_updates()
 
     def test_init(self):
         l1 = GrowingMLPMixer(

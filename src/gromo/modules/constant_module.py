@@ -16,7 +16,19 @@ class ConstantModule(LinearGrowingModule):
         # Store the constant tensor as a buffer (non-trainable parameter)
         # self.register_buffer('constant', torch.zeros(in_features, out_features))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Placeholder function that ignores the input and always returns the constant tensor
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            constant tensor
+        """
         # Ignore the input x and always return the constant tensor
         self.register_buffer(
             "constant",
@@ -33,7 +45,14 @@ class ConstantModule(LinearGrowingModule):
             super().__setattr__(key, value)
 
     @property
-    def optimal_delta_layer(self):
+    def optimal_delta_layer(self) -> torch.nn.Linear:
+        """Placeholder function that returns a zero weight module as a mock update to the constant module
+
+        Returns
+        -------
+        torch.nn.Linear
+            zero-weight linear layer
+        """
         return self.layer_of_tensor(
             torch.zeros_like(self._hidden_optimal_delta_layer.weight, device=self.device)
         )
