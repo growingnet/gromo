@@ -31,6 +31,45 @@ supported_layer_types = ["linear", "convolution"]
 
 
 class GrowingDAG(nx.DiGraph, GrowingContainer):
+    """Represents a directed acyclic graph with edges as GrowingModule and nodes as MergeGrowingModule
+
+    Parameters
+    ----------
+    in_features : int
+        input features
+    out_features : int
+        output features
+    neurons : int
+        number of neurons to add on each growth step
+    use_bias : bool
+        use bias
+    use_batch_norm : bool
+        use Batch Normalization
+    default_layer_type : str, optional
+        the type of layer operations, to choose between "linear" and "convolution", by default "linear"
+    activation : str, optional
+        the default activation function, by default "selu"
+    name : str, optional
+        name of the dag, by default ""
+    root : str, optional
+        name of the root node, by default "start"
+    end : str, optional
+        name of the end node, by default "end"
+    input_shape : tuple[int, int] | None, optional
+        the expected shape of the input excluding batch size and channels, by default None
+    DAG_parameters : dict | None, optional
+        configuration dictionary to create a custom initial dag, by default None
+    device : torch.device | str | None, optional
+        default device, by default None
+
+    Raises
+    ------
+    ValueError
+        if the reserved character "_" is used in the name of the dag
+    NotImplementedError
+        if the default layer type is not supported
+    """
+
     def __init__(
         self,
         in_features: int,
@@ -44,7 +83,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         root: str = "start",
         end: str = "end",
         input_shape: tuple[int, int] | None = None,
-        DAG_parameters: dict = None,
+        DAG_parameters: dict | None = None,
         device: torch.device | str | None = None,
     ) -> None:
         nx.DiGraph.__init__(self)
@@ -350,7 +389,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        edges : list
+        edges : list | set
             list of edges to retrieve modules
 
         Returns
@@ -365,7 +404,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        nodes : list
+        nodes : list | set
             list of nodes to retrieve modules
 
         Returns
@@ -415,7 +454,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             incoming node of edge
         next_node : str
             outgoing node of edge
-        edge_attributes : _type_, optional
+        edge_attributes : dict, optional
             extra attributes of edge, by default {}
         zero_weights : bool, optional
             set the weights to zero, by default False
@@ -457,9 +496,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Raises
         ------
         KeyError
-            when type of node is not specified in node_attributes dictionary
-        KeyError
-            when size of node is not specified in node_attributes dictionary
+            if the "type" and the "size" of node is not specified in node_attributes dictionary
         """
         new_edges = [(prev_node, new_node), (new_node, next_node)]
         self.add_edges_from(new_edges)
@@ -482,13 +519,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.set_growing_layers()
 
     def update_nodes(
-        self, nodes: list | Mapping, node_attributes: dict[str, dict]
+        self, nodes: list[str] | Mapping, node_attributes: dict[str, dict]
     ) -> None:
         """Create new merge modules for nodes based on incoming and outgoing edges
 
         Parameters
         ----------
-        nodes : list[str]
+        nodes : list[str] | Mapping
             list of nodes to update modules
         node_attributes : dict[str, dict]
             extra attributes for nodes. Keys are node names and values are dictionaries with attributes. Keys \"type\" and \"size\" are mandatory
@@ -496,9 +533,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Raises
         ------
         KeyError
-            when type of node is not specified in node_attributes[node] dictionary
-        KeyError
-            when size of node is not specified in node_attributes[node] dictionary
+            if the "type" and the "size" of node is not specified in node_attributes[node] dictionary
+        NotImplementedError
+            if the type of the node is invalid
         """
         for node in nodes:
             attributes = node_attributes.get(node, {})
@@ -571,12 +608,19 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        edges : list[tuple[str]]
+        edges : list[tuple[str, str]]
             list of edges to update modules
         edge_attributes : dict, optional
             extra attributes for edges, by default {}
         zero_weights : bool, optional
             set the weights to zero, by default False
+
+        Raises
+        ------
+        KeyError
+            if the kernel_size is not specified in edge_attributes
+        NotImplementedError
+            if the type of the node is invalid
         """
         for prev_node, next_node in edges:
             name = f"{prev_node.split('_')[0]}_{next_node.split('_')[0]}"
@@ -757,7 +801,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Parameters
         ----------
         mapping : dict
-            A dictionary mapping old node names to new node names.
+            A dictionary mapping old node names to new node names
+
+        Raises
+        ------
+        ValueError
+            if the new node already exists in the graph
         """
         # nx.relabel_nodes(self, mapping, copy=True)
         for old_name, new_name in mapping.items():
@@ -961,7 +1010,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        direct_successors : dict[str, list[str]]
+        direct_successors : Mapping[str, list[str]] | Mapping[str, set[str]]
             dictionary with direct successors of nodes
 
         Returns
@@ -993,7 +1042,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        successors : dict[str, list[str]]
+        successors : Mapping[str, list[str]] | Mapping[str, set[str]]
             dictionary with all successors fo nodes
         size : int, optional
             size of new node to add, by default 0
@@ -1036,7 +1085,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        tuple[list[dict]]
+        tuple[list[dict], list[dict]]
             discovered direct connections, discovered one-hop connections
         """
         # TODO: add existing nodes growing
@@ -1306,7 +1355,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        edges : list[tuple[str]]
+        edges : list[tuple[str, str]]
             list of edges to consider
 
         Returns
@@ -1467,6 +1516,13 @@ class Expansion:
         attributes of new edges, by default {}
     node_attributes : dict, optional
         attributes of new nodes, by default {}
+
+    Raises
+    ------
+    ValueError
+        if the type is "new edge" and the previous_node and next_node are missing
+        or the type is "new node" and the previous_node, next_node and new_node are missing
+        or the type is "expanded node" and the new_node is missing
     """
 
     def __init__(
@@ -1627,7 +1683,7 @@ class Expansion:
 
         Parameters
         ----------
-        step : int
+        current_step : int
             current growth step
         neurons_added : list, optional
             list of edges that were added or increased in dimension, by default []
