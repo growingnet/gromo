@@ -1049,6 +1049,34 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         self.assertAllClose(layer.eigenvalues_extension, torch.tensor([2.0]))
 
+    def test_sub_select_zero(
+        self,
+        first_layer_bias: bool = True,
+        second_layer_bias: bool = True,
+    ):
+        layer_in, layer_out = self.create_demo_layers_with_extension(
+            first_layer_bias=first_layer_bias,
+            second_layer_bias=second_layer_bias,
+            include_eigenvalues=True,
+        )
+        layer_out.eigenvalues_extension = torch.tensor([1.0, 0.1])
+
+        layer_out.sub_select_optimal_added_parameters(keep_neurons=0)
+
+        y, y_ext = layer_in.extended_forward(self.input_x)
+        z, _ = layer_out.extended_forward(y, y_ext)
+        self.assertIsNone(_)
+
+        layer_out.parameter_update_decrease = torch.tensor(0.0)
+        self.assertIsInstance(layer_out.first_order_improvement.item(), float)
+
+        layer_out.set_scaling_factor(100.0)
+        layer_out.apply_change()
+        y2 = layer_in(self.input_x)
+        z2 = layer_out(y2)
+
+        self.assertAllClose(z, z2)
+
     @unittest_parametrize(
         (
             {"zero_fan_in": True, "zero_fan_out": True, "first_layer_bias": True},
