@@ -10,7 +10,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
+from gromo.containers.growing_dag import (
+    Expansion,
+    ExpansionType,
+    GrowingDAG,
+    InterMergeExpansion,
+)
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     Conv2dMergeGrowingModule,
@@ -707,7 +712,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # Execute all graph growth options
         for expansion in actions:
             # Create a new edge
-            if expansion.type == "new edge":
+            if expansion.type == ExpansionType.NEW_EDGE:
                 if verbose:
                     print(
                         f"Adding direct edge from {expansion.previous_node} to {expansion.next_node}"
@@ -728,7 +733,9 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
             # Create/Expand node
-            elif (expansion.type == "new node") or (expansion.type == "expanded node"):
+            elif (expansion.type == ExpansionType.NEW_NODE) or (
+                expansion.type == ExpansionType.EXPANDED_NODE
+            ):
                 expansion.growth_history = copy.copy(self.growth_history)
                 expansion.expand()
                 expansion.update_growth_history(
@@ -875,9 +882,9 @@ class GrowingGraphNetwork(GrowingContainer):
         # Discard unused edges or nodes
         for index, option in enumerate(options):
             if index != best_ind:
-                if option.type == "new edge":
+                if option.type == ExpansionType.NEW_EDGE:
                     self.dag.remove_edge(option.previous_node, option.next_node)
-                elif option.type == "new node":
+                elif option.type == ExpansionType.NEW_NODE:
                     self.dag.remove_node(option.expanding_node)
         del options
 
@@ -916,7 +923,7 @@ class GrowingGraphNetwork(GrowingContainer):
                     scaling_factor=factor, extension_size=self.neurons
                 )
 
-        if self.chosen_action.type != "new edge":
+        if self.chosen_action.type != ExpansionType.NEW_EDGE:
             if self.chosen_action.expanding_node in self.dag.nodes:
                 expanding_node = self.chosen_action.expanding_node
             else:

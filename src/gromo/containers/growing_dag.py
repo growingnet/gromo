@@ -2,6 +2,7 @@ import copy
 import string
 import warnings
 from collections import deque
+from enum import Enum
 from typing import Callable, Iterator, Mapping
 
 import networkx as nx
@@ -190,12 +191,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )
 
     def delete_update(self):
+        """Delete tensor updates for all nodes"""
         for node_module in self.get_all_node_modules():
             node_module.delete_update(include_previous=True)
 
     # Initialize GrowingDAG and properties
 
     def init_dag_parameters(self) -> dict:
+        """Initialize configuration parameters of the dag
+
+        Returns
+        -------
+        dict
+            configuration dictionary for initial dag
+        """
         edges = [(self.root, self.end)]
         node_attributes = {
             self.root: {
@@ -1196,7 +1205,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
             expansion = Expansion(
                 self,
-                "new edge",
+                ExpansionType.NEW_EDGE,
                 previous_node=previous_node,
                 next_node=next_node,
                 edge_attributes=edge_attributes,
@@ -1213,7 +1222,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
             expansion = Expansion(
                 self,
-                "new node",
+                ExpansionType.NEW_NODE,
                 expanding_node=new_node,
                 previous_node=previous_node,
                 next_node=next_node,
@@ -1226,7 +1235,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node in self.nodes:
             if (node == self.root) or (node == self.end):
                 continue
-            expansion = Expansion(self, "expanded node", expanding_node=node)
+            expansion = Expansion(self, ExpansionType.EXPANDED_NODE, expanding_node=node)
             actions.append(expansion)
 
         return actions
@@ -1565,7 +1574,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return self.__str__()
 
 
-expansion_types = ["new edge", "new node", "expanded node"]
+class ExpansionType(Enum):
+    """Expansion types for GrowingDAG"""
+
+    NEW_EDGE = 0
+    NEW_NODE = 1
+    EXPANDED_NODE = 2
 
 
 class Expansion:
@@ -1576,15 +1590,15 @@ class Expansion:
     dag : GrowingDAG
         enclosed GrowingDAG object that is deep-copied
     type : str
-        type of expansion, can be one of ["new edge", "new node", "expanded node"]
+        type of expansion, can be one of [ExpansionType.NEW_EDGE, ExpansionType.NEW_NODE, ExpansionType.EXPANDED_NODE]
     growth_history : dict, optional
         expansion history of the enclosed GrowingDAG, by default {}
     expanding_node : str | None, optional
-        node to be expanded, only relevant in expansion types "new node" and "expanded node", by default None
+        node to be expanded, only relevant in expansion types ExpansionType.NEW_NODE and ExpansionType.EXPANDED_NODE, by default None
     previous_node : str | None, optional
-        previous node for expansion, only relevant in expansion types "new edge" and "new node", by default None
+        previous node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
     next_node : str | None, optional
-        next node for expansion, only relevant in expansion types "new edge" and "new node", by default None
+        next node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
     edge_attributes : dict, optional
         attributes of new edges, by default {}
     node_attributes : dict, optional
@@ -1593,15 +1607,15 @@ class Expansion:
     Raises
     ------
     ValueError
-        if the type is "new edge" and the previous_node and next_node are missing
-        or the type is "new node" and the previous_node, next_node and new_node are missing
-        or the type is "expanded node" and the new_node is missing
+        if the type is ExpansionType.NEW_EDGE and the previous_node and next_node are missing
+        or the type is ExpansionType.NEW_NODE and the previous_node, next_node and new_node are missing
+        or the type is ExpansionType.EXPANDED_NODE and the new_node is missing
     """
 
     def __init__(
         self,
         dag: GrowingDAG,
-        type: str,
+        exp_type: ExpansionType,
         growth_history: dict = {},
         expanding_node: str | None = None,
         previous_node: str | None = None,
@@ -1609,11 +1623,11 @@ class Expansion:
         edge_attributes: dict = {},
         node_attributes: dict = {},
     ) -> None:
-        if type not in expansion_types:
+        if not isinstance(exp_type, ExpansionType):
             raise ValueError(
-                f"The expansion type should be one of {expansion_types}. Found {type}."
+                f"The expansion type should be one of {['ExpansionType.'+m.name for m in ExpansionType]}. Found '{exp_type}'."
             )
-        self.type = type
+        self.type = exp_type
         self.dag = dag  # reference to the original dag
         self.growth_history = copy.deepcopy(growth_history)
         self.metrics = {}
@@ -1625,7 +1639,7 @@ class Expansion:
         self.edge_attributes = edge_attributes
         self.node_attributes = node_attributes
 
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             if self.previous_node is None or self.next_node is None:
                 raise ValueError(
                     f"When creating a new edge the previous and next nodes arguments are required. Found {previous_node=} {next_node=}."
@@ -1636,7 +1650,7 @@ class Expansion:
                     f"When creating a new edge the expanding node argument is not required. Found {expanding_node=}.",
                     UserWarning,
                 )
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             if (
                 self.expanding_node is None
                 or self.previous_node is None
@@ -1645,7 +1659,7 @@ class Expansion:
                 raise ValueError(
                     f"When creating a new node the expanding, previous, and next nodes arguments are required. Found {expanding_node=} {previous_node=} {next_node=}."
                 )
-        elif self.type == "expanded node":
+        elif self.type == ExpansionType.EXPANDED_NODE:
             if self.expanding_node is None:
                 raise ValueError(
                     f"When expanding an existing node the expanding node argument is required. Found {expanding_node=}."
@@ -1667,7 +1681,7 @@ class Expansion:
         list[str]
             previous nodes
         """
-        if self.type == "new edge" or self.type == "new node":
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
             return [
@@ -1685,7 +1699,7 @@ class Expansion:
         list[str]
             next nodes
         """
-        if self.type == "new edge" or self.type == "new node":
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.next_node]  # type: ignore
         else:
             return [
@@ -1703,9 +1717,9 @@ class Expansion:
         list[tuple]
             new edges
         """
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             return [(self.previous_node, self.next_node)]
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return [
                 (self.previous_node, self.expanding_node),
                 (self.expanding_node, self.next_node),
@@ -1734,9 +1748,9 @@ class Expansion:
         list[GrowingModule]
             new input edge modules
         """
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.previous_node, self.expanding_node)])
         else:
             return self.dag.get_edge_modules(
@@ -1756,9 +1770,9 @@ class Expansion:
         list[GrowingModule]
             new output edge modules
         """
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.expanding_node, self.next_node)])
         else:
             return self.dag.get_edge_modules(
@@ -1771,12 +1785,12 @@ class Expansion:
 
     def expand(self) -> None:
         """Create new edge or node on the enclosed GrowingDAG"""
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
             self.dag.toggle_edge_candidate(
                 self.previous_node, self.next_node, candidate=True
             )
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes, zero_weights=True)  # type: ignore
             self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
 
@@ -1889,11 +1903,11 @@ class Expansion:
         )
 
     def __repr__(self) -> str:
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             return f"[Expansion]: New edge from {self.previous_node} to {self.next_node}"
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return f"[Expansion]: New node {self.expanding_node} from {self.previous_node} to {self.next_node}"
-        elif self.type == "expanded node":
+        elif self.type == ExpansionType.EXPANDED_NODE:
             return f"[Expansion]: Expanding node {self.expanding_node}"
         return "[Expansion]: NotImplemented"
 
@@ -1906,15 +1920,15 @@ class InterMergeExpansion(Expansion):
     dag : GrowingDAG
         enclosed GrowingDAG object that is deep-copied
     type : str
-        type of expansion, can be one of ["new edge", "new node", "expanded node"]
+        type of expansion, can be one of [ExpansionType.NEW_EDGE, ExpansionType.NEW_NODE, ExpansionType.EXPANDED_NODE]
     growth_history : dict, optional
         expansion history of the enclosed GrowingDAG, by default {}
     expanding_node : str | None, optional
-        node to be expanded, only relevant in expansion types "new node" and "expanded node", by default None
+        node to be expanded, only relevant in expansion types ExpansionType.NEW_NODE and ExpansionType.EXPANDED_NODE, by default None
     previous_node : str | None, optional
-        previous node for expansion, only relevant in expansion types "new edge" and "new node", by default None
+        previous node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
     next_node : str | None, optional
-        next node for expansion, only relevant in expansion types "new edge" and "new node", by default None
+        next node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
     edge_attributes : dict, optional
         attributes of new edges, by default {}
     node_attributes : dict, optional
@@ -1923,15 +1937,15 @@ class InterMergeExpansion(Expansion):
     Raises
     ------
     ValueError
-        if the type is "new edge" and the previous_node and next_node are missing
-        or the type is "new node" and the previous_node, next_node and new_node are missing
-        or the type is "expanded node" and the new_node is missing
+        if the type is ExpansionType.NEW_EDGE and the previous_node and next_node are missing
+        or the type is ExpansionType.NEW_NODE and the previous_node, next_node and new_node are missing
+        or the type is ExpansionType.EXPANDED_NODE and the new_node is missing
     """
 
     def __init__(
         self,
         dag: GrowingDAG,
-        type: str,
+        exp_type: ExpansionType,
         growth_history: dict = {},
         expanding_node: str | None = None,
         previous_node: str | None = None,
@@ -1942,7 +1956,7 @@ class InterMergeExpansion(Expansion):
     ) -> None:
         super().__init__(
             dag,
-            type,
+            exp_type,
             growth_history,
             expanding_node,
             previous_node,
@@ -1963,7 +1977,7 @@ class InterMergeExpansion(Expansion):
         list[MergeGrowingModule]
             previous node modules
         """
-        if self.type == "new edge" or self.type == "new node":
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.dag.get_node_module(self.previous_node)]
         else:
             previous_nodes = []
@@ -1991,7 +2005,7 @@ class InterMergeExpansion(Expansion):
         list[MergeGrowingModule]
             next node modules
         """
-        if self.type == "new edge" or self.type == "new node":
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.dag.get_node_module(self.next_node)]
         else:
             next_nodes = []
@@ -2017,7 +2031,7 @@ class InterMergeExpansion(Expansion):
         list[GrowingModule]
             new edge modules
         """
-        if self.type == "new edge" or self.type == "new node":
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules(super().new_edges)
         else:
             new_edges = []
@@ -2055,9 +2069,9 @@ class InterMergeExpansion(Expansion):
         list[GrowingModule]
             new input edge modules
         """
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.previous_node, self.expanding_node)])
         else:
             in_edges = []
@@ -2084,9 +2098,9 @@ class InterMergeExpansion(Expansion):
         list[GrowingModule]
             new output edge modules
         """
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.expanding_node, self.next_node)])
         else:
             out_edges = []

@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from gromo.containers.growing_dag import InterMergeExpansion
+from gromo.containers.growing_dag import ExpansionType, InterMergeExpansion
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
@@ -775,7 +775,7 @@ class TestMergeGrowingModules(unittest.TestCase):
         # You should grow the node that has pooling as a post_merge_function
         expansion = InterMergeExpansion(
             dag=dag1.dag,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node=dag1.dag.end,
             adjacent_expanding_node=dag2.dag.root,
         )
