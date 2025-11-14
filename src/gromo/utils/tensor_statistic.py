@@ -70,7 +70,18 @@ class TensorStatistic:
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
     @torch.no_grad()
-    def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
+    def update(self, **kwargs: dict) -> tuple[torch.Tensor, int] | None:
+        """Update tensor based on update_function
+
+        Parameters
+        ----------
+        **kwargs : dict
+
+        Returns
+        -------
+        tuple[torch.Tensor, int] | None
+            the update tensor, number of samples used to compute the update
+        """
         if self.updated is False:
             update, nb_sample = self._update_function(**kwargs)  # type: ignore
             assert (self._shape is None or self._shape == update.size()) and (
@@ -89,9 +100,11 @@ class TensorStatistic:
             return update, nb_sample
 
     def init(self):
+        """Reset the tensor"""
         self.reset()
 
     def reset(self):
+        """Reset the tensor"""
         self._tensor = None
         self.samples = 0
 
@@ -173,6 +186,7 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         # (of the random variable obtain when averaging on a batch)
 
     def reset(self):
+        """Reset the tensor"""
         super().reset()
         self._square_norm_sum = 0
         self._compute_trace = True
@@ -199,7 +213,18 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         return self._trace / self._batches
 
     @torch.no_grad()
-    def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
+    def update(self, **kwargs: dict) -> tuple[torch.Tensor, int] | None:
+        """Update tensor based on update_function
+
+        Parameters
+        ----------
+        **kwargs : dict
+
+        Returns
+        -------
+        tuple[torch.Tensor, int] | None
+            the update tensor, number of samples used to compute the update
+        """
         if self.updated is False:
             update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
             assert isinstance(
