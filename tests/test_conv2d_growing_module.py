@@ -1805,7 +1805,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
 
         # Update input sizes
         # Access bordered_unfolded_extended_prev_input - this should not crash
-        bordered_tensor = current_module.bordered_unfolded_extended_prev_input
+        with self.assertWarns(UserWarning):
+            # The input size of the layer has changed
+            bordered_tensor = current_module.bordered_unfolded_extended_prev_input
 
         # Verify tensor structure
         self.assertShapeEqual(
@@ -1913,7 +1915,11 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
         # Subtest 2: Without features (hidden_channels=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden channels
-            layer_in, layer_out = self.create_demo_layers(bias=False, hidden_channels=0)
+            with self.assertWarns(UserWarning):
+                # Initializing zero-element tensors is a no-op
+                layer_in, layer_out = self.create_demo_layers(
+                    bias=False, hidden_channels=0
+                )
 
             # When out_channels=0, the layer has no weights
             # So copy_uniform should fallback to 1/sqrt(fan_in)

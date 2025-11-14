@@ -2604,9 +2604,11 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         object.__setattr__(merge_module, "previous_tensor_m", mock_tensor_m)
 
         # This should trigger the LinAlgError exception and force pseudo-inverse
-        deltas = merge_module.compute_optimal_delta(
-            return_deltas=True, force_pseudo_inverse=False
-        )
+        with self.assertWarns(UserWarning):
+            # Using the pseudo-inverse for the computation of the optimal delta
+            deltas = merge_module.compute_optimal_delta(
+                return_deltas=True, force_pseudo_inverse=False
+            )
 
         # Verify that deltas were computed using pseudo-inverse
         self.assertIsInstance(deltas, list)
@@ -3268,10 +3270,12 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
 
         # Subtest 3: Only extension layer normalization (no optimal_delta_layer)
         with self.subTest(case="only_extension_normalization"):
-            _, layer_out = self.create_demo_layers_with_extension(
-                include_eigenvalues=True,
-                hidden_features=0,
-            )
+            with self.assertWarns(UserWarning):
+                # Initializing zero-element tensors is a no-op
+                _, layer_out = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=0,
+                )
 
             # Remove optimal_delta_layer so only extension is normalized
             layer_out.optimal_delta_layer = None
@@ -3322,7 +3326,11 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             layer_out.optimal_delta_layer = self.create_standard_nn_linear(1, 1)
 
             # Everything works fine if std is zero (no scaling applied)
-            layer_out.normalize_optimal_updates(std_target=None)
+            with self.assertWarns(UserWarning):
+                # UserWarning: std(): degrees of freedom is <= 0. Correction should
+                # be strictly less than the reduction factor (input numel divided by
+                # output numel).
+                layer_out.normalize_optimal_updates(std_target=None)
 
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
@@ -3419,9 +3427,11 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
         # Subtest 2: Without features (hidden_features=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden features
-            layer_in, layer_out = self.create_demo_layers_with_extension(
-                hidden_features=0
-            )
+            with self.assertWarns(UserWarning):
+                # Initializing zero-element tensors is a no-op
+                layer_in, layer_out = self.create_demo_layers_with_extension(
+                    hidden_features=0
+                )
 
             # When out_features=0, the layer has no weights
             # So copy_uniform should fallback to 1/sqrt(fan_in)

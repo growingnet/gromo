@@ -1347,7 +1347,9 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertEqual(
             expansion.previous_nodes, [self.dag_conv.get_node_module(self.dag_conv.root)]
         )
-        self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
+        with self.assertWarns(UserWarning):
+            # Node does not belong in the current dag. All external nodes are assumed to be non-candidate.
+            self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
         self.assertEqual(
             expansion.new_edges,
             [
@@ -1425,13 +1427,15 @@ class TestGrowingDAG(unittest.TestCase):
             adjacent_expanding_node=self.dag_conv.end,
         )
         expansion.expand()
-        self.assertEqual(
-            expansion.previous_nodes,
-            [
-                self.dag_conv.get_node_module(self.dag_conv.root),
-                self.dag_conv.get_node_module("test"),
-            ],
-        )
+        with self.assertWarns(UserWarning):
+            # Node does not belong in the current dag. All external nodes are assumed to be non-candidate.
+            self.assertEqual(
+                expansion.previous_nodes,
+                [
+                    self.dag_conv.get_node_module(self.dag_conv.root),
+                    self.dag_conv.get_node_module("test"),
+                ],
+            )
         self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
         self.assertEqual(
             expansion.new_edges,
