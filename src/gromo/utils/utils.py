@@ -362,7 +362,7 @@ def batch_gradient_descent(
     target: torch.Tensor,
     optimizer: torch.optim.Optimizer,
     max_epochs: int = 100,
-    tol: float = 1e-5,
+    tol: float = 1e-5,  # noqa: ARG001
     fast: bool = True,
     eval_fn: Callable | None = None,
 ) -> tuple[list[float], list[float]]:

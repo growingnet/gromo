@@ -18,6 +18,35 @@ from gromo.utils.tools import (
 
 
 class Conv2dMergeGrowingModule(MergeGrowingModule):
+    """
+    Module to connect multiple convolutional modules with an merge operation.
+    It can also connect to LinearMergeModules.
+    This module does not perform the merge operation, it is done by the user.
+
+    Parameters
+    ----------
+    in_channels : int
+        input channels
+    input_size : int | tuple[int, int]
+        the expected shape of the input excluding batch size and channels
+    next_kernel_size : int | tuple[int, int]
+        kernel size fo the next modules
+    post_merge_function : torch.nn.Module, optional
+        activation function after the merge, by default torch.nn.Identity()
+    previous_modules : list[GrowingModule  |  MergeGrowingModule] | None, optional
+        list of preceding modules, by default None
+    next_modules : list[GrowingModule  |  MergeGrowingModule] | None, optional
+        list of succeeding modules, by default None
+    allow_growing : bool, optional
+        allow growth of the module, by default False
+    input_volume : int | None, optional
+        expected input volume, by default None
+    device : torch.device | None, optional
+        default device, by default None
+    name : str | None, optional
+        name of the module, by default None
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -55,6 +84,13 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def input_volume(self) -> int:
+        """Get the expected input volume
+
+        Returns
+        -------
+        int
+            input volume
+        """
         if self._input_volume is not None:
             return self._input_volume
         if self.input_size is not None:
@@ -69,26 +105,76 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def output_volume(self) -> int:
+        """Get the expected output volume.
+        For merge modules it reduces to the input volume
+
+        Returns
+        -------
+        int
+            output volume
+        """
         return self.input_volume
 
     @property
     def out_channels(self) -> int:
+        """Get the output channels.
+        For merge modules it reduces to the input channels
+
+        Returns
+        -------
+        int
+            output channels
+        """
         return self.in_channels
 
     @property
     def in_features(self) -> int:
+        """Get the fan-in size, input channels
+
+        Returns
+        -------
+        int
+            input channels
+        """
         return self.in_channels
 
     @property
     def out_features(self) -> int:
+        """Get the fan-out size, output channels
+
+        Returns
+        -------
+        int
+            output channels
+        """
         return self.in_channels
 
     @property
     def output_size(self) -> tuple[int, int]:
+        """Get the expected shape of the output excluding batch size and channels.
+        For merge modules it reduces to the input size
+
+        Returns
+        -------
+        tuple[int, int]
+            output size
+        """
         return self.input_size  # TODO: check for exceptions!
 
     @property
     def padding(self) -> tuple[int, int]:
+        """Get the layer padding
+
+        Returns
+        -------
+        tuple[int, int]
+            padding
+
+        Raises
+        ------
+        NotImplementedError
+            if the next module is not of type Conv2dGrowingModule, Conv2dMergeGrowingModule, LinearGrowingModule or LinearMergeGrowingModule
+        """
         if len(self.next_modules) <= 0:
             warn(
                 "Cannot derive the padding of Conv2dMergeGrowingModule without setting "
@@ -108,6 +194,18 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def stride(self) -> tuple[int, int]:
+        """Get the layer stride
+
+        Returns
+        -------
+        tuple[int, int]
+            stride
+
+        Raises
+        ------
+        NotImplementedError
+            if the next module is not of type Conv2dGrowingModule, Conv2dMergeGrowingModule, LinearGrowingModule or LinearMergeGrowingModule
+        """
         if len(self.next_modules) <= 0:
             warn(
                 "Cannot derive the stride of Conv2dMergeGrowingModule without setting "
@@ -127,6 +225,18 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def dilation(self) -> tuple[int, int]:
+        """Get the layer dilation
+
+        Returns
+        -------
+        tuple[int, int]
+            dilation
+
+        Raises
+        ------
+        NotImplementedError
+            if the next module is not of type Conv2dGrowingModule, Conv2dMergeGrowingModule, LinearGrowingModule or LinearMergeGrowingModule
+        """
         if len(self.next_modules) <= 0:
             warn(
                 "Cannot derive the dilation of Conv2dMergeGrowingModule without setting "
@@ -183,6 +293,18 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def set_next_modules(
         self, next_modules: list[GrowingModule | MergeGrowingModule]
     ) -> None:
+        """Set the next modules of the current module
+
+        Parameters
+        ----------
+        next_modules : list[GrowingModule  |  MergeGrowingModule]
+            list of next modules
+
+        Raises
+        ------
+        NotImplementedError
+            if the next modules are not of type Conv2dGrowingModule, Conv2dMergeGrowingModule, LinearGrowingModule or LinearMergeGrowingModule
+        """
         if self.tensor_s is not None and self.tensor_s.samples > 0:
             warn(
                 f"You are setting the next modules of {self.name} with a "
@@ -221,6 +343,21 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
     def set_previous_modules(
         self, previous_modules: list[MergeGrowingModule | GrowingModule]
     ) -> None:
+        """Set the previous modules of the current module
+
+        Parameters
+        ----------
+        previous_modules : list[MergeGrowingModule  |  GrowingModule]
+            list of previous modules
+
+        Raises
+        ------
+        TypeError
+            if the previous modules are not of type Conv2dGrowingModule or Conv2dMergeGrowingModule
+        ValueError
+            if the input channels do not match the output channels of the previous modules
+            or the input volume does not match the output volume of the previous modules
+        """
         if self.previous_tensor_s is not None and self.previous_tensor_s.samples > 0:
             warn(
                 f"You are setting the previous modules of {self.name} with a "
@@ -327,6 +464,15 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         return full_activity
 
     def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+        """Compute the update of the tensor S for the input of all previous modules.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor S
+        int
+            number of samples used to compute the update
+        """
         full_activity = self.construct_full_activity()
         return (
             torch.einsum(
@@ -408,6 +554,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         return update, batch_size
 
     def update_size(self) -> None:
+        """
+        Update the size of the module
+        Check number of previous modules and update input channels and tensor sizes
+        """
         if len(self.previous_modules) > 0:
             new_channels = self.previous_modules[0].out_channels
             self.in_channels = new_channels
@@ -561,20 +711,48 @@ class Conv2dGrowingModule(GrowingModule):
     # activation function as the post_layer_function
 
     @property
-    def padding(self):
-        return self.layer.padding
+    def padding(self) -> tuple[int, int]:
+        """Get the layer padding
+
+        Returns
+        -------
+        tuple[int, int]
+            padding
+        """
+        return self.layer.padding  # type: ignore
 
     @padding.setter
-    def padding(self, value):
-        self.layer.padding = value
+    def padding(self, value: tuple[int, int]):
+        """Set the layer padding
+
+        Parameters
+        ----------
+        value : tuple[int, int]
+            padding
+        """
+        self.layer.padding = value  # type: ignore
 
     @property
-    def dilation(self):
-        return self.layer.dilation
+    def dilation(self) -> tuple[int, int]:
+        """Get the layer dilation
+
+        Returns
+        -------
+        tuple[int, int]
+            dilation
+        """
+        return self.layer.dilation  # type: ignore
 
     @property
-    def stride(self):
-        return self.layer.stride
+    def stride(self) -> tuple[int, int]:
+        """Get the layer stride
+
+        Returns
+        -------
+        tuple[int, int]
+            stride
+        """
+        return self.layer.stride  # type: ignore
 
     def __out_dimension(self, dim: int) -> int:
         return (

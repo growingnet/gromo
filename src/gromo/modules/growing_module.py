@@ -64,18 +64,56 @@ class MergeGrowingModule(torch.nn.Module):
 
     @property
     def input_volume(self) -> int:
+        """Expected input volume
+
+        Returns
+        -------
+        int
+            input volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     @property
     def output_volume(self) -> int:
+        """Expected output volume
+
+        Returns
+        -------
+        int
+            output volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     @property
-    def number_of_successors(self):
+    def number_of_successors(self) -> int:
+        """Get the number of succeeding modules
+
+        Returns
+        -------
+        int
+            number of next modules
+        """
         return len(self.next_modules)
 
     @property
-    def number_of_predecessors(self):
+    def number_of_predecessors(self) -> int:
+        """Get the number of preceding modules
+
+        Returns
+        -------
+        int
+            number of previous modules
+        """
         return len(self.previous_modules)
 
     def grow(self):
@@ -181,6 +219,19 @@ class MergeGrowingModule(torch.nn.Module):
         return self.__str__(*args, **kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the module.
+        If needed, store the activity and pre-activity tensors.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output tensor
+        """
         for t in (self.tensor_s, self.previous_tensor_s, self.previous_tensor_m):
             if t:
                 t.updated = False
@@ -201,7 +252,14 @@ class MergeGrowingModule(torch.nn.Module):
         return y
 
     @property
-    def pre_activity(self):
+    def pre_activity(self) -> torch.Tensor:
+        """Get the pre activity of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            pre activity tensor
+        """
         return self.input
 
     def projected_v_goal(self) -> torch.Tensor:
@@ -423,7 +481,8 @@ class MergeGrowingModule(torch.nn.Module):
 
     def update_size(self) -> None:
         """
-        Update the input and output size of the module
+        Update the size of the module
+        Check number of previous modules and update input channels and tensor sizes
         """
         if len(self.previous_modules) > 0:
             new_size = self.previous_modules[0].out_features
@@ -459,7 +518,14 @@ class MergeGrowingModule(torch.nn.Module):
             self.previous_tensor_m = None
 
     @property
-    def number_of_parameters(self):
+    def number_of_parameters(self) -> int:
+        """Get the number of parameters of the layer
+
+        Returns
+        -------
+        int
+            number of parameters
+        """
         return 0
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
@@ -717,28 +783,90 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def in_features(self) -> int:
+        """Fan-in size
+
+        Returns
+        -------
+        int
+            fan-in size
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     @property
     def out_features(self) -> int:
+        """Fan-out size
+
+        Returns
+        -------
+        int
+            fan-out size
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     # Parameters
     @property
     def input_volume(self) -> int:
-        return self.layer.in_features
+        """Expected input volume
+
+        Returns
+        -------
+        int
+            input volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
+        raise NotImplementedError
 
     @property
     def output_volume(self) -> int:
-        return self.layer.out_features
+        """Expected output volume
+
+        Returns
+        -------
+        int
+            output volume
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
+        raise NotImplementedError
 
     # Information functions
     @property
-    def weight(self):
+    def weight(self) -> torch.Tensor:
+        """Get the weight of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            weight tensor
+        """
         return self.layer.weight
 
     @property
-    def bias(self):
+    def bias(self) -> torch.Tensor:
+        """Get the bias of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            bias tensor
+        """
         return self.layer.bias
 
     @property
@@ -1025,6 +1153,18 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def input_size(self) -> tuple[int, ...]:
+        """Get the expected shape of the input excluding batch size and channels
+
+        Returns
+        -------
+        tuple[int, ...]
+            input shape
+
+        Raises
+        ------
+        ValueError
+            if the input size is not given and cannot be calculated
+        """
         if self._input_size is None:
             self.update_input_size()
             if self._input_size is None:
@@ -1042,6 +1182,18 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def input(self) -> torch.Tensor:
+        """Get the input of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            input tensor
+
+        Raises
+        ------
+        ValueError
+            if the input is not stored
+        """
         if self.store_input:
             if self._internal_store_input:
                 assert (
@@ -1079,6 +1231,18 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def pre_activity(self) -> torch.Tensor:
+        """Get the pre activity of the layer
+
+        Returns
+        -------
+        torch.Tensor
+            pre activity tensor
+
+        Raises
+        ------
+        ValueError
+            if the pre activity is not stored
+        """
         if self.store_pre_activity:
             if self._internal_store_pre_activity:
                 assert (
@@ -1175,7 +1339,7 @@ class GrowingModule(torch.nn.Module):
             )
 
     @tensor_s_growth.setter
-    def tensor_s_growth(self, value) -> None:
+    def tensor_s_growth(self, value) -> None:  # noqa: ARG002
         """
         Allow to set the tensor_s_growth but has no effect.
         """

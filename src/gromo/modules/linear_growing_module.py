@@ -12,11 +12,33 @@ GRADIENT_COMPUTATION_EPSILON = 1e-5  # Small perturbation for gradient computati
 
 
 class LinearMergeGrowingModule(MergeGrowingModule):
+    """
+    Module to connect multiple linear modules with an merge operation.
+    This module does not perform the merge operation, it is done by the user.
+
+    Parameters
+    ----------
+    post_merge_function : torch.nn.Module, optional
+        activation function after the merge, by default torch.nn.Identity()
+    previous_modules : list[GrowingModule | MergeGrowingModule] | None, optional
+        list of preceding modules, by default None
+    next_modules : list[GrowingModule | MergeGrowingModule] | None, optional
+        list of succeeding modules, by default None
+    allow_growing : bool, optional
+        allow growth of the module, by default False
+    in_features : int | None, optional
+        input features, by default None
+    device : torch.device | None, optional
+        default device, by default None
+    name : str | None, optional
+        name of the module, by default None
+    """
+
     def __init__(
         self,
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules=None,
-        next_modules=None,
+        previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
+        next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         allow_growing: bool = False,
         in_features: int | None = None,
         device: torch.device | None = None,
@@ -41,14 +63,35 @@ class LinearMergeGrowingModule(MergeGrowingModule):
 
     @property
     def out_features(self) -> int:
+        """Output features. For linear merge layers reduced to input features
+
+        Returns
+        -------
+        int
+            output features
+        """
         return self.in_features
 
     @property
     def input_volume(self) -> int:
+        """Expected input volume.  For linear merge layers reduced to input features
+
+        Returns
+        -------
+        int
+            input volume
+        """
         return self.in_features
 
     @property
     def output_volume(self) -> int:
+        """Expected output volume. For linear merge layers reduced to input features
+
+        Returns
+        -------
+        int
+            output volume
+        """
         return self.in_features
 
     def set_next_modules(
@@ -250,6 +293,32 @@ class LinearMergeGrowingModule(MergeGrowingModule):
 
 
 class LinearGrowingModule(GrowingModule):
+    """LinearGrowingModule is a GrowingModule for a Linear layer.
+
+    Parameters
+    ----------
+    in_features : int
+        input features
+    out_features : int
+        output features
+    use_bias : bool, optional
+        use bias, by default True
+    post_layer_function : torch.nn.Module, optional
+        activation function, by default torch.nn.Identity()
+    extended_post_layer_function : torch.nn.Module | None, optional
+        extended activation function, by default None
+    previous_module : GrowingModule | MergeGrowingModule | None, optional
+        the preceding growing module, by default None
+    next_module : GrowingModule | MergeGrowingModule | None, optional
+        the succeeding growing module, by default None
+    allow_growing : bool, optional
+        allow growth of this module, by default False
+    device : torch.device | None, optional
+        default device, by default None
+    name : str | None, optional
+        name of the module, by default None
+    """
+
     def __init__(
         self,
         in_features: int,
@@ -283,10 +352,46 @@ class LinearGrowingModule(GrowingModule):
 
     @property
     def in_features(self) -> int:
+        """Fan-in size
+
+        Returns
+        -------
+        int
+            fan-in size
+        """
         return self.layer.in_features
 
     @property
     def out_features(self) -> int:
+        """Fan-out size
+
+        Returns
+        -------
+        int
+            fan-out size
+        """
+        return self.layer.out_features
+
+    @property
+    def input_volume(self) -> int:
+        """Expected input volume. For linear layers reduced to input features
+
+        Returns
+        -------
+        int
+            input volume
+        """
+        return self.layer.in_features
+
+    @property
+    def output_volume(self) -> int:
+        """Expected output volume. For linear layers reduced to output features
+
+        Returns
+        -------
+        int
+            output volume
+        """
         return self.layer.out_features
 
     # Information functions
