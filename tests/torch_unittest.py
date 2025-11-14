@@ -18,13 +18,13 @@ class SizedIdentity(torch.nn.Identity):
         super().__init__()
         self.num_features = size
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if input.size(1) != self.num_features:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.size(1) != self.num_features:
             raise ValueError(
                 f"Input size of SizedIdentity must be {self.num_features}, "
-                f"but got {input.size(1)}"
+                f"but got {x.size(1)}"
             )
-        return super().forward(input)
+        return super().forward(x)
 
 
 class GrowableIdentity(SizedIdentity):

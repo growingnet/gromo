@@ -1405,13 +1405,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        _type_
-            parameters iterator
-
-        Yields
-        ------
         Iterator
-            parameters
+            parameters iterator
         """
         # TODO : Temporary solution
         param = []
@@ -1589,7 +1584,7 @@ class Expansion:
     ----------
     dag : GrowingDAG
         enclosed GrowingDAG object that is deep-copied
-    type : str
+    exp_type : ExpansionType
         type of expansion, can be one of [ExpansionType.NEW_EDGE, ExpansionType.NEW_NODE, ExpansionType.EXPANDED_NODE]
     growth_history : dict, optional
         expansion history of the enclosed GrowingDAG, by default {}
@@ -1919,7 +1914,7 @@ class InterMergeExpansion(Expansion):
     ----------
     dag : GrowingDAG
         enclosed GrowingDAG object that is deep-copied
-    type : str
+    exp_type : ExpansionType
         type of expansion, can be one of [ExpansionType.NEW_EDGE, ExpansionType.NEW_NODE, ExpansionType.EXPANDED_NODE]
     growth_history : dict, optional
         expansion history of the enclosed GrowingDAG, by default {}
@@ -1929,17 +1924,12 @@ class InterMergeExpansion(Expansion):
         previous node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
     next_node : str | None, optional
         next node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
+    adjacent_expanding_node: str | None, optional
+        adjacent node to the expanded node belonging in different GrowingDAG, only relevant in expansion type ExpansionType.EXPANDED_NODE, by default None
     edge_attributes : dict, optional
         attributes of new edges, by default {}
     node_attributes : dict, optional
         attributes of new nodes, by default {}
-
-    Raises
-    ------
-    ValueError
-        if the type is ExpansionType.NEW_EDGE and the previous_node and next_node are missing
-        or the type is ExpansionType.NEW_NODE and the previous_node, next_node and new_node are missing
-        or the type is ExpansionType.EXPANDED_NODE and the new_node is missing
     """
 
     def __init__(

@@ -742,7 +742,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assert_tensor_close_with_context(
             layer(x),
             l0(x),
-            context=f"Standard forward with γ={gamma}, γ_next={gamma_next}",
+            context=f"Standard forward with {gamma=}, {gamma_next=}",
         )
 
         # Test extended forward pass
@@ -750,7 +750,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         expected_ext_1 = l0(x) - gamma**2 * l_delta(x)
         self.assert_tensor_close_with_context(
-            y_ext_1, expected_ext_1, context=f"Extended forward 1 with γ={gamma}"
+            y_ext_1, expected_ext_1, context=f"Extended forward 1 with {gamma=}"
         )
 
         if y_ext_2 is not None:
@@ -759,7 +759,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
                 y_ext_2,
                 expected_ext_2,
                 tolerance=self.config.REDUCED_TOLERANCE,
-                context=f"Extended forward 2 with γ_next={gamma_next}",
+                context=f"Extended forward 2 with {gamma_next=}",
             )
 
     def _test_apply_changes(self, layer, l0, l_ext, gamma: float, gamma_next: float):
