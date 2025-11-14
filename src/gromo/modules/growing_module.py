@@ -1199,8 +1199,11 @@ class GrowingModule(torch.nn.Module):
 
     # Layer addition
     def layer_of_tensor(
-        self, weight: torch.Tensor, bias: torch.Tensor | None = None
-    ) -> torch.nn.Linear:
+        self,
+        weight: torch.Tensor,
+        bias: torch.Tensor | None = None,
+        force_bias: bool = True,
+    ) -> torch.nn.Module:
         """
         Create a layer with the same characteristics (excepted the shape)
          with weight as parameter and bias as bias.
@@ -1211,10 +1214,13 @@ class GrowingModule(torch.nn.Module):
             weight of the layer
         bias: torch.Tensor | None
             bias of the layer
+        force_bias: bool
+            if True, the created layer require a bias
+            if `self.use_bias` is True
 
         Returns
         -------
-        torch.nn.Linear
+        torch.nn.Module
             layer with the same characteristics
         """
         raise NotImplementedError
@@ -1275,7 +1281,9 @@ class GrowingModule(torch.nn.Module):
         if delta_biases is not None:
             self.layer.bias.data += delta_biases
 
-    def _sub_select_added_output_dimension(self, keep_neurons: int) -> None:
+    def _sub_select_added_output_dimension(
+        self, keep_neurons: int, zeros_if_not_enough: bool = False
+    ) -> None:
         """
         Select the first `keep_neurons` neurons of the optimal added output dimension.
 
@@ -1283,13 +1291,38 @@ class GrowingModule(torch.nn.Module):
         ----------
         keep_neurons: int
             number of neurons to keep
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
         """
-        raise NotImplementedError
+        assert self.extended_output_layer is not None, (
+            f"The layer {self.name} should have an extended output layer to "
+            f"sub-select the output dimension."
+        )
+        if not zeros_if_not_enough:
+            if keep_neurons == 0:
+                self.extended_output_layer = None
+            else:
+                self.extended_output_layer = self.layer_of_tensor(
+                    self.extended_output_layer.weight[:keep_neurons],
+                    bias=(
+                        self.extended_output_layer.bias[:keep_neurons]
+                        if self.extended_output_layer.bias is not None
+                        else None
+                    ),
+                )
+        else:
+            self.extended_output_layer.weight.data[keep_neurons:] = 0.0
+            if self.extended_output_layer.bias is not None:
+                self.extended_output_layer.bias.data[keep_neurons:] = 0.0
 
     def sub_select_optimal_added_parameters(
         self,
-        keep_neurons: int,
+        keep_neurons: int | None = None,
+        threshold: float | None = None,
         sub_select_previous: bool = True,
+        zeros_if_not_enough: bool = False,
+        zeros_fan_in: bool = True,
+        zeros_fan_out: bool = False,
     ) -> None:
         """
         Select the first keep_neurons neurons of the optimal added parameters
@@ -1297,12 +1330,78 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        keep_neurons: int
-            number of neurons to keep
+        keep_neurons: int | None
+            number of neurons to keep, if None, the number of neurons
+            is determined by the threshold
+        threshold: float | None
+            threshold to determine the number of neurons to keep, if None,
+            keep_neurons must be provided
         sub_select_previous: bool
             if True, sub-select the previous layer added parameters as well
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
+            (either first or last depending on zeros_fan_in and zeros_fan_out)
+        zeros_fan_in: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-in parameters to zero
+        zeros_fan_out: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-out parameters to zero
         """
-        raise NotImplementedError
+        assert self.eigenvalues_extension is not None, (
+            f"The eigenvalues of the extension should be computed before "
+            f"sub-selecting the optimal added parameters for {self.name}."
+        )
+        if keep_neurons is None:
+            keep_neurons = int(torch.sum(self.eigenvalues_extension >= threshold).item())
+        zeros_fan_in = zeros_fan_in and zeros_if_not_enough
+
+        if self.extended_input_layer is not None:
+            if not zeros_if_not_enough:
+                if keep_neurons == 0:
+                    self.extended_input_layer = None
+                    self.eigenvalues_extension = None
+                else:
+                    self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
+                    self.extended_input_layer = self.layer_of_tensor(
+                        self.extended_input_layer.weight[:, :keep_neurons],
+                        bias=self.extended_input_layer.bias,
+                        force_bias=False,
+                    )
+            else:
+                self.eigenvalues_extension[keep_neurons:] = 0.0
+                assert zeros_fan_in or zeros_fan_out, (
+                    "At least one of zeros_fan_in or zeros_fan_out must be True "
+                    "if zeros_if_not_enough is True."
+                )
+                if zeros_fan_out:
+                    self.extended_input_layer.weight.data[:, keep_neurons:] = 0.0
+
+        if sub_select_previous:
+            if self.previous_module is None:
+                raise ValueError(
+                    f"No previous module for {self.name}. "
+                    "Therefore new neurons cannot be sub-selected."
+                )
+            elif isinstance(self.previous_module, GrowingModule):
+                if isinstance(self.previous_module, self.__class__):
+                    self.previous_module._sub_select_added_output_dimension(
+                        keep_neurons, zeros_if_not_enough=zeros_fan_in
+                    )
+                else:
+                    raise NotImplementedError(
+                        f"The sub-selection of the optimal added parameters "
+                        f"is not implemented yet for a connection from "
+                        f"{type(self.previous_module)} to {type(self)}."
+                    )
+            elif isinstance(self.previous_module, MergeGrowingModule):
+                raise NotImplementedError("TODO")
+            else:
+                raise NotImplementedError(
+                    f"The sub-selection of the optimal added parameters "
+                    f"is not implemented yet for {type(self.previous_module)} "
+                    f"as previous module."
+                )
 
     def _apply_output_changes(
         self, scaling_factor: float | torch.Tensor | None = None, extension_size: int = 0

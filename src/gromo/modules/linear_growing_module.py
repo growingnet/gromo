@@ -243,6 +243,8 @@ class LinearMergeGrowingModule(MergeGrowingModule):
 
 
 class LinearGrowingModule(GrowingModule):
+    _layer_type = torch.nn.Linear
+
     def __init__(
         self,
         in_features: int,
@@ -583,7 +585,10 @@ class LinearGrowingModule(GrowingModule):
 
     # Layer edition
     def layer_of_tensor(
-        self, weight: torch.Tensor, bias: torch.Tensor | None = None
+        self,
+        weight: torch.Tensor,
+        bias: torch.Tensor | None = None,
+        force_bias: bool = True,
     ) -> torch.nn.Linear:
         """
         Create a layer with the same characteristics (excepted the shape)
@@ -595,21 +600,25 @@ class LinearGrowingModule(GrowingModule):
             weight of the layer
         bias: torch.Tensor | None
             bias of the layer
+        force_bias: bool
+            if True, the created layer require a bias
+            if `self.use_bias` is True
 
         Returns
         -------
         torch.nn.Linear
             layer with the same characteristics
         """
-        assert self.use_bias is (bias is not None), (
-            f"The new layer should have a bias ({bias is not None=}) if and only if "
-            f"the main layer bias ({self.use_bias =}) is not None."
-        )
+        if force_bias:
+            assert self.use_bias is (bias is not None), (
+                f"The new layer should have a bias ({bias is not None=}) if and only if "
+                f"the main layer bias ({self.use_bias =}) is not None."
+            )
         new_layer = torch.nn.Linear(
             weight.shape[1], weight.shape[0], bias=self.use_bias, device=self.device
         )
         new_layer.weight = torch.nn.Parameter(weight)
-        if self.use_bias:
+        if bias is not None:
             new_layer.bias = torch.nn.Parameter(bias)
         return new_layer
 
@@ -765,68 +774,6 @@ class LinearGrowingModule(GrowingModule):
             name=self.tensor_m.name,
         )
 
-    def _sub_select_added_output_dimension(self, keep_neurons: int) -> None:
-        """
-        Select the first `keep_neurons` neurons of the optimal added output dimension.
-
-        Parameters
-        ----------
-        keep_neurons: int
-            number of neurons to keep
-        """
-        assert (
-            self.extended_output_layer is not None
-        ), f"The layer {self.name} should have an extended output layer to sub-select the output dimension."
-        self.extended_output_layer = self.layer_of_tensor(
-            self.extended_output_layer.weight[:keep_neurons],
-            bias=(
-                self.extended_output_layer.bias[:keep_neurons]
-                if self.extended_output_layer.bias is not None
-                else None
-            ),
-        )
-
-    def sub_select_optimal_added_parameters(
-        self,
-        keep_neurons: int,
-        sub_select_previous: bool = True,
-    ) -> None:
-        """
-        Select the first keep_neurons neurons of the optimal added parameters
-        linked to this layer.
-
-        Parameters
-        ----------
-        keep_neurons: int
-            number of neurons to keep
-        sub_select_previous: bool
-            if True, sub-select the previous layer added parameters as well
-        """
-        assert (self.extended_input_layer is None) ^ (
-            self.extended_output_layer is None
-        ), "The layer should have an extended input xor output layer."
-        if self.extended_input_layer is not None:
-            self.extended_input_layer = self.layer_of_tensor(
-                self.extended_input_layer.weight[:, :keep_neurons],
-                bias=self.extended_input_layer.bias,
-            )
-            assert self.eigenvalues_extension is not None, (
-                f"The eigenvalues of the extension should be computed before "
-                f"sub-selecting the optimal added parameters for {self.name}."
-            )
-            self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
-
-        if sub_select_previous:
-            if isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module._sub_select_added_output_dimension(keep_neurons)
-            elif isinstance(self.previous_module, LinearMergeGrowingModule):
-                raise NotImplementedError
-            else:
-                raise NotImplementedError(
-                    f"The computation of the optimal added parameters is not implemented "
-                    f"yet for {type(self.previous_module)} as previous module."
-                )
-
     # Optimal update computation
     def compute_optimal_added_parameters(
         self,
@@ -916,7 +863,7 @@ class LinearGrowingModule(GrowingModule):
         return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
 
     @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Linear) -> int:  # type: ignore
+    def get_fan_in_from_layer(layer: torch.nn.Linear) -> int:
         """
         Get the fan_in (number of input features) from a given layer.
 
