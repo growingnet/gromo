@@ -3,7 +3,6 @@ from typing import Any, Callable, Iterable
 import numpy as np
 import torch
 import torch.nn as nn
-from deprecated import deprecated
 
 
 __global_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -103,33 +102,6 @@ def torch_ones(*size: tuple[int, int], **kwargs) -> torch.Tensor:
         return torch.ones(size=size, device=__global_device, **kwargs)  # type: ignore
     except TypeError:
         return torch.ones(*size, device=__global_device, **kwargs)
-
-
-@deprecated(
-    "This functionality is already integrated in the `GrowingModule` sub-classes."
-)
-def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
-    """Safe Linear forward function for empty input tensors
-    Resolves bug with shape transformation when using cuda
-
-    Parameters
-    ----------
-    input : torch.Tensor
-        input tensor
-
-    Returns
-    -------
-    torch.Tensor
-        F.linear forward function output
-    """
-    assert (
-        input.shape[-1] == self.in_features
-    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[-1]}"
-    if self.in_features == 0:
-        return torch.zeros(
-            input.shape[0], self.out_features, device=global_device(), requires_grad=True
-        )  # TODO: change to self.device?
-    return torch.nn.functional.linear(input, self.weight, self.bias)
 
 
 def set_from_conf(
