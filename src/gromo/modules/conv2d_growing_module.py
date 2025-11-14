@@ -462,6 +462,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
 
 class Conv2dGrowingModule(GrowingModule):
+    _layer_type = torch.nn.Conv2d
     """
     Conv2dGrowingModule is a GrowingModule for a Conv2d layer.
 
@@ -819,8 +820,11 @@ class Conv2dGrowingModule(GrowingModule):
         )
 
     # Layer edition
-    def layer_of_tensor(  # type: ignore[override]
-        self, weight: torch.Tensor, bias: torch.Tensor | None = None
+    def layer_of_tensor(
+        self,
+        weight: torch.Tensor,
+        bias: torch.Tensor | None = None,
+        force_bias: bool = True,
     ) -> torch.nn.Conv2d:
         """
         Create a layer with the same characteristics (excepted the shape)
@@ -832,16 +836,20 @@ class Conv2dGrowingModule(GrowingModule):
             weight of the layer
         bias: torch.Tensor | None
             bias of the layer
+        force_bias: bool
+            if True, the created layer require a bias
+            if `self.use_bias` is True
 
         Returns
         -------
         torch.nn.Linear
             layer with the same characteristics
         """
-        assert self.use_bias is (bias is not None), (
-            f"The new layer should have a bias ({bias is not None=}) if and only if "
-            f"the main layer bias ({self.use_bias =}) is not None."
-        )
+        if force_bias:
+            assert self.use_bias is (bias is not None), (
+                f"The new layer should have a bias ({bias is not None=}) if and only if "
+                f"the main layer bias ({self.use_bias =}) is not None."
+            )
         for i in (0, 1):
             assert (
                 weight.shape[2 + i] == self.layer.kernel_size[i]
@@ -858,7 +866,7 @@ class Conv2dGrowingModule(GrowingModule):
             dilation=self.dilation,  # pyright: ignore[reportArgumentType]
         )
         new_layer.weight = torch.nn.Parameter(weight)
-        if self.use_bias:
+        if bias is not None:
             new_layer.bias = torch.nn.Parameter(bias)
         return new_layer
 

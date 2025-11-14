@@ -1199,8 +1199,11 @@ class GrowingModule(torch.nn.Module):
 
     # Layer addition
     def layer_of_tensor(
-        self, weight: torch.Tensor, bias: torch.Tensor | None = None
-    ) -> torch.nn.Linear:
+        self,
+        weight: torch.Tensor,
+        bias: torch.Tensor | None = None,
+        force_bias: bool = True,
+    ) -> torch.nn.Module:
         """
         Create a layer with the same characteristics (excepted the shape)
          with weight as parameter and bias as bias.
@@ -1211,10 +1214,13 @@ class GrowingModule(torch.nn.Module):
             weight of the layer
         bias: torch.Tensor | None
             bias of the layer
+        force_bias: bool
+            if True, the created layer require a bias
+            if `self.use_bias` is True
 
         Returns
         -------
-        torch.nn.Linear
+        torch.nn.Module
             layer with the same characteristics
         """
         raise NotImplementedError
@@ -1293,14 +1299,17 @@ class GrowingModule(torch.nn.Module):
             f"sub-select the output dimension."
         )
         if not zeros_if_not_enough:
-            self.extended_output_layer = self.layer_of_tensor(
-                self.extended_output_layer.weight[:keep_neurons],
-                bias=(
-                    self.extended_output_layer.bias[:keep_neurons]
-                    if self.extended_output_layer.bias is not None
-                    else None
-                ),
-            )
+            if keep_neurons == 0:
+                self.extended_output_layer = None
+            else:
+                self.extended_output_layer = self.layer_of_tensor(
+                    self.extended_output_layer.weight[:keep_neurons],
+                    bias=(
+                        self.extended_output_layer.bias[:keep_neurons]
+                        if self.extended_output_layer.bias is not None
+                        else None
+                    ),
+                )
         else:
             self.extended_output_layer.weight.data[keep_neurons:] = 0.0
             if self.extended_output_layer.bias is not None:
@@ -1349,11 +1358,16 @@ class GrowingModule(torch.nn.Module):
 
         if self.extended_input_layer is not None:
             if not zeros_if_not_enough:
-                self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
-                self.extended_input_layer = self.layer_of_tensor(
-                    self.extended_input_layer.weight[:, :keep_neurons],
-                    bias=self.extended_input_layer.bias,
-                )
+                if keep_neurons == 0:
+                    self.extended_input_layer = None
+                    self.eigenvalues_extension = None
+                else:
+                    self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
+                    self.extended_input_layer = self.layer_of_tensor(
+                        self.extended_input_layer.weight[:, :keep_neurons],
+                        bias=self.extended_input_layer.bias,
+                        force_bias=False,
+                    )
             else:
                 self.eigenvalues_extension[keep_neurons:] = 0.0
                 assert zeros_fan_in or zeros_fan_out, (
