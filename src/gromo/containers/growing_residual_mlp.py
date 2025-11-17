@@ -328,16 +328,16 @@ class GrowingResidualMLP(GrowingContainer):
         return self.currently_updated_layer_index
 
     @staticmethod
-    def tensor_statistics(tensor) -> dict[str, float]:
+    def tensor_statistics(tensor: torch.Tensor) -> dict[str, float]:
         """Compute statistics of a tensor
 
         Parameters
         ----------
-        tensor : Tensor
+        tensor : torch.Tensor
 
         Returns
         -------
-        Dict[str, float]
+        dict[str, float]
             statistics dictionary
         """
         min_value = tensor.min().item()

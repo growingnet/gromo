@@ -804,12 +804,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )
 
             self.get_node_module(prev_node).set_next_modules(
-                list(
-                    module for module in self.get_edge_modules(self.out_edges(prev_node))
-                )
+                list(self.get_edge_modules(self.out_edges(prev_node)))
             )
             self.get_node_module(next_node).set_previous_modules(
-                list(module for module in self.get_edge_modules(self.in_edges(next_node)))
+                list(self.get_edge_modules(self.in_edges(next_node)))
             )
 
         self._get_ancestors(self.root)

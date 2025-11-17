@@ -98,7 +98,7 @@ class SequentialGrowingContainer(GrowingContainer):
 
         Returns
         -------
-        Dict[str, Any]
+        dict[str, Any]
             information dictionary
         """
         information = {}

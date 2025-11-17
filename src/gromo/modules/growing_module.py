@@ -540,11 +540,6 @@ class MergeGrowingModule(torch.nn.Module):
         -------
         Iterator[torch.nn.Parameter]
             parameters iterator
-
-        Yields
-        ------
-        Iterator[torch.nn.Parameter]
-            parameters iterator
         """
         return iter([])
 
