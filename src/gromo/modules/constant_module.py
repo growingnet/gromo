@@ -4,6 +4,19 @@ from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
 class ConstantModule(LinearGrowingModule):
+    """Placeholder Module with constant zero output.
+    Used to simulate zero connection between modules
+
+    Parameters
+    ----------
+    in_features : int
+        input features
+    out_features : int
+        output features
+    device : torch.device | None, optional
+        default device, by default None
+    """
+
     def __init__(
         self, in_features: int, out_features: int, device: torch.device | None = None
     ) -> None:

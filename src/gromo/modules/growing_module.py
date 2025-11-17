@@ -529,6 +529,23 @@ class MergeGrowingModule(torch.nn.Module):
         return 0
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
+        """Parameter iterator
+
+        Parameters
+        ----------
+        recurse : bool, optional
+            use recursion, by default True
+
+        Returns
+        -------
+        Iterator[torch.nn.Parameter]
+            parameters iterator
+
+        Yields
+        ------
+        Iterator[torch.nn.Parameter]
+            parameters iterator
+        """
         return iter([])
 
     def sum_in_features(self, with_bias: bool = False) -> int:

@@ -626,9 +626,9 @@ class Conv2dGrowingModule(GrowingModule):
     dilation : int | tuple[int, int], optional
         by default 1
     input_size : tuple[int, int] | None, optional
-        by default None
+        the expected shape of the input excluding batch size and channels, by default None
     use_bias : bool, optional
-        by default True
+        use bias, by default True
     post_layer_function : torch.nn.Module
         function applied after the layer (e.g. activation function)
     extended_post_layer_function :  torch.nn.Module | None, optional
@@ -1793,6 +1793,39 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
 
 
 class FullConv2dGrowingModule(Conv2dGrowingModule):
+    """Conv2dGrowingModule for a Conv2d layer with a growth scheme Conv -> Conv
+
+    Parameters
+    ----------
+    in_channels : int
+    out_channels : int
+    kernel_size : int | tuple[int, int]
+    stride : int | tuple[int, int], optional
+        by default 1
+    padding : int | tuple[int, int], optional
+        by default 0
+    dilation : int | tuple[int, int], optional
+        by default 1
+    input_size : tuple[int, int] | None, optional
+        the expected shape of the input excluding batch size and channels, by default None
+    use_bias : bool, optional
+        use bias, by default True
+    post_layer_function : torch.nn.Module, optional
+        activation function, by default torch.nn.Identity()
+    extended_post_layer_function : torch.nn.Module | None, optional
+        extended activation function, by default None
+    previous_module : GrowingModule | MergeGrowingModule | None, optional
+        the preceding growing module, by default None
+    next_module : GrowingModule | MergeGrowingModule | None, optional
+        the succeeding growing module, by default None
+    allow_growing : bool, optional
+        allow growth of this module, by default False
+    device : torch.device | None, optional
+        default device, by default None
+    name : str | None, optional
+        name of the module, by default None
+    """
+
     def __init__(
         self,
         in_channels: int,
