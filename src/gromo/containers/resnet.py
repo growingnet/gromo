@@ -225,6 +225,18 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         self._growable_layers.append(new_block)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward function
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output of model
+        """
         x = self.pre_net(x)
         for stage in self.stages:
             x = stage(x)
@@ -234,6 +246,18 @@ class ResNetBasicBlock(SequentialGrowingContainer):
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, x: torch.Tensor
     ) -> torch.Tensor:
+        """Extended forward function including extensions of the modules
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output of the extended model
+        """
         x = self.pre_net(x)
         for stage in self.stages:  # type: ignore
             stage: nn.Sequential

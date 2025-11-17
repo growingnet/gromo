@@ -102,6 +102,7 @@ class GrowingMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         self._growing_layers = list(self.layers[1:])
 
     def forward(self, x: Tensor) -> Tensor:
@@ -145,6 +146,17 @@ class GrowingMLP(GrowingContainer):
 
     @staticmethod
     def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
+        """Compute statistics of a tensor
+
+        Parameters
+        ----------
+        tensor : Tensor
+
+        Returns
+        -------
+        Dict[str, float]
+            statistics dictionary
+        """
         min_value = tensor.min().item()
         max_value = tensor.max().item()
         mean_value = tensor.mean().item()
@@ -157,6 +169,13 @@ class GrowingMLP(GrowingContainer):
         }
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the model
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         statistics = {}
         for i, layer in enumerate(self.layers):
             statistics[i] = {
@@ -169,6 +188,13 @@ class GrowingMLP(GrowingContainer):
         return statistics
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         information = {}
         for i, layer in enumerate(self._growing_layers):
             layer_information = {
@@ -180,6 +206,13 @@ class GrowingMLP(GrowingContainer):
         return information
 
     def normalise(self, verbose: bool = False) -> None:
+        """Normalize the weight of the model
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            print info, by default False
+        """
         max_values = torch.zeros(len(self.layers), device=self.device)
         for i, layer in enumerate(self.layers):
             max_values[i] = layer.weight.abs().max()
@@ -225,6 +258,26 @@ class GrowingMLP(GrowingContainer):
 
 
 class Perceptron(GrowingMLP):
+    """Represents a Perceptron MLP
+
+    Parameters
+    ----------
+    in_features : int
+        input features
+    hidden_feature : int
+        hidden features
+    out_features : int
+        output features
+    activation : nn.Module, optional
+        activation function, by default nn.Sigmoid()
+    use_bias : bool, optional
+        use bias, by default True
+    flatten : bool, optional
+        flatten the input, by default True
+    device : Optional[torch.device], optional
+        default device, by default None
+    """
+
     def __init__(
         self,
         in_features: int,

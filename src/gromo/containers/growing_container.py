@@ -8,15 +8,31 @@ from gromo.utils.utils import get_correct_device
 
 
 class GrowingContainer(torch.nn.Module):
+    """Container interface to represent different types of model architectures
+
+    Parameters
+    ----------
+    in_features : int
+        input features, to be interpreted based on current needs
+    out_features : int
+        output features, to be interpreted based on current needs
+    device : torch.device | str | None, optional
+        default device, by default None
+    name : str, optional
+        name of the model, by default ""
+    """
+
     def __init__(
         self,
         in_features: int,
         out_features: int,
         device: torch.device | str | None = None,
+        name: str = "",
     ) -> None:
         super(GrowingContainer, self).__init__()
         self._config_data, _ = load_config()
         self.device = get_correct_device(self, device)
+        self.name = name
 
         self.in_features = in_features
         self.out_features = out_features
@@ -121,10 +137,31 @@ class GrowingContainer(torch.nn.Module):
         return self.currently_updated_layer_index
 
     def dummy_select_update(self, **_) -> int:
+        """Placeholder function for selecting update
+
+        Returns
+        -------
+        int
+            always zero
+        """
         self.currently_updated_layer_index = 0
         return 0
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
+        """Select the updates of a layer with a specific index and delete the rest
+
+        Parameters
+        ----------
+        layer_index : int
+            selected layer index
+        verbose : bool, optional
+            print info, by default False
+
+        Returns
+        -------
+        int
+            selected layer index
+        """
         self.currently_updated_layer_index = layer_index
         for i, layer in enumerate(self._growing_layers):
             if verbose:

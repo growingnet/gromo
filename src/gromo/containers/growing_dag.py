@@ -1317,7 +1317,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def extended_forward(
         self, x: torch.Tensor, mask: dict = {}, verbose: bool = False
     ) -> torch.Tensor:
-        """Extended forward function for DAG model
+        """Extended forward function for DAG model including extensions of the modules
 
         Parameters
         ----------
@@ -1332,7 +1332,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Returns
         -------
         torch.Tensor
-            output of model
+            output of the extended model
         """
         if verbose:
             print("\nExtended Forward DAG...")

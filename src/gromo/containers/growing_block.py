@@ -107,15 +107,36 @@ class GrowingBlock(GrowingContainer):
             raise ValueError("verbose must be a non-negative integer.")
 
     @property
-    def eigenvalues_extension(self):
+    def eigenvalues_extension(self) -> torch.Tensor | None:
+        """Get the eigenvalues extension of the second layer
+
+        Returns
+        -------
+        torch.Tensor | None
+            eigenvalues extension
+        """
         return self.second_layer.eigenvalues_extension
 
     @property
-    def parameter_update_decrease(self):
+    def parameter_update_decrease(self) -> torch.Tensor | None:
+        """Get the parameter update decrease of the second layer
+
+        Returns
+        -------
+        torch.Tensor | None
+            parameter update decrease
+        """
         return self.second_layer.parameter_update_decrease
 
     @property
-    def scaling_factor(self):
+    def scaling_factor(self) -> torch.Tensor:
+        """Get the scaling factor of the second layer
+
+        Returns
+        -------
+        torch.Tensor
+            scaling factor
+        """
         return self.second_layer.scaling_factor
 
     @scaling_factor.setter
