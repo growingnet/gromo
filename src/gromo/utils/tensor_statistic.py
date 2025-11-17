@@ -13,7 +13,7 @@ class TensorStatistic:
     multiple samples. It is typically computed by batch.
 
     When computing the new source data, the tensor statistic should be
-    informed that it is not updated. Then The update function should be called
+    informed that it is not updated. Then the update function should be called
     to update the tensor statistic.
 
     Example:
@@ -108,7 +108,19 @@ class TensorStatistic:
         self._tensor = None
         self.samples = 0
 
-    def __call__(self):
+    def __call__(self) -> torch.Tensor:
+        """Get the average of the precomputed tensor over the number of samples
+
+        Returns
+        -------
+        torch.Tensor
+            averaged tensor
+
+        Raises
+        ------
+        ValueError
+            if the tensor has not been computed
+        """
         if self.samples == 0:
             raise ValueError("The tensor statistic has not been computed.")
         else:
