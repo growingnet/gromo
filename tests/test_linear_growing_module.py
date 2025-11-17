@@ -1,4 +1,5 @@
 import types
+import warnings
 from copy import deepcopy
 from unittest import mock
 
@@ -463,6 +464,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         - without extension_size and without self.eigenvalues_extension
         (error on apply change)
         """
+        warnings.filterwarnings(
+            "ignore",
+            ".*The extended post layer function may get a variable input size.*",
+            UserWarning,
+        )
+
         with self.subTest("Growable post layer function"):
             first_module, second_module = self.create_demo_layers_with_extension(
                 first_layer_post_layer=GrowableIdentity(3)
