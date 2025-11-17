@@ -15,12 +15,13 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.utils import global_device
+from tests.torch_unittest import TorchTestCase
 
 
 # torch.set_default_tensor_type(torch.DoubleTensor)
 
 
-class TestGrowingDAG(unittest.TestCase):
+class TestGrowingDAG(TorchTestCase):
     def setUp(self) -> None:
         self.in_features = 10
         self.hidden_size = 5
@@ -581,10 +582,16 @@ class TestGrowingDAG(unittest.TestCase):
             self.init_node_attributes,
             zero_weights=True,
         )
-        bottleneck, input_B = self.dag.calculate_bottleneck(
-            actions=expansions,
-            dataloader=dataloader,
-        )
+
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            bottleneck, input_B = self.dag.calculate_bottleneck(
+                actions=expansions,
+                dataloader=dataloader,
+            )
+
         for node_module in self.dag.get_all_node_modules():
             self.assertIsNone(node_module.activity)
         self.assertIsNotNone(

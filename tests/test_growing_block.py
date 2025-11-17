@@ -758,12 +758,15 @@ class TestLinearGrowingBlock(TorchTestCase):
     @unittest_parametrize(({"hidden_features": 0}, {"hidden_features": 3}))
     def test_init_computation(self, hidden_features: int = 0):
         """Test initialization of computation."""
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.in_features,
-            hidden_features=hidden_features,
-            device=self.device,
-        )
+        with self.assertMaybeWarns(
+            UserWarning, "Initializing zero-element tensors is a no-op"
+        ):
+            block = LinearGrowingBlock(
+                in_features=self.in_features,
+                out_features=self.in_features,
+                hidden_features=hidden_features,
+                device=self.device,
+            )
 
         # Initialize computation
         block.init_computation()

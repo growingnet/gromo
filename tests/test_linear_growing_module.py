@@ -2199,7 +2199,11 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         layer2.update_computation()
 
         # Compute optimal delta for layer2 (required for projected_v_goal)
-        layer2.compute_optimal_delta()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            layer2.compute_optimal_delta()
 
         # Test compute_n_update
         n_update, n_samples = layer1.compute_n_update()
@@ -2458,7 +2462,11 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         layer2.update_computation()
 
         # Test various methods that might trigger remaining missing lines
-        layer2.compute_optimal_delta()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            layer2.compute_optimal_delta()
 
         # Test with different input shapes by doing another forward pass
         x_new = torch.randn(7, 3, device=global_device())  # Different batch size

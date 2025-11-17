@@ -1382,7 +1382,11 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_couple[1].update_computation()
         demo_couple[1].tensor_s_growth.update()
 
-        demo_couple[1].compute_optimal_delta()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            demo_couple[1].compute_optimal_delta()
         demo_couple[1].delta_raw *= 0
 
         self.assertAllClose(

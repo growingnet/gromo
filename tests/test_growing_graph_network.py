@@ -7,10 +7,11 @@ from torch.nn.functional import one_hot
 from gromo.containers.growing_dag import Expansion, ExpansionType, GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
+from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
 
 
-class TestGrowingGraphNetwork(unittest.TestCase):
+class TestGrowingGraphNetwork(TorchTestCase):
     def setUp(self) -> None:
         self.in_features = 5
         self.out_features = 2
@@ -443,7 +444,10 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
         min_value = torch.inf
         for i, opt in enumerate(options):
-            opt.expand()
+            with self.assertMaybeWarns(
+                UserWarning, "Initializing zero-element tensors is a no-op"
+            ):
+                opt.expand()
             opt.growth_history = i
             opt.metrics["scaling_factor"] = 1
             opt.metrics["loss_train"] = None
@@ -470,17 +474,23 @@ class TestGrowingGraphNetwork(unittest.TestCase):
                     (self.neurons, module.in_features), device=module.device
                 )
                 bias = torch.rand(self.neurons, device=module.device)
-                module.extended_output_layer = module.layer_of_tensor(
-                    weight=weight, bias=bias
-                )
+                with self.assertMaybeWarns(
+                    UserWarning, "Initializing zero-element tensors is a no-op"
+                ):
+                    module.extended_output_layer = module.layer_of_tensor(
+                        weight=weight, bias=bias
+                    )
             for module in node_module.next_modules:
                 weight = torch.rand(
                     (module.out_features, self.neurons), device=module.device
                 )
                 bias = torch.zeros(module.out_features, device=module.device)
-                module.extended_input_layer = module.layer_of_tensor(
-                    weight=weight, bias=bias
-                )
+                with self.assertMaybeWarns(
+                    UserWarning, "Initializing zero-element tensors is a no-op"
+                ):
+                    module.extended_input_layer = module.layer_of_tensor(
+                        weight=weight, bias=bias
+                    )
 
         self.net.choose_growth_best_action(options, use_bic=use_bic)
 

@@ -5,9 +5,10 @@ import torch.nn as nn
 
 from gromo.containers.growing_residual_mlp import GrowingResidualMLP
 from tests.test_growing_container import create_synthetic_data, gather_statistics
+from tests.torch_unittest import TorchTestCase
 
 
-class TestGrowingResidualMLP(unittest.TestCase):
+class TestGrowingResidualMLP(TorchTestCase):
     def setUp(self):
         # Create synthetic data
         self.in_features = (3, 32, 32)
@@ -38,7 +39,11 @@ class TestGrowingResidualMLP(unittest.TestCase):
 
         # Compute the optimal updates
         gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            self.model.compute_optimal_updates()
 
     def test_init(self):
         l1 = GrowingResidualMLP(

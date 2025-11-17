@@ -14,9 +14,10 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.utils import global_device
+from tests.torch_unittest import TorchTestCase
 
 
-class TestMergeGrowingModules(unittest.TestCase):
+class TestMergeGrowingModules(TorchTestCase):
     def setUp(self) -> None:
         self.batch_size = 4
         self.input_shape = (12, 12)
@@ -148,7 +149,11 @@ class TestMergeGrowingModules(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     layer.compute_optimal_delta()
             else:
-                layer.compute_optimal_delta()
+                with self.assertMaybeWarns(
+                    UserWarning,
+                    "Using the pseudo-inverse for the computation of the optimal delta",
+                ):
+                    layer.compute_optimal_delta()
                 if isinstance(layer, GrowingModule):
                     self.assertIsNotNone(layer.optimal_delta_layer)
 
@@ -362,7 +367,11 @@ class TestMergeGrowingModules(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     layer.compute_optimal_delta()
             else:
-                layer.compute_optimal_delta()
+                with self.assertMaybeWarns(
+                    UserWarning,
+                    "Using the pseudo-inverse for the computation of the optimal delta",
+                ):
+                    layer.compute_optimal_delta()
                 if isinstance(layer, GrowingModule):
                     self.assertIsNotNone(layer.optimal_delta_layer)
 
@@ -514,7 +523,11 @@ class TestMergeGrowingModules(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     layer.compute_optimal_delta()
             else:
-                layer.compute_optimal_delta()
+                with self.assertMaybeWarns(
+                    UserWarning,
+                    "Using the pseudo-inverse for the computation of the optimal delta",
+                ):
+                    layer.compute_optimal_delta()
                 if isinstance(layer, GrowingModule):
                     self.assertIsNotNone(layer.optimal_delta_layer)
 
@@ -558,7 +571,11 @@ class TestMergeGrowingModules(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     layer.compute_optimal_delta()
             else:
-                layer.compute_optimal_delta()
+                with self.assertMaybeWarns(
+                    UserWarning,
+                    "Using the pseudo-inverse for the computation of the optimal delta",
+                ):
+                    layer.compute_optimal_delta()
                 if isinstance(layer, GrowingModule):
                     self.assertIsNotNone(layer.optimal_delta_layer)
 
@@ -754,7 +771,11 @@ class TestMergeGrowingModules(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     layer.compute_optimal_delta()
             else:
-                layer.compute_optimal_delta()
+                with self.assertMaybeWarns(
+                    UserWarning,
+                    "Using the pseudo-inverse for the computation of the optimal delta",
+                ):
+                    layer.compute_optimal_delta()
                 if isinstance(layer, GrowingModule):
                     self.assertIsNotNone(layer.optimal_delta_layer)
                 elif isinstance(layer, GrowingGraphNetwork):
