@@ -610,6 +610,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
                 if kernel_size is None:
                     raise ValueError(f"kernel_size must be specified for {name}.")
                 kwargs["kernel_size"] = kernel_size
+                break
             elif kernel_size is not None:
                 warn(
                     f"kernel_size specified in both arguments and kwargs for {name}, "
