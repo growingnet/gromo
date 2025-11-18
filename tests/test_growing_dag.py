@@ -1513,7 +1513,7 @@ class TestGrowingDAG(TorchTestCase):
     def test_update_growth_history(self) -> None:
         expansion = Expansion(
             self.dag,
-            type="new node",
+            exp_type=ExpansionType.NEW_NODE,
             expanding_node="1",
             previous_node=self.dag.root,
             next_node=self.dag.end,
