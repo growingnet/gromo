@@ -711,11 +711,25 @@ class Conv2dGrowingModule(GrowingModule):
     # activation function as the post_layer_function
 
     @property
-    def in_channels(self):
+    def in_channels(self) -> int:
+        """Get the input channels of the layer
+
+        Returns
+        -------
+        int
+            input channels
+        """
         return self.layer.in_channels
 
     @property
-    def out_channels(self):
+    def out_channels(self) -> int:
+        """Get the output channels of the layer
+
+        Returns
+        -------
+        int
+            output channels
+        """
         return self.layer.out_channels
 
     @property
