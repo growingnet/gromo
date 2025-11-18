@@ -369,6 +369,7 @@
 <section id="enhancements">
 <h3>Enhancements<a class="headerlink" href="#enhancements" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Modify <cite>in_channels</cite> and <cite>out_channels</cite> as properties in <cite>Conv2dGrowingModule</cite> (<a class="reference external" href="https://github.com/growingnet/gromo/issues/174">#174</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Introduce a <cite>SequentialGrowingContainer</cite> structure specialized for container with sequential layers.  Introduce a <cite>ResNetBasicBlock</cite> class to create resnet 18/34 like structure with growable blocks and the possibility of adding blocks. (<a class="reference external" href="https://github.com/growingnet/gromo/issues/168">#168</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Allow to create layer extension with different simple initialization (different random and zero). (<a class="reference external" href="https://github.com/growingnet/gromo/issues/165">#165</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Add <cite>TensorStatisticWithEstimationError</cite> and corresponding class <cite>TestTensorStatisticWithEstimationError</cite>. It computes an estimation of the quadratic error done when estimating the given tensor statistic. Modify <cite>TensorStatistic</cite> so that there is no need to call init (<a class="reference external" href="https://github.com/growingnet/gromo/issues/149">#149</a> by <a href="#id1"><span class="problematic" id="id2">`Félix Houdouin`_</span></a>).</p></li>
@@ -422,6 +423,7 @@
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Fix persistent value of input volume (<a class="reference external" href="https://github.com/growingnet/gromo/issues/174">#174</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix memory leak in tensor updates (<a class="reference external" href="https://github.com/growingnet/gromo/issues/138">#138</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Device handling in GrowingMLP, GrowingMLPMixer, and GrowingResidualMLP (<a class="reference external" href="https://github.com/growingnet/gromo/issues/129">#129</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Delete leftover activity tensors (<a class="reference external" href="https://github.com/growingnet/gromo/issues/78">#78</a> &amp; <cite>100</cite> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
