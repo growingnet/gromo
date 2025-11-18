@@ -994,6 +994,64 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         demo_out.update_input_size(compute_from_previous=True)
         self.assertEqual(demo_out.input_size, y.shape[2:])
 
+    @unittest_parametrize(
+        (
+            {"zero_fan_in": True, "zero_fan_out": True, "bias": True},
+            {"zero_fan_in": False, "zero_fan_out": True, "bias": True},
+            {"zero_fan_in": True, "zero_fan_out": False, "bias": False},
+        )
+    )
+    def test_sub_select_optimal_added_parameters_zeroing(
+        self,
+        bias: bool = True,
+        zero_fan_in: bool = True,
+        zero_fan_out: bool = False,
+        select: int = 1,
+    ) -> None:
+        """Test sub_select with zeros_if_not_enough for Conv2d layers."""
+        layer_in, layer_out = self.create_demo_layers_with_extension(
+            bias=bias,
+            include_eigenvalues=True,
+        )
+
+        # Set eigenvalues with clear ordering
+        extension_size = layer_out.eigenvalues_extension.shape[0]
+        layer_out.eigenvalues_extension = torch.tensor(
+            [1.0, 0.5, 0.1][:extension_size], device=global_device()
+        )
+
+        layer_out.sub_select_optimal_added_parameters(
+            keep_neurons=select,
+            zeros_if_not_enough=True,
+            zeros_fan_in=zero_fan_in,
+            zeros_fan_out=zero_fan_out,
+        )
+
+        assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
+        assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
+
+        # Check eigenvalues are zeroed for non-selected neurons
+        self.assertAllClose(
+            layer_out.eigenvalues_extension[select:],
+            torch.zeros_like(layer_out.eigenvalues_extension[select:]),
+        )
+
+        if zero_fan_in:
+            # Check that fan-in weights are zeroed for non-selected neurons
+            self.assertTrue(
+                torch.all(layer_in.extended_output_layer.weight[select:] == 0)
+            )
+            if bias and layer_in.extended_output_layer.bias is not None:
+                self.assertTrue(
+                    torch.all(layer_in.extended_output_layer.bias[select:] == 0)
+                )
+
+        if zero_fan_out:
+            # Check that fan-out weights are zeroed for non-selected neurons
+            self.assertTrue(
+                torch.all(layer_out.extended_input_layer.weight[:, select:] == 0)
+            )
+
 
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = FullConv2dGrowingModule
