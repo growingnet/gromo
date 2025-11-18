@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Modify `in_channels` and `out_channels` as properties in `Conv2dGrowingModule` (:gh:`174` by `Stella Douka`_)
 - Introduce a `SequentialGrowingContainer` structure specialized for container with sequential layers.  Introduce a `ResNetBasicBlock` class to create resnet 18/34 like structure with growable blocks and the possibility of adding blocks. (:gh:`168` by `Théo Rudkiewicz`_)
 - Allow to create layer extension with different simple initialization (different random and zero). (:gh:`165` by `Théo Rudkiewicz`_)
 - Add `TensorStatisticWithEstimationError` and corresponding class `TestTensorStatisticWithEstimationError`. It computes an estimation of the quadratic error done when estimating the given tensor statistic. Modify `TensorStatistic` so that there is no need to call init (:gh:`149` by `Félix Houdouin`_).
@@ -72,6 +73,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Fix persistent value of input volume (:gh:`174` by `Stella Douka`_)
 - Fix memory leak in tensor updates (:gh:`138` by `Stella Douka`_)
 - Device handling in GrowingMLP, GrowingMLPMixer, and GrowingResidualMLP (:gh:`129` by `Stella Douka`_)
 - Delete leftover activity tensors (:gh:`78` & `100` by `Stella Douka`_)
