@@ -3,9 +3,20 @@ import unittest
 import torch
 
 from gromo.utils.dependence_estimator import *
+from tests.torch_unittest import TorchTestCase
 
 
-class TestDependenceEstimator(unittest.TestCase):
+def slow_gaussian_kernel(X, sigma_sq=None):
+    pairwise_sq_dists = torch.sum((X[:, None] - X) ** 2, axis=-1)  # (n,n)
+
+    if sigma_sq is None:
+        sigma_sq = torch.median(pairwise_sq_dists)
+
+    K = torch.exp(-pairwise_sq_dists / (2 * sigma_sq))
+    return K
+
+
+class TestDependenceEstimator(TorchTestCase):
     def setUp(self) -> None:
         self.X = torch.rand((10, 500))
 
@@ -13,22 +24,22 @@ class TestDependenceEstimator(unittest.TestCase):
         K = gaussian_kernel(self.X)
 
         # Check if the kernel matrix is symmetric
-        self.assertTrue(torch.allclose(K, K.T, atol=1e-6))
+        self.assertAllClose(K, K.T)
 
         # Check the shape of the kernel matrix
-        self.assertEqual(K.shape, (self.X.shape[0], self.X.shape[0]))
+        self.assertShapeEqual(K, (self.X.shape[0], self.X.shape[0]))
 
         # Check if the fast Gaussian kernel matches the standard one
         K_slow = slow_gaussian_kernel(self.X)
-        self.assertEqual(K.shape, K_slow.shape)
-        self.assertTrue(torch.allclose(K, K_slow, atol=1e-6))
+        self.assertShapeEqual(K, K_slow.shape)
+        self.assertAllClose(K, K_slow)
 
         # Check the values of the Gaussian kernel
         sigma = 1.0
         dist = torch.cdist(self.X, self.X) ** 2
         expected_K = torch.exp(-dist / (2 * sigma**2))
         K = gaussian_kernel(self.X, sigma=sigma)
-        self.assertTrue(torch.allclose(K, expected_K, atol=1e-6))
+        self.assertAllClose(K, expected_K)
 
     def test_center_kernel_matrix(self) -> None:
         # Create a random kernel matrix
@@ -38,19 +49,16 @@ class TestDependenceEstimator(unittest.TestCase):
         K_centered = center_kernel_matrix(K)
 
         # Check if the centered kernel matrix is symmetric
-        self.assertTrue(torch.allclose(K_centered, K_centered.T, atol=1e-6))
+        self.assertAllClose(K_centered, K_centered.T, atol=1e-6)
 
         # Check if the row and column sums of the centered kernel matrix are approximately zero
-        self.assertTrue(
-            torch.allclose(K_centered.sum(dim=0), torch.zeros(K.shape[0]), atol=1e-6)
-        )
-        self.assertTrue(
-            torch.allclose(K_centered.sum(dim=1), torch.zeros(K.shape[0]), atol=1e-6)
-        )
+        self.assertAllClose(K_centered.sum(dim=0), torch.zeros(K.shape[0]), atol=1e-6)
+
+        self.assertAllClose(K_centered.sum(dim=1), torch.zeros(K.shape[0]), atol=1e-6)
 
         # Check if centering a centered kernel matrix results in the same matrix
         K_recentered = center_kernel_matrix(K_centered)
-        self.assertTrue(torch.allclose(K_centered, K_recentered, atol=1e-6))
+        self.assertAllClose(K_centered, K_recentered, atol=1e-6)
 
     def test_HSIC(self) -> None:
         K = gaussian_kernel(self.X)

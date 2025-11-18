@@ -1,3 +1,4 @@
+import random
 from copy import deepcopy
 from unittest import main
 
@@ -27,6 +28,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         with consistent kernel sizes so we can run forward/backward and compute stats.
         """
         torch.manual_seed(0)
+        random.seed(0)
 
         # Common shapes
         self.batch = 4
