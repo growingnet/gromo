@@ -1,5 +1,6 @@
 import types
 from copy import deepcopy
+from typing import Literal
 from unittest import mock
 
 import torch
@@ -179,13 +180,17 @@ class TestLinearGrowingModuleBase(TorchTestCase):
 
     def create_demo_layers(
         self,
-        bias: bool,
+        bias: bool = True,
+        first_layer_bias: bool | None = None,
+        second_layer_bias: bool | None = None,
         hidden_features: int | None = None,
         first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
         first_layer_extended_post_layer: torch.nn.Module | None = None,
     ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
         """Create demo layers for testing with specified bias configuration."""
         torch.manual_seed(self.config.RANDOM_SEED)
+        first_layer_bias = first_layer_bias if first_layer_bias is not None else bias
+        second_layer_bias = second_layer_bias if second_layer_bias is not None else bias
         demo_layer_1 = LinearGrowingModule(
             self.config.LAYER_DIMS["demo_1"][0],
             (
@@ -193,8 +198,8 @@ class TestLinearGrowingModuleBase(TorchTestCase):
                 if hidden_features is not None
                 else self.config.LAYER_DIMS["demo_1"][1]
             ),
-            use_bias=bias,
-            name=f"L1({'bias' if bias else 'no_bias'})",
+            use_bias=first_layer_bias,
+            name=f"L1({'bias' if first_layer_bias else 'no_bias'})",
             device=global_device(),
             post_layer_function=first_layer_post_layer,
             extended_post_layer_function=first_layer_extended_post_layer,
@@ -202,8 +207,8 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         demo_layer_2 = LinearGrowingModule(
             demo_layer_1.out_features,
             self.config.LAYER_DIMS["demo_2"][1],
-            use_bias=bias,
-            name=f"L2({'bias' if bias else 'no_bias'})",
+            use_bias=second_layer_bias,
+            name=f"L2({'bias' if second_layer_bias else 'no_bias'})",
             previous_module=demo_layer_1,
             device=global_device(),
         )
@@ -402,6 +407,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
 
     def create_demo_layers_with_extension(
         self,
+        bias: bool = True,
+        first_layer_bias: bool | None = None,
+        second_layer_bias: bool | None = None,
         first_layer_post_layer: torch.nn.Module = torch.nn.Identity(),
         first_layer_extended_post_layer: torch.nn.Module | None = None,
         include_eigenvalues: bool = False,
@@ -409,13 +417,17 @@ class TestLinearGrowingModuleBase(TorchTestCase):
     ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
         """Create demo layers with extension for testing."""
         layer_in, layer_out = self.create_demo_layers(
-            bias=True,
+            bias=bias,
+            first_layer_bias=first_layer_bias,
+            second_layer_bias=second_layer_bias,
             hidden_features=hidden_features,
             first_layer_post_layer=first_layer_post_layer,
             first_layer_extended_post_layer=first_layer_extended_post_layer,
         )
 
-        first_layer_ext = torch.nn.Linear(5, 2, device=global_device())
+        first_layer_ext = torch.nn.Linear(
+            5, 2, device=global_device(), bias=layer_in.use_bias
+        )
         second_layer_ext = torch.nn.Linear(2, 7, device=global_device(), bias=False)
 
         layer_in.extended_output_layer = first_layer_ext
@@ -1007,7 +1019,10 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         if bias:
             self.assertAllClose(layer.extended_output_layer.bias, new_layer.bias)
 
-    def test_sub_select_optimal_added_parameters_in(self, bias: bool = False):
+    @unittest_parametrize(({"sub_select_previous": True}, {"sub_select_previous": False}))
+    def test_sub_select_optimal_added_parameters_in(
+        self, bias: bool = False, sub_select_previous: bool = False
+    ):
         layer = LinearGrowingModule(1, 3, use_bias=bias, name="layer1")
         layer.extended_input_layer = torch.nn.Linear(2, 3, bias=bias)
         layer.eigenvalues_extension = torch.tensor([2.0, 1.0])
@@ -1017,7 +1032,15 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         if bias:
             new_layer.bias.data = layer.extended_input_layer.bias.data
 
-        layer.sub_select_optimal_added_parameters(1, sub_select_previous=False)
+        if sub_select_previous:
+            with self.assertRaises(ValueError):
+                layer.sub_select_optimal_added_parameters(
+                    1, sub_select_previous=sub_select_previous
+                )
+        else:
+            layer.sub_select_optimal_added_parameters(
+                1, sub_select_previous=sub_select_previous
+            )
 
         self.assertAllClose(layer.extended_input_layer.weight, new_layer.weight)
 
@@ -1025,6 +1048,84 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             self.assertAllClose(layer.extended_input_layer.bias, new_layer.bias)
 
         self.assertAllClose(layer.eigenvalues_extension, torch.tensor([2.0]))
+
+    def test_sub_select_zero(
+        self,
+        first_layer_bias: bool = True,
+        second_layer_bias: bool = True,
+    ):
+        layer_in, layer_out = self.create_demo_layers_with_extension(
+            first_layer_bias=first_layer_bias,
+            second_layer_bias=second_layer_bias,
+            include_eigenvalues=True,
+        )
+        layer_out.eigenvalues_extension = torch.tensor([1.0, 0.1])
+
+        layer_out.sub_select_optimal_added_parameters(keep_neurons=0)
+
+        y, y_ext = layer_in.extended_forward(self.input_x)
+        z, _ = layer_out.extended_forward(y, y_ext)
+        self.assertIsNone(_)
+
+        layer_out.parameter_update_decrease = torch.tensor(0.0)
+        self.assertIsInstance(layer_out.first_order_improvement.item(), float)
+
+        layer_out.set_scaling_factor(100.0)
+        layer_out.apply_change()
+        y2 = layer_in(self.input_x)
+        z2 = layer_out(y2)
+
+        self.assertAllClose(z, z2)
+
+    @unittest_parametrize(
+        (
+            {"zero_fan_in": True, "zero_fan_out": True, "first_layer_bias": True},
+            {"zero_fan_in": False, "zero_fan_out": True, "first_layer_bias": True},
+            {"zero_fan_in": True, "zero_fan_out": False, "first_layer_bias": False},
+        )
+    )
+    def test_sub_select_optimal_added_parameters_zeroing(
+        self,
+        first_layer_bias: bool = True,
+        second_layer_bias: bool = True,
+        zero_fan_in: bool = True,
+        zero_fan_out: bool = False,
+        select: Literal[0, 1, 2] = 1,
+    ) -> None:
+        layer_in, layer_out = self.create_demo_layers_with_extension(
+            first_layer_bias=first_layer_bias,
+            second_layer_bias=second_layer_bias,
+            include_eigenvalues=True,
+        )
+        layer_out.eigenvalues_extension = torch.tensor([1.0, 0.1])
+
+        layer_out.sub_select_optimal_added_parameters(
+            threshold=[0.0, 0.5, 2.0][select],
+            zeros_if_not_enough=True,
+            zeros_fan_in=zero_fan_in,
+            zeros_fan_out=zero_fan_out,
+        )
+
+        assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+        assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+
+        self.assertAllClose(
+            layer_out.eigenvalues_extension[select:],
+            torch.zeros_like(layer_out.eigenvalues_extension[select:]),
+        )
+
+        if zero_fan_in:
+            self.assertTrue(
+                torch.all(layer_in.extended_output_layer.weight[select:] == 0)
+            )
+            if first_layer_bias and layer_in.extended_output_layer.bias is not None:
+                self.assertTrue(
+                    torch.all(layer_in.extended_output_layer.bias[select:] == 0)
+                )
+        if zero_fan_out:
+            self.assertTrue(
+                torch.all(layer_out.extended_input_layer.weight[:, select:] == 0)
+            )
 
     def test_sample_number_invariant(self):
         """Test that layer invariants remain consistent across different batch sizes."""

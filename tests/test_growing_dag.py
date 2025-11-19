@@ -1490,6 +1490,60 @@ class TestGrowingDAG(unittest.TestCase):
             },
         )
 
+    def test_update_growth_history(self) -> None:
+        expansion = Expansion(
+            self.dag,
+            type="new node",
+            expanding_node="1",
+            previous_node=self.dag.root,
+            next_node=self.dag.end,
+            node_attributes=self.init_node_attributes,
+        )
+        expansion.expand()
+        mock_global_step = -1
+
+        expansion._Expansion__update_growth_history(  # type: ignore
+            neurons_added=[(self.dag.root, "1"), ("1", self.dag.end)],
+            current_step=mock_global_step,
+        )
+
+        for edge in self.dag.edges:
+            self.assertIn(str(edge), expansion.growth_history[mock_global_step])
+        self.assertEqual(
+            expansion.growth_history[mock_global_step][str((self.dag.root, "1"))],
+            2,
+        )
+        self.assertEqual(
+            expansion.growth_history[mock_global_step][str(("1", self.dag.end))], 2
+        )
+        self.assertEqual(expansion.growth_history[mock_global_step]["1"], 0)
+
+        expansion._Expansion__update_growth_history(nodes_added=["1", "2"], current_step=mock_global_step)  # type: ignore
+        self.assertEqual(expansion.growth_history[mock_global_step]["1"], 2)
+        self.assertNotIn("2", expansion.growth_history[mock_global_step])
+
+        self.dag.add_direct_edge(self.dag.root, self.dag.end)
+        expansion.update_growth_history(current_step=mock_global_step + 1)
+        for edge in self.dag.edges:
+            self.assertIn(str(edge), expansion.growth_history[mock_global_step + 1])
+        for node in self.dag.nodes:
+            self.assertIn(str(node), expansion.growth_history[mock_global_step + 1])
+        self.assertEqual(expansion.growth_history[mock_global_step + 1]["1"], 2)
+        self.assertEqual(expansion.growth_history[mock_global_step + 1][self.dag.root], 0)
+        self.assertEqual(expansion.growth_history[mock_global_step + 1][self.dag.end], 0)
+        self.assertEqual(
+            expansion.growth_history[mock_global_step + 1][str((self.dag.root, "1"))], 2
+        )
+        self.assertEqual(
+            expansion.growth_history[mock_global_step + 1][str(("1", self.dag.end))], 2
+        )
+        self.assertEqual(
+            expansion.growth_history[mock_global_step + 1][
+                str((self.dag.root, self.dag.end))
+            ],
+            1,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,16 +16,6 @@ def gaussian_kernel(X, sigma=None):
     return torch.exp(-dist / (2 * var))
 
 
-def slow_gaussian_kernel(X, sigma_sq=None):
-    pairwise_sq_dists = torch.sum((X[:, None] - X) ** 2, axis=-1)  # (n,n)
-
-    if sigma_sq is None:
-        sigma_sq = torch.median(pairwise_sq_dists)
-
-    K = torch.exp(-pairwise_sq_dists / (2 * sigma_sq))
-    return K
-
-
 def center_kernel_matrix(K):
     """Centers the kernel matrix using the centering matrix H."""
     n = K.shape[0]  # Number of samples

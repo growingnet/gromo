@@ -417,6 +417,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = self.sum_in_features(with_bias=True)
 
         if self.total_in_features > 0:
+            if self._input_volume is not None:
+                self._input_volume = None  # reset calculation of input volume
             if self.tensor_s is None or self.tensor_s._shape != (
                 self.in_channels * self.kernel_size[0] * self.kernel_size[1]
                 + self.use_bias,
@@ -462,6 +464,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
 
 class Conv2dGrowingModule(GrowingModule):
+    _layer_type = torch.nn.Conv2d
     """
     Conv2dGrowingModule is a GrowingModule for a Conv2d layer.
 
@@ -510,8 +513,6 @@ class Conv2dGrowingModule(GrowingModule):
         device: torch.device | None = None,
         name: str | None = None,
     ) -> None:
-        self.in_channels = in_channels
-        self.out_channels = out_channels
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
         super(Conv2dGrowingModule, self).__init__(
@@ -554,6 +555,14 @@ class Conv2dGrowingModule(GrowingModule):
     # this function is used to estimate the F.O. improvement of the loss after the
     # extension of the network however this won't work if we do not have only the
     # activation function as the post_layer_function
+
+    @property
+    def in_channels(self):
+        return self.layer.in_channels
+
+    @property
+    def out_channels(self):
+        return self.layer.out_channels
 
     @property
     def padding(self):
@@ -819,8 +828,11 @@ class Conv2dGrowingModule(GrowingModule):
         )
 
     # Layer edition
-    def layer_of_tensor(  # type: ignore[override]
-        self, weight: torch.Tensor, bias: torch.Tensor | None = None
+    def layer_of_tensor(
+        self,
+        weight: torch.Tensor,
+        bias: torch.Tensor | None = None,
+        force_bias: bool = True,
     ) -> torch.nn.Conv2d:
         """
         Create a layer with the same characteristics (excepted the shape)
@@ -832,16 +844,20 @@ class Conv2dGrowingModule(GrowingModule):
             weight of the layer
         bias: torch.Tensor | None
             bias of the layer
+        force_bias: bool
+            if True, the created layer require a bias
+            if `self.use_bias` is True
 
         Returns
         -------
         torch.nn.Linear
             layer with the same characteristics
         """
-        assert self.use_bias is (bias is not None), (
-            f"The new layer should have a bias ({bias is not None=}) if and only if "
-            f"the main layer bias ({self.use_bias =}) is not None."
-        )
+        if force_bias:
+            assert self.use_bias is (bias is not None), (
+                f"The new layer should have a bias ({bias is not None=}) if and only if "
+                f"the main layer bias ({self.use_bias =}) is not None."
+            )
         for i in (0, 1):
             assert (
                 weight.shape[2 + i] == self.layer.kernel_size[i]
@@ -858,7 +874,7 @@ class Conv2dGrowingModule(GrowingModule):
             dilation=self.dilation,  # pyright: ignore[reportArgumentType]
         )
         new_layer.weight = torch.nn.Parameter(weight)
-        if self.use_bias:
+        if bias is not None:
             new_layer.bias = torch.nn.Parameter(bias)
         return new_layer
 
@@ -887,7 +903,6 @@ class Conv2dGrowingModule(GrowingModule):
             weight=torch.cat((self.weight, weight), dim=1), bias=self.bias
         )
 
-        self.in_channels += weight.shape[1]
         self._tensor_s = TensorStatistic(
             (
                 (self.in_channels + self.use_bias)
@@ -951,84 +966,11 @@ class Conv2dGrowingModule(GrowingModule):
                 weight=torch.cat((self.weight, weight), dim=0), bias=None
             )
 
-        self.out_channels += weight.shape[0]
         self.tensor_m = TensorStatistic(
             (self.in_channels + self.use_bias, self.out_channels),
             update_function=self.compute_m_update,
             name=self.tensor_m.name,
         )
-
-    def _sub_select_added_output_dimension(self, keep_neurons: int) -> None:
-        """
-        Select the first `keep_neurons` neurons of the optimal added output dimension.
-
-        Parameters
-        ----------
-        keep_neurons: int
-            number of neurons to keep
-        """
-        assert self.extended_output_layer is not None, (
-            "The layer should have an extended output layer "
-            "to sub-select the output dimension."
-        )
-        self.extended_output_layer = self.layer_of_tensor(
-            self.extended_output_layer.weight[:keep_neurons],
-            bias=(
-                self.extended_output_layer.bias[:keep_neurons]
-                if self.extended_output_layer.bias is not None
-                else None
-            ),
-        )
-
-    def sub_select_optimal_added_parameters(
-        self,
-        keep_neurons: int,
-        sub_select_previous: bool = True,
-    ) -> None:
-        """
-        Select the first `keep_neurons` neurons of the optimal added parameters.
-
-        Parameters
-        ----------
-        keep_neurons: int
-            number of neurons to keep
-        sub_select_previous: bool
-            if True, sub-select the previous layer added parameters as well
-        """
-        assert (self.extended_input_layer is None) ^ (
-            self.extended_output_layer is None
-        ), "The layer should have an extended input xor output layer."
-        if self.extended_input_layer is not None:
-            self.extended_input_layer = self.layer_of_tensor(
-                self.extended_input_layer.weight[:, :keep_neurons],
-                bias=self.extended_input_layer.bias,
-            )
-            assert self.eigenvalues_extension is not None, (
-                "The eigenvalues of the extension should be computed before "
-                "sub-selecting the optimal added parameters."
-            )
-            self.eigenvalues_extension = self.eigenvalues_extension[:keep_neurons]
-
-        if sub_select_previous:
-            if self.previous_module is None:
-                raise ValueError(
-                    f"No previous module for {self.name}. "
-                    "Therefore new neurons cannot be sub-selected."
-                )
-            elif isinstance(self.previous_module, LinearGrowingModule):
-                self.previous_module._sub_select_added_output_dimension(keep_neurons)
-            elif isinstance(self.previous_module, LinearMergeGrowingModule):
-                raise NotImplementedError("TODO")
-            elif isinstance(self.previous_module, Conv2dGrowingModule):
-                self.previous_module._sub_select_added_output_dimension(keep_neurons)
-            elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
-                raise NotImplementedError("TODO")
-            else:
-                raise NotImplementedError(
-                    f"The sub-selection of the optimal added parameters "
-                    f"is not implemented yet for {type(self.previous_module)} "
-                    f"as previous module."
-                )
 
     def update_input_size(
         self,
