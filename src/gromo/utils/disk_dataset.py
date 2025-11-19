@@ -1,3 +1,4 @@
+import os
 import warnings
 from typing import Iterator
 
@@ -71,7 +72,7 @@ class MemMapDataset(Dataset):
     def __convert_dict_to_npy(self, path: str, keys: list[str], name: str) -> str:
         data = torch.load(path)
         data = torch.cat([data[k] for k in keys], dim=1)
-        file_name = f"temp/{name}.npy"
+        file_name = os.path.join(os.path.dirname(path), f"{name}.npy")
         np.save(file_name, data.numpy())
         return file_name
 
