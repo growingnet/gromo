@@ -178,14 +178,14 @@ class TestUtils(TorchTestCase):
                 # Test with parameters
                 parameters = [x]
                 mini_batch_gradient_descent(
-                    callable_forward,
-                    cost_fn,
-                    x,
-                    y,
-                    lrate,
-                    epochs,
-                    batch_size,
-                    parameters,
+                    model=callable_forward,
+                    cost_fn=cost_fn,
+                    X=x,
+                    Y=y,
+                    lrate=lrate,
+                    max_epochs=epochs,
+                    batch_size=batch_size,
+                    parameters=parameters,
                     verbose=False,
                 )
 
@@ -193,13 +193,13 @@ class TestUtils(TorchTestCase):
                 model = nn.Linear(2, 1, device=global_device())
                 eval_fn = lambda: None  # noqa: E731
                 mini_batch_gradient_descent(
-                    model,
-                    cost_fn,
-                    x,
-                    y,
-                    lrate,
-                    epochs,
-                    batch_size,
+                    model=model,
+                    cost_fn=cost_fn,
+                    X=x,
+                    Y=y,
+                    lrate=lrate,
+                    max_epochs=epochs,
+                    batch_size=batch_size,
                     eval_fn=eval_fn,
                     verbose=False,
                 )
