@@ -611,7 +611,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
 
 class Conv2dGrowingModule(GrowingModule):
-    _layer_type = torch.nn.Conv2d
     """
     Conv2dGrowingModule is a GrowingModule for a Conv2d layer.
     For the parameters in_channels, out_channels, kernel_size, stride, padding, dilation,
@@ -648,6 +647,8 @@ class Conv2dGrowingModule(GrowingModule):
     name : str | None
         name of the layer used for debugging purpose
     """
+
+    _layer_type = torch.nn.Conv2d
 
     def __init__(
         self,

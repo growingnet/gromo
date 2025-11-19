@@ -1700,6 +1700,13 @@ class GrowingModule(torch.nn.Module):
         zeros_fan_out: bool
             if True and zeros_if_not_enough is True, will set the non selected
             fan-out parameters to zero
+
+        Raises
+        ------
+        ValueError
+            if there is no previous module
+        NotImplementedError
+            if the previous module is not the same class
         """
         assert self.eigenvalues_extension is not None, (
             f"The eigenvalues of the extension should be computed before "

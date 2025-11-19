@@ -314,6 +314,7 @@ class LinearGrowingModule(GrowingModule):
     name : str | None, optional
         name of the module, by default None
     """
+
     _layer_type = torch.nn.Linear
 
     def __init__(
