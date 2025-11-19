@@ -6,7 +6,7 @@ from typing import Callable, Iterator, Sequence
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as func
 from torch.utils.data import DataLoader
 
 from gromo.containers.growing_container import GrowingContainer
@@ -200,7 +200,7 @@ class GrowingGraphNetwork(GrowingContainer):
         Parameters
         ----------
         layer_fn : Callable
-            functional operation either `F.linear` or `F.conv2d`
+            functional operation either `torch.nn.functional.linear` or `torch.nn.functional.conv2d`
         alpha : torch.Tensor
             alpha input weights (new_neurons, in_features) or (new_channels, in_channels, *kernel_size)
         omega : torch.Tensor
@@ -287,7 +287,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         def forward_fn(B):
             return self.block_forward(
-                F.linear if linear else F.conv2d,
+                func.linear if linear else func.conv2d,
                 alpha,
                 omega,
                 bias,
@@ -564,9 +564,11 @@ class GrowingGraphNetwork(GrowingContainer):
         bias = bias.detach().clone().requires_grad_()
 
         if linear:
-            forward_fn = lambda activity: F.linear(activity, weight, bias)
+            forward_fn = lambda activity: func.linear(activity, weight, bias)
         else:
-            forward_fn = lambda activity: F.conv2d(activity, weight, bias, padding="same")
+            forward_fn = lambda activity: func.conv2d(
+                activity, weight, bias, padding="same"
+            )
 
         loss_history, _ = mini_batch_gradient_descent(
             model=forward_fn,
