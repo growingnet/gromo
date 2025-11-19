@@ -6,11 +6,16 @@ from typing import Callable, Iterator, Sequence
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as func
 from torch.utils.data import DataLoader
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
+from gromo.containers.growing_dag import (
+    Expansion,
+    ExpansionType,
+    GrowingDAG,
+    InterMergeExpansion,
+)
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     Conv2dMergeGrowingModule,
@@ -36,12 +41,24 @@ class GrowingGraphNetwork(GrowingContainer):
         size of output dimension
     loss_fn : torch.nn.Module
         loss function
+    neurons : int, optional
+        default number of neurons to add at each step, by default 20
+    neuron_epochs : int, optional
+        number of epochs to train the new neurons for, by default 100
+    neuron_lrate : float, optional
+        learning rate used when training the new neurons, by default 1e-3
+    neuron_batch_size : int, optional
+        batch size used when training the new neurons, by default 256
     use_bias : bool, optional
         automatically use bias in the layers, by default True
     use_batch_norm : bool, optional
         use batch normalization on the last layer, by default False
-    neurons : int, optional
-        default number of neurons to add at each step, by default 20
+    layer_type : str, optional
+        the type of the layers used to choose between "linear" and "convolution", by default "linear"
+    name : str, optional
+        name of the growing dag, by default ""
+    input_shape : tuple[int, int] | None, optional
+        the expected shape of the input excluding batch size and channels, by default None
     device : str | None, optional
         default device, by default None
     """
@@ -59,7 +76,7 @@ class GrowingGraphNetwork(GrowingContainer):
         use_batch_norm: bool = False,
         layer_type: str = "linear",
         name: str = "",
-        input_shape: tuple[int, int] = None,
+        input_shape: tuple[int, int] | None = None,
         device: str | None = None,
     ) -> None:
         super(GrowingGraphNetwork, self).__init__(
@@ -87,15 +104,21 @@ class GrowingGraphNetwork(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self):
+        """
+        Reference all growable layers of the model in the _growing_layers private attribute.
+        """
         self._growing_layers.append(self.dag)
 
     def init_computation(self):
+        """Initialize statistics computations for growth procedure"""
         self.dag.init_computation()
 
     def update_computation(self):
+        """Update statistics computations for growth procedure"""
         self.dag.update_computation()
 
     def reset_computation(self):
+        """Reset statistics computations for growth procedure"""
         self.dag.reset_computation()
 
     def compute_optimal_delta(
@@ -104,6 +127,18 @@ class GrowingGraphNetwork(GrowingContainer):
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
     ):
+        """Compute optimal delta for growth procedure
+
+        Parameters
+        ----------
+        update : bool, optional
+            update the optimal delta layer attribute and the first order decrease, by default True
+        return_deltas: bool, optional
+            placeholder argument as this function does not return anything
+        force_pseudo_inverse : bool, optional
+            use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible, by default False
+        """
         self.dag.compute_optimal_delta(
             update=update,
             return_deltas=return_deltas,
@@ -111,9 +146,11 @@ class GrowingGraphNetwork(GrowingContainer):
         )
 
     def delete_update(self) -> None:
+        """Delete tensor updates"""
         self.dag.delete_update()
 
     def update_size(self) -> None:
+        """Update the sizes of the layers and the input and output features of the graph"""
         super().update_size()
         self.dag.update_size()
         self.in_features = self.dag.nodes[self.dag.root]["size"]
@@ -163,7 +200,7 @@ class GrowingGraphNetwork(GrowingContainer):
         Parameters
         ----------
         layer_fn : Callable
-            functional operation either `F.linear` or `F.conv2d`
+            functional operation either `torch.nn.functional.linear` or `torch.nn.functional.conv2d`
         alpha : torch.Tensor
             alpha input weights (new_neurons, in_features) or (new_channels, in_channels, *kernel_size)
         omega : torch.Tensor
@@ -174,6 +211,7 @@ class GrowingGraphNetwork(GrowingContainer):
             input vector (*in_features, batch_size)
         sigma : nn.Module
             activation function
+        **kwargs
 
         Returns
         -------
@@ -234,6 +272,10 @@ class GrowingGraphNetwork(GrowingContainer):
             activation function
         bottleneck : torch.Tensor
             expressivity bottleneck on the output of the block
+        linear : bool, optional
+            if the functions are linear or convolution, by default True
+        operation_args : dict, optional
+            extra arguments for convolution, for example 'padding', by default {}
         verbose : bool, optional
             print info, by default True
 
@@ -245,7 +287,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         def forward_fn(B):
             return self.block_forward(
-                F.linear if linear else F.conv2d,
+                func.linear if linear else func.conv2d,
                 alpha,
                 omega,
                 bias,
@@ -279,17 +321,36 @@ class GrowingGraphNetwork(GrowingContainer):
         existing_activity: torch.Tensor,
         desired_update: torch.Tensor,
     ) -> float:
-        # Joint optimization of new and existing weights with respect to the expressivity bottleneck
-        # Calculates f = ||A + dW*B - dLoss/dA||^2
+        """Joint optimization of new and existing weights with respect to the expressivity bottleneck
+        Calculates f = ||A + dW*B - dLoss/dA||^2
+
+        Parameters
+        ----------
+        activity : torch.Tensor
+            input tensor
+        existing_activity : torch.Tensor
+            current output
+        desired_update : torch.Tensor
+            desired update
+
+        Returns
+        -------
+        float
+            bottleneck loss
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         # TODO
         raise NotImplementedError("Joint optimization of weights is not implemented yet!")
 
     def expand_node(
         self,
-        expansion,
+        expansion: Expansion,
         bottlenecks: dict,
         activities: dict,
-        parallel: bool = True,
         verbose: bool = True,
     ) -> list:
         """Increase block dimension by expanding node with more neurons
@@ -304,8 +365,6 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict
             dictionary with node names as keys and their pre-activity tensors as values
-        parallel : bool, optional
-            take into account parallel connections, by default True
         verbose : bool, optional
             print info, by default True
 
@@ -505,9 +564,11 @@ class GrowingGraphNetwork(GrowingContainer):
         bias = bias.detach().clone().requires_grad_()
 
         if linear:
-            forward_fn = lambda activity: F.linear(activity, weight, bias)
+            forward_fn = lambda activity: func.linear(activity, weight, bias)
         else:
-            forward_fn = lambda activity: F.conv2d(activity, weight, bias, padding="same")
+            forward_fn = lambda activity: func.conv2d(
+                activity, weight, bias, padding="same"
+            )
 
         loss_history, _ = mini_batch_gradient_descent(
             model=forward_fn,
@@ -618,7 +679,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # Execute all graph growth options
         for expansion in actions:
             # Create a new edge
-            if expansion.type == "new edge":
+            if expansion.type == ExpansionType.NEW_EDGE:
                 if verbose:
                     print(
                         f"Adding direct edge from {expansion.previous_node} to {expansion.next_node}"
@@ -639,7 +700,9 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
             # Create/Expand node
-            elif (expansion.type == "new node") or (expansion.type == "expanded node"):
+            elif (expansion.type == ExpansionType.NEW_NODE) or (
+                expansion.type == ExpansionType.EXPANDED_NODE
+            ):
                 expansion.growth_history = copy.copy(self.growth_history)
                 expansion.expand()
                 expansion.update_growth_history(
@@ -690,15 +753,20 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         actions : list[Expansion]
             list with growth actions information
-        chosen_outputs : list[str], optional
+        chosen_outputs : list[str] | None, optional
             output node position to restrict to
-        chosen_inputs : list[str], optional
+        chosen_inputs : list[str] | None, optional
             input node position to restrict to
 
         Returns
         -------
         list[Expansion]
             reduced list with growth actions information
+
+        Raises
+        ------
+        NotImplementedError
+            if chosen_outputs and chosen_inputs are not None at the same time
         """
         if chosen_inputs is None and chosen_outputs is None:
             warnings.warn(
@@ -779,9 +847,9 @@ class GrowingGraphNetwork(GrowingContainer):
         # Discard unused edges or nodes
         for index, option in enumerate(options):
             if index != best_ind:
-                if option.type == "new edge":
+                if option.type == ExpansionType.NEW_EDGE:
                     self.dag.remove_edge(option.previous_node, option.next_node)
-                elif option.type == "new node":
+                elif option.type == ExpansionType.NEW_NODE:
                     self.dag.remove_node(option.expanding_node)
         del options
 
@@ -806,6 +874,7 @@ class GrowingGraphNetwork(GrowingContainer):
             )
 
     def apply_change(self) -> None:
+        """Apply all changes to the graph"""
         # Apply changes
         for prev_node, next_node in self.dag.edges:
             factor = self.chosen_action.metrics["scaling_factor"]
@@ -819,7 +888,7 @@ class GrowingGraphNetwork(GrowingContainer):
                     scaling_factor=factor, extension_size=self.neurons
                 )
 
-        if self.chosen_action.type != "new edge":
+        if self.chosen_action.type != ExpansionType.NEW_EDGE:
             if self.chosen_action.expanding_node in self.dag.nodes:
                 expanding_node = self.chosen_action.expanding_node
             else:
@@ -874,7 +943,7 @@ class GrowingGraphNetwork(GrowingContainer):
     def parameters(self) -> Iterator:
         """Iterator of network parameters
 
-        Yields
+        Returns
         ------
         Iterator
             parameters iterator

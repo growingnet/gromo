@@ -14,6 +14,17 @@ class DummySequentialGrowingContainer(SequentialGrowingContainer):
     """
     Dummy implementation of SequentialGrowingContainer for testing purposes.
     Uses two simple linear layers in sequence.
+
+    Parameters
+    ----------
+    in_features : int
+        Number of input features
+    out_features : int
+        Number of output features
+    hidden_features : int
+        Number of hidden features between the two layers
+    device : torch.device | str | None
+        Device to use for the layers
     """
 
     def __init__(
@@ -23,20 +34,6 @@ class DummySequentialGrowingContainer(SequentialGrowingContainer):
         hidden_features: int = 4,
         device: torch.device | str | None = None,
     ):
-        """
-        Initialize the dummy container with two linear layers.
-
-        Parameters
-        ----------
-        in_features : int
-            Number of input features
-        out_features : int
-            Number of output features
-        hidden_features : int
-            Number of hidden features between the two layers
-        device : torch.device | str | None
-            Device to use for the layers
-        """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
         )

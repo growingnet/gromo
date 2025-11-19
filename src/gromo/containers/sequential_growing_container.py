@@ -7,6 +7,18 @@ from gromo.modules.growing_module import GrowingModule
 
 
 class SequentialGrowingContainer(GrowingContainer):
+    """Container for sequential model architectures
+
+    Parameters
+    ----------
+    in_features : int
+        input features, to be interpreted based on current needs
+    out_features : int
+        output features, to be interpreted based on current needs
+    device : torch.device | str | None, optional
+        default device, by default None
+    """
+
     def __init__(
         self,
         in_features: int,
@@ -40,9 +52,16 @@ class SequentialGrowingContainer(GrowingContainer):
             growing_layers list.
             "all": all layers in the _growable_layers list are added to the
             _growing_layers list.
-        index : int, optional
+        index : int | None, optional
             If scheduling_method is "sequential", this index specifies which layer to
             grow next.
+
+        Raises
+        ------
+        IndexError
+            if index is out of bounds for the number og growing_layers in the module
+        ValueError
+            if argument scheduling_method is not 'sequential' or 'all'
         """
         if isinstance(index, int):
             if index < 0 or index >= len(self._growable_layers):
@@ -75,7 +94,13 @@ class SequentialGrowingContainer(GrowingContainer):
         raise NotImplementedError
 
     def update_information(self) -> dict[str, Any]:
-        """Get information about the current state of the growing layers."""
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        dict[str, Any]
+            information dictionary
+        """
         information = {}
         for i, layer in enumerate(self._growing_layers):
             assert isinstance(

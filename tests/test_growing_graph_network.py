@@ -4,13 +4,14 @@ import unittest
 import torch
 from torch.nn.functional import one_hot
 
-from gromo.containers.growing_dag import Expansion, GrowingDAG
+from gromo.containers.growing_dag import Expansion, ExpansionType, GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
+from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
 
 
-class TestGrowingGraphNetwork(unittest.TestCase):
+class TestGrowingGraphNetwork(TorchTestCase):
     def setUp(self) -> None:
         self.in_features = 5
         self.out_features = 2
@@ -138,7 +139,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         next_nodes = self.net.dag.end
         expansion = Expansion(
             self.net.dag,
-            "new node",
+            ExpansionType.NEW_NODE,
             expanding_node=node,
             previous_node=prev_nodes,
             next_node=next_nodes,
@@ -169,7 +170,10 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         prev_node = self.net.dag.root
         next_node = self.net.dag.end
         expansion = Expansion(
-            self.net.dag, "new edge", previous_node=prev_node, next_node=next_node
+            self.net.dag,
+            ExpansionType.NEW_EDGE,
+            previous_node=prev_node,
+            next_node=next_node,
         )
         expansion.dag.add_direct_edge(prev_node, next_node)
         edge_module = expansion.dag.get_edge_module(prev_node, next_node)
@@ -207,7 +211,10 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         prev_node = self.net_conv.dag.root
         next_node = self.net_conv.dag.end
         expansion = Expansion(
-            self.net_conv.dag, "new edge", previous_node=prev_node, next_node=next_node
+            self.net_conv.dag,
+            ExpansionType.NEW_EDGE,
+            previous_node=prev_node,
+            next_node=next_node,
         )
         expansion.dag.add_direct_edge(
             prev_node, next_node, edge_attributes={"kernel_size": self.kernel_size}
@@ -289,16 +296,18 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
     @unittest_parametrize(({"evaluate": True}, {"evaluate": False}))
     def test_execute_expansions(self, evaluate: bool) -> None:
-        self.net.execute_expansions(
-            self.actions,
-            self.bottleneck,
-            self.input_B,
-            amplitude_factor=False,
-            evaluate=evaluate,
-            train_dataloader=self.dataloader,
-            dev_dataloader=self.dataloader,
-            val_dataloader=self.test_dataloader,
-        )
+        with self.assertWarns(UserWarning):
+            # Initializing zero-element tensors is a no-op
+            self.net.execute_expansions(
+                self.actions,
+                self.bottleneck,
+                self.input_B,
+                amplitude_factor=False,
+                evaluate=evaluate,
+                train_dataloader=self.dataloader,
+                dev_dataloader=self.dataloader,
+                val_dataloader=self.test_dataloader,
+            )
 
         for expansion in self.actions:
             if evaluate:
@@ -414,7 +423,10 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
         min_value = torch.inf
         for i, opt in enumerate(options):
-            opt.expand()
+            with self.assertMaybeWarns(
+                UserWarning, "Initializing zero-element tensors is a no-op"
+            ):
+                opt.expand()
             opt.growth_history = i
             opt.metrics["scaling_factor"] = 1
             opt.metrics["loss_train"] = None
@@ -434,24 +446,30 @@ class TestGrowingGraphNetwork(unittest.TestCase):
                     min_value = opt.metrics["loss_val"]
                     min_index = i
 
-        if options[min_index].type != "new edge":
+        if options[min_index].type != ExpansionType.NEW_EDGE:
             node_module = self.net.dag.get_node_module(options[min_index].expanding_node)
             for module in node_module.previous_modules:
                 weight = torch.rand(
                     (self.neurons, module.in_features), device=module.device
                 )
                 bias = torch.rand(self.neurons, device=module.device)
-                module.extended_output_layer = module.layer_of_tensor(
-                    weight=weight, bias=bias
-                )
+                with self.assertMaybeWarns(
+                    UserWarning, "Initializing zero-element tensors is a no-op"
+                ):
+                    module.extended_output_layer = module.layer_of_tensor(
+                        weight=weight, bias=bias
+                    )
             for module in node_module.next_modules:
                 weight = torch.rand(
                     (module.out_features, self.neurons), device=module.device
                 )
                 bias = torch.zeros(module.out_features, device=module.device)
-                module.extended_input_layer = module.layer_of_tensor(
-                    weight=weight, bias=bias
-                )
+                with self.assertMaybeWarns(
+                    UserWarning, "Initializing zero-element tensors is a no-op"
+                ):
+                    module.extended_input_layer = module.layer_of_tensor(
+                        weight=weight, bias=bias
+                    )
 
         self.net.choose_growth_best_action(options, use_bic=use_bic)
 
@@ -462,7 +480,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             edge_module.optimal_delta_layer
             for edge_module in self.net.dag.get_all_edge_modules()
         )
-        if options[min_index].type != "new edge":
+        if options[min_index].type != ExpansionType.NEW_EDGE:
             self.assertIsNotNone(
                 edge_module.extended_output_layer
                 for edge_module in node_module.previous_modules
