@@ -269,7 +269,7 @@ def init_full_resnet_structure(
     output_block_kernel_size: int = 3,
     reduction_factor: float = 1 / 64,
     small_inputs: bool | None = None,
-    number_of_blocks_per_stage: int | tuple[int, int, int, int] = 2,
+    number_of_blocks_per_stage: int | tuple[int, ...] = 2,
     inplanes: int = 64,
     nb_stages: int = 4,
 ) -> ResNetBasicBlock:
@@ -300,10 +300,10 @@ def init_full_resnet_structure(
     small_inputs : bool | None
         If True, adapt the network for small input images (e.g., CIFAR-10/100).
         This uses smaller kernels, no stride, and no max pooling in the initial layers.
-    number_of_blocks_per_stage : int | tuple[int, int, int, int]
+    number_of_blocks_per_stage : int | tuple[int, ...]
         Number of basic blocks per stage. If an integer is provided, the same number
-        of blocks will be used for all four stages. If a tuple is provided, it should
-        contain four integers specifying the number of blocks for each stage.
+        of blocks will be used for all stages. If a tuple is provided, it should
+        contain `nb_stages` integers specifying the number of blocks for each stage.
     inplanes : int
         Number of initial planes (channels) after the first convolution.
         (Default is 64 as in standard ResNet architectures.)
@@ -344,7 +344,7 @@ def init_full_resnet_structure(
         blocks_per_stage = (number_of_blocks_per_stage,) * nb_stages
     else:
         raise TypeError(
-            "number_of_blocks_per_stage must be an int or a tuple of four ints."
+            f"number_of_blocks_per_stage must be an int or a tuple of {nb_stages} ints."
         )
     # Append additional blocks to match ResNet-18 architecture
     for stage_index in range(nb_stages):

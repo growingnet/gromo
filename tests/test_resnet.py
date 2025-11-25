@@ -118,6 +118,7 @@ class TestResNet(TorchTestCase):
         )
         self.assertIsInstance(model_custom_inplanes, ResNetBasicBlock)
         self.assertEqual(len(model_custom_inplanes.stages), 3)
+        self.assertEqual(model_custom_inplanes.stages[0][0].in_features, 7)  # type: ignore
 
     def test_forward_backward(self):
         """Test forward and backward pass of the ResNet model."""
