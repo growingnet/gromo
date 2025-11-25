@@ -23,6 +23,8 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         output_block_kernel_size: int = 3,
         reduction_factor: float = 0.0,
         small_inputs: bool = False,
+        inplanes: int = 64,
+        nb_stages: int = 4,
     ) -> None:
         """
         Initialize the ResNet with basic blocks.
@@ -47,6 +49,11 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             If True, adapt the network for small input images (e.g., CIFAR-10/100).
             This uses smaller kernels, no stride, and
             no max pooling in the initial layers.
+        inplanes : int
+            Number of initial planes (channels) after the first convolution.
+            (Default is 64 as in standard ResNet architectures.)
+        nb_stages : int
+            Number of stages in the ResNet.
         """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
@@ -54,7 +61,6 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         self.activation = activation.to(device)
         self.small_inputs = small_inputs
         self.reduction_factor = reduction_factor
-        inplanes = 64
 
         if small_inputs:
             # For small inputs like CIFAR-10/100 (32x32)
@@ -91,14 +97,13 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             )
 
         self.stages: nn.ModuleList = nn.ModuleList()
-        nb_stages = 4
         for i in range(nb_stages):
             # for the future we could remove the basic block of the first stage
             # as there is no dowsampling
             stage = nn.Sequential()
             input_channels = inplanes * (2 ** max(0, i - 1))
             output_channels = inplanes * (2**i)
-            hidden_channels = int(inplanes * (2**i) * self.reduction_factor)
+            hidden_channels = max(1, int(inplanes * (2**i) * self.reduction_factor))
 
             # For small inputs, adjust stride behavior
             # Skip stride=2 for the first stage to preserve spatial resolution
@@ -231,7 +236,9 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         return x
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, x: torch.Tensor
+        self,
+        x: torch.Tensor,
+        mask: None = None,  # noqa: ARG002
     ) -> torch.Tensor:
         x = self.pre_net(x)
         for stage in self.stages:  # type: ignore
@@ -263,6 +270,8 @@ def init_full_resnet_structure(
     reduction_factor: float = 1 / 64,
     small_inputs: bool | None = None,
     number_of_blocks_per_stage: int | tuple[int, int, int, int] = 2,
+    inplanes: int = 64,
+    nb_stages: int = 4,
 ) -> ResNetBasicBlock:
     """
     Initialize a ResNet-18 model with basic blocks.
@@ -295,6 +304,12 @@ def init_full_resnet_structure(
         Number of basic blocks per stage. If an integer is provided, the same number
         of blocks will be used for all four stages. If a tuple is provided, it should
         contain four integers specifying the number of blocks for each stage.
+    inplanes : int
+        Number of initial planes (channels) after the first convolution.
+        (Default is 64 as in standard ResNet architectures.)
+    nb_stages : int
+        Number of stages in the ResNet.
+
     Returns
     -------
     ResNetBasicBlock
@@ -317,20 +332,22 @@ def init_full_resnet_structure(
         output_block_kernel_size=output_block_kernel_size,
         reduction_factor=reduction_factor,
         small_inputs=small_inputs,
+        inplanes=inplanes,
+        nb_stages=nb_stages,
     )
     if (
         isinstance(number_of_blocks_per_stage, (list, tuple))
-        and len(number_of_blocks_per_stage) == 4
+        and len(number_of_blocks_per_stage) == nb_stages
     ):
         blocks_per_stage = number_of_blocks_per_stage
     elif isinstance(number_of_blocks_per_stage, int):
-        blocks_per_stage = (number_of_blocks_per_stage,) * 4
+        blocks_per_stage = (number_of_blocks_per_stage,) * nb_stages
     else:
         raise TypeError(
             "number_of_blocks_per_stage must be an int or a tuple of four ints."
         )
     # Append additional blocks to match ResNet-18 architecture
-    for stage_index in range(4):
+    for stage_index in range(nb_stages):
         for _ in range(1, blocks_per_stage[stage_index]):
             model.append_block(
                 stage_index=stage_index,
