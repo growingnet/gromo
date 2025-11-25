@@ -4,6 +4,8 @@ Will allow to extend the basic blocks with more intermediate channels
 and to add basic blocks add the end of the stages.
 """
 
+from math import ceil
+
 import torch
 from torch import nn
 
@@ -103,7 +105,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             stage = nn.Sequential()
             input_channels = inplanes * (2 ** max(0, i - 1))
             output_channels = inplanes * (2**i)
-            hidden_channels = max(1, int(inplanes * (2**i) * self.reduction_factor))
+            hidden_channels = ceil(inplanes * (2**i) * self.reduction_factor)
 
             # For small inputs, adjust stride behavior
             # Skip stride=2 for the first stage to preserve spatial resolution
