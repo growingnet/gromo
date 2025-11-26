@@ -240,7 +240,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         x: torch.Tensor,
-        mask: None = None,  # noqa: ARG002
+        mask: dict | None = None,  # noqa: ARG002
     ) -> torch.Tensor:
         x = self.pre_net(x)
         for stage in self.stages:  # type: ignore
@@ -276,7 +276,7 @@ def init_full_resnet_structure(
     nb_stages: int = 4,
 ) -> ResNetBasicBlock:
     """
-    Initialize a ResNet-18 model with basic blocks.
+    Initialize a customizable ResNet-style model with basic blocks.
     Parameters
     ----------
     input_shape : tuple[int, int, int]
@@ -348,7 +348,7 @@ def init_full_resnet_structure(
         raise TypeError(
             f"number_of_blocks_per_stage must be an int or a tuple of {nb_stages} ints."
         )
-    # Append additional blocks to match ResNet-18 architecture
+    # Append additional blocks to complete each stage according to number_of_blocks_per_stage
     for stage_index in range(nb_stages):
         for _ in range(1, blocks_per_stage[stage_index]):
             model.append_block(
