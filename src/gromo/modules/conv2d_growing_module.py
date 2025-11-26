@@ -1,4 +1,5 @@
 import types
+from math import prod
 from warnings import warn
 
 import torch
@@ -69,6 +70,11 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
     @property
     def output_volume(self) -> int:
+        if self.input_size is not None:
+            with torch.no_grad():
+                x = torch.zeros(1, self.in_channels, *self.input_size)
+                x = self.post_merge_function(x)
+                return prod(x.shape)
         return self.input_volume
 
     @property
