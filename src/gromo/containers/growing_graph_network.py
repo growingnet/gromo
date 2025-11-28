@@ -768,29 +768,45 @@ class GrowingGraphNetwork(GrowingContainer):
         # Reconstruct graph
         self.chosen_action = options[best_ind]
 
-        # Make selected nodes and edges non candidate
-        self.dag.toggle_node_candidate(self.chosen_action.expanding_node, candidate=False)
-        self.dag.toggle_edge_candidate(
-            self.chosen_action.previous_node,
-            self.chosen_action.next_node,
-            candidate=False,
-        )
+        self.clean_graph_with_chosen_action(options)
 
-        # Discard unused edges or nodes
-        for index, option in enumerate(options):
-            if index != best_ind:
-                if option.type == "new edge":
-                    self.dag.remove_edge(option.previous_node, option.next_node)
-                elif option.type == "new node":
-                    self.dag.remove_node(option.expanding_node)
-        del options
+    def clean_graph_with_chosen_action(self, options: Sequence[Expansion]):
+        assert self.chosen_action is not None
+
+        # Make selected nodes and edges non candidate
+        if self.chosen_action.dag == self.dag:
+            self.dag.toggle_node_candidate(
+                self.chosen_action.expanding_node, candidate=False
+            )
+            self.dag.toggle_edge_candidate(
+                self.chosen_action.previous_node,
+                self.chosen_action.next_node,
+                candidate=False,
+            )
+
+            # Discard unused edges or nodes
+            for option in options:
+                if option != self.chosen_action:
+                    if option.type == "new edge":
+                        self.dag.remove_edge(option.previous_node, option.next_node)
+                    elif option.type == "new node":
+                        self.dag.remove_node(option.expanding_node)
+
+            expanding_node = self.chosen_action.expanding_node
+        elif (
+            isinstance(self.chosen_action, InterMergeExpansion)
+            and self.chosen_action.adjacent_expanding_node in self.dag.nodes
+        ):
+            expanding_node = self.chosen_action.adjacent_expanding_node
+        else:
+            expanding_node = None
 
         # Delete updates based on mask
         for prev_node, next_node in self.dag.edges:
-            if prev_node == self.chosen_action.expanding_node:
+            if prev_node == expanding_node:
                 delete_input = False
                 delete_output = True
-            elif next_node == self.chosen_action.expanding_node:
+            elif next_node == expanding_node:
                 delete_input = True
                 delete_output = False
             else:
@@ -805,7 +821,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 delete_output=delete_output,
             )
 
-    def apply_change(self) -> None:
+    def apply_change(self, **kwargs) -> None:
         # Apply changes
         for prev_node, next_node in self.dag.edges:
             factor = self.chosen_action.metrics["scaling_factor"]
@@ -820,10 +836,16 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
         if self.chosen_action.type != "new edge":
-            if self.chosen_action.expanding_node in self.dag.nodes:
+            if self.chosen_action.dag == self.dag:
+                assert self.chosen_action.expanding_node in self.dag.nodes
                 expanding_node = self.chosen_action.expanding_node
-            else:
+            elif (
+                isinstance(self.chosen_action, InterMergeExpansion)
+                and self.chosen_action.adjacent_expanding_node in self.dag.nodes
+            ):
                 expanding_node = self.chosen_action.adjacent_expanding_node
+            else:
+                expanding_node = ""
             # Update size of expanded node
             self.update_size()
             # Rename new node to standard name
