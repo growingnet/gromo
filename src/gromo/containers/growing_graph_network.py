@@ -884,7 +884,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def extended_forward(
         self, x: torch.Tensor, x_ext: torch.Tensor = None, mask: dict = {}
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Forward function of DAG network including extensions of the modules
 
         Parameters

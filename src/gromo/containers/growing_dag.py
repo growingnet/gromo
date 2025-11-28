@@ -1228,7 +1228,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         x_ext: torch.Tensor = None,
         mask: dict = {},
         verbose: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Extended forward function for DAG model
 
         Parameters
@@ -1308,7 +1308,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )  # TODO: simplify
         if verbose:
             print()
-        return output[self.end]
+        if output[self.end][1] is not None:
+            return output[self.end]
+        else:
+            return output[self.end][0]
 
     # Parameters
 
