@@ -716,7 +716,7 @@ class TestGrowingDAG(unittest.TestCase):
             [
                 {
                     "previous_node": start,
-                    "new_node": "1",
+                    "new_node": "1@dag-linear",
                     "next_node": end,
                     "node_attributes": self.default_node_attributes,
                     "edge_attributes": self.default_edge_attributes,
@@ -738,14 +738,14 @@ class TestGrowingDAG(unittest.TestCase):
             [
                 {
                     "previous_node": start,
-                    "new_node": "2",
+                    "new_node": "2@dag-linear",
                     "next_node": "1",
                     "node_attributes": self.default_node_attributes,
                     "edge_attributes": self.default_edge_attributes,
                 },
                 {
                     "previous_node": "1",
-                    "new_node": "2",
+                    "new_node": "2@dag-linear",
                     "next_node": end,
                     "node_attributes": self.default_node_attributes,
                     "edge_attributes": self.default_edge_attributes,
@@ -771,7 +771,7 @@ class TestGrowingDAG(unittest.TestCase):
             [
                 {
                     "previous_node": start,
-                    "new_node": "1",
+                    "new_node": "1@dag-linear",
                     "next_node": end,
                     "node_attributes": self.default_node_attributes,
                     "edge_attributes": self.default_edge_attributes,
@@ -796,14 +796,14 @@ class TestGrowingDAG(unittest.TestCase):
             [
                 {
                     "previous_node": start,
-                    "new_node": "2",
+                    "new_node": "2@dag-linear",
                     "next_node": "hidden",
                     "node_attributes": self.default_node_attributes,
                     "edge_attributes": self.default_edge_attributes,
                 },
                 {
                     "previous_node": "hidden",
-                    "new_node": "2",
+                    "new_node": "2@dag-linear",
                     "next_node": end,
                     "node_attributes": self.default_node_attributes,
                     "edge_attributes": self.default_edge_attributes,
