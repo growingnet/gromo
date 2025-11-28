@@ -1455,9 +1455,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         lines = [f"GrowingDAG[{self._name}]("]
         lines.append(f"\tNodes ({len(nodes)}):")
         for i, n in enumerate(nodes):
+            activation = list(self.nodes[n]["module"].post_merge_function)
+            activation = (
+                "None"
+                if all([isinstance(act, torch.nn.Identity) for act in activation])
+                else str(activation)
+            )
             attrs = {
                 "layer type": self.nodes[n]["type"],
                 "hidden size": self.nodes[n]["size"],
+                "activation": activation,
             }
             attr_str = ", ".join(f"{k}: {v}" for k, v in list(attrs.items()))
             lines.append(f"\t\t{n} ({attr_str if attr_str else '{}'})")
