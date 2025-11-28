@@ -853,7 +853,9 @@ class GrowingGraphNetwork(GrowingContainer):
         """
         return self.dag(x)
 
-    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
+    def extended_forward(
+        self, x: torch.Tensor, x_ext: torch.Tensor = None, mask: dict = {}
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Forward function of DAG network including extensions of the modules
 
         Parameters
@@ -869,7 +871,7 @@ class GrowingGraphNetwork(GrowingContainer):
         torch.Tensor
             output of the extended model
         """
-        return self.dag.extended_forward(x, mask=mask)
+        return self.dag.extended_forward(x, x_ext, mask=mask)
 
     def parameters(self) -> Iterator:
         """Iterator of network parameters

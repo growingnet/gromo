@@ -1064,7 +1064,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         return direct_edges, one_hop_edges
 
-    def define_next_actions(self) -> list["Expansion"]:
+    def define_next_actions(self, expand_end: bool = False) -> list["Expansion"]:
         """Find all possible growth extensions for the current graph
 
         Returns
@@ -1118,6 +1118,21 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 continue
             expansion = Expansion(self, "expanded node", expanding_node=node)
             actions.append(expansion)
+
+        if expand_end:
+            next_node = self.get_node_module(self.end).next_modules
+            if len(next_node) > 1:
+                raise NotImplementedError(
+                    "Can only expand single connected inter-merge nodes"
+                )
+            elif len(next_node) == 1:
+                expansion = InterMergeExpansion(
+                    self,
+                    "expanded node",
+                    expanding_node=self.end,
+                    adjacent_expanding_node=next_node[0]._name,
+                )
+                actions.append(expansion)
 
         return actions
 
@@ -1196,8 +1211,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return output[self.end]
 
     def extended_forward(
-        self, x: torch.Tensor, mask: dict = {}, verbose: bool = False
-    ) -> torch.Tensor:
+        self,
+        x: torch.Tensor,
+        x_ext: torch.Tensor = None,
+        mask: dict = {},
+        verbose: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Extended forward function for DAG model
 
         Parameters
@@ -1217,7 +1236,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         if verbose:
             print("\nExtended Forward DAG...")
-        output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, None)}
+        output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, x_ext)}
         for node in nx.topological_sort(self):
             # Check if node is a candidate node and is not present in the mask
             if self.is_node_candidate(node) and node not in mask.get("nodes", {}):
@@ -1277,7 +1296,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )  # TODO: simplify
         if verbose:
             print()
-        return output[self.end][0]
+        return output[self.end]
 
     # Parameters
 
