@@ -203,7 +203,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         module : GrowingModule
             growable module to set to edge
         """
+        edge = str((prev_node, next_node))
+        if edge in self._modules:
+            del self._modules[edge]
         self[prev_node][next_node]["module"] = module
+        self._modules[edge] = module
 
     def __set_node_module(self, node: str, module: MergeGrowingModule) -> None:
         """Setter function for module of node
@@ -215,7 +219,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         module : MergeGrowingModule
             growable module to set to node
         """
+        if node in self._modules:
+            del self._modules[node]
         self.nodes[node]["module"] = module
+        self._modules[node] = module
 
     def toggle_edge_candidate(
         self, prev_node: str, next_node: str, candidate: bool
