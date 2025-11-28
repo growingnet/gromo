@@ -282,6 +282,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         bool
             candidate attribute
         """
+        if ("_" in prev_node) or ("_" in next_node):
+            return True
         if (prev_node, next_node) not in self.edges:
             # default behaviour assumes only one GrowingDAG is growing at a time
             warnings.warn(
@@ -304,14 +306,17 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         bool
             candidate attribute
         """
-        if node not in self.nodes:
+        if "_" in node:
+            return True
+        simple_nodes = {k.split("_")[0]: v for k, v in self.nodes.items() if node in k}
+        if node not in simple_nodes:
             # default behaviour assumes only one GrowingDAG is growing at a time
             warnings.warn(
                 f"Node {node} does not belong in the current GrowingDAG({self._name}). All external nodes are assumed to be non-candidate.",
                 UserWarning,
             )
             return False
-        return self.nodes[node].get("candidate", False)
+        return simple_nodes[node].get("candidate", False)
 
     def get_edge_module(self, prev_node: str, next_node: str) -> GrowingModule:
         """Getter function for module of edge
