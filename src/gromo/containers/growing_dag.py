@@ -1010,7 +1010,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
 
         one_hop_edges = []
-        new_node = str(len(self.nodes) - 1)
+        new_node = f"{len(self.nodes) - 1!s}@{self._name}"
         for prev_node, succ in successors.items():
             for next_node in succ:
                 if not self._indirect_connection_exists(prev_node, next_node):
