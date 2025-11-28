@@ -719,6 +719,9 @@ class GrowingGraphNetwork(GrowingContainer):
                 next_node = [next_node]
             if not isinstance(prev_node, list):
                 prev_node = [prev_node]
+            if isinstance(expansion, InterMergeExpansion):
+                next_node = [n._name for n in next_node]
+                prev_node = [n._name for n in prev_node]
             if chosen_outputs is not None:
                 if new_node in chosen_outputs:
                     # Case: expand current node
@@ -729,8 +732,12 @@ class GrowingGraphNetwork(GrowingContainer):
                     new_actions.append(expansion)
                     continue
             elif chosen_inputs is not None:
-                # Case: connect previous node
-                if len(set(chosen_inputs).intersection(prev_node)) != 0:
+                if new_node in chosen_inputs:
+                    # Case: expand current node
+                    new_actions.append(expansion)
+                    continue
+                elif len(set(chosen_inputs).intersection(prev_node)) != 0:
+                    # Case: connect previous node
                     new_actions.append(expansion)
                     continue
         return new_actions
