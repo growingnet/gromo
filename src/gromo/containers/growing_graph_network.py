@@ -732,11 +732,7 @@ class GrowingGraphNetwork(GrowingContainer):
                     new_actions.append(expansion)
                     continue
             elif chosen_inputs is not None:
-                if new_node in chosen_inputs:
-                    # Case: expand current node
-                    new_actions.append(expansion)
-                    continue
-                elif len(set(chosen_inputs).intersection(prev_node)) != 0:
+                if len(set(chosen_inputs).intersection(prev_node)) != 0:
                     # Case: connect previous node
                     new_actions.append(expansion)
                     continue
