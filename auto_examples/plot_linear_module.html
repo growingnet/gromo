@@ -441,9 +441,7 @@ to download the full example code.</p>
 LinearGrowingModule(l1) module with 2 parameters (self._allow_growing=False, self.store_input=True, self.store_pre_activity=True).
 LinearGrowingModule(l2) module with 2 parameters (self._allow_growing=False, self.store_input=True, self.store_pre_activity=True).
 LinearGrowingModule(l3) module with 2 parameters (self._allow_growing=False, self.store_input=True, self.store_pre_activity=True).
-loss: 1.9092438220977783
-/home/runner/work/gromo/gromo/src/gromo/utils/tools.py:103: UserWarning: Using the pseudo-inverse for the computation of the optimal delta.
-  warn(&quot;Using the pseudo-inverse for the computation of the optimal delta.&quot;)
+loss: 2.286459445953369
 </pre></div>
 </div>
 <p>Print parameters before and after applying the optimal update</p>
@@ -492,36 +490,36 @@ loss: 1.9092438220977783
     <a href="../generated/gromo.modules.growing_module.GrowingModule.html#gromo.modules.growing_module.GrowingModule.compute_optimal_updates" title="gromo.modules.growing_module.GrowingModule.compute_optimal_updates" class="sphx-glr-backref-module-gromo-modules-growing_module sphx-glr-backref-type-py-method"><span class="n">layer</span><span class="o">.</span><span class="n">compute_optimal_updates</span></a><span class="p">()</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>l2.first_order_improvement=tensor(0.)
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>l2.first_order_improvement=tensor(0.0005)
 l2.weight=Parameter containing:
-tensor([[-0.6566]], requires_grad=True)
+tensor([[0.0100]], requires_grad=True)
 l2.bias=Parameter containing:
-tensor([-0.2226], requires_grad=True)
+tensor([0.9707], requires_grad=True)
 l2.optimal_delta_layer=Linear(in_features=1, out_features=1, bias=True)
-l2.parameter_update_decrease=tensor(0.)
+l2.parameter_update_decrease=tensor(0.0005)
 l2.extended_input_layer=Linear(in_features=1, out_features=1, bias=True)
 l2.extended_input_layer.weight=Parameter containing:
-tensor([[0.]], requires_grad=True)
+tensor([[7.3696e-05]], requires_grad=True)
 l2.extended_input_layer.bias=Parameter containing:
 tensor([0.], requires_grad=True)
 l1.extended_output_layer=Linear(in_features=1, out_features=1, bias=True)
-l2.eigenvalues_extension=tensor([0.])
-loss: 1.9092438220977783, 0.0 improvement
+l2.eigenvalues_extension=tensor([5.4311e-09])
+loss: 2.186797857284546, 0.09966158866882324 improvement
 ------- New weights -------
 l1.weight=Parameter containing:
-tensor([[0.5459],
-        [0.0000]], requires_grad=True)
+tensor([[5.5225e-01],
+        [7.1628e-05]], requires_grad=True)
 l2.weight=Parameter containing:
-tensor([[-0.6566,  0.0000]], requires_grad=True)
+tensor([[9.6012e-03, 7.3696e-05]], requires_grad=True)
 l3.weight=Parameter containing:
-tensor([[0.4525]], requires_grad=True)
+tensor([[0.3157]], requires_grad=True)
 ------- New biases -------
 l1.bias=Parameter containing:
-tensor([0.9130, -0.0000], requires_grad=True)
+tensor([-9.5476e-01,  6.7390e-06], requires_grad=True)
 l2.bias=Parameter containing:
-tensor([-0.2226], requires_grad=True)
+tensor([0.9930], requires_grad=True)
 l3.bias=Parameter containing:
-tensor([0.1350], requires_grad=True)
+tensor([-0.4682], requires_grad=True)
 LinearGrowingModule(l1) module with 4 parameters.
         Layer : Linear(in_features=1, out_features=2, bias=True)
         Post layer function : ReLU()
@@ -564,10 +562,12 @@ LinearGrowingModule(l3) module with 2 parameters.
         Optimal delta layer : None
         Extended input layer : None
         Extended output layer : None
-loss: 1.9092438220977783
+loss: 2.18719482421875
+/home/runner/work/gromo/gromo/src/gromo/utils/tools.py:103: UserWarning: Using the pseudo-inverse for the computation of the optimal delta.
+  warn(&quot;Using the pseudo-inverse for the computation of the optimal delta.&quot;)
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.019 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.068 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-linear-module-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/03054ce988804abc93f04bf5243c4932/plot_linear_module.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_linear_module.ipynb</span></code></a></p>
