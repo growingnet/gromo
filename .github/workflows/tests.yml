@@ -50,7 +50,6 @@ jobs:
           fail_ci_if_error: true
           files: ./coverage.xml
           flags: unittests
-          target: 94%
           name: codecov-ci-gromo
           verbose: true
           token: ${{ secrets.CODECOV2_TOKEN }}

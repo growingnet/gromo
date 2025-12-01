@@ -7,7 +7,12 @@ from torch.nn.functional import one_hot
 from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
-from tests.unittest_tools import unittest_parametrize
+
+
+try:
+    from tests.unittest_tools import unittest_parametrize  # type: ignore
+except ImportError:
+    from unittest_tools import unittest_parametrize  # type: ignore
 
 
 class TestGrowingGraphNetwork(unittest.TestCase):
@@ -361,8 +366,16 @@ class TestGrowingGraphNetwork(unittest.TestCase):
 
     def test_restrict_action_space(self) -> None:
         self.assertEqual(len(self.actions), 4)
+        self.actions.append(
+            InterMergeExpansion(
+                self.net.dag,
+                type="expanded node",
+                expanding_node=self.net.dag.end,
+                adjacent_expanding_node="test",
+            )
+        )
 
-        # Not specifying chosen_inputs or chosen_outputs should raise a warning and return all actions
+        # Not specifing chosen_inputs or chosen_outputs should raise a warning and return all actions
         with self.assertWarns(UserWarning):
             gens = self.net.restrict_action_space(self.actions)
         self.assertListEqual(gens, self.actions)
@@ -371,7 +384,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         gens = self.net.restrict_action_space(
             self.actions, chosen_outputs=[self.net.dag.end]
         )
-        self.assertEqual(len(gens), 3)
+        self.assertEqual(len(gens), 4)
 
         gens = self.net.restrict_action_space(self.actions, chosen_outputs=["1"])
         self.assertEqual(len(gens), 2)
@@ -396,7 +409,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         self.assertEqual(len(gens), 3)
 
         gens = self.net.restrict_action_space(self.actions, chosen_inputs=["1"])
-        self.assertEqual(len(gens), 1)
+        self.assertEqual(len(gens), 2)
 
         gens = self.net.restrict_action_space(
             self.actions, chosen_inputs=[self.net.dag.end]

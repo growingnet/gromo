@@ -715,10 +715,6 @@ class GrowingGraphNetwork(GrowingContainer):
             new_node = expansion.expanding_node
             next_node = expansion.next_nodes
             prev_node = expansion.previous_nodes
-            if not isinstance(next_node, list):
-                next_node = [next_node]
-            if not isinstance(prev_node, list):
-                prev_node = [prev_node]
             if isinstance(expansion, InterMergeExpansion):
                 next_node = [n._name for n in next_node]
                 prev_node = [n._name for n in prev_node]
