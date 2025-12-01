@@ -102,7 +102,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         elif isinstance(
             self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
         ):
-            return (0, 0)
+            return ((self.kernel_size[0] - 1) // 2, (self.kernel_size[1] - 1) // 2)
         else:
             raise NotImplementedError
 
