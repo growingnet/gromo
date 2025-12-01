@@ -148,7 +148,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # With LinearGrowingModule next
         linear_next = LinearGrowingModule(m.output_volume, 10, device=global_device())
         m.set_next_modules([linear_next])
-        self.assertEqual(m.padding, (0, 0))
+        default_padding = ((self.kernel_size[0] - 1) / 2, (self.kernel_size[0] - 1) / 2)
+        self.assertEqual(m.padding, default_padding)
         self.assertEqual(m.stride, (1, 1))
         self.assertEqual(m.dilation, (1, 1))
 
