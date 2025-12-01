@@ -4,7 +4,7 @@ import unittest
 import torch
 from torch.nn.functional import one_hot
 
-from gromo.containers.growing_dag import Expansion, GrowingDAG
+from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
 from tests.unittest_tools import unittest_parametrize
@@ -403,9 +403,6 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         )
         self.assertEqual(len(gens), 0)
 
-    def test_grow_step(self) -> None:
-        pass
-
     @unittest_parametrize(({"use_bic": True}, {"use_bic": False}))
     def test_choose_growth_best_option(self, use_bic: bool) -> None:
         options = self.net.dag.define_next_actions()
@@ -471,6 +468,95 @@ class TestGrowingGraphNetwork(unittest.TestCase):
                 edge_module.extended_input_layer
                 for edge_module in node_module.next_modules
             )
+
+    def test_clean_graph_with_chosen_action_and_apply_changes(self) -> None:
+        start, end = self.net_conv.dag.root, self.net_conv.dag.end
+        options = self.net_conv.dag.define_next_actions()
+        for opt in options:
+            opt.metrics["scaling_factor"] = 1
+            opt.expand()
+        self.assertIn("2@_a", self.net_conv.dag)
+        self.assertIn("2@_b", self.net_conv.dag)
+
+        # Expansion in the dag
+        self.net_conv.chosen_action = next(
+            opt for opt in options if opt.expanding_node == "2@_a"
+        )
+        self.net_conv.clean_graph_with_chosen_action(options)
+        self.net_conv.apply_change()
+        self.assertNotIn("2@_b", self.net_conv.dag.nodes)
+        self.assertNotIn((start, end), self.net_conv.dag.edges)
+        self.assertIsNone(
+            self.net_conv.dag.get_edge_module(start, "1").extended_output_layer
+        )
+        self.assertIsNone(
+            self.net_conv.dag.get_edge_module("1", end).extended_input_layer
+        )
+
+        # Expansion in non-related dag
+        self.net.chosen_action = self.net_conv.chosen_action
+        self.net.clean_graph_with_chosen_action(options)
+        self.net.apply_change()
+
+        # Expansion in the connection between the dags
+        self.net.delete_update()
+        self.net_conv.delete_update()
+        start_linear = self.net.dag.root
+        start_linear_module = self.net.dag.get_node_module(start_linear)
+        end_conv_module = self.net_conv.dag.get_node_module(end)
+        start_linear_module.in_features = 162
+        end_conv_module.add_next_module(start_linear_module)
+        start_linear_module.add_previous_module(end_conv_module)
+
+        options = self.net_conv.dag.define_next_actions(expand_end=True)
+        for opt in options:
+            opt.metrics["scaling_factor"] = 1
+            opt.expand()
+        self.net_conv.dag.get_edge_module("1", end).extended_output_layer = (
+            torch.nn.Conv2d(
+                in_channels=self.net_conv.neurons,
+                out_channels=1,
+                kernel_size=self.kernel_size,
+                device=self.net_conv.device,
+            )
+        )
+        self.net.dag.get_edge_module(start_linear, "1").extended_input_layer = (
+            torch.nn.Linear(
+                in_features=1,
+                out_features=self.net_conv.neurons,
+                bias=False,
+                device=self.net_conv.device,
+            )
+        )
+
+        # First dag
+        self.net_conv.chosen_action = next(
+            opt for opt in options if isinstance(opt, InterMergeExpansion)
+        )
+        self.net_conv.clean_graph_with_chosen_action(options)
+        self.assertIsNotNone(
+            self.net_conv.dag.get_edge_module("1", end).extended_output_layer
+        )
+        self.assertNotIn("2@_a", self.net_conv.dag.nodes)
+        self.assertNotIn("2@_b", self.net_conv.dag.nodes)
+        self.assertNotIn((start, end), self.net_conv.dag.edges)
+        self.assertIsNone(
+            self.net_conv.dag.get_edge_module(start, "1").extended_output_layer
+        )
+        self.assertIsNone(
+            self.net_conv.dag.get_edge_module("1", end).extended_input_layer
+        )
+        self.net_conv.apply_change()
+        self.assertEqual(end_conv_module.in_features, self.out_features + 1)
+
+        # Second dag
+        self.net.chosen_action = self.net_conv.chosen_action
+        self.net.clean_graph_with_chosen_action(options)
+        self.assertIsNotNone(
+            self.net.dag.get_edge_module(start_linear, "1").extended_input_layer
+        )
+        self.net.apply_change()
+        self.assertEqual(start_linear_module.in_features, self.out_features + 1)
 
 
 if __name__ == "__main__":
