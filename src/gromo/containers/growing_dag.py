@@ -1276,8 +1276,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 activity, activity_ext = module.extended_forward(
                     *module_input,
                     use_optimal_delta=True,
-                    use_extended_input=previous_node in mask.get("nodes", {}),
-                    use_extended_output=node in mask.get("nodes", {}),
+                    use_extended_input=previous_node in mask.get("nodes", []),
+                    use_extended_output=node in mask.get("nodes", []),
                 )
                 # activity_ext = (
                 #     activity_ext
@@ -1308,10 +1308,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )  # TODO: simplify
         if verbose:
             print()
-        if output[self.end][1] is not None:
-            return output[self.end]
-        else:
-            return output[self.end][0]
+        return output[self.end]
 
     # Parameters
 
