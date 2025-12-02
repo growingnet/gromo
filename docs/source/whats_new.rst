@@ -94,7 +94,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
-- Allow growth between two `GrowingDAG` modules (:gh:`148` & `179` by `Stella Douka`_)
+- Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
 - Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)
 - Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)

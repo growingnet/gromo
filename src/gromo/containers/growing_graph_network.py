@@ -820,7 +820,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 delete_output=delete_output,
             )
 
-    def apply_change(self, **kwargs) -> None:
+    def apply_change(self) -> None:
         # Apply changes
         for prev_node, next_node in self.dag.edges:
             factor = self.chosen_action.metrics["scaling_factor"]
