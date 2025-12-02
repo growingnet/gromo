@@ -898,7 +898,7 @@ class TestGrowingDAG(unittest.TestCase):
         out = self.dag.get_node_module(end)(out)
 
         mask = {"nodes": self.dag.nodes, "edges": self.dag.edges}
-        actual_out = self.dag.extended_forward(x, mask=mask)
+        actual_out, _ = self.dag.extended_forward(x, mask=mask)
         self.assertTrue(torch.all(out == actual_out))
 
         self.dag.get_edge_module(start, end).extended_output_layer = torch.nn.Linear(
@@ -1053,7 +1053,7 @@ class TestGrowingDAG(unittest.TestCase):
         x = torch.rand((50, self.in_features), device=global_device())
         y = torch.rand((50, self.out_features), device=global_device()).argmax(axis=1)
         loss_fn = torch.nn.CrossEntropyLoss()
-        actual_out = self.dag.extended_forward(x)
+        actual_out, _ = self.dag.extended_forward(x)
         actual_loss = loss_fn(actual_out, y).item()
         acc, _, f1 = self.dag.evaluate_extended(
             x, actual_out.argmax(axis=1), loss_fn, with_f1score=True
@@ -1093,7 +1093,7 @@ class TestGrowingDAG(unittest.TestCase):
         )
         y = torch.rand((50, 1), device=global_device())
         loss_fn = torch.nn.MSELoss()
-        actual_out = dag.extended_forward(x)
+        actual_out, _ = dag.extended_forward(x)
         actual_loss = loss_fn(actual_out, y).item()
         acc, loss, f1 = dag.evaluate_extended(x, y, loss_fn, with_f1score=True)
         self.assertEqual(acc, -1)

@@ -270,7 +270,7 @@ class TestGrowingGraphNetwork(unittest.TestCase):
             torch.argmax(self.net(self.x), dim=1), num_classes=self.out_features
         )
         extended_pred = one_hot(
-            torch.argmax(self.net.extended_forward(self.x), dim=1),
+            torch.argmax(self.net.extended_forward(self.x)[0], dim=1),
             num_classes=self.out_features,
         )
 

@@ -673,7 +673,7 @@ def evaluate_extended_dataset(
         x = x.to(global_device())
         y = y.to(global_device())
         with torch.no_grad():
-            pred = model.extended_forward(x, mask=mask)
+            pred, _ = model.extended_forward(x, mask=mask)
             loss.append(loss_fn(pred, y).item())
 
         if model.out_features > 1 and y.dim() == 1:

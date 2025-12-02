@@ -592,7 +592,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 for x, y in dataloader:
                     x = x.to(self.device)
                     y = y.to(self.device)
-                    pred = self.extended_forward(x, mask=mask)
+                    pred, _ = self.extended_forward(x, mask=mask)
                     loss.append(self.loss_fn(pred, y).item())
 
             return np.mean(loss).item()

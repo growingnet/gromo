@@ -1428,7 +1428,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             accuracy and loss, optionally f1-score
         """
         with torch.no_grad():
-            pred = self.extended_forward(x)
+            pred, _ = self.extended_forward(x)
             loss = loss_fn(pred, y)
 
         if self.out_features > 1:
