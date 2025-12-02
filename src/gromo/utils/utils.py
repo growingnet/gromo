@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 from deprecated import deprecated
 
+from gromo.utils.disk_dataset import MemMapDataset
+
 
 __global_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -285,11 +287,13 @@ def line_search(
 def mini_batch_gradient_descent(
     model: nn.Module | Callable,
     cost_fn: Callable,
-    X: torch.Tensor,
-    Y: torch.Tensor,
+    X: torch.Tensor | str,
+    Y: torch.Tensor | str,
     lrate: float,
     max_epochs: int,
     batch_size: int,
+    x_keys: list[str] = [],
+    y_keys: list[str] = [],
     parameters: Iterable | None = None,
     fast: bool = False,
     eval_fn: Callable | None = None,
@@ -330,7 +334,24 @@ def mini_batch_gradient_descent(
     """
     loss_history, acc_history = [], []
 
-    dataset = torch.utils.data.TensorDataset(X, Y)
+    if type(X) != type(Y):
+        raise TypeError(
+            f"X and Y should have the same type. Got {type(X)=} and {type(Y)=}"
+        )
+
+    if isinstance(X, str):
+        assert isinstance(Y, str)
+        if len(x_keys) <= 0 or len(y_keys) <= 0:
+            raise ValueError("At least one key is required for X and Y")
+        dataset = MemMapDataset(X, Y, x_keys, y_keys)
+    elif isinstance(X, torch.Tensor):
+        assert isinstance(Y, torch.Tensor)
+        dataset = torch.utils.data.TensorDataset(X, Y)
+    else:
+        raise TypeError(
+            f"Inappropriate type for X. Expected torch.Tensor or str. Got {type(X)}"
+        )
+
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     if not isinstance(model, nn.Module):
