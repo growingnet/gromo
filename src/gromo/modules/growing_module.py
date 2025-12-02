@@ -409,9 +409,21 @@ class MergeGrowingModule(torch.nn.Module):
         Update the input and output size of the module
         """
         if len(self.previous_modules) > 0:
-            new_size = self.previous_modules[0].out_features
+            new_size: int = self.previous_modules[0].out_features
             self.in_features = new_size
         self.total_in_features = self.sum_in_features(with_bias=True)
+
+        tensor_s_shape = (
+            self.in_features + int(self.use_bias),
+            self.in_features + int(self.use_bias),
+        )
+        if self.tensor_s._shape != tensor_s_shape:
+            self.tensor_s = TensorStatistic(
+                tensor_s_shape,
+                update_function=self.compute_s_update,
+                device=self.device,
+                name=f"S({self.name})",
+            )
 
         if self.total_in_features > 0:
             if self.previous_tensor_s._shape != (
@@ -458,7 +470,7 @@ class MergeGrowingModule(torch.nn.Module):
         """
         if with_bias:
             return sum(
-                module.in_features + module.use_bias
+                module.in_features + int(module.use_bias)
                 for module in self.previous_modules
                 if isinstance(module, GrowingModule)
             )
