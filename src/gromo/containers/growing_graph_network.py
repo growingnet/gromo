@@ -13,7 +13,6 @@ from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
-    Conv2dMergeGrowingModule,
 )
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
@@ -202,6 +201,9 @@ class GrowingGraphNetwork(GrowingContainer):
         torch.Tensor
             norm of loss
         """
+        # If activity has extra trailing singleton dims like (b, c, 1, 1)
+        if activity.dim() == bottleneck.dim() + 2 and activity.shape[2:] == (1, 1):
+            activity = activity.squeeze(-1).squeeze(-1)
         loss = activity - bottleneck
         return (loss**2).sum() / loss.numel()
 
@@ -247,12 +249,12 @@ class GrowingGraphNetwork(GrowingContainer):
 
         def forward_fn(x):
             return self.block_forward(
-                F.linear if linear else F.conv2d,
-                alpha,
-                omega,
-                bias,
-                x,
-                sigma,
+                layer_fn=F.linear if linear else F.conv2d,
+                alpha=alpha,
+                omega=omega,
+                bias=bias,
+                x=x,
+                sigma=sigma,
                 **operation_args if not linear else {},
             )
 
@@ -315,12 +317,19 @@ class GrowingGraphNetwork(GrowingContainer):
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
+        linear_alpha_layer = isinstance(node_module, LinearMergeGrowingModule)
         if isinstance(expansion, InterMergeExpansion):
             prev_node_modules = expansion.previous_nodes
             next_node_modules = expansion.next_nodes
+            adjacent_node_module = node_module.next_modules[0]
+            assert adjacent_node_module._name == expansion.adjacent_expanding_node
+            linear_omega_layer = isinstance(
+                adjacent_node_module, LinearMergeGrowingModule
+            )
         elif isinstance(expansion, Expansion):
             prev_node_modules = self.dag.get_node_modules(expansion.previous_nodes)
             next_node_modules = self.dag.get_node_modules(expansion.next_nodes)
+            linear_omega_layer = linear_alpha_layer
 
         if type(bottlenecks) != type(activities):
             raise TypeError(
@@ -357,18 +366,24 @@ class GrowingGraphNetwork(GrowingContainer):
         in_edges = len(expansion.in_edges)
 
         # Initialize alpha and omega weights
-        if isinstance(node_module, Conv2dMergeGrowingModule):
+        if linear_alpha_layer:
+            alpha = torch.rand((self.neurons, total_in_features), device=self.device)
+        else:
             alpha = torch.rand(
                 (self.neurons, total_in_features, *node_module.kernel_size),
                 device=self.device,
             )
+        if linear_omega_layer and linear_alpha_layer:
+            omega = torch.rand((total_out_features, self.neurons), device=self.device)
+        elif linear_omega_layer:
+            omega = torch.rand(
+                (total_out_features, self.neurons, 1, 1), device=self.device
+            )
+        else:
             omega = torch.rand(
                 (total_out_features, self.neurons, *node_module.kernel_size),
                 device=self.device,
             )
-        else:
-            alpha = torch.rand((self.neurons, total_in_features), device=self.device)
-            omega = torch.rand((total_out_features, self.neurons), device=self.device)
         bias = torch.rand((self.neurons, in_edges), device=self.device)
         alpha = alpha / np.sqrt(alpha.numel())
         omega = omega / np.sqrt(omega.numel())
@@ -389,7 +404,7 @@ class GrowingGraphNetwork(GrowingContainer):
             bottleneck=bottleneck,
             input_keys=input_x_keys,
             target_keys=bottleneck_keys,
-            linear=isinstance(node_module, LinearMergeGrowingModule),
+            linear=linear_alpha_layer,
             operation_args={
                 "padding": "same",
             },
