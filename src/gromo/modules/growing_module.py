@@ -536,7 +536,9 @@ class MergeGrowingModule(torch.nn.Module):
         """
         return 0
 
-    def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
+    def parameters(
+        self, recurse: bool = True  # noqa: ARG002
+    ) -> Iterator[torch.nn.Parameter]:
         """Parameter iterator
 
         Parameters
