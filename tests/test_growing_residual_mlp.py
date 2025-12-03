@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from gromo.containers.growing_residual_mlp import GrowingResidualMLP
+from gromo.utils.utils import compute_tensor_stats
 from tests.test_growing_container import create_synthetic_data, gather_statistics
 from tests.torch_unittest import TorchTestCase
 
@@ -75,7 +76,7 @@ class TestGrowingResidualMLP(TorchTestCase):
 
     def test_tensor_statistics(self):
         tensor = torch.randn(10)
-        stats = self.model.tensor_statistics(tensor)
+        stats = compute_tensor_stats(tensor)
         self.assertIn("min", stats)
         self.assertIn("max", stats)
         self.assertIn("mean", stats)

@@ -10,6 +10,7 @@ from torch import Tensor
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.utils import compute_tensor_stats
 
 
 class GrowingResidualBlock(GrowingContainer):
@@ -127,30 +128,6 @@ class GrowingResidualBlock(GrowingContainer):
             x = y + x
         return x
 
-    @staticmethod
-    def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
-        """Compute statistics of a tensor
-
-        Parameters
-        ----------
-        tensor : Tensor
-
-        Returns
-        -------
-        Dict[str, float]
-            statistics dictionary
-        """
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        std_value = tensor.std().item() if tensor.numel() > 1 else -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
-
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         """Compute statistics of the weights of the block
 
@@ -161,15 +138,15 @@ class GrowingResidualBlock(GrowingContainer):
         """
         statistics = {}
         statistics[0] = {
-            "weight": self.tensor_statistics(self.first_layer.weight),
+            "weight": compute_tensor_stats(self.first_layer.weight),
         }
         if self.first_layer.bias is not None:
-            statistics[0]["bias"] = self.tensor_statistics(self.first_layer.bias)
+            statistics[0]["bias"] = compute_tensor_stats(self.first_layer.bias)
         statistics[1] = {
-            "weight": self.tensor_statistics(self.second_layer.weight),
+            "weight": compute_tensor_stats(self.second_layer.weight),
         }
         if self.second_layer.bias is not None:
-            statistics[1]["bias"] = self.tensor_statistics(self.second_layer.bias)
+            statistics[1]["bias"] = compute_tensor_stats(self.second_layer.bias)
         statistics["hidden_shape"] = self.hidden_features
         return statistics
 
@@ -327,33 +304,6 @@ class GrowingResidualMLP(GrowingContainer):
                 self.currently_updated_layer_index = i
         return self.currently_updated_layer_index
 
-    @staticmethod
-    def tensor_statistics(tensor: torch.Tensor) -> dict[str, float]:
-        """Compute statistics of a tensor
-
-        Parameters
-        ----------
-        tensor : torch.Tensor
-
-        Returns
-        -------
-        dict[str, float]
-            statistics dictionary
-        """
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        if tensor.numel() > 1:
-            std_value = tensor.std().item()
-        else:
-            std_value = -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
-
     def weights_statistics(self) -> dict[int, dict[str, dict[str, float]]]:
         """Compute statistics of the weights of the model
 
@@ -364,13 +314,13 @@ class GrowingResidualMLP(GrowingContainer):
         """
         statistics = {}
         for i, block in enumerate(self.blocks):
-            statistics[i] = {"weight_0": self.tensor_statistics(block.first_layer.weight)}
+            statistics[i] = {"weight_0": compute_tensor_stats(block.first_layer.weight)}
             if block.first_layer.bias is not None:
-                statistics[i]["bias_0"] = self.tensor_statistics(block.first_layer.bias)
+                statistics[i]["bias_0"] = compute_tensor_stats(block.first_layer.bias)
 
-            statistics[i]["weight_1"] = self.tensor_statistics(block.second_layer.weight)
+            statistics[i]["weight_1"] = compute_tensor_stats(block.second_layer.weight)
             if block.second_layer.bias is not None:
-                statistics[i]["bias_1"] = self.tensor_statistics(block.second_layer.bias)
+                statistics[i]["bias_1"] = compute_tensor_stats(block.second_layer.bias)
 
             statistics[i]["hidden_shape"] = block.hidden_features
         return statistics

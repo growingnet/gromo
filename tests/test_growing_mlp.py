@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 
 from gromo.containers.growing_mlp import GrowingMLP, Perceptron
+from gromo.utils.utils import compute_tensor_stats
 from tests.test_growing_container import create_synthetic_data, gather_statistics
 from tests.torch_unittest import TorchTestCase
 
@@ -84,7 +85,7 @@ class TestGrowingMLP(TorchTestCase):
     def test_tensor_statistics(self):
         """Test computation of tensor statistics (min, max, mean, std)."""
         tensor = torch.randn(10)
-        stats = self.model.tensor_statistics(tensor)
+        stats = compute_tensor_stats(tensor)
 
         # Check that all required statistics are present
         self.assertIn("min", stats)
@@ -94,7 +95,7 @@ class TestGrowingMLP(TorchTestCase):
 
         # Test edge case with single element tensor (std should be -1)
         single_tensor = torch.tensor([5.0])
-        single_stats = self.model.tensor_statistics(single_tensor)
+        single_stats = compute_tensor_stats(single_tensor)
         self.assertEqual(single_stats["std"], -1)
 
     def test_weights_statistics(self):

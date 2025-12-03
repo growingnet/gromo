@@ -5,6 +5,7 @@ from torch import Tensor, nn
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.utils import compute_tensor_stats
 
 
 class GrowingMLP(GrowingContainer):
@@ -144,30 +145,6 @@ class GrowingMLP(GrowingContainer):
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
 
-    @staticmethod
-    def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
-        """Compute statistics of a tensor
-
-        Parameters
-        ----------
-        tensor : Tensor
-
-        Returns
-        -------
-        Dict[str, float]
-            statistics dictionary
-        """
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        std_value = tensor.std().item() if tensor.numel() > 1 else -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
-
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         """Compute statistics of the weights of the model
 
@@ -179,10 +156,10 @@ class GrowingMLP(GrowingContainer):
         statistics = {}
         for i, layer in enumerate(self.layers):
             statistics[i] = {
-                "weight": self.tensor_statistics(layer.weight),
+                "weight": compute_tensor_stats(layer.weight),
             }
             if layer.bias is not None:
-                statistics[i]["bias"] = self.tensor_statistics(layer.bias)
+                statistics[i]["bias"] = compute_tensor_stats(layer.bias)
             statistics[i]["input_shape"] = layer.in_features
             statistics[i]["output_shape"] = layer.out_features
         return statistics
