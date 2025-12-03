@@ -10,17 +10,19 @@ from gromo.utils.utils import global_device
 
 
 try:
+    from tests.torch_unittest import TorchTestCase  # type: ignore
     from tests.unittest_tools import unittest_parametrize  # type: ignore
 except ImportError:
+    from torch_unittest import TorchTestCase  # type: ignore
     from unittest_tools import unittest_parametrize  # type: ignore
 
 
-class TestGrowingGraphNetwork(unittest.TestCase):
+class TestGrowingGraphNetwork(TorchTestCase):
     def setUp(self) -> None:
-        self.in_features = 5
+        self.in_features = 3
         self.out_features = 2
         self.batch_size = 8
-        self.neurons = 10
+        self.neurons = 5
 
         # Linear Graph
         self.net = GrowingGraphNetwork(
@@ -570,6 +572,104 @@ class TestGrowingGraphNetwork(unittest.TestCase):
         )
         self.net.apply_change()
         self.assertEqual(start_linear_module.in_features, self.out_features + 1)
+
+    def test_numeric_accuracy_when_expanding_around_pooling(self) -> None:
+        # import random
+        # torch.manual_seed(0)
+        # random.seed(0)
+        start_conv, end_conv = self.net_conv.dag.root, self.net_conv.dag.end
+        self.net_conv.dag.remove_node("1")
+        self.net_conv.dag.add_direct_edge(
+            start_conv, end_conv, edge_attributes={"kernel_size": self.kernel_size}
+        )
+        end_conv_module = self.net_conv.dag.get_node_module(end_conv)
+        end_conv_module.post_merge_function = torch.nn.Sequential(
+            torch.nn.SELU(),
+            torch.nn.AdaptiveAvgPool2d(output_size=1),
+        )
+        self.net_conv.neuron_lrate = 1e-2
+        self.net_conv.neuron_epochs = 2000
+
+        net_linear = GrowingGraphNetwork(
+            in_features=end_conv_module.out_channels,
+            out_features=self.out_features,
+            neurons=self.neurons,
+            loss_fn=torch.nn.CrossEntropyLoss(),
+            layer_type="linear",
+            name="lin",
+        )
+        start_linear, end_linear = net_linear.dag.root, net_linear.dag.end
+        net_linear.dag.add_direct_edge(start_linear, end_linear, zero_weights=True)
+        start_linear_module = net_linear.dag.get_node_module(start_linear)
+
+        end_conv_module.add_next_module(start_linear_module)
+        start_linear_module.add_previous_module(end_conv_module)
+
+        expansion = InterMergeExpansion(
+            dag=self.net_conv.dag,
+            type="expanded node",
+            expanding_node=end_conv,
+            adjacent_expanding_node=start_linear,
+        )
+
+        conv_guide = torch.nn.Conv2d(
+            self.in_features,
+            out_channels=self.neurons,
+            kernel_size=self.kernel_size,
+            padding="same",
+            device=global_device(),
+        )
+        lin_guide = torch.nn.Linear(
+            in_features=self.neurons,
+            out_features=self.out_features,
+            device=global_device(),
+        )
+        activation = torch.nn.SELU()
+        pooling = torch.nn.AdaptiveAvgPool2d(output_size=1)
+        flatten = torch.nn.Flatten()
+        model_guide = torch.nn.Sequential(
+            conv_guide,
+            activation,
+            pooling,
+            flatten,
+            lin_guide,
+        )
+
+        x = torch.rand(
+            (self.batch_size, self.in_features, *self.input_shape), device=global_device()
+        )
+        with torch.no_grad():
+            desired_output = model_guide(x)
+
+        bottleneck = {
+            end_linear: desired_output,
+        }
+        activity = {
+            start_conv: x,
+        }
+
+        self.net_conv.expand_node(
+            expansion=expansion,
+            bottlenecks=bottleneck,
+            activities=activity,
+            verbose=False,
+        )
+
+        layer_alpha = self.net_conv.dag.get_edge_module(
+            start_conv, end_conv
+        ).extended_output_layer
+        layer_omega = net_linear.dag.get_edge_module(
+            start_linear, end_linear
+        ).extended_input_layer
+        self.assertIsNotNone(layer_alpha)
+        self.assertIsNotNone(layer_alpha.weight)
+        self.assertIsNotNone(layer_alpha.bias)
+        self.assertIsNotNone(layer_omega)
+        self.assertIsNotNone(layer_omega.weight)
+        self.assertIsNone(layer_omega.bias)
+
+        output = layer_omega(flatten(pooling(activation(layer_alpha(x)))))
+        self.assertAllClose(desired_output, output, atol=1e-2)
 
 
 if __name__ == "__main__":
