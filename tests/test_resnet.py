@@ -110,6 +110,16 @@ class TestResNet(TorchTestCase):
                 number_of_blocks_per_stage=(2, 2, 2),  # type: ignore
             )
 
+        # Test 11: Change inplanes and nb_stages
+        model_custom_inplanes = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            inplanes=7,
+            nb_stages=3,
+        )
+        self.assertIsInstance(model_custom_inplanes, ResNetBasicBlock)
+        self.assertEqual(len(model_custom_inplanes.stages), 3)
+        self.assertEqual(model_custom_inplanes.stages[0][0].in_features, 7)  # type: ignore
+
     def test_forward_backward(self):
         """Test forward and backward pass of the ResNet model."""
         model = init_full_resnet_structure(

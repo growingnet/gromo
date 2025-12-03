@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Implement lazy loading datasets that read directly from the disk (:gh:`169` by `Stella Douka`_)
 - Modify `in_channels` and `out_channels` as properties in `Conv2dGrowingModule` (:gh:`174` by `Stella Douka`_)
 - Introduce a `SequentialGrowingContainer` structure specialized for container with sequential layers.  Introduce a `ResNetBasicBlock` class to create resnet 18/34 like structure with growable blocks and the possibility of adding blocks. (:gh:`168` by `Théo Rudkiewicz`_)
 - Allow to create layer extension with different simple initialization (different random and zero). (:gh:`165` by `Théo Rudkiewicz`_)
