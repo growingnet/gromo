@@ -1228,7 +1228,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         x_ext: torch.Tensor = None,
         mask: dict = {},
         verbose: bool = False,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Extended forward function for DAG model
 
         Parameters
