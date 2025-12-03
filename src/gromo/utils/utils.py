@@ -292,16 +292,20 @@ def mini_batch_gradient_descent(
         pytorch model or forwards function
     cost_fn : Callable
         cost function
-    X : torch.Tensor
-        input features
-    Y : torch.Tensor
-        true labels
+    X : torch.Tensor | str
+        input features or input file name
+    Y : torch.Tensor | str
+        true labels or labels' file name
     lrate : float
         learning rate
     max_epochs : int
         maximum epochs
     batch_size : int
         batch size
+    x_keys: list[str], optional
+        input keys for lazy loading dataset, by default []
+    y_keys: list[str], optional
+        target keys for lazy loading dataset, by default []
     parameters: Iterable | None, optional
         list of torch parameters in case the model is just a forward function, by default None
     fast : bool, optional
@@ -318,12 +322,16 @@ def mini_batch_gradient_descent(
 
     Raises
     ------
+    TypeError
+        if X and Y do not have the same type, or the type is not supported
+    ValueError
+        if X and Y are of type str and the keys are not given
     AttributeError
         if the model is just a forward function, the parameters argument must not be None or empty
     """
     loss_history, acc_history = [], []
 
-    if type(X) != type(Y):
+    if type(X) is not type(Y):
         raise TypeError(
             f"X and Y should have the same type. Got {type(X)=} and {type(Y)=}"
         )

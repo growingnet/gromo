@@ -38,6 +38,11 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         If True, adapt the network for small input images (e.g., CIFAR-10/100).
         This uses smaller kernels, no stride, and
         no max pooling in the initial layers.
+    inplanes : int
+        Number of initial planes (channels) after the first convolution.
+        (Default is 64 as in standard ResNet architectures.)
+    nb_stages : int
+        Number of stages in the ResNet.
     """
 
     def __init__(
@@ -53,35 +58,6 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         inplanes: int = 64,
         nb_stages: int = 4,
     ) -> None:
-        """
-        Initialize the ResNet with basic blocks.
-        Parameters
-        ----------
-        in_features : int
-            Number of input features (channels).
-        out_features : int
-            Number of output features (channels).
-        device : torch.device | str | None
-            Device to run the model on.
-        activation : nn.Module
-            Activation function to use.
-        input_block_kernel_size : int
-            Kernel size for the input block.
-        output_block_kernel_size : int
-            Kernel size for the output block.
-        reduction_factor : float
-            Factor to reduce the number of channels in the bottleneck.
-            If 0, starts with no channels. If 1, starts with all channels.
-        small_inputs : bool
-            If True, adapt the network for small input images (e.g., CIFAR-10/100).
-            This uses smaller kernels, no stride, and
-            no max pooling in the initial layers.
-        inplanes : int
-            Number of initial planes (channels) after the first convolution.
-            (Default is 64 as in standard ResNet architectures.)
-        nb_stages : int
-            Number of stages in the ResNet.
-        """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
         )
@@ -285,6 +261,8 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         ----------
         x : torch.Tensor
             input tensor
+        mask : dict | None, optional
+            extension mask for specific nodes and edges, by default None
 
         Returns
         -------

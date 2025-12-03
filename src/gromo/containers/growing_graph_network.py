@@ -268,12 +268,16 @@ class GrowingGraphNetwork(GrowingContainer):
             omega output weights (out_features, neurons)
         bias : torch.Tensor
             bias of input layer (neurons,)
-        B : torch.Tensor
-            input vector (batch_size, in_features)
+        B : torch.Tensor | str
+            input vector (batch_size, in_features) or input file name
         sigma : nn.Module
             activation function
-        bottleneck : torch.Tensor
-            expressivity bottleneck on the output of the block
+        bottleneck : torch.Tensor | str
+            expressivity bottleneck on the output of the block or file name
+        input_keys: list[str]
+            input keys for lazy loading dataset
+        target_keys: list[str]
+            target keys for lazy loading dataset
         linear : bool, optional
             if the functions are linear or convolution, by default True
         operation_args : dict, optional
@@ -348,7 +352,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
     def expand_node(
         self,
-        expansion,
+        expansion: Expansion,
         bottlenecks: dict[str, torch.Tensor] | str,
         activities: dict[str, torch.Tensor] | str,
         verbose: bool = True,
@@ -361,9 +365,9 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         expansion : Expansion
             object with expansion information
-        bottlenecks : dict
+        bottlenecks : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their calculated bottleneck tensors as values
-        activities : dict
+        activities : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their pre-activity tensors as values
         verbose : bool, optional
             print info, by default True
@@ -372,6 +376,11 @@ class GrowingGraphNetwork(GrowingContainer):
         -------
         list
             bottleneck loss history
+
+        Raises
+        ------
+        TypeError
+            if bottleneck and activities do not have the same type
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
@@ -382,7 +391,7 @@ class GrowingGraphNetwork(GrowingContainer):
             prev_node_modules = self.dag.get_node_modules(expansion.previous_nodes)
             next_node_modules = self.dag.get_node_modules(expansion.next_nodes)
 
-        if type(bottlenecks) != type(activities):
+        if type(bottlenecks) is not type(activities):
             raise TypeError(
                 f"Bottleneck and activities variables should have the same type. Got {type(bottlenecks)=} and {type(activities)=}"
             )
@@ -531,9 +540,9 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         expansion : Expansion
             object with expansion information
-        bottlenecks : dict
+        bottlenecks : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their calculated bottleneck tensors as values
-        activities : dict
+        activities : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their pre-activity tensors as values
         verbose : bool, optional
             print info, by default True
@@ -542,6 +551,11 @@ class GrowingGraphNetwork(GrowingContainer):
         -------
         list
             bottleneck loss history
+
+        Raises
+        ------
+        TypeError
+            if bottleneck and activities do not have the same type
         """
 
         new_edge_module = self.dag.get_edge_module(
@@ -552,7 +566,7 @@ class GrowingGraphNetwork(GrowingContainer):
         assert prev_node_module._name is not None
         assert next_node_module._name is not None
 
-        if type(bottlenecks) != type(activities):
+        if type(bottlenecks) is not type(activities):
             raise TypeError(
                 f"Bottleneck and activities variables should have the same type. Got {type(bottlenecks)=} and {type(activities)=}"
             )
@@ -680,10 +694,10 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         actions : Sequence[Expansion]
             list with growth actions information
-        bottleneck : dict
-            dictionary of calculated expressivity bottleneck at each pre-activity
-        input_B : dict
-            dictionary of post-activity input of each node
+        bottleneck : dict[str, torch.Tensor] | str
+            dictionary of calculated expressivity bottleneck at each pre-activity or file name
+        input_B : dict[str, torch.Tensor] | str
+            dictionary of post-activity input of each node or file name
         amplitude_factor : bool
             use amplitude factor on new neurons
         evaluate : bool
