@@ -424,6 +424,7 @@
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Fix sub-modules that are not registered in pytorch (<a class="reference external" href="https://github.com/growingnet/gromo/issues/179">#179</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix persistent value of input volume (<a class="reference external" href="https://github.com/growingnet/gromo/issues/174">#174</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix memory leak in tensor updates (<a class="reference external" href="https://github.com/growingnet/gromo/issues/138">#138</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Device handling in GrowingMLP, GrowingMLPMixer, and GrowingResidualMLP (<a class="reference external" href="https://github.com/growingnet/gromo/issues/129">#129</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
@@ -445,7 +446,7 @@
 <section id="api-changes">
 <h3>API changes<a class="headerlink" href="#api-changes" title="Link to this heading">#</a></h3>
 <ul class="simple">
-<li><p>Allow growth between two <cite>GrowingDAG</cite> modules (<a class="reference external" href="https://github.com/growingnet/gromo/issues/148">#148</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
+<li><p>Allow growth between two <cite>GrowingDAG</cite> modules (<a class="reference external" href="https://github.com/growingnet/gromo/issues/148">#148</a> &amp; <a class="reference external" href="https://github.com/growingnet/gromo/issues/179">#179</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Apply all candidate expansions on the same <cite>GrowingDAG</cite> without deepcopy (<a class="reference external" href="https://github.com/growingnet/gromo/issues/148">#148</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Moved <cite>compute_optimal_delta</cite> function from LinearMergeGrowingModuke to MergeGrowingModule (<a class="reference external" href="https://github.com/growingnet/gromo/issues/94">#94</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Renamed AdditionGrowingModule to MergeGrowingModule for clarity (<a class="reference external" href="https://github.com/growingnet/gromo/issues/84">#84</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
