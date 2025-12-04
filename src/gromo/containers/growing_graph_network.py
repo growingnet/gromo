@@ -13,7 +13,6 @@ from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
-    Conv2dMergeGrowingModule,
 )
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
@@ -202,6 +201,9 @@ class GrowingGraphNetwork(GrowingContainer):
         torch.Tensor
             norm of loss
         """
+        # If activity has extra trailing singleton dims like (b, c, 1, 1)
+        if activity.dim() == bottleneck.dim() + 2 and activity.shape[2:] == (1, 1):
+            activity = activity.squeeze(-1).squeeze(-1)
         loss = activity - bottleneck
         return (loss**2).sum() / loss.numel()
 
@@ -247,12 +249,12 @@ class GrowingGraphNetwork(GrowingContainer):
 
         def forward_fn(x):
             return self.block_forward(
-                F.linear if linear else F.conv2d,
-                alpha,
-                omega,
-                bias,
-                x,
-                sigma,
+                layer_fn=F.linear if linear else F.conv2d,
+                alpha=alpha,
+                omega=omega,
+                bias=bias,
+                x=x,
+                sigma=sigma,
                 **operation_args if not linear else {},
             )
 
@@ -315,12 +317,19 @@ class GrowingGraphNetwork(GrowingContainer):
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
+        linear_alpha_layer = isinstance(node_module, LinearMergeGrowingModule)
         if isinstance(expansion, InterMergeExpansion):
             prev_node_modules = expansion.previous_nodes
             next_node_modules = expansion.next_nodes
+            adjacent_node_module = node_module.next_modules[0]
+            assert adjacent_node_module._name == expansion.adjacent_expanding_node
+            linear_omega_layer = isinstance(
+                adjacent_node_module, LinearMergeGrowingModule
+            )
         elif isinstance(expansion, Expansion):
             prev_node_modules = self.dag.get_node_modules(expansion.previous_nodes)
             next_node_modules = self.dag.get_node_modules(expansion.next_nodes)
+            linear_omega_layer = linear_alpha_layer
 
         if type(bottlenecks) != type(activities):
             raise TypeError(
@@ -357,18 +366,24 @@ class GrowingGraphNetwork(GrowingContainer):
         in_edges = len(expansion.in_edges)
 
         # Initialize alpha and omega weights
-        if isinstance(node_module, Conv2dMergeGrowingModule):
+        if linear_alpha_layer:
+            alpha = torch.rand((self.neurons, total_in_features), device=self.device)
+        else:
             alpha = torch.rand(
                 (self.neurons, total_in_features, *node_module.kernel_size),
                 device=self.device,
             )
+        if linear_omega_layer and linear_alpha_layer:
+            omega = torch.rand((total_out_features, self.neurons), device=self.device)
+        elif linear_omega_layer:
+            omega = torch.rand(
+                (total_out_features, self.neurons, 1, 1), device=self.device
+            )
+        else:
             omega = torch.rand(
                 (total_out_features, self.neurons, *node_module.kernel_size),
                 device=self.device,
             )
-        else:
-            alpha = torch.rand((self.neurons, total_in_features), device=self.device)
-            omega = torch.rand((total_out_features, self.neurons), device=self.device)
         bias = torch.rand((self.neurons, in_edges), device=self.device)
         alpha = alpha / np.sqrt(alpha.numel())
         omega = omega / np.sqrt(omega.numel())
@@ -389,7 +404,7 @@ class GrowingGraphNetwork(GrowingContainer):
             bottleneck=bottleneck,
             input_keys=input_x_keys,
             target_keys=bottleneck_keys,
-            linear=isinstance(node_module, LinearMergeGrowingModule),
+            linear=linear_alpha_layer,
             operation_args={
                 "padding": "same",
             },
@@ -592,7 +607,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 for x, y in dataloader:
                     x = x.to(self.device)
                     y = y.to(self.device)
-                    pred = self.extended_forward(x, mask=mask)
+                    pred, _ = self.extended_forward(x, mask=mask)
                     loss.append(self.loss_fn(pred, y).item())
 
             return np.mean(loss).item()
@@ -749,10 +764,9 @@ class GrowingGraphNetwork(GrowingContainer):
             new_node = expansion.expanding_node
             next_node = expansion.next_nodes
             prev_node = expansion.previous_nodes
-            if not isinstance(next_node, list):
-                next_node = [next_node]
-            if not isinstance(prev_node, list):
-                prev_node = [prev_node]
+            if isinstance(expansion, InterMergeExpansion):
+                next_node = [n._name for n in next_node]
+                prev_node = [n._name for n in prev_node]
             if chosen_outputs is not None:
                 if new_node in chosen_outputs:
                     # Case: expand current node
@@ -763,8 +777,8 @@ class GrowingGraphNetwork(GrowingContainer):
                     new_actions.append(expansion)
                     continue
             elif chosen_inputs is not None:
-                # Case: connect previous node
                 if len(set(chosen_inputs).intersection(prev_node)) != 0:
+                    # Case: connect previous node
                     new_actions.append(expansion)
                     continue
         return new_actions
@@ -802,29 +816,45 @@ class GrowingGraphNetwork(GrowingContainer):
         # Reconstruct graph
         self.chosen_action = options[best_ind]
 
-        # Make selected nodes and edges non candidate
-        self.dag.toggle_node_candidate(self.chosen_action.expanding_node, candidate=False)
-        self.dag.toggle_edge_candidate(
-            self.chosen_action.previous_node,
-            self.chosen_action.next_node,
-            candidate=False,
-        )
+        self.clean_graph_with_chosen_action(options)
 
-        # Discard unused edges or nodes
-        for index, option in enumerate(options):
-            if index != best_ind:
-                if option.type == "new edge":
-                    self.dag.remove_edge(option.previous_node, option.next_node)
-                elif option.type == "new node":
-                    self.dag.remove_node(option.expanding_node)
-        del options
+    def clean_graph_with_chosen_action(self, options: Sequence[Expansion]):
+        assert self.chosen_action is not None
+
+        # Make selected nodes and edges non candidate
+        if self.chosen_action.dag == self.dag:
+            self.dag.toggle_node_candidate(
+                self.chosen_action.expanding_node, candidate=False
+            )
+            self.dag.toggle_edge_candidate(
+                self.chosen_action.previous_node,
+                self.chosen_action.next_node,
+                candidate=False,
+            )
+
+            # Discard unused edges or nodes
+            for option in options:
+                if option != self.chosen_action:
+                    if option.type == "new edge":
+                        self.dag.remove_edge(option.previous_node, option.next_node)
+                    elif option.type == "new node":
+                        self.dag.remove_node(option.expanding_node)
+
+            expanding_node = self.chosen_action.expanding_node
+        elif (
+            isinstance(self.chosen_action, InterMergeExpansion)
+            and self.chosen_action.adjacent_expanding_node in self.dag.nodes
+        ):
+            expanding_node = self.chosen_action.adjacent_expanding_node
+        else:
+            expanding_node = None
 
         # Delete updates based on mask
         for prev_node, next_node in self.dag.edges:
-            if prev_node == self.chosen_action.expanding_node:
+            if prev_node == expanding_node:
                 delete_input = False
                 delete_output = True
-            elif next_node == self.chosen_action.expanding_node:
+            elif next_node == expanding_node:
                 delete_input = True
                 delete_output = False
             else:
@@ -854,10 +884,16 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
         if self.chosen_action.type != "new edge":
-            if self.chosen_action.expanding_node in self.dag.nodes:
+            if self.chosen_action.dag == self.dag:
+                assert self.chosen_action.expanding_node in self.dag.nodes
                 expanding_node = self.chosen_action.expanding_node
-            else:
+            elif (
+                isinstance(self.chosen_action, InterMergeExpansion)
+                and self.chosen_action.adjacent_expanding_node in self.dag.nodes
+            ):
                 expanding_node = self.chosen_action.adjacent_expanding_node
+            else:
+                expanding_node = ""
             # Update size of expanded node
             self.update_size()
             # Rename new node to standard name
@@ -887,7 +923,9 @@ class GrowingGraphNetwork(GrowingContainer):
         """
         return self.dag(x)
 
-    def extended_forward(self, x: torch.Tensor, mask: dict = {}) -> torch.Tensor:
+    def extended_forward(
+        self, x: torch.Tensor, x_ext: torch.Tensor = None, mask: dict = {}
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Forward function of DAG network including extensions of the modules
 
         Parameters
@@ -903,7 +941,7 @@ class GrowingGraphNetwork(GrowingContainer):
         torch.Tensor
             output of the extended model
         """
-        return self.dag.extended_forward(x, mask=mask)
+        return self.dag.extended_forward(x, x_ext, mask=mask)
 
     def parameters(self) -> Iterator:
         """Iterator of network parameters

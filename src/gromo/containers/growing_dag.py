@@ -203,7 +203,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         module : GrowingModule
             growable module to set to edge
         """
+        edge = str((prev_node, next_node))
+        if edge in self._modules:
+            del self._modules[edge]
         self[prev_node][next_node]["module"] = module
+        self._modules[edge] = module
 
     def __set_node_module(self, node: str, module: MergeGrowingModule) -> None:
         """Setter function for module of node
@@ -215,7 +219,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         module : MergeGrowingModule
             growable module to set to node
         """
+        if node in self._modules:
+            del self._modules[node]
         self.nodes[node]["module"] = module
+        self._modules[node] = module
 
     def toggle_edge_candidate(
         self, prev_node: str, next_node: str, candidate: bool
@@ -282,6 +289,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         bool
             candidate attribute
         """
+        if ("_" in prev_node) or ("_" in next_node):
+            return True
         if (prev_node, next_node) not in self.edges:
             # default behaviour assumes only one GrowingDAG is growing at a time
             warnings.warn(
@@ -304,14 +313,17 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         bool
             candidate attribute
         """
-        if node not in self.nodes:
+        if "_" in node:
+            return True
+        simple_nodes = {k.split("_")[0]: v for k, v in self.nodes.items() if node in k}
+        if node not in simple_nodes:
             # default behaviour assumes only one GrowingDAG is growing at a time
             warnings.warn(
                 f"Node {node} does not belong in the current GrowingDAG({self._name}). All external nodes are assumed to be non-candidate.",
                 UserWarning,
             )
             return False
-        return self.nodes[node].get("candidate", False)
+        return simple_nodes[node].get("candidate", False)
 
     def get_edge_module(self, prev_node: str, next_node: str) -> GrowingModule:
         """Getter function for module of edge
@@ -1005,7 +1017,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
 
         one_hop_edges = []
-        new_node = str(len(self.nodes) - 1)
+        new_node = f"{len(self.nodes) - 1}@{self._name}"
         for prev_node, succ in successors.items():
             for next_node in succ:
                 if not self._indirect_connection_exists(prev_node, next_node):
@@ -1064,7 +1076,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         return direct_edges, one_hop_edges
 
-    def define_next_actions(self) -> list["Expansion"]:
+    def define_next_actions(self, expand_end: bool = False) -> list["Expansion"]:
         """Find all possible growth extensions for the current graph
 
         Returns
@@ -1118,6 +1130,21 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 continue
             expansion = Expansion(self, "expanded node", expanding_node=node)
             actions.append(expansion)
+
+        if expand_end:
+            next_node = self.get_node_module(self.end).next_modules
+            if len(next_node) > 1:
+                raise NotImplementedError(
+                    "Can only expand single connected inter-merge nodes"
+                )
+            elif len(next_node) == 1:
+                expansion = InterMergeExpansion(
+                    self,
+                    "expanded node",
+                    expanding_node=self.end,
+                    adjacent_expanding_node=next_node[0]._name,
+                )
+                actions.append(expansion)
 
         return actions
 
@@ -1196,8 +1223,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return output[self.end]
 
     def extended_forward(
-        self, x: torch.Tensor, mask: dict = {}, verbose: bool = False
-    ) -> torch.Tensor:
+        self,
+        x: torch.Tensor,
+        x_ext: torch.Tensor = None,
+        mask: dict = {},
+        verbose: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Extended forward function for DAG model
 
         Parameters
@@ -1217,7 +1248,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         if verbose:
             print("\nExtended Forward DAG...")
-        output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, None)}
+        output: dict[str, tuple[torch.Tensor, torch.Tensor]] = {self.root: (x, x_ext)}
         for node in nx.topological_sort(self):
             # Check if node is a candidate node and is not present in the mask
             if self.is_node_candidate(node) and node not in mask.get("nodes", {}):
@@ -1245,8 +1276,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 activity, activity_ext = module.extended_forward(
                     *module_input,
                     use_optimal_delta=True,
-                    use_extended_input=previous_node in mask.get("nodes", {}),
-                    use_extended_output=node in mask.get("nodes", {}),
+                    use_extended_input=previous_node in mask.get("nodes", []),
+                    use_extended_output=node in mask.get("nodes", []),
                 )
                 # activity_ext = (
                 #     activity_ext
@@ -1277,7 +1308,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )  # TODO: simplify
         if verbose:
             print()
-        return output[self.end][0]
+        return output[self.end]
 
     # Parameters
 
@@ -1397,7 +1428,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             accuracy and loss, optionally f1-score
         """
         with torch.no_grad():
-            pred = self.extended_forward(x)
+            pred, _ = self.extended_forward(x)
             loss = loss_fn(pred, y)
 
         if self.out_features > 1:
@@ -1424,9 +1455,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         lines = [f"GrowingDAG[{self._name}]("]
         lines.append(f"\tNodes ({len(nodes)}):")
         for i, n in enumerate(nodes):
+            activation = list(self.nodes[n]["module"].post_merge_function)
+            activation = (
+                "None"
+                if all([isinstance(act, torch.nn.Identity) for act in activation])
+                else str(activation)
+            )
             attrs = {
                 "layer type": self.nodes[n]["type"],
                 "hidden size": self.nodes[n]["size"],
+                "activation": activation,
             }
             attr_str = ", ".join(f"{k}: {v}" for k, v in list(attrs.items()))
             lines.append(f"\t\t{n} ({attr_str if attr_str else '{}'})")

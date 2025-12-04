@@ -75,6 +75,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Fix sub-modules that are not registered in pytorch (:gh:`179` by `Stella Douka`_)
 - Fix persistent value of input volume (:gh:`174` by `Stella Douka`_)
 - Fix memory leak in tensor updates (:gh:`138` by `Stella Douka`_)
 - Device handling in GrowingMLP, GrowingMLPMixer, and GrowingResidualMLP (:gh:`129` by `Stella Douka`_)
@@ -95,7 +96,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
-- Allow growth between two `GrowingDAG` modules (:gh:`148` by `Stella Douka`_)
+- Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
 - Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)
 - Renamed AdditionGrowingModule to MergeGrowingModule for clarity (:gh:`84` by `Stella Douka`_)
