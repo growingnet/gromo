@@ -1257,7 +1257,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             elif len(next_node) == 1:
                 expansion = InterMergeExpansion(
                     self,
-                    "expanded node",
+                    ExpansionType.EXPANDED_NODE,
                     expanding_node=self.end,
                     adjacent_expanding_node=next_node[0]._name,
                 )

@@ -918,9 +918,9 @@ class GrowingGraphNetwork(GrowingContainer):
             # Discard unused edges or nodes
             for option in options:
                 if option != self.chosen_action:
-                    if option.type == "new edge":
+                    if option.type == ExpansionType.NEW_EDGE:
                         self.dag.remove_edge(option.previous_node, option.next_node)
-                    elif option.type == "new node":
+                    elif option.type == ExpansionType.NEW_NODE:
                         self.dag.remove_node(option.expanding_node)
 
             expanding_node = self.chosen_action.expanding_node

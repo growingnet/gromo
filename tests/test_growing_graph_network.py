@@ -4,7 +4,12 @@ import unittest
 import torch
 from torch.nn.functional import one_hot
 
-from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
+from gromo.containers.growing_dag import (
+    Expansion,
+    ExpansionType,
+    GrowingDAG,
+    InterMergeExpansion,
+)
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
 
@@ -379,7 +384,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.actions.append(
             InterMergeExpansion(
                 self.net.dag,
-                type="expanded node",
+                exp_type=ExpansionType.EXPANDED_NODE,
                 expanding_node=self.net.dag.end,
                 adjacent_expanding_node="test",
             )
@@ -624,7 +629,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
 
         expansion = InterMergeExpansion(
             dag=self.net_conv.dag,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node=end_conv,
             adjacent_expanding_node=start_linear,
         )
