@@ -2153,7 +2153,13 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def normalize_optimal_updates(self, std_target: float | None = None) -> None:
+    def normalize_optimal_updates(
+        self,
+        std_target: float | None = None,
+        equalize_second_layer: bool = True,
+        equalize_extensions: bool = False,
+        weird_normalization: bool = False,
+    ) -> None:
         """
         Normalize optimal update to target standard deviation
 
@@ -2163,6 +2169,7 @@ class GrowingModule(torch.nn.Module):
         We use the standard deviation of the weights of the layer if it has weights.
         If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
 
+        If equalize_second_layer is True:
         Let s the target standard deviation then:
         - optimal_delta_layer is scaled to have a std of s (so
         by s / std(optimal_delta_layer))
@@ -2172,11 +2179,44 @@ class GrowingModule(torch.nn.Module):
         and the optimal_delta_layer
         (so by std(extended_input_layer) / std(optimal_delta_layer))
 
+        If equalize_extensions is True:
+        Let s the target standard deviation then:
+        - extended_input_layer is scaled to have a std of s (so
+        by s / std(extended_input_layer))
+        - extended_output_layer is scaled to have a std of s (so
+        by s / std(extended_output_layer))
+        - optimal_delta_layer is scaled to match the scaling of the extended_input_layer
+        and the extended_output_layer
+        (so by s ** 2 / (std(extended_input_layer) * std(extended_output_layer)))
+
         Parameters
         ----------
         std_target : float | None
             target standard deviation for the weights of the updates
+        equalize_second_layer : bool
+            whether to equalize the standard deviation of the optimal delta and
+            the extended input layer
+        equalize_extensions : bool
+            whether to equalize the standard deviation of the extended input and
+            output layers
         """
+        assert not (
+            equalize_second_layer and equalize_extensions
+        ), "Cannot equalize both second layer and extensions."
+        assert (
+            sum(
+                (
+                    equalize_second_layer,
+                    equalize_extensions,
+                    weird_normalization,
+                )
+            )
+            == 1
+        ), (
+            "Exactly one of equalize_second_layer, equalize_extensions, "
+            "or weird_normalization must be True."
+        )
+
         # Determine target standard deviation
         if std_target is None:
             if (
@@ -2196,31 +2236,101 @@ class GrowingModule(torch.nn.Module):
                 std_target = 1.0 / (
                     self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
                 )
+        assert isinstance(std_target, float), "std_target must be a float."
+        assert std_target > 0, "std_target must be positive."
 
         delta_scale = 1.0
-        # Get current standard deviations and calculate scaling factors
-        if self.optimal_delta_layer is not None and hasattr(
-            self.optimal_delta_layer, "weight"
-        ):
-            current_std = self.optimal_delta_layer.weight.std().item()
-            if current_std > 0:
-                delta_scale = std_target / current_std
 
-        if self.extended_input_layer is not None and hasattr(
-            self.extended_input_layer, "weight"
-        ):
-            current_std = self.extended_input_layer.weight.std().item()
-            if current_std > 0:
-                input_extension_scale = std_target / current_std
+        if equalize_second_layer:
+            # Get current standard deviations and calculate scaling factors
+            if self.optimal_delta_layer is not None and hasattr(
+                self.optimal_delta_layer, "weight"
+            ):
+                current_std = self.optimal_delta_layer.weight.std().item()
+                if current_std > 0:
+                    delta_scale = std_target / current_std
+
+            if self.extended_input_layer is not None and hasattr(
+                self.extended_input_layer, "weight"
+            ):
+                current_std = self.extended_input_layer.weight.std().item()
+                if current_std > 0:
+                    input_extension_scale = std_target / current_std
+                else:
+                    input_extension_scale = 1.0 / (
+                        self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
+                    )
             else:
-                input_extension_scale = 1.0 / (
-                    self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
-                )
-        else:
-            input_extension_scale = 1.0
+                input_extension_scale = 1.0
 
-        # Calculate output extension scale to maintain relationship
-        output_extension_scale = input_extension_scale / delta_scale
+            # Calculate output extension scale to maintain relationship
+            output_extension_scale = delta_scale / input_extension_scale
+        elif equalize_extensions:
+            # Get current standard deviations and calculate scaling factors
+            if self.extended_input_layer is not None and hasattr(
+                self.extended_input_layer, "weight"
+            ):
+                current_std = self.extended_input_layer.weight.std().item()
+                if current_std > 0:
+                    input_extension_scale = std_target / current_std
+                else:
+                    input_extension_scale = 1.0 / (
+                        self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
+                    )
+            else:
+                input_extension_scale = 1.0
+
+            if (
+                self.previous_module is not None
+                and hasattr(self.previous_module, "extended_output_layer")
+                and self.previous_module.extended_output_layer is not None
+                and hasattr(self.previous_module.extended_output_layer, "weight")
+            ):
+                current_std = (
+                    self.previous_module.extended_output_layer.weight.std().item()
+                )
+                if current_std > 0:
+                    output_extension_scale = std_target / current_std
+                else:
+                    output_extension_scale = 1.0 / (
+                        self.get_fan_in_from_layer(
+                            self.previous_module.extended_output_layer
+                        )
+                        ** 0.5
+                    )
+            else:
+                output_extension_scale = 1.0
+
+            # Calculate delta scale to maintain relationship
+            delta_scale = input_extension_scale * output_extension_scale
+        elif weird_normalization:
+            if self.optimal_delta_layer is not None and hasattr(
+                self.optimal_delta_layer, "weight"
+            ):
+                current_std = self.optimal_delta_layer.weight.std().item()
+                if current_std > 0:
+                    delta_scale = std_target / current_std
+            if self.extended_input_layer is not None and hasattr(
+                self.extended_input_layer, "weight"
+            ):
+                current_std = self.extended_input_layer.weight.std().item()
+                if current_std > 0:
+                    output_extension_scale = std_target / current_std
+                else:
+                    output_extension_scale = 1.0 / (
+                        self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
+                    )
+            else:
+                output_extension_scale = 1.0
+            input_extension_scale = 1.0
+        else:
+            raise ValueError(
+                "Either equalize_second_layer or equalize_extensions must be True."
+            )
+
+        # assert input_extension_scale * output_extension_scale == delta_scale, (
+        #     "Scaling factors are inconsistent."
+        # )
 
         # Apply scaling using existing methods
         if self.optimal_delta_layer is not None and delta_scale != 1.0:
