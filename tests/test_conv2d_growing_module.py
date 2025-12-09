@@ -108,6 +108,26 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         m._input_volume = None
         self.assertEqual(m.input_volume, self.prev.output_volume)
 
+    def test_output_volume_with_reshaping(self):
+        """Test output_volume when the ouput is reshaped."""
+        m = self.merge
+        # Set post_merge_function
+        m.post_merge_function = torch.nn.AvgPool2d(2, 2)
+        output_size = compute_output_shape_conv(self.prev.input_size, self.prev)
+        output_size = (output_size[0] - 2) / 2 + 1
+        output_volume = m.in_channels * output_size * output_size
+        self.assertEqual(m.output_volume, output_volume)
+
+        # Set reshaping function
+        m.reshape_function = torch.nn.Flatten()
+        self.assertEqual(m.output_volume, output_volume)
+        m.reshape_function = torch.nn.AdaptiveAvgPool2d(output_size=1)
+        self.assertEqual(m.output_volume, m.in_channels)
+
+        # Reset
+        m.input_size = None
+        self.assertEqual(m.output_volume, self.prev.output_volume)
+
     def test_constructor_int_conversions(self):
         """Test that int input_size and next_kernel_size are converted to tuples."""
         # Test with int input_size
@@ -148,7 +168,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         # With LinearGrowingModule next
         linear_next = LinearGrowingModule(m.output_volume, 10, device=global_device())
         m.set_next_modules([linear_next])
-        self.assertEqual(m.padding, (0, 0))
+        default_padding = ((self.kernel_size[0] - 1) / 2, (self.kernel_size[0] - 1) / 2)
+        self.assertEqual(m.padding, default_padding)
         self.assertEqual(m.stride, (1, 1))
         self.assertEqual(m.dilation, (1, 1))
 

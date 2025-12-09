@@ -1,4 +1,5 @@
 import types
+from math import prod
 from warnings import warn
 
 import torch
@@ -53,6 +54,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         input_size: int | tuple[int, int],
         next_kernel_size: int | tuple[int, int],
         post_merge_function: torch.nn.Module = torch.nn.Identity(),
+        reshape_function: torch.nn.Module = torch.nn.Identity(),
         previous_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         next_modules: list[GrowingModule | MergeGrowingModule] | None = None,
         allow_growing: bool = False,
@@ -81,6 +83,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             device=device,
             name=name,
         )
+        self.reshape_function = reshape_function
 
     @property
     def input_volume(self) -> int:
@@ -113,6 +116,12 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         int
             output volume
         """
+        if self.input_size is not None:
+            with torch.no_grad():
+                x = torch.zeros(1, self.in_channels, *self.input_size, device=self.device)
+                x = self.post_merge_function(x)
+                x = self.reshape_function(x)
+                return prod(x.shape)
         return self.input_volume
 
     @property
@@ -188,7 +197,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         elif isinstance(
             self.next_modules[0], (LinearGrowingModule, LinearMergeGrowingModule)
         ):
-            return (0, 0)
+            return ((self.kernel_size[0] - 1) // 2, (self.kernel_size[1] - 1) // 2)
         else:
             raise NotImplementedError
 
