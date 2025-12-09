@@ -6,6 +6,7 @@ from torch import Tensor
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.utils import compute_tensor_stats
 
 
 class GrowingMLPBlock(GrowingContainer):
@@ -17,6 +18,19 @@ class GrowingMLPBlock(GrowingContainer):
     - Layer first
     - Activation mid
     - Layer second
+
+    Parameters
+    ----------
+    num_features : int
+        Number of input and output features, in case of convolutional layer, the number of channels.
+    hidden_features : int
+        Number of hidden features, if zero the block is the zero function.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the block.
+    kwargs_layer : Optional[Dict[str, Any]]
+        Dictionary of arguments for the layers (e.g., bias, ...).
     """
 
     def __init__(
@@ -27,22 +41,6 @@ class GrowingMLPBlock(GrowingContainer):
         name: Optional[str] = None,
         kwargs_layer: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """
-        Initialize the block.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of input and output features, in case of convolutional layer, the number of channels.
-        hidden_features : int
-            Number of hidden features, if zero the block is the zero function.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the block.
-        kwargs_layer : Optional[Dict[str, Any]]
-            Dictionary of arguments for the layers (e.g., bias, ...).
-        """
         if kwargs_layer is None:
             kwargs_layer = {}
 
@@ -68,6 +66,7 @@ class GrowingMLPBlock(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the block in the _growing_layers private attribute"""
         self._growing_layers = [self.second_layer]
 
     def extended_forward(self, x: Tensor) -> Tensor:
@@ -118,34 +117,35 @@ class GrowingMLPBlock(GrowingContainer):
         y = self.dropout(y)
         return y
 
-    @staticmethod
-    def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        std_value = tensor.std().item() if tensor.numel() > 1 else -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
-
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the block
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         statistics = {}
         for i, layer in enumerate([self.first_layer, self.second_layer]):
             if layer.weight.numel() == 0:
                 continue
             statistics[i] = {
-                "weight": self.tensor_statistics(layer.weight),
+                "weight": compute_tensor_stats(layer.weight),
             }
             if layer.bias is not None:
-                statistics[i]["bias"] = self.tensor_statistics(layer.bias)
+                statistics[i]["bias"] = compute_tensor_stats(layer.bias)
             statistics[i]["input_shape"] = layer.in_features
             statistics[i]["output_shape"] = layer.out_features
         return statistics
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information of block including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         layer_information = {
             "update_value": self.second_layer.first_order_improvement,
             "parameter_improvement": self.second_layer.parameter_update_decrease,
@@ -163,6 +163,21 @@ class GrowingMLPBlock(GrowingContainer):
 class GrowingTokenMixer(GrowingContainer):
     """
     Represents a token mixer in a growing network.
+
+    Parameters
+    ----------
+    num_patches : int
+        Number of patches.
+    num_features : int
+        Number of features.
+    hidden_features : int
+        Number of hidden features.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the token mixer.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -174,26 +189,8 @@ class GrowingTokenMixer(GrowingContainer):
         name: Optional[str] = None,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the token mixer.
-
-        Parameters
-        ----------
-        num_patches : int
-            Number of patches.
-        num_features : int
-            Number of features.
-        hidden_features : int
-            Number of hidden features.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the token mixer.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
-            in_features=num_features, out_features=num_features, device=device
+            in_features=num_features, out_features=num_features, device=device, name=name
         )
         self.norm = nn.LayerNorm(num_features, device=self.device)
         self.mlp = GrowingMLPBlock(
@@ -202,6 +199,7 @@ class GrowingTokenMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         self._growing_layers = self.mlp._growing_layers
 
     def forward(self, x: Tensor) -> Tensor:
@@ -249,15 +247,42 @@ class GrowingTokenMixer(GrowingContainer):
         return out
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the model
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         return self.mlp.weights_statistics()
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         return self.mlp.update_information()
 
 
 class GrowingChannelMixer(GrowingContainer):
     """
     Represents a channel mixer in a growing network.
+
+    Parameters
+    ----------
+    num_features : int
+        Number of features.
+    hidden_features : int
+        Number of hidden features.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the channel mixer.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -268,24 +293,8 @@ class GrowingChannelMixer(GrowingContainer):
         name: Optional[str] = None,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the channel mixer.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of features.
-        hidden_features : int
-            Number of hidden features.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the channel mixer.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
-            in_features=num_features, out_features=num_features, device=device
+            in_features=num_features, out_features=num_features, device=device, name=name
         )
         self.norm = nn.LayerNorm(num_features, device=self.device)
         self.mlp = GrowingMLPBlock(
@@ -294,6 +303,7 @@ class GrowingChannelMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         self._growing_layers = self.mlp._growing_layers
 
     def forward(self, x: Tensor) -> Tensor:
@@ -337,15 +347,46 @@ class GrowingChannelMixer(GrowingContainer):
         return out
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the model
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         return self.mlp.weights_statistics()
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         return self.mlp.update_information()
 
 
 class GrowingMixerLayer(GrowingContainer):
     """
     Represents a mixer layer in a growing network.
+
+    Parameters
+    ----------
+    num_patches : int
+        Number of patches.
+    num_features : int
+        Number of features.
+    hidden_dim_token : int
+        Number of hidden token features.
+    hidden_dim_channel : int
+        Number of hidden channel features.
+    dropout : float
+        Dropout rate.
+    name : Optional[str]
+        Name of the mixer layer.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -358,28 +399,8 @@ class GrowingMixerLayer(GrowingContainer):
         name: Optional[str] = "Mixer Layer",
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the mixer layer.
-
-        Parameters
-        ----------
-        num_patches : int
-            Number of patches.
-        num_features : int
-            Number of features.
-        hidden_dim_token : int
-            Number of hidden token features.
-        hidden_dim_channel : int
-            Number of hidden channel features.
-        dropout : float
-            Dropout rate.
-        name : Optional[str]
-            Name of the mixer layer.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
-            in_features=num_features, out_features=num_features, device=device
+            in_features=num_features, out_features=num_features, device=device, name=name
         )
         self.token_mixer = GrowingTokenMixer(
             num_patches, num_features, hidden_dim_token, dropout, device=self.device
@@ -390,6 +411,7 @@ class GrowingMixerLayer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         self._growing_layers = list()
         self._growing_layers.extend(self.token_mixer._growing_layers)
         self._growing_layers.extend(self.channel_mixer._growing_layers)
@@ -431,12 +453,26 @@ class GrowingMixerLayer(GrowingContainer):
         return x
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the layer
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         statistics = {}
         statistics[0] = self.token_mixer.weights_statistics()
         statistics[1] = self.channel_mixer.weights_statistics()
         return statistics
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information of layer including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         layer_information = {
             "token_mixer": self.token_mixer.update_information(),
             "channel_mixer": self.channel_mixer.update_information(),
@@ -444,9 +480,22 @@ class GrowingMixerLayer(GrowingContainer):
         return layer_information
 
 
-def check_sizes(image_size, patch_size):
+def check_sizes(image_size: int, patch_size: int) -> int:
+    """Get the correct number of patches
+    Check that the image size is fully divisible by the patch size
+
+    Parameters
+    ----------
+    image_size : int
+    patch_size : int
+
+    Returns
+    -------
+    int
+        number of patches
+    """
     sqrt_num_patches, remainder = divmod(image_size, patch_size)
-    assert remainder == 0, "`image_size` must be divisibe by `patch_size`"
+    assert remainder == 0, "`image_size` must be divisible by `patch_size`"
     num_patches = sqrt_num_patches**2
     return num_patches
 
@@ -454,6 +503,27 @@ def check_sizes(image_size, patch_size):
 class GrowingMLPMixer(GrowingContainer):
     """
     Represents a growing MLP mixer network.
+
+    Parameters
+    ----------
+    in_features : tuple[int, int, int]
+        Input features (channels, height, width).
+    out_features : int
+        Number of output features.
+    patch_size : int
+        Size of each patch.
+    num_features : int
+        Number of features.
+    hidden_dim_token : int
+        Number of hidden token features.
+    hidden_dim_channel : int
+        Number of hidden channel features.
+    num_blocks : int
+        Number of mixer blocks.
+    dropout : float
+        Dropout rate.
+    device : Optional[torch.device]
+        Device to use for computation.
     """
 
     def __init__(
@@ -468,30 +538,6 @@ class GrowingMLPMixer(GrowingContainer):
         dropout: float = 0.0,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the growing MLP mixer.
-
-        Parameters
-        ----------
-        in_features : tuple[int, int, int]
-            Input features (channels, height, width).
-        out_features : int
-            Number of output features.
-        patch_size : int
-            Size of each patch.
-        num_features : int
-            Number of features.
-        hidden_dim_token : int
-            Number of hidden token features.
-        hidden_dim_channel : int
-            Number of hidden channel features.
-        num_blocks : int
-            Number of mixer blocks.
-        dropout : float
-            Dropout rate.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         in_channels, image_size, _ = in_features
         num_patches = check_sizes(image_size, patch_size)
         super().__init__(
@@ -523,6 +569,7 @@ class GrowingMLPMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         self._growing_layers = list()
         for mixer in self.mixers:
             self._growing_layers.append(mixer.token_mixer.mlp.second_layer)
@@ -577,12 +624,26 @@ class GrowingMLPMixer(GrowingContainer):
         return logits
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the model
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         statistics = {}
         for i, mixer in enumerate(self.mixers):
             statistics[i] = mixer.weights_statistics()
         return statistics
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         model_information = {}
         for i, mixer in enumerate(self.mixers):
             model_information[i] = mixer.update_information()

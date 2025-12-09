@@ -166,7 +166,9 @@ class TestResNet(TorchTestCase):
             )
 
         # Add a block with 0 hidden features to stage 0
-        model.append_block(stage_index=0, hidden_channels=0)
+        with self.assertWarns(UserWarning):
+            # Initializing zero-element tensors is a no-op
+            model.append_block(stage_index=0, hidden_channels=0)
 
         # Verify number of blocks increased
         self.assertEqual(len(model.stages[0]), 2, "Stage 0 should now have 2 blocks")  # type: ignore

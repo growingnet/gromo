@@ -17,8 +17,8 @@ def sqrt_inverse_matrix_semi_positive(
         input matrix, square and semi-positive definite
     threshold: float
         threshold to consider an eigenvalue as zero
-    preferred_linalg_library: None | str in ("magma", "cusolver")
-        linalg library to use, "cusolver" may fail
+    preferred_linalg_library: None | str
+        linalg library to use, should be one of ("magma", "cusolver"), "cusolver" may fail
         for non-positive definite matrix if CUDA < 12.1 is used
         see: https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html
 
@@ -26,6 +26,12 @@ def sqrt_inverse_matrix_semi_positive(
     -------
     torch.Tensor
         square root of the inverse of the input matrix
+
+    Raises
+    ------
+    ValueError
+        if preferred_linalg_library is "cusolver" this is probably a CUDA error
+    torch.linalg.LinAlgError
     """
     assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
     assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
@@ -66,15 +72,15 @@ def optimal_delta(
 
     Parameters
     ----------
-    tensor_s: torch.Tensor, of shape [total_in_features, total_in_features]
-        S tensor from calling layer, shape
-    tensor_m: torch.Tensor, of shape [total_in_features, in_features]
-        M tensor from calling layer
-    dtype: torch.dtype, default torch.float32
-        dtype for S and M during the computation
-    force_pseudo_inverse: bool, default False
+    tensor_s: torch.Tensor
+        S tensor from calling layer, of shape [total_in_features, total_in_features]
+    tensor_m: torch.Tensor
+        M tensor from calling layer, of shape [total_in_features, in_features]
+    dtype: torch.dtype, optional
+        dtype for S and M during the computation, by default torch.float32
+    force_pseudo_inverse: bool, optional
         if True, use the pseudo-inverse to compute the optimal delta even if the
-        matrix is invertible
+        matrix is invertible, by default False
 
     Returns
     -------
@@ -142,10 +148,10 @@ def compute_optimal_added_parameters(
 
     Parameters
     ----------
-    matrix_s: torch.Tensor in (s, s)
-        square matrix S
-    matrix_n: torch.Tensor in (s, t)
-        matrix N
+    matrix_s: torch.Tensor
+        square matrix S in (s, s)
+    matrix_n: torch.Tensor
+        matrix N in (s, t)
     numerical_threshold: float
         threshold to consider an eigenvalue as zero in the square root of the inverse of S
     statistical_threshold: float
@@ -155,13 +161,13 @@ def compute_optimal_added_parameters(
 
     Returns
     -------
-    tuple[torch.Tensor, torch.Tensor, torch.Tensor] in (k, s) (t, k) (k,)
-        optimal added weights alpha, omega and eigenvalues lambda
+    tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        optimal added weights alpha (k, s), omega (t, k) and eigenvalues lambda (k,)
     """
     # matrix_n = matrix_n.t()
     s_1, s_2 = matrix_s.shape
     assert s_1 == s_2, "The input matrix S must be square."
-    n_1, n_2 = matrix_n.shape
+    n_1, _ = matrix_n.shape
     assert s_2 == n_1, (
         f"The input matrices S and N must have compatible shapes."
         f"(got {matrix_s.shape=} and {matrix_n.shape=})"
@@ -226,7 +232,7 @@ def compute_output_shape_conv(
 
     Parameters
     ----------
-    input_shape: tuple
+    input_shape: tuple[int, int]
         shape of the input tensor (H, W)
     conv: torch.nn.Conv2d
         convolutional layer
@@ -275,7 +281,7 @@ def compute_mask_tensor_t(
 
     Parameters
     ----------
-    input_shape: tuple
+    input_shape: tuple[int, int]
         shape of the input tensor B[-1] of size (H[-1], W[-1])
     conv: torch.nn.Conv2d
         convolutional layer applied to the input tensor B[-1]
@@ -334,6 +340,13 @@ def create_bordering_effect_convolution(
     -------
     torch.nn.Conv2d
         convolutional layer that simulates the border effect
+
+    Raises
+    ------
+    ValueError
+        if argument channels is not a positive integer
+    TypeError
+        if argument convolution is not of type torch.nn.Conv2d
     """
     if not isinstance(channels, int) or channels <= 0:
         raise ValueError("Input 'input_channels' must be a positive integer.")
@@ -384,9 +397,9 @@ def apply_border_effect_on_unfolded(
         unfolded tensor to be modified
     original_size: tuple[int, int]
         original size of the tensor before unfolding
-    border_effect_conv: torch.Conv2d
+    border_effect_conv: torch.nn.Conv2d | None, optional
         convolutional layer to be applied on the unfolded tensor
-    identity_conv: torch.Conv2d
+    identity_conv: torch.nn.Conv2d | None, optional
         convolutional layer that simulates the identity effect,
         if None, it will be created from `border_effect_conv`.
 
@@ -394,6 +407,11 @@ def apply_border_effect_on_unfolded(
     -------
     torch.Tensor
         modified unfolded tensor
+
+    Raises
+    ------
+    TypeError
+        if argument unfloded_tensor is not of type torch.Tensor
     """
     if not isinstance(unfolded_tensor, torch.Tensor):
         raise TypeError("Input 'unfolded_tensor' must be a torch.Tensor")
