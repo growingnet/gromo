@@ -2156,9 +2156,7 @@ class GrowingModule(torch.nn.Module):
     def normalize_optimal_updates(
         self,
         std_target: float | None = None,
-        equalize_second_layer: bool = True,
-        equalize_extensions: bool = False,
-        weird_normalization: bool = False,
+        normalization_type: str = "weird_normalization",
     ) -> None:
         """
         Normalize optimal update to target standard deviation
@@ -2193,28 +2191,18 @@ class GrowingModule(torch.nn.Module):
         ----------
         std_target : float | None
             target standard deviation for the weights of the updates
-        equalize_second_layer : bool
-            whether to equalize the standard deviation of the optimal delta and
-            the extended input layer
-        equalize_extensions : bool
-            whether to equalize the standard deviation of the extended input and
-            output layers
+        normalization_type : str
+            type of normalization to use, one of
+            'equalize_second_layer', 'equalize_extensions', 'weird_normalization'
         """
-        assert not (
-            equalize_second_layer and equalize_extensions
-        ), "Cannot equalize both second layer and extensions."
-        assert (
-            sum(
-                (
-                    equalize_second_layer,
-                    equalize_extensions,
-                    weird_normalization,
-                )
-            )
-            == 1
-        ), (
-            "Exactly one of equalize_second_layer, equalize_extensions, "
-            "or weird_normalization must be True."
+        existing_normalizations = [
+            "equalize_second_layer",
+            "equalize_extensions",
+            "weird_normalization",
+        ]
+        assert normalization_type in existing_normalizations, (
+            f"normalization_type must be one of {existing_normalizations}, "
+            f"got {normalization_type} instead."
         )
 
         # Determine target standard deviation
@@ -2241,7 +2229,7 @@ class GrowingModule(torch.nn.Module):
 
         delta_scale = 1.0
 
-        if equalize_second_layer:
+        if normalization_type == "equalize_second_layer":
             # Get current standard deviations and calculate scaling factors
             if self.optimal_delta_layer is not None and hasattr(
                 self.optimal_delta_layer, "weight"
@@ -2265,7 +2253,7 @@ class GrowingModule(torch.nn.Module):
 
             # Calculate output extension scale to maintain relationship
             output_extension_scale = delta_scale / input_extension_scale
-        elif equalize_extensions:
+        elif normalization_type == "equalize_extensions":
             # Get current standard deviations and calculate scaling factors
             if self.extended_input_layer is not None and hasattr(
                 self.extended_input_layer, "weight"
@@ -2303,7 +2291,7 @@ class GrowingModule(torch.nn.Module):
 
             # Calculate delta scale to maintain relationship
             delta_scale = input_extension_scale * output_extension_scale
-        elif weird_normalization:
+        elif normalization_type == "weird_normalization":
             if self.optimal_delta_layer is not None and hasattr(
                 self.optimal_delta_layer, "weight"
             ):
@@ -2324,9 +2312,7 @@ class GrowingModule(torch.nn.Module):
                 output_extension_scale = 1.0
             input_extension_scale = 1.0
         else:
-            raise ValueError(
-                "Either equalize_second_layer or equalize_extensions must be True."
-            )
+            raise ValueError(f"normalization_type {normalization_type} is not supported.")
 
         # assert input_extension_scale * output_extension_scale == delta_scale, (
         #     "Scaling factors are inconsistent."
