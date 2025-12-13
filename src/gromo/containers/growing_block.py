@@ -155,7 +155,7 @@ class GrowingBlock(GrowingContainer):
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, x: torch.Tensor
+        self, x: torch.Tensor, mask: None = None
     ) -> torch.Tensor:
         """
         Forward pass of the block with the current modifications.
@@ -164,6 +164,8 @@ class GrowingBlock(GrowingContainer):
         ----------
         x: torch.Tensor
             input tensor
+        mask: None
+            mask tensor (not used)
 
         Returns
         -------
@@ -279,6 +281,16 @@ class GrowingBlock(GrowingContainer):
         """
         self.second_layer.delete_update()
 
+    def set_scaling_factor(self, factor: float) -> None:
+        """Assign scaling factor to all growing layers
+
+        Parameters
+        ----------
+        factor : float
+            scaling factor
+        """
+        self.second_layer.set_scaling_factor(factor)
+
     def compute_optimal_updates(
         self,
         numerical_threshold: float = 1e-15,
@@ -324,31 +336,62 @@ class GrowingBlock(GrowingContainer):
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
-        if extension_size is None:
-            assert (
-                self.eigenvalues_extension is not None
-            ), "No way to know the extension size."
-            self.hidden_features += self.eigenvalues_extension.shape[0]
+        if self.second_layer.extended_input_layer is not None:
+            if extension_size is None:
+                assert (
+                    self.eigenvalues_extension is not None
+                ), "No way to know the extension size."
+                self.hidden_features += self.eigenvalues_extension.shape[0]
+            else:
+                self.hidden_features += extension_size
         else:
-            self.hidden_features += extension_size
+            extension_size = 0
         self.second_layer.apply_change(extension_size=extension_size)
 
     def sub_select_optimal_added_parameters(
         self,
-        keep_neurons: int,
+        keep_neurons: int | None = None,
+        threshold: float | None = None,
+        sub_select_previous: bool = True,
+        zeros_if_not_enough: bool = False,
+        zeros_fan_in: bool = True,
+        zeros_fan_out: bool = False,
     ) -> None:
         """
-        Select the first keep_neurons neurons of the optimal added parameters.
+        Select the first keep_neurons neurons of the optimal added parameters
+        linked to this layer.
 
         Parameters
         ----------
-        keep_neurons: int
-            number of neurons to keep
+        keep_neurons: int | None
+            number of neurons to keep, if None, the number of neurons
+            is determined by the threshold
+        threshold: float | None
+            threshold to determine the number of neurons to keep, if None,
+            keep_neurons must be provided
+        sub_select_previous: bool
+            if True, sub-select the previous layer added parameters as well
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
+            (either first or last depending on zeros_fan_in and zeros_fan_out)
+        zeros_fan_in: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-in parameters to zero
+        zeros_fan_out: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-out parameters to zero
         """
         assert (
             self.eigenvalues_extension is not None
         ), "No optimal added parameters computed."
-        self.second_layer.sub_select_optimal_added_parameters(keep_neurons)
+        self.second_layer.sub_select_optimal_added_parameters(
+            keep_neurons=keep_neurons,
+            threshold=threshold,
+            sub_select_previous=sub_select_previous,
+            zeros_if_not_enough=zeros_if_not_enough,
+            zeros_fan_in=zeros_fan_in,
+            zeros_fan_out=zeros_fan_out,
+        )
 
     @property
     def first_order_improvement(self) -> torch.Tensor:
@@ -400,25 +443,11 @@ class GrowingBlock(GrowingContainer):
             input_extension_init=input_extension_init,
         )
 
-    def normalize_optimal_updates(self, std_target: float | None = None) -> None:
+    def normalize_optimal_updates(self, **kwargs) -> None:
         """
         Normalize the optimal updates.
-
-        Ensure that the standard deviation of the weights of the updates is equal to
-        std_target.
-        If std_target is None, we use the standard deviation of the weights of the layer.
-        If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
-
-        Let s the target standard deviation then:
-        - optimal_delta_layer is scaled to have a std of s (so
-        by s / std(optimal_delta_layer))
-        - extended_input_layer is scaled to have a std of s (so
-        by s / std(extended_input_layer))
-        - extended_output_layer is scaled to match the scaling of the extended_input_layer
-        and the optimal_delta_layer
-        (so by std(extended_input_layer) / std(optimal_delta_layer))
         """
-        self.second_layer.normalize_optimal_updates(std_target=std_target)
+        self.second_layer.normalize_optimal_updates(**kwargs)
 
 
 class LinearGrowingBlock(GrowingBlock):
