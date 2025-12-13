@@ -51,6 +51,6 @@ pip install build
 git clone git@github.com:growingnet/gromo.git
 cd gromo
 python -m build
-pip install -e .[dev] .[test]
+pip install -e .[dev,test]
 pre-commit install
 ```
