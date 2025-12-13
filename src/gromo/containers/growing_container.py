@@ -28,8 +28,9 @@ class GrowingContainer(torch.nn.Module):
 
     def set_growing_layers(self) -> None:
         """
-        Reference all growable layers of the model in the _growing_layers private attribute. This method should be implemented
-        in the child class and called in the __init__ method.
+        Reference all growable layers of the model in the _growing_layers private
+        attribute. This method should be implementedbin the child class and called
+        in the __init__ method.
         """
         raise NotImplementedError
 
@@ -45,7 +46,7 @@ class GrowingContainer(torch.nn.Module):
             if isinstance(layer, GrowingContainer):
                 layer.set_scaling_factor(factor)
             elif isinstance(layer, GrowingModule):
-                layer.scaling_factor = factor
+                layer.scaling_factor = factor  # type: ignore
                 layer._scaling_factor_next_module.data[0] = factor
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -88,7 +89,8 @@ class GrowingContainer(torch.nn.Module):
         Parameters
         ----------
         update : bool, optional
-            update the optimal delta layer attribute and the first order decrease, by default True
+            update the optimal delta layer attribute and the first order decrease,
+            by default True
         force_pseudo_inverse : bool, optional
             use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible, by default False
