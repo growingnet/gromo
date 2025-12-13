@@ -4,7 +4,7 @@
 
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)
 [![Tests](https://github.com/growingnet/gromo/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/tests.yml)
-[![Ruff Type Check](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml)
+[![Ruff Linting](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml)
 
 # GroMo
 
@@ -28,12 +28,29 @@ Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G. (2024). Growi
 
 ## Installation
 
+### For users
+
 Simply run the following commands to install the package:
 
 ```bash
-git clone git@github.com:growingnet/gromo.git
+pip install build
+git clone https://github.com/growingnet/gromo.git
+cd gromo
 python -m build
 pip install -e .
 ```
 
-You may also need to install `build` with `pip install build`.
+You may also clone with SSH if you have set up your SSH keys with GitHub: `git clone git@github.com:growingnet/gromo.git`.
+
+### For developers
+
+To set up a development environment, first ensure that you have an ssh key set up with GitHub. Then, you can use the following commands:
+
+```bash
+pip install build
+git clone git@github.com:growingnet/gromo.git
+cd gromo
+python -m build
+pip install -e .[dev,test]
+pre-commit install
+```
