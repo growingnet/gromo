@@ -556,33 +556,38 @@ class GrowingModule(torch.nn.Module):
         initial_in_neurons: int | None = None,
     ) -> None:
         """
-        Initialize a GrowingModule.
+                Initialize a GrowingModule.
 
-        Parameters
-        ----------
-        layer: torch.nn.Module
-            layer of the module
-        tensor_s_shape: tuple[int, int] | None
-            shape of the tensor S
-        tensor_m_shape: tuple[int, int] | None
-            shape of the tensor M
-        post_layer_function: torch.nn.Module
-            function to apply after the layer
-        allow_growing: bool
-            if True, the module can grow (require a previous GrowingModule)
-        previous_module: torch.nn.Module | None
-            previous module
-        next_module: torch.nn.Module | None
-            next module
-        device: torch.device | None
-            device to use
-        name: str | None
-            name of the module
-        target_in_neurons: int | None
-            target number of input neurons for the layer at the end of the growth process
-        initial_in_neurons: int | None
-            initial number of input neurons for the layer at the beginning of the growth
-            process
+                Parameters
+                ----------
+                layer: torch.nn.Module
+                    layer of the module
+                tensor_s_shape: tuple[int, int] | None
+                    shape of the tensor S
+                tensor_m_shape: tuple[int, int] | None
+                    shape of the tensor M
+                post_layer_function: torch.nn.Module
+                    function to apply after the layer
+                allow_growing: bool
+                    if True, the module can grow (require a previous GrowingModule)
+                previous_module: torch.nn.Module | None
+                    previous module
+                next_module: torch.nn.Module | None
+                    next module
+                device: torch.device | None
+                    device to use
+                name: str | None
+                    name of the module
+        <<<<<<< HEAD
+                target_in_neurons: int | None
+                    target number of input neurons for the layer at the end of the growth process
+                initial_in_neurons: int | None
+                    initial number of input neurons for the layer at the beginning of the growth
+                    process
+        =======
+                target_in_features: int | None
+                    target number of input features for the layer at the end of the growth process
+        >>>>>>> 7b146f59 (feat: Add methods `missing_neurons`,  `number_of_neurons_to_add` and `complete_growth`)
         """
         if tensor_s_shape is None:
             warnings.warn(

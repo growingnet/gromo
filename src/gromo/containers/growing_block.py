@@ -449,6 +449,48 @@ class GrowingBlock(GrowingContainer):
         """
         self.second_layer.normalize_optimal_updates(**kwargs)
 
+    def missing_neurons(self) -> int:
+        """
+        Get the number of missing neurons to reach the target hidden features.
+
+        Returns
+        -------
+        int
+            number of missing neurons
+        """
+        return self.second_layer.missing_neurons()
+
+    def number_of_neurons_to_add(
+        self,
+        **kwargs,
+    ) -> int:
+        """Get the number of neurons to add in the next growth step.
+
+        Parameters
+        ----------
+        method : str
+            Method to use for determining the number of neurons to add.
+            Options are "fixed_proportional".
+        number_of_growth_steps : int
+            Number of growth steps planned, used only if method is "proportional".
+
+        Returns
+        -------
+        int
+            Number of neurons to add.
+        """
+        return self.second_layer.number_of_neurons_to_add(**kwargs)
+
+    def complete_growth(self, **kwargs) -> None:
+        """Complete the growth procedure for the block.
+
+        Parameters
+        ----------
+        extension_kwargs : dict
+            Keyword arguments for the extension procedure.
+        """
+        self.second_layer.complete_growth(**kwargs)
+
 
 class LinearGrowingBlock(GrowingBlock):
     def __init__(
@@ -456,6 +498,7 @@ class LinearGrowingBlock(GrowingBlock):
         in_features: int,
         out_features: int,
         hidden_features: int = 0,
+        target_hidden_features: int | None = None,
         activation: torch.nn.Module | None = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
@@ -524,6 +567,7 @@ class LinearGrowingBlock(GrowingBlock):
             in_features=hidden_features,
             out_features=out_features,
             name=f"{name}(second_layer)",
+            target_in_features=target_hidden_features,
             previous_module=first_layer,
             **kwargs_second_layer,
         )
@@ -554,6 +598,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         out_channels: int,
         kernel_size: int | tuple[int, int] | None = None,
         hidden_channels: int = 0,
+        target_hidden_channels: int | None = None,
         activation: torch.nn.Module | None = None,
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
@@ -634,6 +679,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             in_channels=hidden_channels,
             out_channels=out_channels,
             name=f"{name}(second_layer)",
+            target_in_channels=target_hidden_channels,
             previous_module=first_layer,
             device=device,
             **kwargs_second_layer,
