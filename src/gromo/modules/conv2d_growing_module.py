@@ -566,6 +566,10 @@ class Conv2dGrowingModule(GrowingModule):
     # activation function as the post_layer_function
 
     @property
+    def in_neurons(self) -> int:
+        return self.in_channels
+
+    @property
     def in_channels(self):
         return self.layer.in_channels
 

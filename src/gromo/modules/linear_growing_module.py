@@ -277,6 +277,10 @@ class LinearGrowingModule(GrowingModule):
         return self.layer.in_features
 
     @property
+    def in_neurons(self) -> int:
+        return self.layer.in_features
+
+    @property
     def out_features(self) -> int:
         return self.layer.out_features
 

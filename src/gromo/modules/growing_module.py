@@ -699,6 +699,10 @@ class GrowingModule(torch.nn.Module):
         )
 
     @property
+    def in_neurons(self) -> int:
+        raise NotImplementedError
+
+    @property
     def in_features(self) -> int:
         raise NotImplementedError
 
