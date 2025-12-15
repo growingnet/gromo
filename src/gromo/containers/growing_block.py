@@ -29,7 +29,6 @@ class GrowingBlock(GrowingContainer):
         second_layer: GrowingModule,
         in_features: int,
         out_features: int,
-        hidden_features: int = 0,
         pre_activation: torch.nn.Module = torch.nn.Identity(),
         name: str = "block",
         downsample: torch.nn.Module = torch.nn.Identity(),
@@ -73,7 +72,6 @@ class GrowingBlock(GrowingContainer):
         )
         self.name = name
         self.device = device
-        self.hidden_features = hidden_features
 
         self.pre_activation: torch.nn.Module = pre_activation
         self.first_layer: GrowingModule = first_layer
@@ -108,6 +106,19 @@ class GrowingBlock(GrowingContainer):
             )
         else:
             raise ValueError("verbose must be a non-negative integer.")
+
+    @property
+    def hidden_features(self) -> int:
+        warn(
+            "hidden_features is deprecated, use hidden_neurons instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.second_layer.in_neurons
+
+    @property
+    def hidden_neurons(self) -> int:
+        return self.second_layer.in_neurons
 
     @property
     def eigenvalues_extension(self):
@@ -155,7 +166,9 @@ class GrowingBlock(GrowingContainer):
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, x: torch.Tensor, mask: None = None
+        self,
+        x: torch.Tensor,
+        mask: None = None,  # noqa: ARG002
     ) -> torch.Tensor:
         """
         Forward pass of the block with the current modifications.
@@ -174,7 +187,7 @@ class GrowingBlock(GrowingContainer):
         """
         identity: torch.Tensor = self.downsample(x)
         x = self.pre_activation(x)
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             x, x_ext = self.first_layer.extended_forward(x)
             x, _ = self.second_layer.extended_forward(x, x_ext)
             assert (
@@ -211,7 +224,7 @@ class GrowingBlock(GrowingContainer):
             output tensor
         """
         identity: torch.Tensor = self.downsample(x)
-        if self.hidden_features == 0:
+        if self.hidden_neurons == 0:
             if self.first_layer.store_input:
                 self.first_layer._input = self.pre_activation(x).detach()
 
@@ -239,7 +252,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.tensor_m_prev.init()
         self.second_layer.tensor_s_growth.init()
 
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             self.second_layer.cross_covariance.init()
 
             # natural gradient part
@@ -255,7 +268,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.tensor_m_prev.update()
         self.second_layer.tensor_s_growth.update()
 
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             self.second_layer.cross_covariance.update()
 
             # natural gradient part
@@ -316,7 +329,7 @@ class GrowingBlock(GrowingContainer):
         use_projected_gradient: bool
             whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
         """
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             _, _, _ = self.second_layer.compute_optimal_delta()
         else:
             self.second_layer.parameter_update_decrease = torch.tensor(
@@ -326,7 +339,7 @@ class GrowingBlock(GrowingContainer):
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
-            use_projected_gradient=self.hidden_features > 0 and use_projected_gradient,
+            use_projected_gradient=self.hidden_neurons > 0 and use_projected_gradient,
             dtype=dtype,
             update_previous=True,
         )
@@ -336,16 +349,6 @@ class GrowingBlock(GrowingContainer):
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
-        if self.second_layer.extended_input_layer is not None:
-            if extension_size is None:
-                assert (
-                    self.eigenvalues_extension is not None
-                ), "No way to know the extension size."
-                self.hidden_features += self.eigenvalues_extension.shape[0]
-            else:
-                self.hidden_features += extension_size
-        else:
-            extension_size = 0
         self.second_layer.apply_change(extension_size=extension_size)
 
     def sub_select_optimal_added_parameters(
@@ -574,7 +577,6 @@ class LinearGrowingBlock(GrowingBlock):
         super(LinearGrowingBlock, self).__init__(
             in_features=in_features,
             out_features=out_features,
-            hidden_features=hidden_features,
             pre_activation=pre_activation,
             name=name,
             first_layer=first_layer,
@@ -688,7 +690,6 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         super(RestrictedConv2dGrowingBlock, self).__init__(
             in_features=in_channels,
             out_features=out_channels,
-            hidden_features=hidden_channels,
             pre_activation=pre_activation,
             name=name,
             first_layer=first_layer,

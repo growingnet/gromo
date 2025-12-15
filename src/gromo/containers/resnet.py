@@ -341,13 +341,14 @@ def init_full_resnet_structure(
         raise TypeError(
             f"number_of_blocks_per_stage must be an int or a tuple of {nb_stages} ints."
         )
-    # Append additional blocks to complete each stage according to number_of_blocks_per_stage
+    # Append additional blocks to complete each stage according
+    #  to number_of_blocks_per_stage
     for stage_index in range(nb_stages):
         for _ in range(1, blocks_per_stage[stage_index]):
             model.append_block(
                 stage_index=stage_index,
                 input_block_kernel_size=input_block_kernel_size,
                 output_block_kernel_size=output_block_kernel_size,
-                hidden_channels=int(model.stages[stage_index][0].hidden_features),  # type: ignore
+                hidden_channels=int(model.stages[stage_index][0].hidden_neurons),  # type: ignore
             )
     return model
