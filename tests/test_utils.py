@@ -419,7 +419,7 @@ class TestUtils(TorchTestCase):
     def test_compute_tensor_stats(self) -> None:
         """Test compute_tensor_stats function returns correct output types."""
         # Test with normal tensor (multiple elements)
-        for tensor in [torch.randn(3, 4), torch.tensor(5.0)]:
+        for tensor in [torch.randn(3, 4), torch.tensor(5.0), torch.zeros(0)]:
             stats = compute_tensor_stats(tensor)
 
             # Check output type and keys
