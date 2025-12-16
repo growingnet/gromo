@@ -5,11 +5,36 @@ from torch import Tensor, nn
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.utils import compute_tensor_stats
 
 
 class GrowingMLP(GrowingContainer):
     """
     Represents a growing MLP network.
+
+    Parameters
+    ----------
+    in_features : int | list[int] | tuple[int]
+        Number of input features.
+    out_features : int
+        Number of output features.
+    hidden_size : int
+        Size of hidden layers.
+    number_hidden_layers : int
+        Number of hidden layers.
+    activation : nn.Module
+        Activation function.
+    use_bias : bool
+        Whether to use bias in layers.
+    flatten : bool
+        Whether to flatten the input before passing it through the network.
+    device : Optional[torch.device]
+        Device to use for computation.
+
+    Raises
+    ------
+    TypeError
+        if input features are not of type int, list or tuple
     """
 
     def __init__(
@@ -23,28 +48,6 @@ class GrowingMLP(GrowingContainer):
         flatten: bool = True,
         device: Optional[torch.device] = None,
     ) -> None:
-        """
-        Initialize the growing MLP.
-
-        Parameters
-        ----------
-        in_features : int | list | tuple
-            Number of input features.
-        out_features : int
-            Number of output features.
-        hidden_size : int
-            Size of hidden layers.
-        number_hidden_layers : int
-            Number of hidden layers.
-        activation : nn.Module
-            Activation function.
-        use_bias : bool
-            Whether to use bias in layers.
-        flatten : bool
-            Whether to flatten the input before passing it through the network.
-        device : Optional[torch.device]
-            Device to use for computation.
-        """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
         )
@@ -100,6 +103,7 @@ class GrowingMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         self._growing_layers = list(self.layers[1:])
 
     def forward(self, x: Tensor) -> Tensor:
@@ -141,32 +145,33 @@ class GrowingMLP(GrowingContainer):
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
 
-    @staticmethod
-    def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        std_value = tensor.std().item() if tensor.numel() > 1 else -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
-
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the model
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         statistics = {}
         for i, layer in enumerate(self.layers):
             statistics[i] = {
-                "weight": self.tensor_statistics(layer.weight),
+                "weight": compute_tensor_stats(layer.weight),
             }
             if layer.bias is not None:
-                statistics[i]["bias"] = self.tensor_statistics(layer.bias)
+                statistics[i]["bias"] = compute_tensor_stats(layer.bias)
             statistics[i]["input_shape"] = layer.in_features
             statistics[i]["output_shape"] = layer.out_features
         return statistics
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         information = {}
         for i, layer in enumerate(self._growing_layers):
             layer_information = {
@@ -178,6 +183,13 @@ class GrowingMLP(GrowingContainer):
         return information
 
     def normalise(self, verbose: bool = False) -> None:
+        """Normalize the weight of the model
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            print info, by default False
+        """
         max_values = torch.zeros(len(self.layers), device=self.device)
         for i, layer in enumerate(self.layers):
             max_values[i] = layer.weight.abs().max()
@@ -223,6 +235,26 @@ class GrowingMLP(GrowingContainer):
 
 
 class Perceptron(GrowingMLP):
+    """Represents a Perceptron MLP
+
+    Parameters
+    ----------
+    in_features : int
+        input features
+    hidden_feature : int
+        hidden features
+    out_features : int
+        output features
+    activation : nn.Module, optional
+        activation function, by default nn.Sigmoid()
+    use_bias : bool, optional
+        use bias, by default True
+    flatten : bool, optional
+        flatten the input, by default True
+    device : Optional[torch.device], optional
+        default device, by default None
+    """
+
     def __init__(
         self,
         in_features: int,
