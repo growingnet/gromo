@@ -128,6 +128,20 @@ class GrowingBlock(GrowingContainer):
     def parameter_update_decrease(self):
         return self.second_layer.parameter_update_decrease
 
+    @parameter_update_decrease.setter
+    def parameter_update_decrease(self, value: torch.Tensor | float):
+        """
+        Set the parameter update decrease for the block.
+        """
+        if isinstance(value, float):
+            value = torch.tensor(value, device=self.device)
+        elif isinstance(value, torch.Tensor):
+            self.second_layer.parameter_update_decrease = value
+        else:
+            raise TypeError(
+                "parameter_update_decrease must be a float or a torch.Tensor."
+            )
+
     @property
     def scaling_factor(self):
         return self.second_layer.scaling_factor
@@ -288,11 +302,25 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.cross_covariance.reset()
         self.second_layer.tensor_s_growth.reset()
 
-    def delete_update(self):
+    @property
+    def optimal_delta_layer(self) -> torch.nn.Module | None:
+        """
+        Get the optimal delta layer of the block.
+        """
+        return self.second_layer.optimal_delta_layer
+
+    @optimal_delta_layer.setter
+    def optimal_delta_layer(self, value: torch.nn.Module | None):
+        """
+        Set the optimal delta layer of the block.
+        """
+        self.second_layer.optimal_delta_layer = value
+
+    def delete_update(self, **kwargs):
         """
         Delete the update of the block.
         """
-        self.second_layer.delete_update()
+        self.second_layer.delete_update(**kwargs)
 
     def set_scaling_factor(self, factor: float) -> None:
         """Assign scaling factor to all growing layers
@@ -344,12 +372,23 @@ class GrowingBlock(GrowingContainer):
             update_previous=True,
         )
 
-    def apply_change(self, extension_size: int | None = None) -> None:
+    def apply_change(
+        self,
+        extension_size: int | None = None,
+        scaling_factor: float | torch.Tensor | None = None,
+        apply_delta: bool = True,
+        apply_extension: bool = True,
+    ) -> None:
         """
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
-        self.second_layer.apply_change(extension_size=extension_size)
+        self.second_layer.apply_change(
+            scaling_factor=scaling_factor,
+            extension_size=extension_size,
+            apply_delta=apply_delta,
+            apply_extension=apply_extension,
+        )
 
     def sub_select_optimal_added_parameters(
         self,
