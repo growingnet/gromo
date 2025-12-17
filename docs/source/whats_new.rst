@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add new normalization methods (:gh:`185` by `Théo Rudkiewicz`_)
 - Update `output_volume` in `Conv2dMergeGrowingModule` based on post_merge_function and reshaping (:gh:`177` by `Stella Douka`_)
 - Implement lazy loading datasets that read directly from the disk (:gh:`169` by `Stella Douka`_)
 - Modify `in_channels` and `out_channels` as properties in `Conv2dGrowingModule` (:gh:`174` by `Stella Douka`_)
