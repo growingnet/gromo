@@ -3416,16 +3416,22 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             layer_out.optimal_delta_layer = self.create_standard_nn_linear(1, 1)
 
             # Everything works fine if std is zero (no scaling applied)
-            layer_out.normalize_optimal_updates(
-                std_target=None, normalization_type="equalize_second_layer"
-            )
+            with self.assertWarns(
+                UserWarning,
+                msg="std(): degrees of freedom is <= 0. "
+                "Correction should be strictly less than the reduction factor"
+                " (input numel divided by output numel).",
+            ):
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="equalize_second_layer"
+                )
 
         with self.subTest(case="unknown_normalization_type"):
             layer_out = set_up_network_for_normalization_test()
 
             normalization_type = "unknown_type"
             # Call normalize_optimal_updates with invalid type
-            with self.assertRaises(AssertionError):
+            with self.assertRaises(ValueError):
                 layer_out.normalize_optimal_updates(
                     std_target=0.1, normalization_type=normalization_type
                 )
@@ -3622,6 +3628,13 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 places=5,
                 msg="dW should be scaled by std(W)^2 / (std(Alpha) * std(Omega))",
             )
+
+            # Test error when no previous module is given
+            layer_out.previous_module = None
+            with self.assertRaises(ValueError):
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="equalize_extensions"
+                )
 
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
