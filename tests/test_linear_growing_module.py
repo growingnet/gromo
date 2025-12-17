@@ -3499,8 +3499,8 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
 
             return layer_out
 
-        with self.subTest(case="weird_normalization"):
-            # weird_normalization:
+        with self.subTest(case="legacy_normalization"):
+            # legacy_normalization:
             # dW <- std(W)/std(dW) * dW  => std(dW_new) = std(W)
             # Omega <- Omega              => std(Omega_new) = std(Omega)
             # Alpha <- std(W)/std(Omega) * Alpha
@@ -3510,7 +3510,7 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             )
 
             layer_out.normalize_optimal_updates(
-                std_target=None, normalization_type="weird_normalization"
+                std_target=None, normalization_type="legacy_normalization"
             )
 
             # Verify: std(dW_new) = std(W)
@@ -3619,7 +3619,6 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 msg="Alpha should be scaled to std(W)",
             )
             # Verify: std(dW_new) = std(W)^2 / (std(Alpha) * std(Omega)) * std(dW)
-            #                     = std(W)^2 / (std(Alpha) * std(Omega)) * std(dW)
             expected_dw_std = std_weights**2 / (std_alpha * std_omega) * std_delta
             assert isinstance(layer_out.optimal_delta_layer, torch.nn.Linear)
             self.assertAlmostEqual(

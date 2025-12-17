@@ -2156,7 +2156,7 @@ class GrowingModule(torch.nn.Module):
     def normalize_optimal_updates(
         self,
         std_target: float | None = None,
-        normalization_type: str = "weird_normalization",
+        normalization_type: str = "legacy_normalization",
     ) -> None:
         """
         Normalize optimal update to target standard deviation
@@ -2167,8 +2167,8 @@ class GrowingModule(torch.nn.Module):
         We use the standard deviation of the weights of the layer if it has weights.
         If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
 
-        If equalize_second_layer is True:
-        Let s the target standard deviation then:
+        If normalization_type is "equalize_second_layer":
+        Let s be the target standard deviation then:
         - optimal_delta_layer is scaled to have a std of s (so
         by s / std(optimal_delta_layer))
         - extended_input_layer is scaled to have a std of s (so
@@ -2177,8 +2177,8 @@ class GrowingModule(torch.nn.Module):
         and the optimal_delta_layer
         (so by std(extended_input_layer) / std(optimal_delta_layer))
 
-        If equalize_extensions is True:
-        Let s the target standard deviation then:
+        If normalization_type is "equalize_extensions":
+        Let s be the target standard deviation then:
         - extended_input_layer is scaled to have a std of s (so
         by s / std(extended_input_layer))
         - extended_output_layer is scaled to have a std of s (so
@@ -2199,6 +2199,7 @@ class GrowingModule(torch.nn.Module):
             "equalize_second_layer",
             "equalize_extensions",
             "weird_normalization",
+            "legacy_normalization",
         ]
 
         # Determine target standard deviation
@@ -2228,7 +2229,7 @@ class GrowingModule(torch.nn.Module):
             Calculate the scaling factor for a layer to reach the target standard
             deviation.
 
-            If the layer is None, has no weights return 1.0.
+            If the layer is None or has no weights, return 1.0.
             If the current standard deviation is 0, return
             self.get_fan_in_from_layer(layer) ** (-0.5).
 
@@ -2236,7 +2237,7 @@ class GrowingModule(torch.nn.Module):
             ----------
             layer: torch.nn.Module | None
                 The layer to calculate the scaling factor for.
-            target_std: float
+            If the layer is None or has no weights, return 1.0.
                 The target standard deviation.
 
             Returns
@@ -2275,7 +2276,10 @@ class GrowingModule(torch.nn.Module):
                 )
             # Calculate delta scale to maintain relationship
             delta_scale = input_extension_scale * output_extension_scale
-        elif normalization_type == "weird_normalization":
+        elif (
+            normalization_type == "legacy_normalization"
+            or normalization_type == "weird_normalization"
+        ):
             delta_scale = _get_scale(self.optimal_delta_layer, std_target)
             output_extension_scale = _get_scale(self.extended_input_layer, std_target)
             input_extension_scale = 1.0
