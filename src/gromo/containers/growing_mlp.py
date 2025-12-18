@@ -42,7 +42,7 @@ class GrowingMLP(GrowingContainer):
             Whether to use bias in layers.
         flatten : bool
             Whether to flatten the input before passing it through the network.
-        device : Optional[torch.device]
+        device : torch.device | None
             Device to use for computation.
         """
         if isinstance(in_features, int):
