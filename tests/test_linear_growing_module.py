@@ -3667,6 +3667,219 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             )
 
 
+class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
+    """Test in_neurons property and growth-related methods for LinearGrowingModule."""
+
+    def test_in_neurons_property(self) -> None:
+        """Test that in_neurons returns the number of input features."""
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            use_bias=True,
+            device=global_device(),
+        )
+        self.assertEqual(layer.in_neurons, 5)
+        self.assertEqual(layer.in_neurons, layer.in_features)
+
+    def test_target_in_neurons_initialization(self) -> None:
+        """Test that target_in_neurons is correctly initialized."""
+        # Without target
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            device=global_device(),
+        )
+        self.assertIsNone(layer.target_in_neurons)
+        self.assertEqual(layer._initial_in_neurons, 5)
+
+        # With target
+        layer_with_target = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            target_in_features=10,
+            device=global_device(),
+        )
+        self.assertEqual(layer_with_target.target_in_neurons, 10)
+        self.assertEqual(layer_with_target._initial_in_neurons, 5)
+
+    def test_missing_neurons_without_target_raises_error(self) -> None:
+        """Test that missing_neurons raises ValueError when target is not set."""
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            device=global_device(),
+        )
+        with self.assertRaises(ValueError) as context:
+            layer.missing_neurons()
+        self.assertIn("Target in neurons is not set", str(context.exception))
+
+    def test_missing_neurons_with_target(self) -> None:
+        """Test that missing_neurons returns correct value when target is set."""
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            target_in_features=10,
+            device=global_device(),
+        )
+        self.assertEqual(layer.missing_neurons(), 5)
+
+    def test_missing_neurons_zero_when_at_target(self) -> None:
+        """Test missing_neurons returns 0 when already at target size."""
+        layer = LinearGrowingModule(
+            in_features=10,
+            out_features=3,
+            target_in_features=10,
+            device=global_device(),
+        )
+        self.assertEqual(layer.missing_neurons(), 0)
+
+    def test_number_of_neurons_to_add_without_target_raises_error(self) -> None:
+        """Test number_of_neurons_to_add raises ValueError when target is not set."""
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            device=global_device(),
+        )
+        with self.assertRaises(ValueError) as context:
+            layer.number_of_neurons_to_add()
+        self.assertIn("Target in neurons is not set", str(context.exception))
+
+    def test_number_of_neurons_to_add_without_initial_raises_error(self) -> None:
+        """Test number_of_neurons_to_add raises ValueError when initial is not set."""
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            target_in_features=10,
+            device=global_device(),
+        )
+        # Manually set _initial_in_neurons to None to simulate the edge case
+        layer._initial_in_neurons = None
+        with self.assertRaises(ValueError) as context:
+            layer.number_of_neurons_to_add()
+        self.assertIn("Initial in neurons is not set", str(context.exception))
+
+    def test_number_of_neurons_to_add_fixed_proportional(self) -> None:
+        """Test number_of_neurons_to_add with fixed_proportional method."""
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            target_in_features=15,
+            device=global_device(),
+        )
+        # Total to add: 15 - 5 = 10
+        # With 1 growth step: 10 // 1 = 10
+        self.assertEqual(layer.number_of_neurons_to_add(number_of_growth_steps=1), 10)
+        # With 2 growth steps: 10 // 2 = 5
+        self.assertEqual(layer.number_of_neurons_to_add(number_of_growth_steps=2), 5)
+        # With 3 growth steps: 10 // 3 = 3
+        self.assertEqual(layer.number_of_neurons_to_add(number_of_growth_steps=3), 3)
+
+    def test_number_of_neurons_to_add_unknown_method_raises_error(self) -> None:
+        """Test number_of_neurons_to_add raises ValueError for unknown method."""
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            target_in_features=10,
+            device=global_device(),
+        )
+        with self.assertRaises(ValueError) as context:
+            layer.number_of_neurons_to_add(method="unknown_method")
+        self.assertIn("Unknown method", str(context.exception))
+
+    def test_complete_growth_increases_in_features(self) -> None:
+        """Test that complete_growth grows the layer to target size."""
+        # Create two connected layers
+        # Using use_bias=False to avoid bias assertion in apply_change
+        layer1 = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            target_in_features=6,
+            use_bias=False,
+            device=global_device(),
+            name="layer1",
+        )
+        layer2 = LinearGrowingModule(
+            in_features=3,
+            out_features=7,
+            target_in_features=6,
+            use_bias=False,
+            previous_module=layer1,
+            device=global_device(),
+            name="layer2",
+        )
+
+        # Verify initial state
+        self.assertEqual(layer2.in_features, 3)
+        self.assertEqual(layer2.missing_neurons(), 3)
+
+        # Complete growth
+        layer2.complete_growth(extension_kwargs={})
+
+        # Verify final state
+        self.assertEqual(layer2.in_features, 6)
+        self.assertEqual(layer1.out_features, 6)
+        self.assertEqual(layer2.missing_neurons(), 0)
+
+    def test_complete_growth_does_nothing_when_already_at_target(self) -> None:
+        """Test that complete_growth does nothing when layer is at target size."""
+        layer1 = LinearGrowingModule(
+            in_features=5,
+            out_features=3,
+            device=global_device(),
+            name="layer1",
+        )
+        layer2 = LinearGrowingModule(
+            in_features=3,
+            out_features=7,
+            target_in_features=3,
+            previous_module=layer1,
+            device=global_device(),
+            name="layer2",
+        )
+
+        # Verify initial state
+        initial_in_features = layer2.in_features
+
+        # Complete growth (should do nothing)
+        layer2.complete_growth(extension_kwargs={})
+
+        # Verify layer hasn't changed
+        self.assertEqual(layer2.in_features, initial_in_features)
+
+    def test_complete_growth_does_nothing_when_exceeding_target(self) -> None:
+        """Test that complete_growth does nothing when layer exceeds target size."""
+        layer1 = LinearGrowingModule(
+            in_features=5,
+            out_features=10,
+            device=global_device(),
+            name="layer1",
+        )
+        layer2 = LinearGrowingModule(
+            in_features=10,
+            out_features=7,
+            target_in_features=5,  # Target is less than current in_features
+            previous_module=layer1,
+            device=global_device(),
+            name="layer2",
+        )
+
+        # Verify initial state: in_features > target
+        self.assertEqual(layer2.in_features, 10)
+        self.assertEqual(layer2.target_in_neurons, 5)
+        self.assertEqual(layer2.missing_neurons(), -5)  # Negative means exceeds target
+
+        # Store initial features
+        initial_in_features = layer2.in_features
+        initial_out_features_layer1 = layer1.out_features
+
+        # Complete growth (should do nothing since we're already past target)
+        layer2.complete_growth(extension_kwargs={})
+
+        # Verify layers haven't changed
+        self.assertEqual(layer2.in_features, initial_in_features)
+        self.assertEqual(layer1.out_features, initial_out_features_layer1)
+
+
 if __name__ == "__main__":
     from unittest import main
 
