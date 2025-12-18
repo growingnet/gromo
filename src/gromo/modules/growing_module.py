@@ -2412,7 +2412,7 @@ class GrowingModule(torch.nn.Module):
         """
         if self.target_in_neurons is None:
             raise ValueError(
-                "Target hidden features is not set, cannot compute missing neurons."
+                "Target in neurons is not set, cannot compute missing neurons."
             )
         return self.target_in_neurons - self.in_neurons
 
