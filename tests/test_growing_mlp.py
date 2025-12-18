@@ -69,8 +69,11 @@ class TestGrowingMLP(TorchTestCase):
         """Test setting growing layers in the GrowingMLP model."""
         # Initially, all layers should be growing
         self.assertEqual(len(self.model._growing_layers), self.number_hidden_layers)
-        # Set only the first layer to be growing
-        self.model.set_growing_layers(0)
+        # Set only the second layer to be growing
+        self.model.set_growing_layers(1)
+        self.assertEqual(len(self.model._growing_layers), 1)
+        # Set only the third layer to be growing
+        self.model.set_growing_layers(2)
         self.assertEqual(len(self.model._growing_layers), 1)
         # Set all layers to be growing again
         self.model.set_growing_layers()
