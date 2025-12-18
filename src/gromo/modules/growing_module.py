@@ -552,6 +552,8 @@ class GrowingModule(torch.nn.Module):
         next_module: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str | None = None,
+        target_in_neurons: int | None = None,
+        initial_in_neurons: int | None = None,
     ) -> None:
         """
         Initialize a GrowingModule.
@@ -576,6 +578,8 @@ class GrowingModule(torch.nn.Module):
             device to use
         name: str | None
             name of the module
+        target_in_features: int | None
+            target number of input features for the layer at the end of the growth process
         """
         if tensor_s_shape is None:
             warnings.warn(
@@ -599,6 +603,8 @@ class GrowingModule(torch.nn.Module):
             if name is None
             else f"{self.__class__.__name__}({name})"
         )
+        self.target_in_neurons = target_in_neurons
+        self._initial_in_neurons = initial_in_neurons
         self._config_data, _ = load_config()
         self.device = get_correct_device(self, device)
 
@@ -2394,6 +2400,73 @@ class GrowingModule(torch.nn.Module):
                 self.previous_module.bias,
                 self.previous_module.get_fan_in_from_layer(layer_to_init),
             )
+
+    def missing_neurons(self) -> int:
+        """
+        Get the number of missing neurons to reach the target hidden features.
+
+        Returns
+        -------
+        int
+            number of missing neurons
+        """
+        if self.target_in_neurons is None:
+            raise ValueError(
+                "Target hidden features is not set, cannot compute missing neurons."
+            )
+        return self.target_in_neurons - self.in_neurons
+
+    def number_of_neurons_to_add(
+        self,
+        method: str = "fixed_proportional",
+        number_of_growth_steps: int = 1,
+    ) -> int:
+        """Get the number of neurons to add in the next growth step.
+
+        Parameters
+        ----------
+        method : str
+            Method to use for determining the number of neurons to add.
+            Options are "fixed_proportional".
+        number_of_growth_steps : int
+            Number of growth steps planned, used only if method is "fixed_proportional".
+
+        Returns
+        -------
+        int
+            Number of neurons to add.
+        """
+        if method == "fixed_proportional":
+            if self.target_in_neurons is None:
+                raise ValueError(
+                    "Target in neurons is not set, cannot compute neurons to add."
+                )
+            if self._initial_in_neurons is None:
+                raise ValueError(
+                    "Initial in neurons is not set, cannot compute neurons to add."
+                )
+            total_to_add = self.target_in_neurons - self._initial_in_neurons
+            return total_to_add // number_of_growth_steps
+        else:
+            raise ValueError(f"Unknown method: {method}.")
+
+    def complete_growth(self, extension_kwargs: dict) -> None:
+        """
+        Complete the growth to the target size.
+
+        Parameters
+        ----------
+        extension_kwargs : dict
+            Additional arguments for creating layer extensions.
+        """
+        neurons_to_add = self.missing_neurons()
+        if neurons_to_add > 0:
+            self.create_layer_extensions(
+                extension_size=neurons_to_add,
+                **extension_kwargs,
+            )
+            self.apply_change(extension_size=neurons_to_add)
+            self.delete_update(include_previous=True)
 
 
 if __name__ == "__main__":

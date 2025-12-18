@@ -253,6 +253,7 @@ class LinearGrowingModule(GrowingModule):
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
+        target_in_features: int | None = None,
     ) -> None:
         super(LinearGrowingModule, self).__init__(
             layer=torch.nn.Linear(
@@ -267,6 +268,8 @@ class LinearGrowingModule(GrowingModule):
             tensor_m_shape=(in_features + use_bias, out_features),
             device=device,
             name=name,
+            target_in_neurons=target_in_features,
+            initial_in_neurons=in_features,
         )
         self.use_bias = use_bias
 
