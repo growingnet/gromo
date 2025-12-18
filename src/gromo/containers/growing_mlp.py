@@ -46,7 +46,7 @@ class GrowingMLP(GrowingContainer):
             Device to use for computation.
         """
         if isinstance(in_features, int):
-            self.num_features = in_features
+            pass
         elif isinstance(in_features, (list, tuple)):
             if flatten:
                 in_features = int(torch.tensor(in_features).prod().item())
