@@ -65,6 +65,17 @@ class TestGrowingMLP(TorchTestCase):
         gather_statistics(self.dataloader, self.model, self.loss)
         self.model.compute_optimal_updates()
 
+    def test_set_growing_layers(self):
+        """Test setting growing layers in the GrowingMLP model."""
+        # Initially, all layers should be growing
+        self.assertEqual(len(self.model._growing_layers), self.number_hidden_layers)
+        # Set only the first layer to be growing
+        self.model.set_growing_layers(0)
+        self.assertEqual(len(self.model._growing_layers), 1)
+        # Set all layers to be growing again
+        self.model.set_growing_layers()
+        self.assertEqual(len(self.model._growing_layers), self.number_hidden_layers)
+
     def test_forward(self):
         """Test the forward pass of the GrowingMLP model."""
         x = torch.randn(1, self.in_features)
