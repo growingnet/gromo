@@ -578,7 +578,7 @@ class GrowingModule(torch.nn.Module):
             device to use
         name: str | None
             name of the module
-        target_in_features: int | None
+        target_in_neurons: int | None
             target number of input features for the layer at the end of the growth process
         """
         if tensor_s_shape is None:
@@ -2422,6 +2422,14 @@ class GrowingModule(torch.nn.Module):
         number_of_growth_steps: int = 1,
     ) -> int:
         """Get the number of neurons to add in the next growth step.
+
+        Methods
+        -------
+        - fixed_proportional: add a fixed proportion of the total number of neurons
+          to add at each growth step. The amount to add is computed as
+          an integer division as a consequence a few neurons may remain to be added
+          after all growth steps have been performed.
+
 
         Parameters
         ----------
