@@ -206,7 +206,7 @@ class GrowingBlock(GrowingContainer):
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         x: torch.Tensor,
-        mask: None = None,  # noqa: ARG002
+        mask: dict = {},  # noqa: ARG002
     ) -> torch.Tensor:
         """
         Forward pass of the block with the current modifications.

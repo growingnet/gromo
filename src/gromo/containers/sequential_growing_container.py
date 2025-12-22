@@ -73,11 +73,13 @@ class SequentialGrowingContainer(GrowingContainer):
 
     def number_of_neurons_to_add(self, **kwargs) -> int:
         """Get the number of neurons to add in the next growth step."""
-        assert self.layer_to_grow_index >= 0, (
-            "layer_to_grow_index must be set to a valid index before calling "
-            "number_of_neurons_to_add. May indicate that multiple layers are being grown "
-            "at once, which is not supported by this method."
-        )
+        if self.layer_to_grow_index < 0:
+            raise RuntimeError(
+                "number_of_neurons_to_add is only supported when a single layer is being "
+                "grown (e.g. with scheduling_method='sequential'). A negative "
+                "layer_to_grow_index usually indicates that multiple layers are being "
+                "grown at once, which is not supported by this method."
+            )
         return self._growable_layers[self.layer_to_grow_index].number_of_neurons_to_add(
             **kwargs
         )
