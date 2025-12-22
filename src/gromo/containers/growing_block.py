@@ -159,12 +159,12 @@ class GrowingBlock(GrowingContainer):
         """
         if isinstance(value, float):
             value = torch.tensor(value, device=self.device)
-        elif isinstance(value, torch.Tensor):
-            self.second_layer.parameter_update_decrease = value
-        else:
+        elif not isinstance(value, torch.Tensor):
             raise TypeError(
                 "parameter_update_decrease must be a float or a torch.Tensor."
             )
+
+        self.second_layer.parameter_update_decrease = value
 
     @property
     def scaling_factor(self):
