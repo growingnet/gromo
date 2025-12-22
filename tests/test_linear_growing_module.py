@@ -414,6 +414,7 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         first_layer_extended_post_layer: torch.nn.Module | None = None,
         include_eigenvalues: bool = False,
         hidden_features: int = 3,
+        extension_size: int = 2,
     ) -> tuple[LinearGrowingModule, LinearGrowingModule]:
         """Create demo layers with extension for testing."""
         layer_in, layer_out = self.create_demo_layers(
@@ -426,15 +427,19 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         )
 
         first_layer_ext = torch.nn.Linear(
-            5, 2, device=global_device(), bias=layer_in.use_bias
+            5, extension_size, device=global_device(), bias=layer_in.use_bias
         )
-        second_layer_ext = torch.nn.Linear(2, 7, device=global_device(), bias=False)
+        second_layer_ext = torch.nn.Linear(
+            extension_size, 7, device=global_device(), bias=False
+        )
 
         layer_in.extended_output_layer = first_layer_ext
         layer_out.extended_input_layer = second_layer_ext
 
         if include_eigenvalues:
-            layer_out.eigenvalues_extension = torch.empty(2, device=global_device())
+            layer_out.eigenvalues_extension = torch.empty(
+                extension_size, device=global_device()
+            )
 
         return layer_in, layer_out
 
@@ -3302,33 +3307,42 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     msg=f"extended_input_layer std should be {std_target}",
                 )
 
-        # Subtest 1: Explicit std target
-        with self.subTest(case="explicit_std_target"):
+        def set_up_network_for_normalization_test(
+            include_optimal_delta: bool = True,
+            extension_size: int = 2,
+        ) -> LinearGrowingModule:
             _, layer_out = self.create_demo_layers_with_extension(
-                include_eigenvalues=True
+                include_eigenvalues=True,
+                extension_size=extension_size,
             )
 
-            # Create optimal_delta_layer with random weights
-            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
-                layer_out.in_features,
-                layer_out.out_features,
-                bias=layer_out.use_bias,
-            )
+            if include_optimal_delta:
+                # Create optimal_delta_layer with random weights
+                layer_out.optimal_delta_layer = self.create_standard_nn_linear(
+                    layer_out.in_features,
+                    layer_out.out_features,
+                    bias=layer_out.use_bias,
+                )
+            return layer_out
+
+        # Subtest 1: Explicit std target
+        with self.subTest(case="explicit_std_target"):
+            layer_out = set_up_network_for_normalization_test()
 
             # Set target std
             std_target = 0.1
 
             # Call normalize_optimal_updates
-            layer_out.normalize_optimal_updates(std_target=std_target)
+            layer_out.normalize_optimal_updates(
+                std_target=std_target, normalization_type="equalize_second_layer"
+            )
 
             # Verify std of layers is approximately std_target
             check_target_std_reached(layer_out, std_target)
 
         # Subtest 2: Default std from layer weights
         with self.subTest(case="default_from_layer_weights"):
-            _, layer_out = self.create_demo_layers_with_extension(
-                include_eigenvalues=True
-            )
+            layer_out = set_up_network_for_normalization_test()
 
             # Set layer weights to have specific std
             target_std = 5.0
@@ -3336,26 +3350,25 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 torch.randn_like(layer_out.layer.weight) * target_std
             )
 
-            # Create optimal_delta_layer
-            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
-                layer_out.in_features,
-                layer_out.out_features,
-                bias=layer_out.use_bias,
-            )
             std_target = layer_out.layer.weight.std().item()
 
             # Call normalize_optimal_updates without std_target
-            layer_out.normalize_optimal_updates(std_target=None)
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="equalize_second_layer"
+            )
 
             # Verify std of optimal_delta_layer matches layer weights std
             check_target_std_reached(layer_out, std_target)
 
         # Subtest 3: Only extension layer normalization (no optimal_delta_layer)
         with self.subTest(case="only_extension_normalization"):
-            _, layer_out = self.create_demo_layers_with_extension(
-                include_eigenvalues=True,
-                hidden_features=0,
-            )
+            with self.assertWarns(
+                UserWarning, msg="Initializing zero-element tensors is a no-op"
+            ):
+                _, layer_out = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=0,
+                )
 
             # Remove optimal_delta_layer so only extension is normalized
             layer_out.optimal_delta_layer = None
@@ -3364,7 +3377,9 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             std_target = 1 / layer_out.extended_input_layer.in_features**0.5
 
             # Call normalize_optimal_updates
-            layer_out.normalize_optimal_updates(std_target=None)
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="equalize_second_layer"
+            )
 
             # Verify only extended_input_layer std matches target
             check_target_std_reached(
@@ -3375,21 +3390,16 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
 
         # Subtest 4: Only delta layer
         with self.subTest(case="only_delta_layer"):
-            layer_in, layer_out = self.create_demo_layers_with_extension(
-                include_eigenvalues=True
-            )
-            layer_in.extended_output_layer = None  # Remove extension layers
+            layer_out = set_up_network_for_normalization_test(include_optimal_delta=True)
+
+            # Remove extension layers
+            layer_out.previous_module.extended_output_layer = None  # type: ignore
             layer_out.extended_input_layer = None
 
-            # Create optimal_delta_layer with random weights
-            layer_out.optimal_delta_layer = self.create_standard_nn_linear(
-                layer_out.in_features,
-                layer_out.out_features,
-                bias=layer_out.use_bias,
-            )
-
             # Call normalize_optimal_updates
-            layer_out.normalize_optimal_updates(std_target=None)
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="equalize_second_layer"
+            )
 
             # Verify std of layers is approximately std_target
             check_target_std_reached(
@@ -3406,7 +3416,224 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             layer_out.optimal_delta_layer = self.create_standard_nn_linear(1, 1)
 
             # Everything works fine if std is zero (no scaling applied)
-            layer_out.normalize_optimal_updates(std_target=None)
+            with self.assertWarns(
+                UserWarning,
+                msg="std(): degrees of freedom is <= 0. "
+                "Correction should be strictly less than the reduction factor"
+                " (input numel divided by output numel).",
+            ):
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="equalize_second_layer"
+                )
+
+        with self.subTest(case="unknown_normalization_type"):
+            layer_out = set_up_network_for_normalization_test()
+
+            normalization_type = "unknown_type"
+            # Call normalize_optimal_updates with invalid type
+            with self.assertRaises(ValueError):
+                layer_out.normalize_optimal_updates(
+                    std_target=0.1, normalization_type=normalization_type
+                )
+
+        def create_tensor_with_known_std(
+            shape: tuple[int, ...], target_std: float
+        ) -> torch.Tensor:
+            """
+            Create a tensor with known std.
+
+            For d elements: d/2 elements with value v and d/2 elements with value -v.
+            This gives std = v (mean = 0).
+            """
+            tensor = torch.zeros(shape, device=global_device())
+            flat = tensor.view(-1)
+            d = flat.numel()
+            assert d % 2 == 1, f"Number of elements must be odd ({tensor.shape})"
+            half = d // 2
+            flat[:half] = target_std
+            flat[half:-1] = -target_std
+            assert (
+                abs(tensor.std().item() - target_std) < 1e-5
+            ), f"Tensor std {tensor.std().item()} does not match target {target_std}"
+            return tensor
+
+        def setup_layers_with_known_stds(
+            std_weights: float, std_delta: float, std_alpha: float, std_omega: float
+        ) -> LinearGrowingModule:
+            """
+            Set up layers with known standard deviations.
+
+            W: main weights of layer_out
+            dW: delta weights (optimal_delta_layer)
+            Alpha: output extension (layer_in.extended_output_layer)
+            Omega: input extension (layer_out.extended_input_layer)
+            """
+            layer_out = set_up_network_for_normalization_test(
+                include_optimal_delta=True, extension_size=1
+            )
+            layer_in = layer_out.previous_module
+            assert isinstance(layer_in, LinearGrowingModule)
+
+            # Set main weights W with known std
+            layer_out.layer.weight.data = create_tensor_with_known_std(
+                layer_out.layer.weight.shape, std_weights
+            )
+
+            # Set delta weights dW with known std
+            assert isinstance(layer_out.optimal_delta_layer, torch.nn.Linear)
+            layer_out.optimal_delta_layer.weight.data = create_tensor_with_known_std(
+                layer_out.optimal_delta_layer.weight.shape, std_delta
+            )
+
+            # Set Alpha (output extension) with known std
+            assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+            layer_in.extended_output_layer.weight.data = create_tensor_with_known_std(
+                layer_in.extended_output_layer.weight.shape, std_alpha
+            )
+
+            # Set Omega (input extension) with known std
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            layer_out.extended_input_layer.weight.data = create_tensor_with_known_std(
+                layer_out.extended_input_layer.weight.shape, std_omega
+            )
+
+            return layer_out
+
+        with self.subTest(case="legacy_normalization"):
+            # legacy_normalization:
+            # dW <- std(W)/std(dW) * dW  => std(dW_new) = std(W)
+            # Omega <- Omega              => std(Omega_new) = std(Omega)
+            # Alpha <- std(W)/std(Omega) * Alpha
+            std_weights, std_delta, std_alpha, std_omega = 2.0, 3.0, 5.0, 7.0
+            layer_out = setup_layers_with_known_stds(
+                std_weights, std_delta, std_alpha, std_omega
+            )
+
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="legacy_normalization"
+            )
+
+            # Verify: std(dW_new) = std(W)
+            assert isinstance(layer_out.optimal_delta_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.optimal_delta_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="dW should be scaled to std(W)",
+            )
+            # Verify: std(Omega_new) = std(Omega) (unchanged)
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                std_omega,
+                places=5,
+                msg="Omega should remain unchanged",
+            )
+            # Verify: std(Alpha_new) = std(W)/std(Omega) * std(Alpha)
+            expected_alpha_std = std_weights / std_omega * std_alpha
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            assert isinstance(
+                layer_out.previous_module.extended_output_layer, torch.nn.Linear
+            )
+            self.assertAlmostEqual(
+                layer_out.previous_module.extended_output_layer.weight.std().item(),
+                expected_alpha_std,
+                places=5,
+                msg="Alpha should be scaled by std(W)/std(Omega)",
+            )
+
+        with self.subTest(case="equalize_second_layer"):
+            # equalize_second_layer:
+            # dW <- std(W)/std(dW) * dW     => std(dW_new) = std(W)
+            # Omega <- std(W)/std(Omega) * Omega => std(Omega_new) = std(W)
+            # Alpha <- std(Omega)/std(dW) * Alpha
+            std_weights, std_delta, std_alpha, std_omega = 2.0, 3.0, 5.0, 7.0
+            layer_out = setup_layers_with_known_stds(
+                std_weights, std_delta, std_alpha, std_omega
+            )
+
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="equalize_second_layer"
+            )
+
+            # Verify: std(dW_new) = std(W)
+            assert isinstance(layer_out.optimal_delta_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.optimal_delta_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="dW should be scaled to std(W)",
+            )
+            # Verify: std(Omega_new) = std(W)
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="Omega should be scaled to std(W)",
+            )
+            # Verify: std(Alpha_new) = std(Omega)/std(dW) * std(Alpha)
+            expected_alpha_std = std_omega / std_delta * std_alpha
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            assert isinstance(
+                layer_out.previous_module.extended_output_layer, torch.nn.Linear
+            )
+            self.assertAlmostEqual(
+                layer_out.previous_module.extended_output_layer.weight.std().item(),
+                expected_alpha_std,
+                places=5,
+                msg="Alpha should be scaled by std(Omega)/std(dW)",
+            )
+
+        with self.subTest(case="equalize_extensions"):
+            # equalize_extensions (equalize_both_layers):
+            # dW <- std(W)^2 / (std(Alpha) * std(dW)) * dW
+            # Omega <- std(W)/std(Omega) * Omega => std(Omega_new) = std(W)
+            # Alpha <- std(W)/std(Alpha) * Alpha => std(Alpha_new) = std(W)
+            std_weights, std_delta, std_alpha, std_omega = 2.0, 3.0, 5.0, 7.0
+            layer_out = setup_layers_with_known_stds(
+                std_weights, std_delta, std_alpha, std_omega
+            )
+
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="equalize_extensions"
+            )
+
+            # Verify: std(Omega_new) = std(W)
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="Omega should be scaled to std(W)",
+            )
+            # Verify: std(Alpha_new) = std(W)
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            assert isinstance(
+                layer_out.previous_module.extended_output_layer, torch.nn.Linear
+            )
+            self.assertAlmostEqual(
+                layer_out.previous_module.extended_output_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="Alpha should be scaled to std(W)",
+            )
+            # Verify: std(dW_new) = std(W)^2 / (std(Alpha) * std(Omega)) * std(dW)
+            expected_dw_std = std_weights**2 / (std_alpha * std_omega) * std_delta
+            assert isinstance(layer_out.optimal_delta_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.optimal_delta_layer.weight.std().item(),
+                expected_dw_std,
+                places=5,
+                msg="dW should be scaled by std(W)^2 / (std(Alpha) * std(Omega))",
+            )
+
+            # Test error when no previous module is given
+            layer_out.previous_module = None
+            with self.assertRaises(ValueError):
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="equalize_extensions"
+                )
 
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
