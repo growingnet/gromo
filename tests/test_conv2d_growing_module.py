@@ -2061,5 +2061,66 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             )
 
 
+class TestNeuronCountingConv2d(TestConv2dGrowingModuleBase):
+    """Test in_neurons property and growth-related methods for Conv2dGrowingModule."""
+
+    def test_in_neurons_returns_in_channels(self) -> None:
+        """Test that in_neurons returns in_channels for Conv2d modules."""
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            device=global_device(),
+        )
+        self.assertEqual(layer.in_neurons, 5)
+        self.assertEqual(layer.in_neurons, layer.in_channels)
+
+    def test_target_in_channels_initialization(self) -> None:
+        """Test that target_in_neurons is correctly initialized via target_in_channels."""
+        # Without target
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            device=global_device(),
+        )
+        self.assertIsNone(layer.target_in_neurons)
+        self.assertEqual(layer._initial_in_neurons, 5)
+
+        # With target
+        layer_with_target = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            target_in_channels=10,
+            device=global_device(),
+        )
+        self.assertEqual(layer_with_target.target_in_neurons, 10)
+        self.assertEqual(layer_with_target._initial_in_neurons, 5)
+
+    def test_missing_neurons_for_conv2d(self) -> None:
+        """Test missing_neurons for Conv2dGrowingModule."""
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            target_in_channels=10,
+            device=global_device(),
+        )
+        self.assertEqual(layer.missing_neurons(), 5)
+
+    def test_number_of_neurons_to_add_for_conv2d(self) -> None:
+        """Test number_of_neurons_to_add for Conv2dGrowingModule."""
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            target_in_channels=15,
+            device=global_device(),
+        )
+        # Total to add: 15 - 5 = 10
+        self.assertEqual(layer.number_of_neurons_to_add(number_of_growth_steps=2), 5)
+
+
 if __name__ == "__main__":
     main()
