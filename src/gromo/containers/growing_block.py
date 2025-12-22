@@ -2,6 +2,7 @@
 Module to define a two layer block similar to a BasicBlock in ResNet.
 """
 
+from typing import Any
 from warnings import warn
 
 import torch
@@ -106,6 +107,29 @@ class GrowingBlock(GrowingContainer):
             )
         else:
             raise ValueError("verbose must be a non-negative integer.")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "optimal_delta_layer":
+            # We can't use directly @optimal_delta_layer.setter because of
+            # inheritance issues. But we want to be able to set this attribute
+            # so we use a @.setter to indicate it to the linter and redirect here.
+            GrowingBlock.optimal_delta_layer.fset(self, value)  # type: ignore
+        else:
+            return super().__setattr__(name, value)
+
+    @property
+    def optimal_delta_layer(self) -> torch.nn.Module | None:
+        """
+        Get the optimal delta layer of the block.
+        """
+        return self.second_layer.optimal_delta_layer
+
+    @optimal_delta_layer.setter
+    def optimal_delta_layer(self, value: torch.nn.Module | None):
+        """
+        Set the optimal delta layer of the block.
+        """
+        self.second_layer.optimal_delta_layer = value
 
     @property
     def hidden_features(self) -> int:

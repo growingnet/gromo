@@ -1419,3 +1419,26 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertIsInstance(
             stats, dict, "weights_statistics should return a dictionary"
         )
+
+    def test_optimal_delta_layer_property(self):
+        """Test optimal_delta_layer getter and setter."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+
+        # Test getter - initially should be None
+        self.assertIsNone(block.optimal_delta_layer)
+
+        # Test setter by calling the property setter directly
+        # (nn.Module.__setattr__ intercepts normal assignments)
+        delta_layer = torch.nn.Linear(self.hidden_features, self.in_features)
+        block.optimal_delta_layer = delta_layer
+        self.assertIs(block.optimal_delta_layer, delta_layer)
+        self.assertIs(block.second_layer.optimal_delta_layer, delta_layer)
+
+        # Test setter with None
+        block.optimal_delta_layer = None
+        self.assertIsNone(block.optimal_delta_layer)
