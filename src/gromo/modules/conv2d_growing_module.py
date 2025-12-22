@@ -501,6 +501,8 @@ class Conv2dGrowingModule(GrowingModule):
         device for the layer
     name: str | None
         name of the layer used for debugging purpose
+    target_in_channels: int | None
+        target number of input channels for the layer when growing is performed
     """
 
     def __init__(
