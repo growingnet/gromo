@@ -311,7 +311,7 @@ class TestResNet(TorchTestCase):
         # The first growable layer is the first block of the first stage
         # With reduction_factor=0.5, it should have 32 hidden features (64 * 0.5)
         # And out_features is 64 for the first stage
-        # So number to add should be (64 - 32) = 32 with growth_step=1
+        # So with number_of_growth_steps=1, number to add should be (64 - 32) = 32
         model.layer_to_grow_index = 0
 
         neurons_to_add = model.number_of_neurons_to_add(number_of_growth_steps=5)
@@ -320,6 +320,10 @@ class TestResNet(TorchTestCase):
             int,
             "number_of_neurons_to_add should return an integer",
         )
+
+        model.set_growing_layers(scheduling_method="all")
+        with self.assertRaises(RuntimeError):
+            model.number_of_neurons_to_add(number_of_growth_steps=2)
 
     def test_get_first_order_improvement(self):
         """Test the get_first_order_improvement method."""
