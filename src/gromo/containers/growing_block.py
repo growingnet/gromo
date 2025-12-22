@@ -302,20 +302,6 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.cross_covariance.reset()
         self.second_layer.tensor_s_growth.reset()
 
-    @property
-    def optimal_delta_layer(self) -> torch.nn.Module | None:
-        """
-        Get the optimal delta layer of the block.
-        """
-        return self.second_layer.optimal_delta_layer
-
-    @optimal_delta_layer.setter
-    def optimal_delta_layer(self, value: torch.nn.Module | None):
-        """
-        Set the optimal delta layer of the block.
-        """
-        self.second_layer.optimal_delta_layer = value
-
     def delete_update(self, **kwargs):
         """
         Delete the update of the block.
