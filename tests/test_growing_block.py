@@ -760,7 +760,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Test setter with float (should convert to tensor)
         float_value = 0.3
         block.parameter_update_decrease = float_value
-        self.assertEqual(
+        self.assertAlmostEqual(
             block.second_layer.parameter_update_decrease.item(),
             float_value,
         )
