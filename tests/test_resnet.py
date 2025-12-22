@@ -314,7 +314,7 @@ class TestResNet(TorchTestCase):
         # So number to add should be (64 - 32) = 32 with growth_step=1
         model.layer_to_grow_index = 0
 
-        neurons_to_add = model.number_of_neurons_to_add(growth_step=5)
+        neurons_to_add = model.number_of_neurons_to_add(number_of_growth_steps=5)
         self.assertIsInstance(
             neurons_to_add,
             int,
