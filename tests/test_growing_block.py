@@ -751,7 +751,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         tensor_value = torch.tensor(0.5, device=self.device)
         block.parameter_update_decrease = tensor_value
         self.assertIsInstance(block.parameter_update_decrease, torch.Tensor)
-        assert isinstance(block.parameter_update_decrease, torch.Tensor)  # type check
+        assert isinstance(block.second_layer.parameter_update_decrease, torch.Tensor)
         self.assertEqual(
             block.second_layer.parameter_update_decrease.item(),
             tensor_value.item(),
@@ -760,8 +760,10 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Test setter with float (should convert to tensor)
         float_value = 0.3
         block.parameter_update_decrease = float_value
-        # Note: The float branch creates a tensor but doesn't assign it
-        # This test covers the isinstance(value, float) branch
+        self.assertEqual(
+            block.second_layer.parameter_update_decrease.item(),
+            float_value,
+        )
 
         # Test setter with invalid type
         with self.assertRaises(TypeError):
@@ -1202,9 +1204,6 @@ class TestLinearGrowingBlock(TorchTestCase):
             original_first_out = block.first_layer.out_features
             original_second_in = block.second_layer.in_features
 
-            # Note: extension_size just tells the block how many neurons are
-            # being added (updates hidden_features), but all neurons from the
-            # extension layer are still used
             # Create second extension without bias as required by apply_change
             second_extension_no_bias = torch.nn.Linear(
                 self.added_features,
@@ -1226,7 +1225,7 @@ class TestLinearGrowingBlock(TorchTestCase):
 
             # Apply change with explicit size
             # This should add self.added_features (7) to the layers, and
-            # update hidden_features by extension_size
+            # update hidden_features by the same amount
             explicit_size = block.second_layer.extended_input_layer.in_features
             block.apply_change(extension_size=explicit_size)
 
