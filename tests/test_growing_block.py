@@ -1145,20 +1145,20 @@ class TestLinearGrowingBlock(TorchTestCase):
         3. Neither extension_size nor eigenvalues_extension (should raise
            assertion)
         """
-        # Setup: Create a block with some initial hidden features
-        initial_hidden_features = 2
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.in_features,
-            hidden_features=initial_hidden_features,
-            device=self.device,
-        )
-
-        # Store original dimensions
-        original_first_out = block.first_layer.out_features
-        original_second_in = block.second_layer.in_features
-
         with self.subTest("Case 1: Explicit extension_size parameter"):
+            # Setup: Create a block with some initial hidden features
+            initial_hidden_features = 2
+            block = LinearGrowingBlock(
+                in_features=self.in_features,
+                out_features=self.in_features,
+                hidden_features=initial_hidden_features,
+                device=self.device,
+            )
+
+            # Store original dimensions
+            original_first_out = block.first_layer.out_features
+            original_second_in = block.second_layer.in_features
+
             # Note: extension_size just tells the block how many neurons are
             # being added (updates hidden_features), but all neurons from the
             # extension layer are still used
@@ -1184,7 +1184,7 @@ class TestLinearGrowingBlock(TorchTestCase):
             # Apply change with explicit size
             # This should add self.added_features (7) to the layers, and
             # update hidden_features by extension_size
-            explicit_size = 2
+            explicit_size = block.second_layer.extended_input_layer.in_features
             block.apply_change(extension_size=explicit_size)
 
             # Verify dimensions increased by the actual number of neurons
