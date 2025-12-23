@@ -311,15 +311,19 @@ class TestResNet(TorchTestCase):
         # The first growable layer is the first block of the first stage
         # With reduction_factor=0.5, it should have 32 hidden features (64 * 0.5)
         # And out_features is 64 for the first stage
-        # So number to add should be (64 - 32) = 32 with growth_step=1
+        # So with number_of_growth_steps=1, number to add should be (64 - 32) = 32
         model.layer_to_grow_index = 0
 
-        neurons_to_add = model.number_of_neurons_to_add(growth_step=5)
+        neurons_to_add = model.number_of_neurons_to_add(number_of_growth_steps=5)
         self.assertIsInstance(
             neurons_to_add,
             int,
             "number_of_neurons_to_add should return an integer",
         )
+
+        model.set_growing_layers(scheduling_method="all")
+        with self.assertRaises(RuntimeError):
+            model.number_of_neurons_to_add(number_of_growth_steps=2)
 
     def test_get_first_order_improvement(self):
         """Test the get_first_order_improvement method."""
@@ -352,4 +356,77 @@ class TestResNet(TorchTestCase):
             improvement.item(),
             update_decrease + sum(x**2 for x in eigenvalues),
             msg="First order improvement calculation is incorrect",
+        )
+
+    def test_missing_neurons(self):
+        """Test the missing_neurons method for SequentialGrowingContainer."""
+        device = torch.device("cpu")
+
+        # Create a small network
+        model = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            reduction_factor=0.5,
+            inplanes=4,
+            nb_stages=2,
+            device=device,
+        )
+
+        # Set a specific layer to grow (must set currently_updated_layer_index)
+        model.set_growing_layers(scheduling_method="sequential", index=0)
+        model.currently_updated_layer_index = 0
+
+        # Test missing_neurons returns an integer
+        missing = model.missing_neurons()
+        self.assertIsInstance(
+            missing,
+            int,
+            "missing_neurons should return an integer",
+        )
+        self.assertGreaterEqual(
+            missing,
+            0,
+            "missing_neurons should return a non-negative integer",
+        )
+
+    def test_complete_growth(self):
+        """Test the complete_growth method for SequentialGrowingContainer."""
+        device = torch.device("cpu")
+
+        # Create a small network
+        model = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            reduction_factor=0.5,
+            inplanes=4,
+            nb_stages=2,
+            device=device,
+        )
+
+        # Verify that the model has growable layers
+        self.assertGreater(
+            len(model._growable_layers),
+            0,
+            "Model should have growable layers",
+        )
+
+        # Get initial hidden neurons for the first block
+        first_block: RestrictedConv2dGrowingBlock = model.stages[0][0]  # type: ignore
+        initial_neurons = first_block.hidden_neurons
+
+        # Call complete_growth with extension kwargs (without extension_size)
+        extension_kwargs = {
+            "output_extension_init": "zeros",
+            "input_extension_init": "zeros",
+        }
+        model.complete_growth(extension_kwargs=extension_kwargs)
+
+        # Verify that hidden neurons increased
+        new_neurons = first_block.hidden_neurons
+        self.assertGreater(
+            new_neurons,
+            initial_neurons,
+            "complete_growth should increase the number of hidden neurons",
         )
