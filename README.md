@@ -58,7 +58,3 @@ pre-commit install
 ## Documentation
 
 The documentation for Gromo can be found at: https://growingnet.github.io/gromo/
-
-To learn how to use Gromo, we recommend starting with the following tutorials:
-- [GrowingContainer Tutorial](https://growingnet.github.io/gromo/tutorials/plot_growing_container_tutorial.html) thtat shows how to use a growing neural network and train it on a simple dataset.
-- [GrowingModule Tutorial](https://growingnet.github.io/gromo/auto_examples/plot_tutorial.html) that get a little bit deeper into the details of growing modules.
