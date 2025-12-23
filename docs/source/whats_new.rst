@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Update `GrowingBlock` to include recently added features in `GrowingModule` such as `in_neurons` property, `target_in_neurons` parameter, and methods for multi-step growth processes (:gh:`186` by `Théo Rudkiewicz`_)
 - Add `in_neurons` property and `target_in_neurons` parameter to `GrowingModule`, `LinearGrowingModule`, and `Conv2dGrowingModule` for tracking neuron counts during growth. Add `missing_neurons`, `number_of_neurons_to_add`, and `complete_growth` methods to simplify multi-step growth processes (:gh:`187` by `Théo Rudkiewicz`_)
 - Add new normalization methods (:gh:`185` by `Théo Rudkiewicz`_)
 - Update `output_volume` in `Conv2dMergeGrowingModule` based on post_merge_function and reshaping (:gh:`177` by `Stella Douka`_)
