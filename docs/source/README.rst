@@ -53,4 +53,4 @@ Getting started
 To learn how to use Gromo, we recommend starting with the following tutorials:
 
 - `GrowingContainer Tutorial <auto_examples/plot_growing_container_tutorial.html>`_ that shows how to use a growing neural network and train it on a simple dataset.
-- `GrowingModule Tutorial <auto_examples/plot_tutorial.html>`_ that gets a little bit deeper into the details of growing modules.
+- `GrowingModule Tutorial <auto_examples/plot_growing_module_tutorial.html>`_ that gets a little bit deeper into the details of growing modules.
