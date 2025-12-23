@@ -19,7 +19,7 @@ class SyntheticDataloader(torch.utils.data.DataLoader):
         out_features: int = 1,
     ):
         self.nb_sample = nb_sample
-        self.batch_size = batch_size
+        self.batch_size: int = batch_size  # type: ignore
         self.seed = seed
         self.sample_index = 0
         if device is None:
@@ -28,7 +28,7 @@ class SyntheticDataloader(torch.utils.data.DataLoader):
         self.in_features = in_features
         self.out_features = out_features
 
-    def __iter__(self):
+    def __iter__(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         torch.manual_seed(self.seed)
         self.sample_index = 0
         return self
@@ -58,7 +58,7 @@ class SinDataloader(SyntheticDataloader):
 class MultiSinDataloader(SyntheticDataloader):
     r"""
     A simple dataloader that generates batches of synthetic data for the
-    function y[d] = sum_{i=1}^{k} sin(i * x[k] + d), where x is sampled
+    function y[d] = sum_{i=1}^{k} sin(i * x[i] + d), where x is sampled
     from a gaussian distribution.
     """
 
