@@ -26,7 +26,7 @@ from helpers.auxilliary_functions import (
     line_search,
     train,
 )
-from helpers.syntetic_data import SinDataloader
+from helpers.synthetic_data import SinDataloader
 
 from gromo.containers.growing_mlp import GrowingMLP
 

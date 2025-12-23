@@ -29,7 +29,7 @@ Then we define ``plt_model`` to visualize the model.
 import matplotlib.pyplot as plt
 import torch
 from helpers.auxilliary_functions import evaluate_model, train
-from helpers.syntetic_data import SinDataloader
+from helpers.synthetic_data import SinDataloader
 
 from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.utils import global_device

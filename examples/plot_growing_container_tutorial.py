@@ -39,7 +39,7 @@ First, we import the necessary libraries:
 import matplotlib.pyplot as plt
 import torch
 import torch.utils.data
-from helpers.syntetic_data import MultiSinDataloader
+from helpers.synthetic_data import MultiSinDataloader
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_mlp import GrowingMLP
