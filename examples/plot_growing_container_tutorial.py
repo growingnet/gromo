@@ -84,8 +84,9 @@ test_data_loader = MultiSinDataloader(
 # Defining the GrowingMLP Architecture
 # =====================================
 #
-# Before we use ``GrowingMLP``, let's look at its implementation to understand
-# how it works.
+# Before we use ``GrowingMLP``, let's look at its
+# `implementation <https://github.com/growingnet/gromo/blob/main/src/gromo/containers/growing_mlp.py>`_
+# to understand how it works.
 #
 # Key Components
 # ~~~~~~~~~~~~~~
