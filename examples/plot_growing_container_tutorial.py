@@ -82,7 +82,7 @@ test_data_loader = MultiSinDataloader(
 
 ###############################################################################
 # Defining the GrowingMLP Architecture
-# =====================================
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
 # Before we use ``GrowingMLP``, let's look at its
 # `implementation <https://github.com/growingnet/gromo/blob/main/src/gromo/containers/growing_mlp.py>`_
@@ -113,12 +113,19 @@ test_data_loader = MultiSinDataloader(
 # +-------------------------------+----------------------------------------+
 # | ``set_growing_layers(index)`` | Select which layer(s) to grow          |
 # +-------------------------------+----------------------------------------+
+#
+
 ###############################################################################
 # Step 3: Define Helper Functions
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# --------------------------------
 #
 # We need three key functions to work with our growing network:
 #
+# 1. **Training function**: Standard training loop using SGD
+# 2. **Evaluation function**: Compute loss, with support for extended mode
+# 3. **Growth function**: The core GroMo logic to add new neurons intelligently
+
+###############################################################################
 # 3.1 Training Function
 # ^^^^^^^^^^^^^^^^^^^^^
 #
