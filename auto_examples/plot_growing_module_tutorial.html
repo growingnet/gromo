@@ -61,11 +61,11 @@
                 gtag('config', 'XXXX');
             </script>
     <script async="async" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'auto_examples/plot_tutorial';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'auto_examples/plot_growing_module_tutorial';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="API Reference" href="../api.html" />
-    <link rel="prev" title="MLP Example with Growing Layers" href="plot_mlp_run.html" />
+    <link rel="next" title="Simple Growing Container Example" href="plot_growing_network.html" />
+    <link rel="prev" title="GrowingContainer tutorial" href="plot_growing_container_tutorial.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
@@ -303,10 +303,11 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="plot_growing_container_tutorial.html">GrowingContainer tutorial</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">GroMo tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="plot_growing_network.html">Simple Growing Container Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="plot_linear_module.html">Minimal Linear Growing Layers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="plot_mlp_run.html">MLP Example with Growing Layers</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">GroMo tutorial</a></li>
 </ul>
 </div>
 </nav></div>
@@ -369,11 +370,11 @@
                   
   <div class="sphx-glr-download-link-note admonition note">
 <p class="admonition-title">Note</p>
-<p><a class="reference internal" href="#sphx-glr-download-auto-examples-plot-tutorial-py"><span class="std std-ref">Go to the end</span></a>
+<p><a class="reference internal" href="#sphx-glr-download-auto-examples-plot-growing-module-tutorial-py"><span class="std std-ref">Go to the end</span></a>
 to download the full example code.</p>
 </div>
 <section class="sphx-glr-example-title" id="gromo-tutorial">
-<span id="sphx-glr-auto-examples-plot-tutorial-py"></span><h1>GroMo tutorial<a class="headerlink" href="#gromo-tutorial" title="Link to this heading">#</a></h1>
+<span id="sphx-glr-auto-examples-plot-growing-module-tutorial-py"></span><h1>GroMo tutorial<a class="headerlink" href="#gromo-tutorial" title="Link to this heading">#</a></h1>
 <p>This is a minimal example of how to use GroMo. We will illustrate the
 use off GroMo to find a one hidden layer neural network (NN) that
 approximates the function <span class="math notranslate nohighlight">\(f(x) = \sin(x)\)</span> on the interval
@@ -395,7 +396,8 @@ data for the sine function.</p></li>
 <p>Then we define <code class="docutils literal notranslate"><span class="pre">plt_model</span></code> to visualize the model.</p>
 <div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">helpers.auxilliary_functions</span><span class="w"> </span><span class="kn">import</span> <span class="n">SinDataloader</span><span class="p">,</span> <span class="n">evaluate_model</span><span class="p">,</span> <span class="n">train</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">helpers.auxilliary_functions</span><span class="w"> </span><span class="kn">import</span> <span class="n">evaluate_model</span><span class="p">,</span> <span class="n">train</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">helpers.synthetic_data</span><span class="w"> </span><span class="kn">import</span> <a href="https://docs.python.org/3/library/typing.html#typing.Generic" title="typing.Generic" class="sphx-glr-backref-module-typing sphx-glr-backref-type-py-class"><span class="n">SinDataloader</span></a>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">gromo.modules.linear_growing_module</span><span class="w"> </span><span class="kn">import</span> <a href="../generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule" class="sphx-glr-backref-module-gromo-modules-linear_growing_module sphx-glr-backref-type-py-class"><span class="n">LinearGrowingModule</span></a>
 <span class="kn">from</span><span class="w"> </span><span class="nn">gromo.utils.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">global_device</span>
@@ -433,7 +435,8 @@ data for the sine function.</p></li>
     <a href="https://matplotlib.org/stable/api/_as_gen/matplotlib.figure.Figure.html#matplotlib.figure.Figure" title="matplotlib.figure.Figure" class="sphx-glr-backref-module-matplotlib-figure sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">fig</span><span class="o">.</span><span class="n">set_ylabel</span></a><span class="p">(</span><span class="s2">&quot;sin(x)&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">SinDataloader</span><span class="p">(</span><span class="n">nb_sample</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">device</span> <span class="o">=</span> <span class="n">global_device</span><span class="p">()</span>
+<span class="n">data</span> <span class="o">=</span> <a href="https://docs.python.org/3/library/typing.html#typing.Generic" title="typing.Generic" class="sphx-glr-backref-module-typing sphx-glr-backref-type-py-class"><span class="n">SinDataloader</span></a><span class="p">(</span><span class="n">nb_sample</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 <span class="n">loss_function</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">()</span>
 </pre></div>
 </div>
@@ -492,7 +495,7 @@ second layer and let it grow with the first layer.</p>
 <span class="n">plt_model</span><span class="p">(</span><span class="n">growing_net</span><span class="p">,</span> <a href="https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.html#matplotlib.axes.Axes" title="matplotlib.axes.Axes" class="sphx-glr-backref-module-matplotlib-axes sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">ax</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<img src="../_images/sphx_glr_plot_tutorial_001.png" srcset="../_images/sphx_glr_plot_tutorial_001.png" alt="plot tutorial" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Initial error: 6.69e+00
+<img src="../_images/sphx_glr_plot_growing_module_tutorial_001.png" srcset="../_images/sphx_glr_plot_growing_module_tutorial_001.png" alt="plot growing module tutorial" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Initial error: 1.19e+00
 </pre></div>
 </div>
 <p>Here we guide it a bit in the right direction to make it learn faster</p>
@@ -508,7 +511,7 @@ second layer and let it grow with the first layer.</p>
 <span class="n">plt_model</span><span class="p">(</span><span class="n">growing_net</span><span class="p">,</span> <a href="https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.html#matplotlib.axes.Axes" title="matplotlib.axes.Axes" class="sphx-glr-backref-module-matplotlib-axes sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">ax</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<img src="../_images/sphx_glr_plot_tutorial_002.png" srcset="../_images/sphx_glr_plot_tutorial_002.png" alt="plot tutorial" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Error: 1.48e+00
+<img src="../_images/sphx_glr_plot_growing_module_tutorial_002.png" srcset="../_images/sphx_glr_plot_growing_module_tutorial_002.png" alt="plot growing module tutorial" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Error: 1.48e+00
 </pre></div>
 </div>
 <div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">SGD</span><span class="p">(</span><span class="n">growing_net</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">1e-2</span><span class="p">)</span>
@@ -535,8 +538,8 @@ second layer and let it grow with the first layer.</p>
 </pre></div>
 </div>
 <ul class="sphx-glr-horizontal">
-<li><img src="../_images/sphx_glr_plot_tutorial_003.png" srcset="../_images/sphx_glr_plot_tutorial_003.png" alt="plot tutorial" class = "sphx-glr-multi-img"/></li>
-<li><img src="../_images/sphx_glr_plot_tutorial_004.png" srcset="../_images/sphx_glr_plot_tutorial_004.png" alt="plot tutorial" class = "sphx-glr-multi-img"/></li>
+<li><img src="../_images/sphx_glr_plot_growing_module_tutorial_003.png" srcset="../_images/sphx_glr_plot_growing_module_tutorial_003.png" alt="plot growing module tutorial" class = "sphx-glr-multi-img"/></li>
+<li><img src="../_images/sphx_glr_plot_growing_module_tutorial_004.png" srcset="../_images/sphx_glr_plot_growing_module_tutorial_004.png" alt="plot growing module tutorial" class = "sphx-glr-multi-img"/></li>
 </ul>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Error: 5.13e-02
 </pre></div>
@@ -934,7 +937,7 @@ PyTorch model. You can train it, evaluate it, etc.</p>
 <span class="n">plt_model</span><span class="p">(</span><span class="n">growing_net</span><span class="p">,</span> <a href="https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.html#matplotlib.axes.Axes" title="matplotlib.axes.Axes" class="sphx-glr-backref-module-matplotlib-axes sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">ax</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<img src="../_images/sphx_glr_plot_tutorial_005.png" srcset="../_images/sphx_glr_plot_tutorial_005.png" alt="plot tutorial" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>New error: 3.99e-02
+<img src="../_images/sphx_glr_plot_growing_module_tutorial_005.png" srcset="../_images/sphx_glr_plot_growing_module_tutorial_005.png" alt="plot growing module tutorial" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>New error: 3.99e-02
 </pre></div>
 </div>
 <div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">growing_net</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="fm">__str__</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
@@ -971,16 +974,16 @@ LinearGrowingModule(second_layer) module with 4 parameters.
         Extended output layer : None
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.387 seconds)</p>
-<div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-tutorial-py">
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.364 seconds)</p>
+<div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-growing-module-tutorial-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/706f65884faeaa9dfb13933db5a13d6a/plot_tutorial.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_tutorial.ipynb</span></code></a></p>
+<p><a class="reference download internal" download="" href="../_downloads/e11074a616c6f41be8f9d214bdfcdd37/plot_growing_module_tutorial.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_growing_module_tutorial.ipynb</span></code></a></p>
 </div>
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/43d70eb4b9ed18f8f34451c0af07d6f1/plot_tutorial.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_tutorial.py</span></code></a></p>
+<p><a class="reference download internal" download="" href="../_downloads/cfec1907b23b97e2559c571fb7ac6f83/plot_growing_module_tutorial.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_growing_module_tutorial.py</span></code></a></p>
 </div>
 <div class="sphx-glr-download sphx-glr-download-zip docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/43fabba74407773f301fe9ed164b1548/plot_tutorial.zip"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">zipped:</span> <span class="pre">plot_tutorial.zip</span></code></a></p>
+<p><a class="reference download internal" download="" href="../_downloads/2931820418205a495793975df84a66f2/plot_growing_module_tutorial.zip"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">zipped:</span> <span class="pre">plot_growing_module_tutorial.zip</span></code></a></p>
 </div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
@@ -999,20 +1002,20 @@ LinearGrowingModule(second_layer) module with 4 parameters.
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="plot_mlp_run.html"
+       href="plot_growing_container_tutorial.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">MLP Example with Growing Layers</p>
+        <p class="prev-next-title">GrowingContainer tutorial</p>
       </div>
     </a>
     <a class="right-next"
-       href="../api.html"
+       href="plot_growing_network.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">API Reference</p>
+        <p class="prev-next-title">Simple Growing Container Example</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

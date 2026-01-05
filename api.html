@@ -64,7 +64,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="gromo.modules.growing_module.GrowingModule" href="generated/gromo.modules.growing_module.GrowingModule.html" />
-    <link rel="prev" title="GroMo tutorial" href="auto_examples/plot_tutorial.html" />
+    <link rel="prev" title="MLP Example with Growing Layers" href="auto_examples/plot_mlp_run.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
@@ -303,9 +303,11 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="generated/gromo.modules.growing_module.GrowingModule.html">gromo.modules.growing_module.GrowingModule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated/gromo.modules.growing_module.MergeGrowingModule.html">gromo.modules.growing_module.MergeGrowingModule</a></li>
 </ul>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="generated/gromo.modules.linear_growing_module.LinearGrowingModule.html">gromo.modules.linear_growing_module.LinearGrowingModule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated/gromo.modules.linear_growing_module.LinearMergeGrowingModule.html">gromo.modules.linear_growing_module.LinearMergeGrowingModule</a></li>
 </ul>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.tools.sqrt_inverse_matrix_semi_positive.html">gromo.utils.tools.sqrt_inverse_matrix_semi_positive</a></li>
@@ -382,6 +384,9 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.modules.growing_module.GrowingModule.html#gromo.modules.growing_module.GrowingModule" title="gromo.modules.growing_module.GrowingModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">GrowingModule</span></code></a>(layer[, tensor_s_shape, ...])</p></td>
 <td><p></p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/gromo.modules.growing_module.MergeGrowingModule.html#gromo.modules.growing_module.MergeGrowingModule" title="gromo.modules.growing_module.MergeGrowingModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">MergeGrowingModule</span></code></a>([post_merge_function, ...])</p></td>
+<td><p>Module to connect multiple modules with an merge operation.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -394,6 +399,9 @@
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.modules.linear_growing_module.LinearGrowingModule.html#gromo.modules.linear_growing_module.LinearGrowingModule" title="gromo.modules.linear_growing_module.LinearGrowingModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LinearGrowingModule</span></code></a>(in_features, out_features)</p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/gromo.modules.linear_growing_module.LinearMergeGrowingModule.html#gromo.modules.linear_growing_module.LinearMergeGrowingModule" title="gromo.modules.linear_growing_module.LinearMergeGrowingModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LinearMergeGrowingModule</span></code></a>([...])</p></td>
 <td><p></p></td>
 </tr>
 </tbody>
@@ -445,12 +453,12 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="auto_examples/plot_tutorial.html"
+       href="auto_examples/plot_mlp_run.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">GroMo tutorial</p>
+        <p class="prev-next-title">MLP Example with Growing Layers</p>
       </div>
     </a>
     <a class="right-next"

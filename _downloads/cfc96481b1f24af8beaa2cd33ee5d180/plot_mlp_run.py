@@ -18,13 +18,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-from helpers.auxilliary_functions import *
-
-from gromo.containers.growing_block import (
-    GrowingBlock,
-    LinearGrowingBlock,
-    LinearGrowingModule,
+from helpers.auxilliary_functions import (
+    AxisMSELoss,
+    compute_statistics,
+    evaluate_model,
+    full_search,
+    line_search,
+    train,
 )
+from helpers.synthetic_data import SinDataloader
+
 from gromo.containers.growing_mlp import GrowingMLP
 
 
@@ -166,7 +169,6 @@ loss_func_mean = AxisMSELoss(reduction="mean")
 
 
 def step(show=True, selected_layer=None, gamma_sample: int = 100):
-
     train_dataloader = SinDataloader(nb_sample=nb_sample, batch_size=batch_size)
 
     initial_loss, _ = compute_statistics(
@@ -194,7 +196,8 @@ def step(show=True, selected_layer=None, gamma_sample: int = 100):
     y_sup = np.array(y_sup)
     print(f"Selected gamma: {selected_gamma:.3e}, new loss: {estimated_loss:.3e}")
     print(
-        f"Improvement: {initial_loss - estimated_loss:.3e}, fo improvement: {selected_gamma * model.currently_updated_layer.first_order_improvement.item():.3e}"
+        f"Improvement: {initial_loss - estimated_loss:.3e}, fo improvement: "
+        f"{selected_gamma * model.currently_updated_layer.first_order_improvement.item():.3e}"
     )
 
     if show:
