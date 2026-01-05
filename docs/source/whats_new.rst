@@ -20,7 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-- Add GradMax initialization method support for neuron addition. Users can now choose between 'tiny' (default, based on optimal functional gradient) and 'gradmax' (maximizes gradient norm of new weights) when calling `compute_optimal_added_parameters` or `compute_optimal_updates`. Includes comprehensive unit tests, integration tests, and example scripts demonstrating usage (:gh:`XXX` by `Stéphane Rivaud`_)
+- Add GradMax initialization method support for neuron addition. Users can now choose between 'tiny' (default, based on optimal functional gradient) and 'gradmax' (maximizes gradient norm of new weights) when calling `compute_optimal_added_parameters` or `compute_optimal_updates`. Includes comprehensive unit tests, integration tests, and example scripts demonstrating usage (:gh:`193` by `Stéphane Rivaud`_)
 - New tutorial for `GrowingContainer` (:gh:`188` by `Théo Rudkiewicz`_)
 - Update `GrowingBlock` to include recently added features in `GrowingModule` such as `in_neurons` property, `target_in_neurons` parameter, and methods for multi-step growth processes (:gh:`186` by `Théo Rudkiewicz`_)
 - Add `in_neurons` property and `target_in_neurons` parameter to `GrowingModule`, `LinearGrowingModule`, and `Conv2dGrowingModule` for tracking neuron counts during growth. Add `missing_neurons`, `number_of_neurons_to_add`, and `complete_growth` methods to simplify multi-step growth processes (:gh:`187` by `Théo Rudkiewicz`_)
