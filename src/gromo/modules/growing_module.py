@@ -6,7 +6,11 @@ import torch
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
+from gromo.utils.tools import (
+    compute_gradmax_initialization,
+    compute_optimal_added_parameters,
+    optimal_delta,
+)
 from gromo.utils.utils import (
     compute_tensor_stats,
     get_correct_device,
@@ -1707,6 +1711,7 @@ class GrowingModule(torch.nn.Module):
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
         use_projected_gradient: bool = True,
+        initialization_method: str = "tiny",
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Auxiliary function to compute the optimal added parameters (alpha, omega, k)
@@ -1724,41 +1729,73 @@ class GrowingModule(torch.nn.Module):
             dtype for S and N during the computation
         use_projected_gradient: bool
             whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        initialization_method: str
+            Method to use for initialization. Options: "tiny" (default), "gradmax"
 
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
             optimal added weights alpha, omega and eigenvalues lambda
         """
-        if use_projected_gradient:
-            matrix_n = self.tensor_n
+        if initialization_method == "tiny":
+            if use_projected_gradient:
+                matrix_n = self.tensor_n
+            else:
+                matrix_n = -self.tensor_m_prev()
+            # It seems that sometimes the tensor N is not accessible.
+            # I have no idea why this occurs sometimes.
+
+            assert self.previous_module, (
+                f"No previous module for {self.name}."
+                "Therefore neuron addition is not possible."
+            )
+            matrix_s = self.tensor_s_growth()
+
+            saved_dtype = matrix_s.dtype
+            if matrix_n.dtype != dtype:
+                matrix_n = matrix_n.to(dtype=dtype)
+            if matrix_s.dtype != dtype:
+                matrix_s = matrix_s.to(dtype=dtype)
+            alpha, omega, eigenvalues_extension = compute_optimal_added_parameters(
+                matrix_s=matrix_s,
+                matrix_n=matrix_n,
+                numerical_threshold=numerical_threshold,
+                statistical_threshold=statistical_threshold,
+                maximum_added_neurons=maximum_added_neurons,
+            )
+
+            alpha = alpha.to(dtype=saved_dtype)
+            omega = omega.to(dtype=saved_dtype)
+            eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
+
+        elif initialization_method == "gradmax":
+            # GradMax uses tensor_m_prev (correlation between previous layer's
+            # input and current layer's gradient)
+            assert self.previous_module, (
+                f"No previous module for {self.name}."
+                "Therefore neuron addition is not possible."
+            )
+            matrix_m = self.tensor_m_prev()
+            saved_dtype = matrix_m.dtype
+            if matrix_m.dtype != dtype:
+                matrix_m = matrix_m.to(dtype=dtype)
+
+            # Compute GradMax initialization
+            alpha, omega, eigenvalues_extension = compute_gradmax_initialization(
+                tensor_m_prev=matrix_m,
+                k=maximum_added_neurons,
+                statistical_threshold=statistical_threshold,
+            )
+
+            alpha = alpha.to(dtype=saved_dtype)
+            omega = omega.to(dtype=saved_dtype)
+            eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
+
         else:
-            matrix_n = -self.tensor_m_prev()
-        # It seems that sometimes the tensor N is not accessible.
-        # I have no idea why this occurs sometimes.
-
-        assert self.previous_module, (
-            f"No previous module for {self.name}."
-            "Therefore neuron addition is not possible."
-        )
-        matrix_s = self.tensor_s_growth()
-
-        saved_dtype = matrix_s.dtype
-        if matrix_n.dtype != dtype:
-            matrix_n = matrix_n.to(dtype=dtype)
-        if matrix_s.dtype != dtype:
-            matrix_s = matrix_s.to(dtype=dtype)
-        alpha, omega, eigenvalues_extension = compute_optimal_added_parameters(
-            matrix_s=matrix_s,
-            matrix_n=matrix_n,
-            numerical_threshold=numerical_threshold,
-            statistical_threshold=statistical_threshold,
-            maximum_added_neurons=maximum_added_neurons,
-        )
-
-        alpha = alpha.to(dtype=saved_dtype)
-        omega = omega.to(dtype=saved_dtype)
-        eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
+            raise ValueError(
+                f"Unknown initialization method: {initialization_method}. "
+                f"Supported methods: 'tiny', 'gradmax'"
+            )
 
         return alpha, omega, eigenvalues_extension
 
@@ -1828,6 +1865,7 @@ class GrowingModule(torch.nn.Module):
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
         use_projected_gradient: bool = True,
+        initialization_method: str = "tiny",
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Compute the optimal update  and additional neurons.
@@ -1847,6 +1885,8 @@ class GrowingModule(torch.nn.Module):
             dtype for the computation of the optimal delta and added parameters
         use_projected_gradient: bool
             whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        initialization_method: str
+            Method to use for initialization. Options: "tiny" (default), "gradmax"
 
         Returns
         -------
@@ -1865,6 +1905,7 @@ class GrowingModule(torch.nn.Module):
                 update_previous=update_previous,
                 dtype=dtype,
                 use_projected_gradient=use_projected_gradient,
+                initialization_method=initialization_method,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):

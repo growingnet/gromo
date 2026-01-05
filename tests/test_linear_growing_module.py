@@ -1263,6 +1263,90 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertShapeEqual(omega, (demo_layers[1].out_features, k))
         self.assertShapeEqual(eigenvalues, (k,))
 
+    def test_compute_optimal_added_parameters_gradmax(self):
+        """Test compute_optimal_added_parameters with initialization_method='gradmax'."""
+        demo_layers = self.demo_layers[False]  # Use without bias for simplicity
+        demo_layers[0].store_input = True
+        demo_layers[1].init_computation()
+
+        y = demo_layers[0](self.input_x)
+        y = demo_layers[1](y)
+        loss = torch.norm(y)
+        loss.backward()
+
+        demo_layers[1].update_computation()
+        demo_layers[1].compute_optimal_delta()
+
+        # Call with GradMax initialization
+        alpha, alpha_b, omega, eigenvalues = demo_layers[
+            1
+        ].compute_optimal_added_parameters(
+            initialization_method="gradmax",
+            maximum_added_neurons=5,
+        )
+
+        # Verify output shapes
+        self.assertShapeEqual(alpha, (-1, demo_layers[0].in_features))
+        k = alpha.size(0)
+        self.assertLessEqual(k, 5)  # Should respect maximum_added_neurons
+        self.assertIsNone(alpha_b)  # No bias in this test
+        self.assertShapeEqual(omega, (demo_layers[1].out_features, k))
+        self.assertShapeEqual(eigenvalues, (k,))
+
+        # GradMax property: alpha should be zeros
+        self.assertTrue(
+            torch.allclose(alpha, torch.zeros_like(alpha)),
+            "GradMax should initialize alpha as zeros",
+        )
+
+        # Verify extended layers are created
+        self.assertIsInstance(demo_layers[0].extended_output_layer, torch.nn.Linear)
+        self.assertIsInstance(demo_layers[1].extended_input_layer, torch.nn.Linear)
+
+    def test_compute_optimal_added_parameters_method_comparison(self):
+        """Compare TINY vs GradMax initialization outputs."""
+        # Create separate demo layers for comparison
+        from copy import deepcopy
+
+        demo_layers_tiny = deepcopy(self.demo_layers[False])
+        demo_layers_gradmax = deepcopy(self.demo_layers[False])
+
+        for demo_layers in [demo_layers_tiny, demo_layers_gradmax]:
+            demo_layers[0].store_input = True
+            demo_layers[1].init_computation()
+
+            y = demo_layers[0](self.input_x)
+            y = demo_layers[1](y)
+            loss = torch.norm(y)
+            loss.backward()
+
+            demo_layers[1].update_computation()
+            demo_layers[1].compute_optimal_delta()
+
+        # Compute with TINY
+        alpha_tiny, _, omega_tiny, _ = demo_layers_tiny[
+            1
+        ].compute_optimal_added_parameters(
+            initialization_method="tiny", maximum_added_neurons=3
+        )
+
+        # Compute with GradMax
+        alpha_gradmax, _, omega_gradmax, _ = demo_layers_gradmax[
+            1
+        ].compute_optimal_added_parameters(
+            initialization_method="gradmax", maximum_added_neurons=3
+        )
+
+        # Both should produce valid outputs
+        self.assertEqual(alpha_tiny.shape[0], omega_tiny.shape[1])
+        self.assertEqual(alpha_gradmax.shape[0], omega_gradmax.shape[1])
+
+        # GradMax alpha should be zeros, TINY alpha should not (generally)
+        self.assertTrue(
+            torch.allclose(alpha_gradmax, torch.zeros_like(alpha_gradmax)),
+            "GradMax alpha should be zeros",
+        )
+
     def test_compute_optimal_added_parameters_no_previous_module_error(self):
         """Test ValueError when no previous module in compute_optimal_added_parameters."""
         layer = LinearGrowingModule(3, 2, device=global_device())

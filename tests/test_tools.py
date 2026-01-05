@@ -1,13 +1,13 @@
 import contextlib
 import io
 import unittest.mock
-import warnings
-from unittest import TestCase, main
+from unittest import main
 
 import torch
 
 from gromo.utils.tools import (
     apply_border_effect_on_unfolded,
+    compute_gradmax_initialization,
     compute_mask_tensor_t,
     compute_optimal_added_parameters,
     compute_output_shape_conv,
@@ -49,7 +49,7 @@ class TestTools(TorchTestCase):
             devices = (torch.device("cuda"), torch.device("cpu"))
         else:
             devices = (torch.device("cpu"),)
-            print(f"Warning: No cuda device available therefore only testing on cpu")
+            print("Warning: No cuda device available therefore only testing on cpu")
         for device in devices:
             matrix = torch.randn(5, 3, dtype=torch.float64, device=device)
             matrix = matrix.t() @ matrix
@@ -767,6 +767,178 @@ class TestTools(TorchTestCase):
                     self.assertFalse(torch.isnan(decrease).any())
                 else:
                     self.assertFalse(torch.isnan(torch.tensor(decrease)))
+
+    def test_compute_gradmax_initialization_basic(self):
+        """Test basic functionality of compute_gradmax_initialization"""
+        torch.manual_seed(42)
+
+        # Test case 1: Simple case with known solution
+        in_features, out_features = 5, 3
+        tensor_m = torch.randn(in_features, out_features)
+
+        alpha, omega, singular_values = compute_gradmax_initialization(
+            tensor_m_prev=tensor_m, k=None, statistical_threshold=1e-6
+        )
+
+        # Check output shapes
+        self.assertEqual(alpha.shape[1], in_features)  # alpha: (k, in_features)
+        self.assertEqual(omega.shape[0], out_features)  # omega: (out_features, k)
+        self.assertEqual(singular_values.shape[0], alpha.shape[0])  # k dimensions match
+        self.assertEqual(alpha.shape[0], omega.shape[1])  # k dimensions match
+
+        # Check that alpha is all zeros (GradMax property)
+        self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
+
+        # Check that singular values are non-negative
+        self.assertTrue(torch.all(singular_values >= 0))
+
+    def test_compute_gradmax_initialization_alpha_is_zeros(self):
+        """Test that GradMax always returns alpha as zeros"""
+        torch.manual_seed(42)
+
+        # Test with different matrix sizes
+        test_cases = [(3, 2), (5, 4), (10, 7), (2, 10)]
+
+        for in_features, out_features in test_cases:
+            with self.subTest(in_features=in_features, out_features=out_features):
+                tensor_m = torch.randn(in_features, out_features)
+                alpha, _, _ = compute_gradmax_initialization(tensor_m_prev=tensor_m, k=2)
+
+                # Alpha should be all zeros
+                self.assertTrue(
+                    torch.allclose(alpha, torch.zeros_like(alpha)),
+                    f"Alpha should be zeros for {in_features}x{out_features}",
+                )
+
+    def test_compute_gradmax_initialization_omega_orthonormal(self):
+        """Test that omega columns are orthonormal (left singular vectors)"""
+        torch.manual_seed(42)
+
+        in_features, out_features = 5, 4
+        tensor_m = torch.randn(in_features, out_features)
+        k = 3
+
+        _, omega, _ = compute_gradmax_initialization(tensor_m_prev=tensor_m, k=k)
+
+        # Omega should have k columns
+        self.assertEqual(omega.shape[1], k)
+
+        # Columns of omega should be orthonormal (left singular vectors)
+        omega_t_omega = omega.T @ omega
+        identity = torch.eye(k, device=omega.device, dtype=omega.dtype)
+        self.assertTrue(
+            torch.allclose(omega_t_omega, identity, atol=1e-5),
+            "Omega columns should be orthonormal",
+        )
+
+    def test_compute_gradmax_initialization_max_neurons(self):
+        """Test maximum_added_neurons constraint"""
+        torch.manual_seed(42)
+
+        in_features, out_features = 5, 4
+        tensor_m = torch.randn(in_features, out_features)
+        max_neurons = 2
+
+        alpha, omega, singular_values = compute_gradmax_initialization(
+            tensor_m_prev=tensor_m, k=max_neurons
+        )
+
+        # Should respect the maximum constraint
+        self.assertLessEqual(alpha.shape[0], max_neurons)
+        self.assertLessEqual(omega.shape[1], max_neurons)
+        self.assertLessEqual(singular_values.shape[0], max_neurons)
+
+    def test_compute_gradmax_initialization_threshold(self):
+        """Test statistical threshold filtering"""
+        torch.manual_seed(42)
+
+        in_features, out_features = 5, 4
+        tensor_m = torch.randn(in_features, out_features)
+
+        # Use a high threshold to filter out small singular values
+        threshold = 0.5
+        _, _, singular_values = compute_gradmax_initialization(
+            tensor_m_prev=tensor_m, k=None, statistical_threshold=threshold
+        )
+
+        # All selected singular values should be >= threshold
+        # (or at least one if all below)
+        if singular_values.shape[0] > 0:
+            # Either all are above threshold, or we kept at least one (the max)
+            self.assertTrue(
+                torch.all(singular_values >= threshold) or singular_values.shape[0] == 1,
+                "Selected singular values should respect threshold",
+            )
+
+    def test_compute_gradmax_initialization_different_sizes(self):
+        """Test with various matrix dimensions"""
+        torch.manual_seed(42)
+
+        test_cases = [
+            (2, 3),  # More outputs than inputs
+            (5, 2),  # More inputs than outputs
+            (3, 3),  # Square
+            (1, 1),  # Minimal case
+            (10, 5),  # Larger case
+        ]
+
+        for in_features, out_features in test_cases:
+            with self.subTest(in_features=in_features, out_features=out_features):
+                tensor_m = torch.randn(in_features, out_features)
+                alpha, omega, singular_values = compute_gradmax_initialization(
+                    tensor_m_prev=tensor_m, k=min(2, min(in_features, out_features))
+                )
+
+                # Check shapes
+                self.assertEqual(alpha.shape[1], in_features)
+                self.assertEqual(omega.shape[0], out_features)
+                self.assertEqual(alpha.shape[0], omega.shape[1])
+                self.assertEqual(alpha.shape[0], singular_values.shape[0])
+
+                # Check alpha is zeros
+                self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
+
+                # Check no NaN values
+                self.assertFalse(torch.any(torch.isnan(alpha)))
+                self.assertFalse(torch.any(torch.isnan(omega)))
+                self.assertFalse(torch.any(torch.isnan(singular_values)))
+
+    def test_compute_gradmax_initialization_svd_error_handling(self):
+        """Test SVD error handling in compute_gradmax_initialization"""
+        torch.manual_seed(42)
+
+        in_features, out_features = 3, 2
+        tensor_m = torch.randn(in_features, out_features)
+
+        # Mock SVD to trigger LinAlgError on first call, succeed on second
+        u_real, s_real, v_real = torch.linalg.svd(tensor_m.T, full_matrices=False)
+        successful_result = (u_real, s_real, v_real)
+
+        captured_output = io.StringIO()
+
+        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
+            mock_svd.side_effect = [
+                torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
+                successful_result,  # Second call succeeds
+            ]
+
+            with unittest.mock.patch("sys.stdout", captured_output):
+                alpha, omega, singular_values = compute_gradmax_initialization(
+                    tensor_m_prev=tensor_m
+                )
+
+            # Verify debug output was printed
+            output = captured_output.getvalue()
+            self.assertIn("Warning: An error occurred during the SVD computation", output)
+            self.assertIn("tensor_m_prev:", output)
+
+            # Verify the function still succeeded after retry
+            self.assertIsNotNone(alpha)
+            self.assertIsNotNone(omega)
+            self.assertIsNotNone(singular_values)
+
+            # Verify SVD was called twice (first failed, second succeeded)
+            self.assertEqual(mock_svd.call_count, 2)
 
 
 if __name__ == "__main__":

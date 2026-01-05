@@ -851,6 +851,79 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         if alpha_bias is not None:
             self.assertIsInstance(alpha_bias, torch.Tensor)
 
+    def test_auxiliary_compute_alpha_omega_gradmax(self):
+        """Test _auxiliary_compute_alpha_omega with initialization_method='gradmax'."""
+        # Set up a LinearGrowingModule with proper connections
+        prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
+        growing_module = LinearGrowingModule(
+            4, 5, device=global_device(), previous_module=prev_module, name="main"
+        )
+
+        # Initialize computation and run some data through
+        prev_module.init_computation()
+        growing_module.init_computation()
+
+        # Generate some sample data and run forward/backward pass
+        x = torch.randn(10, 3, device=global_device())
+        prev_module.store_input = True
+        growing_module.store_input = True
+
+        output1 = prev_module(x)
+        output2 = growing_module(output1)
+        loss = torch.norm(output2)
+        loss.backward()
+
+        # Update computations to generate tensor statistics
+        prev_module.update_computation()
+        growing_module.update_computation()
+
+        # Test with GradMax initialization
+        alpha, omega, eigenvals = growing_module._auxiliary_compute_alpha_omega(
+            initialization_method="gradmax", maximum_added_neurons=3
+        )
+
+        # Verify that we get valid outputs
+        self.assertIsInstance(alpha, torch.Tensor)
+        self.assertIsInstance(omega, torch.Tensor)
+        self.assertIsInstance(eigenvals, torch.Tensor)
+
+        # GradMax property: alpha should be zeros
+        self.assertTrue(
+            torch.allclose(alpha, torch.zeros_like(alpha)),
+            "GradMax should initialize alpha as zeros",
+        )
+
+        # Verify shapes
+        self.assertEqual(alpha.shape[0], omega.shape[1])
+        self.assertEqual(alpha.shape[0], eigenvals.shape[0])
+
+    def test_auxiliary_compute_alpha_omega_invalid_method(self):
+        """Test _auxiliary_compute_alpha_omega with invalid initialization_method."""
+        prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
+        growing_module = LinearGrowingModule(
+            4, 5, device=global_device(), previous_module=prev_module, name="main"
+        )
+
+        prev_module.init_computation()
+        growing_module.init_computation()
+
+        x = torch.randn(10, 3, device=global_device())
+        prev_module.store_input = True
+        growing_module.store_input = True
+
+        output1 = prev_module(x)
+        output2 = growing_module(output1)
+        loss = torch.norm(output2)
+        loss.backward()
+
+        prev_module.update_computation()
+        growing_module.update_computation()
+
+        # Should raise ValueError for invalid method
+        with self.assertRaises(ValueError) as context:
+            growing_module._auxiliary_compute_alpha_omega(initialization_method="invalid")
+        self.assertIn("Unknown initialization method", str(context.exception))
+
     def test_compute_optimal_updates_use_projected_gradient_false(self):
         """Test compute_optimal_updates with use_projected_gradient=False."""
         # Set up a LinearGrowingModule with proper connections

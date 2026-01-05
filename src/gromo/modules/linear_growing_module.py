@@ -762,6 +762,7 @@ class LinearGrowingModule(GrowingModule):
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
         use_projected_gradient: bool = True,
+        initialization_method: str = "tiny",
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -780,6 +781,8 @@ class LinearGrowingModule(GrowingModule):
             dtype for S and N during the computation
         use_projected_gradient: bool
             whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        initialization_method: str
+            Method to use for initialization. Options: "tiny" (default), "gradmax"
 
         Returns
         -------
@@ -796,6 +799,7 @@ class LinearGrowingModule(GrowingModule):
             maximum_added_neurons=maximum_added_neurons,
             dtype=dtype,
             use_projected_gradient=use_projected_gradient,
+            initialization_method=initialization_method,
         )
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1], (
