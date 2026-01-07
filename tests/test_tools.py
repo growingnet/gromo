@@ -7,7 +7,6 @@ import torch
 
 from gromo.utils.tools import (
     apply_border_effect_on_unfolded,
-    compute_gradmax_initialization,
     compute_mask_tensor_t,
     compute_optimal_added_parameters,
     compute_output_shape_conv,
@@ -769,15 +768,18 @@ class TestTools(TorchTestCase):
                     self.assertFalse(torch.isnan(torch.tensor(decrease)))
 
     def test_compute_gradmax_initialization_basic(self):
-        """Test basic functionality of compute_gradmax_initialization"""
+        """Test basic functionality of GradMax via unified function"""
         torch.manual_seed(42)
 
         # Test case 1: Simple case with known solution
         in_features, out_features = 5, 3
         tensor_m = torch.randn(in_features, out_features)
 
-        alpha, omega, singular_values = compute_gradmax_initialization(
-            tensor_m_prev=tensor_m, k=None, statistical_threshold=1e-6
+        alpha, omega, singular_values = compute_optimal_added_parameters(
+            matrix_s=None,
+            matrix_n=tensor_m,
+            statistical_threshold=1e-6,
+            initialization_method="gradmax",
         )
 
         # Check output shapes
@@ -802,7 +804,12 @@ class TestTools(TorchTestCase):
         for in_features, out_features in test_cases:
             with self.subTest(in_features=in_features, out_features=out_features):
                 tensor_m = torch.randn(in_features, out_features)
-                alpha, _, _ = compute_gradmax_initialization(tensor_m_prev=tensor_m, k=2)
+                alpha, _, _ = compute_optimal_added_parameters(
+                    matrix_s=None,
+                    matrix_n=tensor_m,
+                    maximum_added_neurons=2,
+                    initialization_method="gradmax",
+                )
 
                 # Alpha should be all zeros
                 self.assertTrue(
@@ -811,19 +818,24 @@ class TestTools(TorchTestCase):
                 )
 
     def test_compute_gradmax_initialization_omega_orthonormal(self):
-        """Test that omega columns are orthonormal (left singular vectors)"""
+        """Test that omega columns are orthonormal (right singular vectors)"""
         torch.manual_seed(42)
 
         in_features, out_features = 5, 4
         tensor_m = torch.randn(in_features, out_features)
         k = 3
 
-        _, omega, _ = compute_gradmax_initialization(tensor_m_prev=tensor_m, k=k)
+        _, omega, _ = compute_optimal_added_parameters(
+            matrix_s=None,
+            matrix_n=tensor_m,
+            maximum_added_neurons=k,
+            initialization_method="gradmax",
+        )
 
         # Omega should have k columns
         self.assertEqual(omega.shape[1], k)
 
-        # Columns of omega should be orthonormal (left singular vectors)
+        # Columns of omega should be orthonormal (right singular vectors)
         omega_t_omega = omega.T @ omega
         identity = torch.eye(k, device=omega.device, dtype=omega.dtype)
         self.assertTrue(
@@ -839,8 +851,11 @@ class TestTools(TorchTestCase):
         tensor_m = torch.randn(in_features, out_features)
         max_neurons = 2
 
-        alpha, omega, singular_values = compute_gradmax_initialization(
-            tensor_m_prev=tensor_m, k=max_neurons
+        alpha, omega, singular_values = compute_optimal_added_parameters(
+            matrix_s=None,
+            matrix_n=tensor_m,
+            maximum_added_neurons=max_neurons,
+            initialization_method="gradmax",
         )
 
         # Should respect the maximum constraint
@@ -857,8 +872,11 @@ class TestTools(TorchTestCase):
 
         # Use a high threshold to filter out small singular values
         threshold = 0.5
-        _, _, singular_values = compute_gradmax_initialization(
-            tensor_m_prev=tensor_m, k=None, statistical_threshold=threshold
+        _, _, singular_values = compute_optimal_added_parameters(
+            matrix_s=None,
+            matrix_n=tensor_m,
+            statistical_threshold=threshold,
+            initialization_method="gradmax",
         )
 
         # All selected singular values should be >= threshold
@@ -885,8 +903,11 @@ class TestTools(TorchTestCase):
         for in_features, out_features in test_cases:
             with self.subTest(in_features=in_features, out_features=out_features):
                 tensor_m = torch.randn(in_features, out_features)
-                alpha, omega, singular_values = compute_gradmax_initialization(
-                    tensor_m_prev=tensor_m, k=min(2, min(in_features, out_features))
+                alpha, omega, singular_values = compute_optimal_added_parameters(
+                    matrix_s=None,
+                    matrix_n=tensor_m,
+                    maximum_added_neurons=min(2, min(in_features, out_features)),
+                    initialization_method="gradmax",
                 )
 
                 # Check shapes
@@ -904,14 +925,15 @@ class TestTools(TorchTestCase):
                 self.assertFalse(torch.any(torch.isnan(singular_values)))
 
     def test_compute_gradmax_initialization_svd_error_handling(self):
-        """Test SVD error handling in compute_gradmax_initialization"""
+        """Test SVD error handling in unified function with GradMax"""
         torch.manual_seed(42)
 
         in_features, out_features = 3, 2
         tensor_m = torch.randn(in_features, out_features)
 
         # Mock SVD to trigger LinAlgError on first call, succeed on second
-        u_real, s_real, v_real = torch.linalg.svd(tensor_m.T, full_matrices=False)
+        # For GradMax, SVD is on matrix_n (not transposed)
+        u_real, s_real, v_real = torch.linalg.svd(tensor_m, full_matrices=False)
         successful_result = (u_real, s_real, v_real)
 
         captured_output = io.StringIO()
@@ -923,14 +945,16 @@ class TestTools(TorchTestCase):
             ]
 
             with unittest.mock.patch("sys.stdout", captured_output):
-                alpha, omega, singular_values = compute_gradmax_initialization(
-                    tensor_m_prev=tensor_m
+                alpha, omega, singular_values = compute_optimal_added_parameters(
+                    matrix_s=None,
+                    matrix_n=tensor_m,
+                    initialization_method="gradmax",
                 )
 
             # Verify debug output was printed
             output = captured_output.getvalue()
             self.assertIn("Warning: An error occurred during the SVD computation", output)
-            self.assertIn("tensor_m_prev:", output)
+            self.assertIn("matrix_n:", output)
 
             # Verify the function still succeeded after retry
             self.assertIsNotNone(alpha)

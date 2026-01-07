@@ -131,169 +131,120 @@ def optimal_delta(
 
 
 def compute_optimal_added_parameters(
-    matrix_s: torch.Tensor,
+    matrix_s: torch.Tensor | None,
     matrix_n: torch.Tensor,
     numerical_threshold: float = 1e-15,
     statistical_threshold: float = 1e-3,
     maximum_added_neurons: int | None = None,
+    initialization_method: str = "tiny",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
 
+    Supports both TINY and GradMax initialization methods through unified logic.
+
     Parameters
     ----------
-    matrix_s: torch.Tensor in (s, s)
-        square matrix S
+    matrix_s: torch.Tensor | None in (s, s)
+        Square matrix S. If None, identity matrix is used (GradMax method).
     matrix_n: torch.Tensor in (s, t)
-        matrix N
+        Matrix N (correlation matrix)
     numerical_threshold: float
-        threshold to consider an eigenvalue as zero in the square root of the inverse of S
+        Threshold to consider an eigenvalue as zero in square root of inverse of S
     statistical_threshold: float
-        threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+        Threshold to consider a singular value as zero in the SVD
     maximum_added_neurons: int | None
-        maximum number of added neurons, if None all significant neurons are kept
+        Maximum number of added neurons, if None all significant neurons are kept
+    initialization_method: str
+        Method for initialization. Options: "tiny" (default), "gradmax"
 
     Returns
     -------
     tuple[torch.Tensor, torch.Tensor, torch.Tensor] in (k, s) (t, k) (k,)
-        optimal added weights alpha, omega and eigenvalues lambda
+        Optimal added weights alpha, omega and singular values s
     """
-    # matrix_n = matrix_n.t()
-    s_1, s_2 = matrix_s.shape
-    assert s_1 == s_2, "The input matrix S must be square."
+    # Validate inputs
     n_1, _ = matrix_n.shape
-    assert s_2 == n_1, (
-        f"The input matrices S and N must have compatible shapes."
-        f"(got {matrix_s.shape=} and {matrix_n.shape=})"
-    )
-    if not torch.allclose(matrix_s, matrix_s.t()):
-        diff = torch.abs(matrix_s - matrix_s.t())
-        warn(
-            f"Warning: The input matrix S is not symmetric.\n"
-            f"Max difference: {diff.max():.2e},\n"
-            f"% of non-zero elements: {100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
+
+    if matrix_s is not None:
+        # TINY path: validate S matrix
+        s_1, s_2 = matrix_s.shape
+        assert s_1 == s_2, "The input matrix S must be square."
+        assert s_2 == n_1, (
+            f"The input matrices S and N must have compatible shapes."
+            f"(got {matrix_s.shape=} and {matrix_n.shape=})"
         )
-        matrix_s = (matrix_s + matrix_s.t()) / 2
+        if not torch.allclose(matrix_s, matrix_s.t()):
+            diff = torch.abs(matrix_s - matrix_s.t())
+            warn(
+                f"Warning: The input matrix S is not symmetric.\n"
+                f"Max difference: {diff.max():.2e},\n"
+                f"% of non-zero elements: "
+                f"{100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
+            )
+            matrix_s = (matrix_s + matrix_s.t()) / 2
 
-    # assert torch.allclose(matrix_s, matrix_s.t()),
-    # "The input matrix S must be symmetric."
+        # Compute the square root of the inverse of S
+        matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
+            matrix_s, threshold=numerical_threshold
+        )
+        # Compute the product P := S^{-1/2} N
+        matrix_p = matrix_s_inverse_sqrt @ matrix_n
+    else:
+        # GradMax path: S = Identity, so S^{-1/2} = Identity
+        matrix_p = matrix_n
+        matrix_s_inverse_sqrt = None
 
-    # compute the square root of the inverse of S
-    matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
-        matrix_s, threshold=numerical_threshold
-    )
-    # compute the product P := S^{-1/2} N
-    matrix_p = matrix_s_inverse_sqrt @ matrix_n
-    # compute the SVD of the product
+    # Compute the SVD of the product
     try:
         u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
     except torch.linalg.LinAlgError:
         print("Warning: An error occurred during the SVD computation.")
-        print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
+        if matrix_s is not None:
+            print(
+                f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, " f"{matrix_s.shape=}"
+            )
         print(f"matrix_n: {matrix_n.min()=}, {matrix_n.max()=}, {matrix_n.shape=}")
-        print(
-            f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, "
-            f"{matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
-        )
+        if matrix_s_inverse_sqrt is not None:
+            print(
+                f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, "
+                f"{matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
+            )
         print(f"matrix_p: {matrix_p.min()=}, {matrix_p.max()=}, {matrix_p.shape=}")
         u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
-        # raise ValueError("An error occurred during the SVD computation.")
 
-        # u = torch.zeros((1, matrix_p.shape[0]))
-        # s = torch.zeros(1)
-        # v = torch.randn((matrix_p.shape[1], 1))
-        # return u, v, s
-
-    # select the singular values
+    # Select the singular values
     selected_singular_values = s >= min(statistical_threshold, s.max())
     if maximum_added_neurons is not None:
         selected_singular_values[maximum_added_neurons:] = False
 
-    # keep only the significant singular values but keep at least one
+    # Keep only the significant singular values but keep at least one
     s = s[selected_singular_values]
     u = u[:, selected_singular_values]
     v = v[selected_singular_values, :]
-    # compute the optimal added weights
-    sqrt_s = torch.sqrt(torch.abs(s))
-    alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
-    omega = sqrt_s[:, None] * v
-    return alpha.t(), omega.t(), s
 
-
-def compute_gradmax_initialization(
-    tensor_m_prev: torch.Tensor,
-    k: int | None = None,
-    statistical_threshold: float = 1e-3,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Compute GradMax initialization for new neurons.
-
-    GradMax initializes new neurons by maximizing the gradient norm of the fan-out
-    weights. This is achieved by taking the top-k left singular vectors of M^T,
-    where M is the gradient-input correlation matrix.
-
-    When adding neurons to layer l-1, this function expects the correlation between
-    layer l-1's input (h_{l-2}) and layer l's gradient (V_goal^l).
-
-    Parameters
-    ----------
-    tensor_m_prev: torch.Tensor, shape (in_features_{l-1}, out_features_l)
-        M_{-2} tensor = (1/n) B_{l-2}^T V_goal^l
-        Correlation between previous layer's input and current layer's gradient
-    k: int | None
-        Number of neurons to add. If None, determined by threshold.
-    statistical_threshold: float
-        Threshold for singular values. Only singular values >= threshold are kept.
-
-    Returns
-    -------
-    tuple[torch.Tensor, torch.Tensor, torch.Tensor]
-        alpha (zeros), omega (top-k left singular vectors), singular_values
-        Shapes: (k, in_features_{l-1}), (out_features_l, k), (k,)
-    """
-    assert (
-        len(tensor_m_prev.shape) == 2
-    ), f"tensor_m_prev must be 2D, got shape {tensor_m_prev.shape}"
-    in_features, _ = tensor_m_prev.shape
-
-    # SVD of M^T to get left singular vectors (which become omega)
-    # M^T has shape (out_features, in_features)
-    # SVD(M^T) = U Σ V^T where U is (out_features, min(out_features, in_features))
-    try:
-        u, s, _ = torch.linalg.svd(tensor_m_prev.T, full_matrices=False)
-    except torch.linalg.LinAlgError:
-        print("Warning: An error occurred during the SVD computation in GradMax.")
-        print(
-            f"tensor_m_prev: {tensor_m_prev.min()=}, "
-            f"{tensor_m_prev.max()=}, {tensor_m_prev.shape=}"
+    # Compute output based on initialization method
+    if initialization_method == "tiny":
+        # TINY: alpha and omega both depend on sqrt(s) and S^{-1/2}
+        sqrt_s = torch.sqrt(torch.abs(s))
+        alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
+        omega = sqrt_s[:, None] * v
+    elif initialization_method == "gradmax":
+        # GradMax: alpha = 0, omega = orthonormal singular vectors
+        k_selected = len(s)
+        alpha = torch.zeros(
+            (n_1, k_selected),
+            device=matrix_n.device,
+            dtype=matrix_n.dtype,
         )
-        u, s, _ = torch.linalg.svd(tensor_m_prev.T, full_matrices=False)
-
-    # Select top k singular values
-    if k is None:
-        # Use threshold to select significant singular values
-        # Keep at least one if all are below threshold
-        selected = s >= min(statistical_threshold, s.max())
-        if not selected.any():
-            selected[0] = True  # Keep at least one
+        omega = v  # Orthonormal right singular vectors
     else:
-        # Select top k
-        selected = torch.zeros(len(s), dtype=torch.bool, device=s.device)
-        selected[: min(k, len(s))] = True
+        raise ValueError(
+            f"Unknown initialization method: {initialization_method}. "
+            f"Supported methods: 'tiny', 'gradmax'"
+        )
 
-    s_selected = s[selected]
-    u_selected = u[:, selected]  # Left singular vectors = omega
-
-    # GradMax: alpha = 0, omega = top-k left singular vectors
-    k_selected = s_selected.shape[0]
-    alpha = torch.zeros(
-        (k_selected, in_features),
-        device=tensor_m_prev.device,
-        dtype=tensor_m_prev.dtype,
-    )
-    omega = u_selected  # Shape: (out_features, k_selected)
-
-    return alpha, omega, s_selected
+    return alpha.t(), omega.t(), s
 
 
 def compute_output_shape_conv(
