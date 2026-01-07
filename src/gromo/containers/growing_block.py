@@ -555,6 +555,7 @@ class LinearGrowingBlock(GrowingBlock):
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
         extended_mid_activation: torch.nn.Module | None = None,
+        pre_addition_function: torch.nn.Module = torch.nn.Identity(),
         name: str = "block",
         kwargs_layer: dict | None = None,
         kwargs_first_layer: dict | None = None,
@@ -584,6 +585,9 @@ class LinearGrowingBlock(GrowingBlock):
         extended_mid_activation: torch.nn.Module | None
             activation function to use between the two layers in the extended forward,
             if None use the mid_activation
+        pre_addition_function: torch.nn.Module
+            function to use after the second layer,
+            if None use the identity function
         name: str
             name of the block
         kwargs_layer: dict | None
@@ -619,6 +623,7 @@ class LinearGrowingBlock(GrowingBlock):
             in_features=hidden_features,
             out_features=out_features,
             name=f"{name}(second_layer)",
+            post_layer_function=pre_addition_function,
             target_in_features=target_hidden_features,
             previous_module=first_layer,
             **kwargs_second_layer,
@@ -654,6 +659,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
         extended_mid_activation: torch.nn.Module | None = None,
+        pre_addition_function: torch.nn.Module = torch.nn.Identity(),
         name: str = "conv_block",
         kwargs_layer: dict | None = None,
         kwargs_first_layer: dict | None = None,
@@ -682,6 +688,9 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         mid_activation: torch.nn.Module | None
             activation function to use between the two layers,
             if None use the activation function
+        pre_addition_function: torch.nn.Module | None
+            function to use after the second layer,
+            if None use the identity function
         name: str
             name of the block
         kwargs_layer: dict | None
@@ -730,6 +739,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             in_channels=hidden_channels,
             out_channels=out_channels,
             name=f"{name}(second_layer)",
+            post_layer_function=pre_addition_function,
             target_in_channels=target_hidden_channels,
             previous_module=first_layer,
             device=device,
