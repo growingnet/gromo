@@ -1760,7 +1760,8 @@ class GrowingModule(torch.nn.Module):
 
         elif initialization_method == "gradmax":
             # GradMax uses tensor_m_prev and identity for S (passed as None)
-            matrix_n = self.tensor_m_prev()
+            # Negative sign ensures gradient descent (same as TINY with use_projected_gradient=False)
+            matrix_n = -self.tensor_m_prev()
             matrix_s = None
             saved_dtype = matrix_n.dtype
 
