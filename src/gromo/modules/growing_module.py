@@ -1878,13 +1878,18 @@ class GrowingModule(torch.nn.Module):
             whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
         initialization_method: str
             Method to use for initialization. Options: "tiny" (default), "gradmax"
+            Note: Optimal delta is only computed for "tiny" method. GradMax skips
+            this step since it uses -tensor_m_prev() directly.
 
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor | None]
             optimal extension for the previous layer (weights and biases)
         """
-        self.compute_optimal_delta(dtype=dtype)
+        # Only compute optimal delta for TINY (required for tensor_n computation)
+        # GradMax doesn't need it since it uses -tensor_m_prev() directly
+        if initialization_method == "tiny":
+            self.compute_optimal_delta(dtype=dtype)
 
         if self.previous_module is None:
             return  # FIXME: change the definition of the function
