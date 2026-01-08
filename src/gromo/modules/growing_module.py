@@ -1742,31 +1742,23 @@ class GrowingModule(torch.nn.Module):
         )
 
         # Prepare matrices based on initialization method
+        if use_projected_gradient:
+            matrix_n = self.tensor_n
+        else:
+            matrix_n = -self.tensor_m_prev()
+
         if initialization_method == "tiny":
-            if use_projected_gradient:
-                matrix_n = self.tensor_n
-            else:
-                matrix_n = -self.tensor_m_prev()
-            # It seems that sometimes the tensor N is not accessible.
-            # I have no idea why this occurs sometimes.
-
             matrix_s = self.tensor_s_growth()
-            saved_dtype = matrix_s.dtype
-
-            if matrix_n.dtype != dtype:
-                matrix_n = matrix_n.to(dtype=dtype)
-            if matrix_s.dtype != dtype:
-                matrix_s = matrix_s.to(dtype=dtype)
 
         elif initialization_method == "gradmax":
             # GradMax uses tensor_m_prev and identity for S (passed as None)
-            # Negative sign ensures gradient descent (same as TINY with use_projected_gradient=False)
-            matrix_n = -self.tensor_m_prev()
+            # Negative sign ensures gradient descent
+            # (same as TINY with use_projected_gradient=False)
+            if use_projected_gradient:
+                warnings.warn(
+                    "The GradMax paper does not use the projected gradient.", 
+                    UserWarning)
             matrix_s = None
-            saved_dtype = matrix_n.dtype
-
-            if matrix_n.dtype != dtype:
-                matrix_n = matrix_n.to(dtype=dtype)
 
         else:
             raise ValueError(
@@ -1774,6 +1766,11 @@ class GrowingModule(torch.nn.Module):
                 f"Supported methods: 'tiny', 'gradmax'"
             )
 
+        saved_dtype = matrix_n.dtype
+        if matrix_n.dtype != dtype:
+            matrix_n = matrix_n.to(dtype=dtype)
+        if matrix_s is not None and matrix_s.dtype != dtype:
+            matrix_s = matrix_s.to(dtype=dtype)
         # Unified call to compute_optimal_added_parameters
         alpha, omega, eigenvalues_extension = compute_optimal_added_parameters(
             matrix_s=matrix_s,
