@@ -1587,7 +1587,7 @@ class GrowingModule(torch.nn.Module):
         if scaling_factor is not None:
             self.scaling_factor = scaling_factor  # type: ignore
             # this type problem is due to the use of the setter to change the scaling factor
-        linear_factor = self.scaling_factor**2 * torch.sign(self.scaling_factor)
+        linear_factor = self.scaling_factor**2
         sqrt_factor = self.scaling_factor
         if apply_delta and self.optimal_delta_layer is not None:
             self.parameter_step(
