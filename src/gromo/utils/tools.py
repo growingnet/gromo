@@ -1,3 +1,4 @@
+import logging
 from warnings import warn
 
 import torch
@@ -6,7 +7,6 @@ import torch
 def sqrt_inverse_matrix_semi_positive(
     matrix: torch.Tensor,
     threshold: float = 1e-5,
-    preferred_linalg_library: None | str = None,
 ) -> torch.Tensor:
     """
     Compute the square root of the inverse of a semi-positive definite matrix.
@@ -27,22 +27,20 @@ def sqrt_inverse_matrix_semi_positive(
     torch.Tensor
         square root of the inverse of the input matrix
     """
+    logger = logging.getLogger(__name__)
     assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
     assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
     assert torch.isnan(matrix).sum() == 0, "The input matrix must not contain NaN values."
 
-    if preferred_linalg_library is not None:
-        torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
-    except torch.linalg.LinAlgError as e:
-        if preferred_linalg_library == "cusolver":
-            raise ValueError(
-                "This is probably a bug from CUDA < 12.1"
-                "Try torch.backends.cuda.preferred_linalg_library('magma')"
-            )
-        else:
-            raise e
+    except torch.linalg.LinAlgError:
+        matrix += 1e-6 * torch.eye(matrix.shape[0], device=matrix.device)
+        logger.warning(
+            "Adding a small identity matrix to make the input matrix positive definite."
+        )
+        eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
+
     selected_eigenvalues = eigenvalues > threshold
     eigenvalues = torch.rsqrt(eigenvalues[selected_eigenvalues])  # inverse square root
     eigenvectors = eigenvectors[:, selected_eigenvalues]
