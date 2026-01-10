@@ -877,9 +877,12 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         prev_module.update_computation()
         growing_module.update_computation()
 
-        # Test with GradMax initialization
+        # Test with GradMax initialization (primitive options: no covariance, alpha_zero, no projection)
         alpha, omega, eigenvals = growing_module._auxiliary_compute_alpha_omega(
-            initialization_method="gradmax", maximum_added_neurons=3
+            use_covariance=False,
+            alpha_zero=True,
+            use_projection=False,
+            maximum_added_neurons=3,
         )
 
         # Verify that we get valid outputs
@@ -897,8 +900,8 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         self.assertEqual(alpha.shape[0], omega.shape[1])
         self.assertEqual(alpha.shape[0], eigenvals.shape[0])
 
-    def test_auxiliary_compute_alpha_omega_invalid_method(self):
-        """Test _auxiliary_compute_alpha_omega with invalid initialization_method."""
+    def test_compute_optimal_updates_invalid_method(self):
+        """Test compute_optimal_updates with invalid initialization_method."""
         prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
         growing_module = LinearGrowingModule(
             4, 5, device=global_device(), previous_module=prev_module, name="main"
@@ -921,7 +924,7 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
 
         # Should raise ValueError for invalid method
         with self.assertRaises(ValueError) as context:
-            growing_module._auxiliary_compute_alpha_omega(initialization_method="invalid")
+            growing_module.compute_optimal_updates(initialization_method="invalid")
         self.assertIn("Unknown initialization method", str(context.exception))
 
     def test_compute_optimal_updates_use_projected_gradient_false(self):

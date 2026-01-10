@@ -754,18 +754,21 @@ class LinearGrowingModule(GrowingModule):
         )
 
     # Optimal update computation
-    def compute_optimal_added_parameters(
+    def _compute_optimal_added_parameters(
         self,
         numerical_threshold: float = 1e-15,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
-        initialization_method: str = "tiny",
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
+
+        This is a private method that operates on primitive options.
 
         Parameters
         ----------
@@ -779,10 +782,12 @@ class LinearGrowingModule(GrowingModule):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
-        initialization_method: str
-            Method to use for initialization. Options: "tiny" (default), "gradmax"
+        use_covariance: bool
+            if True, use S matrix (covariance preconditioning), else use Identity
+        alpha_zero: bool
+            if True, set alpha (incoming weights) to zero, else compute from SVD
+        use_projection: bool
+            if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
 
         Returns
         -------
@@ -798,8 +803,9 @@ class LinearGrowingModule(GrowingModule):
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
             dtype=dtype,
-            use_projected_gradient=use_projected_gradient,
-            initialization_method=initialization_method,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
         )
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1], (

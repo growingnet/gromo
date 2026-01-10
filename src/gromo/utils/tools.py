@@ -136,17 +136,17 @@ def compute_optimal_added_parameters(
     numerical_threshold: float = 1e-15,
     statistical_threshold: float = 1e-3,
     maximum_added_neurons: int | None = None,
-    initialization_method: str = "tiny",
+    alpha_zero: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
 
-    Supports both TINY and GradMax initialization methods through unified logic.
+    This function operates on primitive options, not method names.
 
     Parameters
     ----------
     matrix_s: torch.Tensor | None in (s, s)
-        Square matrix S. If None, identity matrix is used (GradMax method).
+        Square matrix S. If None, identity matrix is used.
     matrix_n: torch.Tensor in (s, t)
         Matrix N (correlation matrix)
     numerical_threshold: float
@@ -155,8 +155,10 @@ def compute_optimal_added_parameters(
         Threshold to consider a singular value as zero in the SVD
     maximum_added_neurons: int | None
         Maximum number of added neurons, if None all significant neurons are kept
-    initialization_method: str
-        Method for initialization. Options: "tiny" (default), "gradmax"
+    alpha_zero: bool
+        If True, set alpha (incoming weights) to zero, else compute from SVD.
+        When True, omega uses orthonormal singular vectors (GradMax-style).
+        When False, both alpha and omega are scaled by sqrt(s) (TINY-style).
 
     Returns
     -------
@@ -198,12 +200,10 @@ def compute_optimal_added_parameters(
     # Compute the SVD of the product
     try:
         u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
-    except torch.linalg.LinAlgError:
+    except torch.linalg.LinAlgError as e:
         print("Warning: An error occurred during the SVD computation.")
         if matrix_s is not None:
-            print(
-                f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, " f"{matrix_s.shape=}"
-            )
+            print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
         print(f"matrix_n: {matrix_n.min()=}, {matrix_n.max()=}, {matrix_n.shape=}")
         if matrix_s_inverse_sqrt is not None:
             print(
@@ -211,7 +211,7 @@ def compute_optimal_added_parameters(
                 f"{matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
             )
         print(f"matrix_p: {matrix_p.min()=}, {matrix_p.max()=}, {matrix_p.shape=}")
-        u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
+        raise e
 
     # Select the singular values
     selected_singular_values = s >= min(statistical_threshold, s.max())
@@ -223,14 +223,9 @@ def compute_optimal_added_parameters(
     u = u[:, selected_singular_values]
     v = v[selected_singular_values, :]
 
-    # Compute output based on initialization method
-    if initialization_method == "tiny":
-        # TINY: alpha and omega both depend on sqrt(s) and S^{-1/2}
-        sqrt_s = torch.sqrt(torch.abs(s))
-        alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
-        omega = sqrt_s[:, None] * v
-    elif initialization_method == "gradmax":
-        # GradMax: alpha = 0, omega = orthonormal singular vectors
+    # Compute output based on alpha_zero option
+    if alpha_zero:
+        # GradMax-style: alpha = 0, omega = orthonormal singular vectors
         k_selected = len(s)
         alpha = torch.zeros(
             (n_1, k_selected),
@@ -239,10 +234,10 @@ def compute_optimal_added_parameters(
         )
         omega = v  # Orthonormal right singular vectors
     else:
-        raise ValueError(
-            f"Unknown initialization method: {initialization_method}. "
-            f"Supported methods: 'tiny', 'gradmax'"
-        )
+        # TINY-style: alpha and omega both depend on sqrt(s) and S^{-1/2}
+        sqrt_s = torch.sqrt(torch.abs(s))
+        alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
+        omega = sqrt_s[:, None] * v
 
     return alpha.t(), omega.t(), s
 

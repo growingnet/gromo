@@ -779,7 +779,7 @@ class TestTools(TorchTestCase):
             matrix_s=None,
             matrix_n=tensor_m,
             statistical_threshold=1e-6,
-            initialization_method="gradmax",
+            alpha_zero=True,
         )
 
         # Check output shapes
@@ -808,7 +808,7 @@ class TestTools(TorchTestCase):
                     matrix_s=None,
                     matrix_n=tensor_m,
                     maximum_added_neurons=2,
-                    initialization_method="gradmax",
+                    alpha_zero=True,
                 )
 
                 # Alpha should be all zeros
@@ -829,7 +829,7 @@ class TestTools(TorchTestCase):
             matrix_s=None,
             matrix_n=tensor_m,
             maximum_added_neurons=k,
-            initialization_method="gradmax",
+            alpha_zero=True,
         )
 
         # Omega should have k columns
@@ -855,7 +855,7 @@ class TestTools(TorchTestCase):
             matrix_s=None,
             matrix_n=tensor_m,
             maximum_added_neurons=max_neurons,
-            initialization_method="gradmax",
+            alpha_zero=True,
         )
 
         # Should respect the maximum constraint
@@ -876,7 +876,7 @@ class TestTools(TorchTestCase):
             matrix_s=None,
             matrix_n=tensor_m,
             statistical_threshold=threshold,
-            initialization_method="gradmax",
+            alpha_zero=True,
         )
 
         # All selected singular values should be >= threshold
@@ -907,7 +907,7 @@ class TestTools(TorchTestCase):
                     matrix_s=None,
                     matrix_n=tensor_m,
                     maximum_added_neurons=min(2, min(in_features, out_features)),
-                    initialization_method="gradmax",
+                    alpha_zero=True,
                 )
 
                 # Check shapes
@@ -931,38 +931,28 @@ class TestTools(TorchTestCase):
         in_features, out_features = 3, 2
         tensor_m = torch.randn(in_features, out_features)
 
-        # Mock SVD to trigger LinAlgError on first call, succeed on second
-        # For GradMax, SVD is on matrix_n (not transposed)
-        u_real, s_real, v_real = torch.linalg.svd(tensor_m, full_matrices=False)
-        successful_result = (u_real, s_real, v_real)
-
+        # Mock SVD to trigger LinAlgError
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
-                successful_result,  # Second call succeeds
-            ]
+            mock_svd.side_effect = torch.linalg.LinAlgError("Mocked SVD error")
 
             with unittest.mock.patch("sys.stdout", captured_output):
-                alpha, omega, singular_values = compute_optimal_added_parameters(
-                    matrix_s=None,
-                    matrix_n=tensor_m,
-                    initialization_method="gradmax",
-                )
+                # Should re-raise the exception after printing diagnostics
+                with self.assertRaises(torch.linalg.LinAlgError):
+                    compute_optimal_added_parameters(
+                        matrix_s=None,
+                        matrix_n=tensor_m,
+                        alpha_zero=True,
+                    )
 
             # Verify debug output was printed
             output = captured_output.getvalue()
             self.assertIn("Warning: An error occurred during the SVD computation", output)
             self.assertIn("matrix_n:", output)
 
-            # Verify the function still succeeded after retry
-            self.assertIsNotNone(alpha)
-            self.assertIsNotNone(omega)
-            self.assertIsNotNone(singular_values)
-
-            # Verify SVD was called twice (first failed, second succeeded)
-            self.assertEqual(mock_svd.call_count, 2)
+            # Verify SVD was called once (then exception was re-raised)
+            self.assertEqual(mock_svd.call_count, 1)
 
 
 if __name__ == "__main__":

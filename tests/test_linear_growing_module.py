@@ -1277,11 +1277,13 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         demo_layers[1].update_computation()
         demo_layers[1].compute_optimal_delta()
 
-        # Call with GradMax initialization
+        # Call with GradMax initialization (using private method with primitive options)
         alpha, alpha_b, omega, eigenvalues = demo_layers[
             1
-        ].compute_optimal_added_parameters(
-            initialization_method="gradmax",
+        ]._compute_optimal_added_parameters(
+            use_covariance=False,
+            alpha_zero=True,
+            use_projection=False,
             maximum_added_neurons=5,
         )
 
@@ -1323,18 +1325,24 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             demo_layers[1].update_computation()
             demo_layers[1].compute_optimal_delta()
 
-        # Compute with TINY
+        # Compute with TINY (using private method with primitive options)
         alpha_tiny, _, omega_tiny, _ = demo_layers_tiny[
             1
-        ].compute_optimal_added_parameters(
-            initialization_method="tiny", maximum_added_neurons=3
+        ]._compute_optimal_added_parameters(
+            use_covariance=True,
+            alpha_zero=False,
+            use_projection=True,
+            maximum_added_neurons=3,
         )
 
-        # Compute with GradMax
+        # Compute with GradMax (using private method with primitive options)
         alpha_gradmax, _, omega_gradmax, _ = demo_layers_gradmax[
             1
-        ].compute_optimal_added_parameters(
-            initialization_method="gradmax", maximum_added_neurons=3
+        ]._compute_optimal_added_parameters(
+            use_covariance=False,
+            alpha_zero=True,
+            use_projection=False,
+            maximum_added_neurons=3,
         )
 
         # Both should produce valid outputs
