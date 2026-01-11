@@ -3,12 +3,16 @@ Module to define a two layer block similar to a BasicBlock in ResNet.
 """
 
 from typing import Any
-from warnings import warn
+from warnings import catch_warnings, simplefilter, warn
 
 import torch
+from deprecated import deprecated
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.modules.conv2d_growing_module import RestrictedConv2dGrowingModule
+from gromo.modules.conv2d_growing_module import (
+    Conv2dGrowingModule,
+    RestrictedConv2dGrowingModule,
+)
 from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
@@ -585,9 +589,9 @@ class LinearGrowingBlock(GrowingBlock):
         extended_mid_activation: torch.nn.Module | None
             activation function to use between the two layers in the extended forward,
             if None use the mid_activation
-        pre_addition_function: torch.nn.Module
+        pre_addition_function: torch.nn.Module | None
             function to use after the second layer,
-            if None use the identity function
+            defaults to the identity function
         name: str
             name of the block
         kwargs_layer: dict | None
@@ -611,23 +615,25 @@ class LinearGrowingBlock(GrowingBlock):
                 kwargs_second_layer=kwargs_second_layer,
             )
         )
-        first_layer = LinearGrowingModule(
-            in_features=in_features,
-            out_features=hidden_features,
-            name=f"{name}(first_layer)",
-            post_layer_function=mid_activation,
-            extended_post_layer_function=extended_mid_activation,
-            **kwargs_first_layer,
-        )
-        second_layer = LinearGrowingModule(
-            in_features=hidden_features,
-            out_features=out_features,
-            name=f"{name}(second_layer)",
-            post_layer_function=pre_addition_function,
-            target_in_features=target_hidden_features,
-            previous_module=first_layer,
-            **kwargs_second_layer,
-        )
+        with catch_warnings(category=UserWarning):
+            simplefilter("ignore", UserWarning)
+            first_layer = LinearGrowingModule(
+                in_features=in_features,
+                out_features=hidden_features,
+                name=f"{name}(first_layer)",
+                post_layer_function=mid_activation,
+                extended_post_layer_function=extended_mid_activation,
+                **kwargs_first_layer,
+            )
+            second_layer = LinearGrowingModule(
+                in_features=hidden_features,
+                out_features=out_features,
+                name=f"{name}(second_layer)",
+                post_layer_function=pre_addition_function,
+                target_in_features=target_hidden_features,
+                previous_module=first_layer,
+                **kwargs_second_layer,
+            )
         super(LinearGrowingBlock, self).__init__(
             in_features=in_features,
             out_features=out_features,
@@ -640,12 +646,13 @@ class LinearGrowingBlock(GrowingBlock):
         )
 
 
-class RestrictedConv2dGrowingBlock(GrowingBlock):
+class Conv2dGrowingBlock(GrowingBlock):
     """
-    RestrictedConv2dGrowingBlock is a GrowingBlock for RestrictedConv2d layers.
+    Conv2dGrowingBlock is a GrowingBlock for
+    Conv2dGrowingModule layers.
 
     This creates a two-layer block similar to LinearGrowingBlock but using
-    RestrictedConv2dGrowingModule layers instead of LinearGrowingModule layers.
+    Conv2dGrowingModule layers instead of LinearGrowingModule layers.
     """
 
     def __init__(
@@ -665,6 +672,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         kwargs_first_layer: dict | None = None,
         kwargs_second_layer: dict | None = None,
         downsample: torch.nn.Module = torch.nn.Identity(),
+        growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
         device: torch.device | None = None,
     ) -> None:
         """
@@ -690,7 +698,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             if None use the activation function
         pre_addition_function: torch.nn.Module | None
             function to use after the second layer,
-            if None use the identity function
+            defaults to the identity function
         name: str
             name of the block
         kwargs_layer: dict | None
@@ -701,6 +709,9 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             dictionary of arguments for the second layer, if None use kwargs_layer
         downsample: torch.nn.Module
             operation to apply on the residual stream
+        growing_conv_type: type[Conv2dGrowingModule]
+            type of convolutional growing module to use
+            (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...)
         device: torch.device | None
             device to use for the block
         """
@@ -725,28 +736,29 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
                     f"kernel_size specified in both arguments and kwargs for {name}, "
                     f"using value from kwargs."
                 )
+        with catch_warnings(category=UserWarning):
+            simplefilter("ignore", UserWarning)
+            first_layer = growing_conv_type(
+                in_channels=in_channels,
+                out_channels=hidden_channels,
+                name=f"{name}(first_layer)",
+                post_layer_function=mid_activation,
+                extended_post_layer_function=extended_mid_activation,
+                device=device,
+                **kwargs_first_layer,
+            )
+            second_layer = growing_conv_type(
+                in_channels=hidden_channels,
+                out_channels=out_channels,
+                name=f"{name}(second_layer)",
+                post_layer_function=pre_addition_function,
+                target_in_channels=target_hidden_channels,
+                previous_module=first_layer,
+                device=device,
+                **kwargs_second_layer,
+            )
 
-        first_layer = RestrictedConv2dGrowingModule(
-            in_channels=in_channels,
-            out_channels=hidden_channels,
-            name=f"{name}(first_layer)",
-            post_layer_function=mid_activation,
-            extended_post_layer_function=extended_mid_activation,
-            device=device,
-            **kwargs_first_layer,
-        )
-        second_layer = RestrictedConv2dGrowingModule(
-            in_channels=hidden_channels,
-            out_channels=out_channels,
-            name=f"{name}(second_layer)",
-            post_layer_function=pre_addition_function,
-            target_in_channels=target_hidden_channels,
-            previous_module=first_layer,
-            device=device,
-            **kwargs_second_layer,
-        )
-
-        super(RestrictedConv2dGrowingBlock, self).__init__(
+        super(Conv2dGrowingBlock, self).__init__(
             in_features=in_channels,
             out_features=out_channels,
             pre_activation=pre_activation,
@@ -756,3 +768,17 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             downsample=downsample,
             device=device,
         )
+
+
+@deprecated(
+    "Use instead Conv2dGrowingBlock with "
+    "growing_conv_type=RestrictedConv2dGrowingModule (which is the default)."
+)
+class RestrictedConv2dGrowingBlock(Conv2dGrowingBlock):
+    """
+    RestrictedConv2dGrowingBlock is a GrowingBlock for
+    RestrictedConv2dGrowingModule layers.
+
+    This creates a two-layer block similar to Conv2dGrowingBlock but using
+    RestrictedConv2dGrowingModule layers instead of Conv2dGrowingModule layers.
+    """
