@@ -133,7 +133,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check basic properties
         self.assertEqual(block.in_features, self.in_features)
         self.assertEqual(block.out_features, self.in_features)
-        self.assertEqual(block.hidden_features, 0)
+        self.assertEqual(block.hidden_neurons, 0)
         self.assertEqual(block.name, "zero_block")
 
         # Check layer configurations
@@ -165,7 +165,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check basic properties
         self.assertEqual(block.in_features, self.in_features)
         self.assertEqual(block.out_features, self.in_features)
-        self.assertEqual(block.hidden_features, self.hidden_features)
+        self.assertEqual(block.hidden_neurons, self.hidden_features)
 
         # Check layer configurations
         self.assertEqual(block.first_layer.in_features, self.in_features)
@@ -994,7 +994,7 @@ class TestLinearGrowingBlock(TorchTestCase):
             block.second_layer.in_features,
             original_second_in_features + num_neurons_to_keep,
         )
-        self.assertEqual(block.hidden_features, num_neurons_to_keep)  # Was 0 before
+        self.assertEqual(block.hidden_neurons, num_neurons_to_keep)  # Was 0 before
 
         # Verify weights were extended properly
         self.assertShapeEqual(
@@ -1239,9 +1239,9 @@ class TestLinearGrowingBlock(TorchTestCase):
                 block.second_layer.in_features,
                 original_second_in + self.added_features,
             )
-            # But hidden_features is updated by extension_size
+            # But hidden_neurons is updated by extension_size
             self.assertEqual(
-                block.hidden_features,
+                block.hidden_neurons,
                 initial_hidden_features + explicit_size,
             )
 
@@ -1295,9 +1295,9 @@ class TestLinearGrowingBlock(TorchTestCase):
                 block.second_layer.in_features,
                 original_second_in + self.added_features,
             )
-            # And hidden_features increased by eigenvalues shape
+            # And hidden_neurons increased by eigenvalues shape
             self.assertEqual(
-                block.hidden_features,
+                block.hidden_neurons,
                 initial_hidden_features + self.added_features,
             )
 
