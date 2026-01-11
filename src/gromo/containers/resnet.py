@@ -9,7 +9,7 @@ from math import ceil
 import torch
 from torch import nn
 
-from gromo.containers.growing_block import RestrictedConv2dGrowingBlock
+from gromo.containers.growing_block import Conv2dGrowingBlock
 from gromo.containers.sequential_growing_container import SequentialGrowingContainer
 from gromo.modules.growing_normalisation import GrowingBatchNorm2d
 
@@ -107,8 +107,8 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         for stage in self.stages:  # type: ignore
             stage: nn.Sequential
             for block in stage:  # type: ignore
-                block: RestrictedConv2dGrowingBlock | nn.Module
-                if isinstance(block, RestrictedConv2dGrowingBlock):
+                block: Conv2dGrowingBlock | nn.Module
+                if isinstance(block, Conv2dGrowingBlock):
                     self._growable_layers.append(block)
 
     def _build_pre_net(self, in_features: int, inplanes: int) -> nn.Sequential:
@@ -174,7 +174,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         use_downsample: bool = False,
         input_block_kernel_size: int | None = None,
         output_block_kernel_size: int | None = None,
-    ) -> RestrictedConv2dGrowingBlock:
+    ) -> Conv2dGrowingBlock:
         """Create a ResNet block with the appropriate configuration."""
         if input_block_kernel_size is None:
             input_block_kernel_size = self.input_block_kernel_size
@@ -238,7 +238,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
                 else nn.Identity()
             )
 
-        return RestrictedConv2dGrowingBlock(
+        return Conv2dGrowingBlock(
             in_channels=in_channels,
             out_channels=out_channels,
             hidden_channels=hidden_channels,
@@ -314,8 +314,8 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         for stage in self.stages:  # type: ignore
             stage: nn.Sequential
             for block in stage:  # type: ignore
-                block: RestrictedConv2dGrowingBlock | nn.Module
-                if isinstance(block, RestrictedConv2dGrowingBlock):
+                block: Conv2dGrowingBlock | nn.Module
+                if isinstance(block, Conv2dGrowingBlock):
                     x = block.extended_forward(x)
                 else:
                     x = block(x)
