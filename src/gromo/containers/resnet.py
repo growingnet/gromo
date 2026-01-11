@@ -27,10 +27,9 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         activation: nn.Module = nn.ReLU(),
         input_block_kernel_size: int = 3,
         output_block_kernel_size: int = 3,
-        reduction_factor: float = 0.0,
+        hidden_channels: tuple[int, ...] = (0, 0, 0, 0),
         small_inputs: bool = False,
         inplanes: int = 64,
-        nb_stages: int = 4,
         use_preactivation: bool = True,
         growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
     ) -> None:
@@ -50,9 +49,9 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             Kernel size for the input block.
         output_block_kernel_size : int
             Kernel size for the output block.
-        reduction_factor : float
-            Factor to reduce the number of channels in the bottleneck.
-            If 0, starts with no channels. If 1, starts with all channels.
+        hidden_channels : tuple[int, ...]
+            Number of hidden channels for the first block of each stage.
+            Length determines nb_stages.
         small_inputs : bool
             If True, adapt the network for small input images (e.g., CIFAR-10/100).
             This uses smaller kernels, no stride, and
@@ -60,8 +59,6 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         inplanes : int
             Number of initial planes (channels) after the first convolution.
             (Default is 64 as in standard ResNet architectures.)
-        nb_stages : int
-            Number of stages in the ResNet.
         use_preactivation : bool
             If True, use full pre-activation ResNet (BN-ReLU before conv).
             If False, use classical ResNet (conv-BN-ReLU).
@@ -74,20 +71,20 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         )
         self.activation = activation.to(device)
         self.small_inputs = small_inputs
-        self.reduction_factor = reduction_factor
         self.use_preactivation = use_preactivation
         self.inplanes = inplanes
         self.input_block_kernel_size = input_block_kernel_size
         self.output_block_kernel_size = output_block_kernel_size
         self.growing_conv_type = growing_conv_type
 
+        nb_stages = len(hidden_channels)
         self.pre_net = self._build_pre_net(in_features, inplanes)
 
         self.stages: nn.ModuleList = nn.ModuleList()
         for i in range(nb_stages):
             input_channels = inplanes * (2 ** max(0, i - 1))
             output_channels = inplanes * (2**i)
-            hidden_channels = ceil(inplanes * (2**i) * self.reduction_factor)
+            stage_hidden_channels = hidden_channels[i]
 
             # For small inputs, adjust stride behavior
             stage_stride = 2 if (i > 0 and not (small_inputs and i == 1)) else 1
@@ -98,7 +95,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             block = self._create_block(
                 in_channels=input_channels,
                 out_channels=output_channels,
-                hidden_channels=hidden_channels,
+                hidden_channels=stage_hidden_channels,
                 stride=stage_stride,
                 name=f"Stage {i} Block 0",
                 use_downsample=(i > 0),
@@ -342,6 +339,7 @@ def init_full_resnet_structure(
     input_block_kernel_size: int = 3,
     output_block_kernel_size: int = 3,
     reduction_factor: float = 1 / 64,
+    hidden_channels: tuple[int | tuple[int, ...], ...] | None = None,
     small_inputs: bool | None = None,
     number_of_blocks_per_stage: int | tuple[int, ...] = 2,
     inplanes: int = 64,
@@ -373,6 +371,15 @@ def init_full_resnet_structure(
     reduction_factor : float
         Factor to reduce the number of channels in the bottleneck.
         If 0, starts with no channels. If 1, starts with all channels.
+        Ignored if hidden_channels is provided.
+    hidden_channels : tuple[int | tuple[int, ...], ...] | None
+        Explicit hidden channels per stage/block. If provided, overrides
+        reduction_factor. Can be:
+        - tuple of int: same hidden_channels for all blocks in each stage
+        - tuple of tuples: per-block hidden_channels for each stage
+        - mixed: some stages with int (uniform), some with tuple (per-block)
+        Length must match nb_stages, and inner tuple lengths must match
+        number_of_blocks_per_stage.
     small_inputs : bool | None
         If True, adapt the network for small input images (e.g., CIFAR-10/100).
         This uses smaller kernels, no stride, and no max pooling in the initial layers.
@@ -405,6 +412,58 @@ def init_full_resnet_structure(
     if small_inputs is None:
         small_inputs = input_shape[1] <= 32 and input_shape[2] <= 32
 
+    # Normalize number_of_blocks_per_stage to a tuple
+    if isinstance(number_of_blocks_per_stage, int):
+        blocks_per_stage: tuple[int, ...] = (number_of_blocks_per_stage,) * nb_stages
+    elif (
+        isinstance(number_of_blocks_per_stage, (list, tuple))
+        and len(number_of_blocks_per_stage) == nb_stages
+    ):
+        blocks_per_stage = tuple(number_of_blocks_per_stage)
+    else:
+        raise TypeError(
+            f"number_of_blocks_per_stage must be an int or a tuple of {nb_stages} ints."
+        )
+
+    # Normalize hidden_channels to a tuple of tuples
+    # (one tuple per stage, one int per block)
+    if hidden_channels is not None:
+        if len(hidden_channels) != nb_stages:
+            raise ValueError(
+                f"hidden_channels must have {nb_stages} elements (one per stage), "
+                f"but got {len(hidden_channels)}."
+            )
+        hidden_channels_per_block: list[tuple[int, ...]] = []
+        for stage_idx, stage_hidden in enumerate(hidden_channels):
+            num_blocks = blocks_per_stage[stage_idx]
+            if isinstance(stage_hidden, int):
+                # Same hidden_channels for all blocks in this stage
+                hidden_channels_per_block.append((stage_hidden,) * num_blocks)
+            elif isinstance(stage_hidden, (list, tuple)):
+                if len(stage_hidden) != num_blocks:
+                    raise ValueError(
+                        f"Stage {stage_idx}: hidden_channels has {len(stage_hidden)} "
+                        f"elements but number_of_blocks_per_stage is {num_blocks}."
+                    )
+                hidden_channels_per_block.append(tuple(stage_hidden))
+            else:
+                raise TypeError(
+                    f"Stage {stage_idx}: hidden_channels element must be int or tuple, "
+                    f"got {type(stage_hidden).__name__}."
+                )
+    else:
+        # Compute hidden_channels from reduction_factor
+        hidden_channels_per_block = []
+        for stage_idx in range(nb_stages):
+            num_blocks = blocks_per_stage[stage_idx]
+            stage_hidden = ceil(inplanes * (2**stage_idx) * reduction_factor)
+            hidden_channels_per_block.append((stage_hidden,) * num_blocks)
+
+    # Extract first block's hidden_channels for each stage (for ResNetBasicBlock)
+    initial_hidden_channels = tuple(
+        hidden_channels_per_block[i][0] for i in range(nb_stages)
+    )
+
     model = ResNetBasicBlock(
         in_features=in_features,
         out_features=out_features,
@@ -412,33 +471,22 @@ def init_full_resnet_structure(
         activation=activation,
         input_block_kernel_size=input_block_kernel_size,
         output_block_kernel_size=output_block_kernel_size,
-        reduction_factor=reduction_factor,
+        hidden_channels=initial_hidden_channels,
         small_inputs=small_inputs,
         inplanes=inplanes,
-        nb_stages=nb_stages,
         use_preactivation=use_preactivation,
         growing_conv_type=growing_conv_type,
     )
-    if (
-        isinstance(number_of_blocks_per_stage, (list, tuple))
-        and len(number_of_blocks_per_stage) == nb_stages
-    ):
-        blocks_per_stage = number_of_blocks_per_stage
-    elif isinstance(number_of_blocks_per_stage, int):
-        blocks_per_stage = (number_of_blocks_per_stage,) * nb_stages
-    else:
-        raise TypeError(
-            f"number_of_blocks_per_stage must be an int or a tuple of {nb_stages} ints."
-        )
-    # Append additional blocks to complete each stage according
-    #  to number_of_blocks_per_stage
+
+    # Append additional blocks to complete each stage
     for stage_index in range(nb_stages):
-        for _ in range(1, blocks_per_stage[stage_index]):
+        for block_idx in range(1, blocks_per_stage[stage_index]):
+            block_hidden = hidden_channels_per_block[stage_index][block_idx]
             model.append_block(
                 stage_index=stage_index,
                 input_block_kernel_size=input_block_kernel_size,
                 output_block_kernel_size=output_block_kernel_size,
-                hidden_channels=int(model.stages[stage_index][0].hidden_neurons),  # type: ignore
+                hidden_channels=block_hidden,
             )
     return model
 
@@ -493,3 +541,24 @@ if __name__ == "__main__":
     assert (
         classical_params == torchvision_params
     ), f"Expected {torchvision_params} parameters but got {classical_params}"
+
+    print("\n" + "=" * 60)
+    print("Custom hidden_channels example")
+    print("=" * 60)
+    # Example with mixed hidden_channels: int for uniform stages, tuple for per-block
+    model_custom = init_full_resnet_structure(
+        input_shape=(3, 224, 224),
+        out_features=1_000,
+        hidden_channels=(32, 64, (100, 150), 256),  # mixed: int and tuple
+        number_of_blocks_per_stage=2,
+        use_preactivation=True,
+    )
+    print("Hidden channels per stage/block:")
+    for i, stage in enumerate(model_custom.stages):
+        block_hidden = [
+            b.hidden_neurons
+            for b in stage  # type: ignore
+            if isinstance(b, Conv2dGrowingBlock)
+        ]
+        print(f"  Stage {i}: {block_hidden}")
+    summary(model_custom, input_size=(1, 3, 224, 224))
