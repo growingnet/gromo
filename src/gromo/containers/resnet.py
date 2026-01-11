@@ -27,6 +27,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         small_inputs: bool = False,
         inplanes: int = 64,
         nb_stages: int = 4,
+        use_preactivation: bool = True,
     ) -> None:
         """
         Initialize the ResNet with basic blocks.
@@ -56,6 +57,9 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             (Default is 64 as in standard ResNet architectures.)
         nb_stages : int
             Number of stages in the ResNet.
+        use_preactivation : bool
+            If True, use full pre-activation ResNet (BN-ReLU before conv).
+            If False, use classical ResNet (conv-BN-ReLU).
         """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
@@ -63,11 +67,55 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         self.activation = activation.to(device)
         self.small_inputs = small_inputs
         self.reduction_factor = reduction_factor
+        self.use_preactivation = use_preactivation
+        self.inplanes = inplanes
+        self.input_block_kernel_size = input_block_kernel_size
+        self.output_block_kernel_size = output_block_kernel_size
 
-        if small_inputs:
+        self.pre_net = self._build_pre_net(in_features, inplanes)
+
+        self.stages: nn.ModuleList = nn.ModuleList()
+        for i in range(nb_stages):
+            input_channels = inplanes * (2 ** max(0, i - 1))
+            output_channels = inplanes * (2**i)
+            hidden_channels = ceil(inplanes * (2**i) * self.reduction_factor)
+
+            # For small inputs, adjust stride behavior
+            stage_stride = 2 if (i > 0 and not (small_inputs and i == 1)) else 1
+            if small_inputs and i == 1:
+                stage_stride = 1
+
+            stage = nn.Sequential()
+            block = self._create_block(
+                in_channels=input_channels,
+                out_channels=output_channels,
+                hidden_channels=hidden_channels,
+                stride=stage_stride,
+                name=f"Stage {i} Block 0",
+                use_downsample=(i > 0),
+            )
+            stage.append(block)
+            if not use_preactivation:
+                stage.append(self.activation)
+            self.stages.append(stage)
+
+        self.post_net = self._build_post_net(inplanes * (2 ** (nb_stages - 1)))
+
+        # Initialize the growing layers list with all
+        # RestrictedConv2dGrowingBlock instances
+        self._growing_layers = []
+        for stage in self.stages:  # type: ignore
+            stage: nn.Sequential
+            for block in stage:  # type: ignore
+                block: RestrictedConv2dGrowingBlock | nn.Module
+                if isinstance(block, RestrictedConv2dGrowingBlock):
+                    self._growable_layers.append(block)
+
+    def _build_pre_net(self, in_features: int, inplanes: int) -> nn.Sequential:
+        """Build the pre-network (stem) based on input size and architecture type."""
+        if self.small_inputs:
             # For small inputs like CIFAR-10/100 (32x32)
-            # Use 3x3 conv with stride=1, no max pooling
-            self.pre_net = nn.Sequential(
+            layers: list[nn.Module] = [
                 nn.Conv2d(
                     in_features,
                     inplanes,
@@ -77,13 +125,10 @@ class ResNetBasicBlock(SequentialGrowingContainer):
                     bias=False,
                     device=self.device,
                 ),
-                # nn.BatchNorm2d(inplanes, device=self.device),
-                # self.activation,
-            )
+            ]
         else:
             # For large inputs like ImageNet (224x224)
-            # Use 7x7 conv with stride=2, followed by max pooling
-            self.pre_net = nn.Sequential(
+            layers = [
                 nn.Conv2d(
                     in_features,
                     inplanes,
@@ -93,142 +138,163 @@ class ResNetBasicBlock(SequentialGrowingContainer):
                     bias=False,
                     device=self.device,
                 ),
-                # nn.BatchNorm2d(inplanes, device=self.device),
-                # self.activation,
-                nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-            )
+            ]
 
-        self.stages: nn.ModuleList = nn.ModuleList()
-        for i in range(nb_stages):
-            # for the future we could remove the basic block of the first stage
-            # as there is no dowsampling
-            stage = nn.Sequential()
-            input_channels = inplanes * (2 ** max(0, i - 1))
-            output_channels = inplanes * (2**i)
-            hidden_channels = ceil(inplanes * (2**i) * self.reduction_factor)
+        if not self.use_preactivation:
+            layers.append(nn.BatchNorm2d(inplanes, device=self.device))
+            layers.append(self.activation)
 
-            # For small inputs, adjust stride behavior
-            # Skip stride=2 for the first stage to preserve spatial resolution
-            stage_stride = 2 if (i > 0 and not (small_inputs and i == 1)) else 1
-            if small_inputs and i == 1:
-                # For small inputs, we might want stride=1 for the first downsampling
-                # stage to avoid losing too much spatial resolution too quickly
-                stage_stride = 1
+        if not self.small_inputs:
+            layers.append(nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
 
-            stage.append(
-                RestrictedConv2dGrowingBlock(
-                    in_channels=input_channels,
-                    out_channels=output_channels,
-                    hidden_channels=hidden_channels,
-                    kwargs_first_layer={
-                        "kernel_size": input_block_kernel_size,
-                        "padding": 1,
-                        "use_bias": False,
-                        "stride": stage_stride,
-                    },
-                    kwargs_layer={
-                        "kernel_size": output_block_kernel_size,
-                        "padding": 1,
-                        "use_bias": False,
-                    },
-                    pre_activation=nn.Sequential(
-                        nn.BatchNorm2d(input_channels, device=self.device),
-                        self.activation,
-                    ),
-                    mid_activation=nn.Sequential(
-                        GrowingBatchNorm2d(hidden_channels, device=self.device),
-                        self.activation,
-                    ),
-                    extended_mid_activation=self.activation,
-                    name=f"Stage {i} Block 0",
-                    target_hidden_channels=output_channels,
-                    downsample=(
-                        nn.Sequential(
-                            nn.BatchNorm2d(input_channels, device=self.device),
-                            self.activation,
-                            nn.Conv2d(
-                                in_channels=input_channels,
-                                out_channels=output_channels,
-                                kernel_size=1,
-                                stride=stage_stride,
-                                bias=False,
-                                device=self.device,
-                            ),
-                        )
-                        if i > 0
-                        else torch.nn.Identity()
-                    ),
-                    device=self.device,
-                )
-            )
-            self.stages.append(stage)
+        return nn.Sequential(*layers)
 
-        self.post_net = nn.Sequential(
-            nn.BatchNorm2d(inplanes * (2 ** (nb_stages - 1)), device=self.device),
+    def _build_post_net(self, final_channels: int) -> nn.Sequential:
+        """Build the post-network (head) based on architecture type."""
+        layers: list[nn.Module] = []
+        if self.use_preactivation:
+            layers.append(nn.BatchNorm2d(final_channels, device=self.device))
+            layers.append(self.activation)
+        layers.extend(
+            [
+                nn.AdaptiveAvgPool2d((1, 1)),
+                nn.Flatten(),
+                nn.Linear(final_channels, self.out_features, device=self.device),
+            ]
+        )
+        return nn.Sequential(*layers)
+
+    def _create_block(
+        self,
+        in_channels: int,
+        out_channels: int,
+        hidden_channels: int,
+        stride: int,
+        name: str,
+        use_downsample: bool = False,
+        input_block_kernel_size: int | None = None,
+        output_block_kernel_size: int | None = None,
+    ) -> RestrictedConv2dGrowingBlock:
+        """Create a ResNet block with the appropriate configuration."""
+        if input_block_kernel_size is None:
+            input_block_kernel_size = self.input_block_kernel_size
+        if output_block_kernel_size is None:
+            output_block_kernel_size = self.output_block_kernel_size
+
+        kwargs_first_layer = {
+            "kernel_size": input_block_kernel_size,
+            "padding": 1,
+            "use_bias": False,
+            "stride": stride,
+        }
+        kwargs_layer = {
+            "kernel_size": output_block_kernel_size,
+            "padding": 1,
+            "use_bias": False,
+        }
+        mid_activation = nn.Sequential(
+            GrowingBatchNorm2d(hidden_channels, device=self.device),
             self.activation,
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten(),
-            nn.Linear(
-                inplanes * (2 ** (nb_stages - 1)), out_features, device=self.device
-            ),
         )
 
-        # Initialize the growing layers list with all
-        # RestrictedConv2dGrowingBlock instances
-        self._growing_layers = []
-        for stage in self.stages:  # type: ignore
-            stage: nn.Sequential
-            for block in stage:  # type: ignore
-                block: RestrictedConv2dGrowingBlock
-                self._growable_layers.append(block)
+        if self.use_preactivation:
+            pre_activation: nn.Module | None = nn.Sequential(
+                nn.BatchNorm2d(in_channels, device=self.device),
+                self.activation,
+            )
+            pre_addition_function: nn.Module = nn.Identity()
+            downsample: nn.Module = (
+                nn.Sequential(
+                    nn.BatchNorm2d(in_channels, device=self.device),
+                    self.activation,
+                    nn.Conv2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        kernel_size=1,
+                        stride=stride,
+                        bias=False,
+                        device=self.device,
+                    ),
+                )
+                if use_downsample
+                else nn.Identity()
+            )
+        else:
+            pre_activation = None
+            pre_addition_function = nn.BatchNorm2d(out_channels, device=self.device)
+            downsample = (
+                nn.Sequential(
+                    nn.Conv2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        kernel_size=1,
+                        stride=stride,
+                        bias=False,
+                        device=self.device,
+                    ),
+                    nn.BatchNorm2d(out_channels, device=self.device),
+                )
+                if use_downsample
+                else nn.Identity()
+            )
+
+        return RestrictedConv2dGrowingBlock(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            hidden_channels=hidden_channels,
+            kwargs_first_layer=kwargs_first_layer,
+            kwargs_layer=kwargs_layer,
+            pre_activation=pre_activation,
+            mid_activation=mid_activation,
+            extended_mid_activation=self.activation,
+            pre_addition_function=pre_addition_function,
+            name=name,
+            target_hidden_channels=out_channels,
+            downsample=downsample,
+            device=self.device,
+        )
 
     def append_block(
         self,
         stage_index: int = 0,
-        input_block_kernel_size: int = 3,
-        output_block_kernel_size: int = 3,
+        input_block_kernel_size: int | None = None,
+        output_block_kernel_size: int | None = None,
         hidden_channels: int = 0,
     ) -> None:
         """
         Append a new block to the specified stage of the ResNet.
         """
+        if not self.use_preactivation:
+            assert hidden_channels > 0, (
+                "As you are using the classical ResNet, "
+                "hidden_channels must be greater than 0."
+            )
         if stage_index < 0 or stage_index >= len(self.stages):
             raise IndexError(
                 f"Stage {stage_index} is out of range. "
                 f"There are {len(self.stages)} stages."
             )
+
         stage: nn.Sequential = self.stages[stage_index]  # type: ignore
-        input_channels = stage[-1].out_features
+        # For classical mode, the last element is activation, so use -2
+        ref_block_idx = -1 if self.use_preactivation else -2
+        input_channels = stage[ref_block_idx].out_features
         output_channels = input_channels
-        new_block = RestrictedConv2dGrowingBlock(
+
+        new_block = self._create_block(
             in_channels=input_channels,
             out_channels=output_channels,
             hidden_channels=hidden_channels,
-            kwargs_first_layer={
-                "kernel_size": input_block_kernel_size,
-                "padding": 1,
-                "use_bias": False,
-                "stride": 1,
-            },
-            kwargs_layer={
-                "kernel_size": output_block_kernel_size,
-                "padding": 1,
-                "use_bias": False,
-            },
-            pre_activation=nn.Sequential(
-                nn.BatchNorm2d(input_channels, device=self.device),
-                self.activation,
-            ),
-            mid_activation=nn.Sequential(
-                GrowingBatchNorm2d(hidden_channels, device=self.device),
-                self.activation,
-            ),
-            extended_mid_activation=self.activation,
+            stride=1,
             name=f"Stage {stage_index} Block {len(stage)}",
-            target_hidden_channels=output_channels,
-            device=self.device,
+            use_downsample=False,
+            input_block_kernel_size=input_block_kernel_size,
+            output_block_kernel_size=output_block_kernel_size,
         )
+
         stage.append(new_block)
+        if not self.use_preactivation:
+            stage.append(self.activation)
         # Add the new block to the growing layers list
         self._growable_layers.append(new_block)
 
@@ -248,8 +314,11 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         for stage in self.stages:  # type: ignore
             stage: nn.Sequential
             for block in stage:  # type: ignore
-                block: RestrictedConv2dGrowingBlock
-                x = block.extended_forward(x)
+                block: RestrictedConv2dGrowingBlock | nn.Module
+                if isinstance(block, RestrictedConv2dGrowingBlock):
+                    x = block.extended_forward(x)
+                else:
+                    x = block(x)
         x = self.post_net(x)
         return x
 
@@ -267,6 +336,7 @@ def init_full_resnet_structure(
     number_of_blocks_per_stage: int | tuple[int, ...] = 2,
     inplanes: int = 64,
     nb_stages: int = 4,
+    use_preactivation: bool = True,
 ) -> ResNetBasicBlock:
     """
     Initialize a customizable ResNet-style model with basic blocks.
@@ -304,6 +374,9 @@ def init_full_resnet_structure(
         (Default is 64 as in standard ResNet architectures.)
     nb_stages : int
         Number of stages in the ResNet.
+    use_preactivation : bool
+        If True, use full pre-activation ResNet (BN-ReLU before conv).
+        If False, use classical ResNet (conv-BN-ReLU).
 
     Returns
     -------
@@ -329,6 +402,7 @@ def init_full_resnet_structure(
         small_inputs=small_inputs,
         inplanes=inplanes,
         nb_stages=nb_stages,
+        use_preactivation=use_preactivation,
     )
     if (
         isinstance(number_of_blocks_per_stage, (list, tuple))
@@ -352,3 +426,55 @@ def init_full_resnet_structure(
                 hidden_channels=int(model.stages[stage_index][0].hidden_neurons),  # type: ignore
             )
     return model
+
+
+if __name__ == "__main__":
+    # Example usage and simple test
+    print("=" * 60)
+    print("Full Pre-activation ResNet")
+    print("=" * 60)
+    model_preact = init_full_resnet_structure(
+        input_shape=(3, 224, 224),
+        out_features=1_000,
+        reduction_factor=1,
+        number_of_blocks_per_stage=2,
+        use_preactivation=True,
+    )  # number of parameters: 11,688,616
+    print(model_preact)
+
+    from torchinfo import summary
+
+    summary(model_preact, input_size=(1, 3, 224, 224))
+
+    preact_params = sum(p.numel() for p in model_preact.parameters())
+    print(f"Number of parameters (pre-activation): {preact_params}")
+    assert (
+        preact_params == 11_688_616
+    ), f"Expected 11,688,616 parameters but got {preact_params}"
+
+    print("\n" + "=" * 60)
+    print("Classical ResNet")
+    print("=" * 60)
+    model_classical = init_full_resnet_structure(
+        input_shape=(3, 224, 224),
+        out_features=1_000,
+        reduction_factor=1,
+        number_of_blocks_per_stage=2,
+        use_preactivation=False,
+    )
+    print(model_classical)
+
+    summary(model_classical, input_size=(1, 3, 224, 224))
+
+    classical_params = sum(p.numel() for p in model_classical.parameters())
+    print(f"Number of parameters (classical): {classical_params}")
+
+    # Compare with torchvision ResNet-18
+    import torchvision.models as models
+
+    torchvision_resnet18 = models.resnet18(weights=None)
+    torchvision_params = sum(p.numel() for p in torchvision_resnet18.parameters())
+    print(f"Number of parameters (torchvision ResNet-18): {torchvision_params}")
+    assert (
+        classical_params == torchvision_params
+    ), f"Expected {torchvision_params} parameters but got {classical_params}"
