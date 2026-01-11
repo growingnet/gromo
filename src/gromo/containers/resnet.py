@@ -11,6 +11,10 @@ from torch import nn
 
 from gromo.containers.growing_block import Conv2dGrowingBlock
 from gromo.containers.sequential_growing_container import SequentialGrowingContainer
+from gromo.modules.conv2d_growing_module import (
+    Conv2dGrowingModule,
+    RestrictedConv2dGrowingModule,
+)
 from gromo.modules.growing_normalisation import GrowingBatchNorm2d
 
 
@@ -28,6 +32,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         inplanes: int = 64,
         nb_stages: int = 4,
         use_preactivation: bool = True,
+        growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
     ) -> None:
         """
         Initialize the ResNet with basic blocks.
@@ -60,6 +65,9 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         use_preactivation : bool
             If True, use full pre-activation ResNet (BN-ReLU before conv).
             If False, use classical ResNet (conv-BN-ReLU).
+        growing_conv_type : type[Conv2dGrowingModule]
+            Type of convolutional growing module to use
+            (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...).
         """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
@@ -71,6 +79,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         self.inplanes = inplanes
         self.input_block_kernel_size = input_block_kernel_size
         self.output_block_kernel_size = output_block_kernel_size
+        self.growing_conv_type = growing_conv_type
 
         self.pre_net = self._build_pre_net(in_features, inplanes)
 
@@ -251,6 +260,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             name=name,
             target_hidden_channels=out_channels,
             downsample=downsample,
+            growing_conv_type=self.growing_conv_type,
             device=self.device,
         )
 
@@ -337,6 +347,7 @@ def init_full_resnet_structure(
     inplanes: int = 64,
     nb_stages: int = 4,
     use_preactivation: bool = True,
+    growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
 ) -> ResNetBasicBlock:
     """
     Initialize a customizable ResNet-style model with basic blocks.
@@ -377,6 +388,9 @@ def init_full_resnet_structure(
     use_preactivation : bool
         If True, use full pre-activation ResNet (BN-ReLU before conv).
         If False, use classical ResNet (conv-BN-ReLU).
+    growing_conv_type : type[Conv2dGrowingModule]
+        Type of convolutional growing module to use
+        (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...).
 
     Returns
     -------
@@ -403,6 +417,7 @@ def init_full_resnet_structure(
         inplanes=inplanes,
         nb_stages=nb_stages,
         use_preactivation=use_preactivation,
+        growing_conv_type=growing_conv_type,
     )
     if (
         isinstance(number_of_blocks_per_stage, (list, tuple))
