@@ -124,6 +124,47 @@ class TestResNet(TorchTestCase):
         self.assertEqual(len(model_custom_inplanes.stages), 3)
         self.assertEqual(model_custom_inplanes.stages[0][0].in_features, 7)  # type: ignore
 
+        # Test 12: hidden_channels with all ints (uniform per stage)
+        model_hidden_int = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            hidden_channels=(8, 16, 32, 64),
+            number_of_blocks_per_stage=2,
+        )
+        self.assertEqual(model_hidden_int.stages[0][0].hidden_neurons, 8)  # type: ignore
+        self.assertEqual(model_hidden_int.stages[1][0].hidden_neurons, 16)  # type: ignore
+
+        # Test 13: hidden_channels with mixed int/tuples (per-block)
+        model_hidden_mixed = init_full_resnet_structure(
+            input_shape=(3, 32, 32),
+            hidden_channels=(8, (16, 20), 32, 64),
+            number_of_blocks_per_stage=2,
+        )
+        self.assertEqual(model_hidden_mixed.stages[1][0].hidden_neurons, 16)  # type: ignore
+        self.assertEqual(model_hidden_mixed.stages[1][1].hidden_neurons, 20)  # type: ignore
+
+        # Test 14: hidden_channels wrong length should raise ValueError
+        with self.assertRaises(ValueError):
+            init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                hidden_channels=(8, 16, 32),  # Only 3, but nb_stages=4
+            )
+
+        # Test 15: hidden_channels inner tuple wrong length should raise ValueError
+        with self.assertRaises(ValueError):
+            init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                hidden_channels=(8, (16, 20, 24), 32, 64),  # 3 elements but blocks=2
+                number_of_blocks_per_stage=2,
+            )
+
+        # Test 16: hidden_channels wrong type should raise TypeError
+        with self.assertRaises(TypeError):
+            init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                hidden_channels=(8, "invalid", 32, 64),  # type: ignore
+                number_of_blocks_per_stage=2,
+            )
+
     @unittest_parametrize(({"use_preactivation": True}, {"use_preactivation": False}))
     def test_forward_backward(self, use_preactivation: bool = True):
         """Test forward and backward pass of the ResNet model."""
