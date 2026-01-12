@@ -53,34 +53,6 @@ class AxisMSELoss(nn.Module):
             raise ValueError("reduction should be in ['mean', 'sum', 'none']")
 
 
-class SinDataloader:
-    def __init__(
-        self,
-        nb_sample: int = 1,
-        batch_size: int = 100,
-        seed: int = 0,
-        device=global_device(),
-    ):
-        self.nb_sample = nb_sample
-        self.batch_size = batch_size
-        self.seed = seed
-        self.sample_index = 0
-        self.device = device
-
-    def __iter__(self):
-        torch.manual_seed(self.seed)
-        self.sample_index = 0
-        return self
-
-    def __next__(self):
-        if self.sample_index >= self.nb_sample:
-            raise StopIteration
-        self.sample_index += 1
-        x = torch.rand(self.batch_size, 1, device=self.device) * 2 * np.pi
-        y = torch.sin(x)
-        return x, y
-
-
 def evaluate_model(
     model: nn.Module,
     dataloader: torch.utils.data.DataLoader,
@@ -338,7 +310,7 @@ def line_search(
         gammas.append(sqrt_gamma**2)
         losses.append(loss)
         if verbose:
-            print(f"gamma n° {len(gammas)}: {sqrt_gamma ** 2:.3e} -> Loss: {loss:.3e}")
+            print(f"gamma n° {len(gammas)}: {sqrt_gamma**2:.3e} -> Loss: {loss:.3e}")
         return loss
 
     def under_bound(sqrt_gamma: float, loss: float):

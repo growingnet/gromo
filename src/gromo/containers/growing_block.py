@@ -2,6 +2,7 @@
 Module to define a two layer block similar to a BasicBlock in ResNet.
 """
 
+from typing import Any
 from warnings import warn
 
 import torch
@@ -29,7 +30,6 @@ class GrowingBlock(GrowingContainer):
         second_layer: GrowingModule,
         in_features: int,
         out_features: int,
-        hidden_features: int = 0,
         pre_activation: torch.nn.Module = torch.nn.Identity(),
         name: str = "block",
         downsample: torch.nn.Module = torch.nn.Identity(),
@@ -73,7 +73,6 @@ class GrowingBlock(GrowingContainer):
         )
         self.name = name
         self.device = device
-        self.hidden_features = hidden_features
 
         self.pre_activation: torch.nn.Module = pre_activation
         self.first_layer: GrowingModule = first_layer
@@ -109,6 +108,42 @@ class GrowingBlock(GrowingContainer):
         else:
             raise ValueError("verbose must be a non-negative integer.")
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "optimal_delta_layer":
+            # We can't use directly @optimal_delta_layer.setter because of
+            # inheritance issues. But we want to be able to set this attribute
+            # so we use a @.setter to indicate it to the linter and redirect here.
+            GrowingBlock.optimal_delta_layer.fset(self, value)  # type: ignore
+        else:
+            return super().__setattr__(name, value)
+
+    @property
+    def optimal_delta_layer(self) -> torch.nn.Module | None:
+        """
+        Get the optimal delta layer of the block.
+        """
+        return self.second_layer.optimal_delta_layer
+
+    @optimal_delta_layer.setter
+    def optimal_delta_layer(self, value: torch.nn.Module | None):
+        """
+        Set the optimal delta layer of the block.
+        """
+        self.second_layer.optimal_delta_layer = value
+
+    @property
+    def hidden_features(self) -> int:
+        warn(
+            "hidden_features is deprecated, use hidden_neurons instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.second_layer.in_neurons
+
+    @property
+    def hidden_neurons(self) -> int:
+        return self.second_layer.in_neurons
+
     @property
     def eigenvalues_extension(self):
         return self.second_layer.eigenvalues_extension
@@ -116,6 +151,20 @@ class GrowingBlock(GrowingContainer):
     @property
     def parameter_update_decrease(self):
         return self.second_layer.parameter_update_decrease
+
+    @parameter_update_decrease.setter
+    def parameter_update_decrease(self, value: torch.Tensor | float):
+        """
+        Set the parameter update decrease for the block.
+        """
+        if isinstance(value, float):
+            value = torch.tensor(value, device=self.device)
+        elif not isinstance(value, torch.Tensor):
+            raise TypeError(
+                "parameter_update_decrease must be a float or a torch.Tensor."
+            )
+
+        self.second_layer.parameter_update_decrease = value
 
     @property
     def scaling_factor(self):
@@ -155,7 +204,9 @@ class GrowingBlock(GrowingContainer):
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, x: torch.Tensor
+        self,
+        x: torch.Tensor,
+        mask: dict = {},  # noqa: ARG002
     ) -> torch.Tensor:
         """
         Forward pass of the block with the current modifications.
@@ -164,6 +215,8 @@ class GrowingBlock(GrowingContainer):
         ----------
         x: torch.Tensor
             input tensor
+        mask: None
+            mask tensor (not used)
 
         Returns
         -------
@@ -172,7 +225,7 @@ class GrowingBlock(GrowingContainer):
         """
         identity: torch.Tensor = self.downsample(x)
         x = self.pre_activation(x)
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             x, x_ext = self.first_layer.extended_forward(x)
             x, _ = self.second_layer.extended_forward(x, x_ext)
             assert (
@@ -209,7 +262,7 @@ class GrowingBlock(GrowingContainer):
             output tensor
         """
         identity: torch.Tensor = self.downsample(x)
-        if self.hidden_features == 0:
+        if self.hidden_neurons == 0:
             if self.first_layer.store_input:
                 self.first_layer._input = self.pre_activation(x).detach()
 
@@ -237,7 +290,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.tensor_m_prev.init()
         self.second_layer.tensor_s_growth.init()
 
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             self.second_layer.cross_covariance.init()
 
             # natural gradient part
@@ -253,7 +306,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.tensor_m_prev.update()
         self.second_layer.tensor_s_growth.update()
 
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             self.second_layer.cross_covariance.update()
 
             # natural gradient part
@@ -273,11 +326,21 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.cross_covariance.reset()
         self.second_layer.tensor_s_growth.reset()
 
-    def delete_update(self):
+    def delete_update(self, **kwargs):
         """
         Delete the update of the block.
         """
-        self.second_layer.delete_update()
+        self.second_layer.delete_update(**kwargs)
+
+    def set_scaling_factor(self, factor: float) -> None:
+        """Assign scaling factor to all growing layers
+
+        Parameters
+        ----------
+        factor : float
+            scaling factor
+        """
+        self.second_layer.set_scaling_factor(factor)
 
     def compute_optimal_updates(
         self,
@@ -304,7 +367,7 @@ class GrowingBlock(GrowingContainer):
         use_projected_gradient: bool
             whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
         """
-        if self.hidden_features > 0:
+        if self.hidden_neurons > 0:
             _, _, _ = self.second_layer.compute_optimal_delta()
         else:
             self.second_layer.parameter_update_decrease = torch.tensor(
@@ -314,41 +377,73 @@ class GrowingBlock(GrowingContainer):
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
-            use_projected_gradient=self.hidden_features > 0 and use_projected_gradient,
+            use_projected_gradient=self.hidden_neurons > 0 and use_projected_gradient,
             dtype=dtype,
             update_previous=True,
         )
 
-    def apply_change(self, extension_size: int | None = None) -> None:
+    def apply_change(
+        self,
+        extension_size: int | None = None,
+        scaling_factor: float | torch.Tensor | None = None,
+        apply_delta: bool = True,
+        apply_extension: bool = True,
+    ) -> None:
         """
         Apply the optimal delta and extend the layer with current
         optimal delta and layer extension with the current scaling factor.
         """
-        if extension_size is None:
-            assert (
-                self.eigenvalues_extension is not None
-            ), "No way to know the extension size."
-            self.hidden_features += self.eigenvalues_extension.shape[0]
-        else:
-            self.hidden_features += extension_size
-        self.second_layer.apply_change(extension_size=extension_size)
+        self.second_layer.apply_change(
+            scaling_factor=scaling_factor,
+            extension_size=extension_size,
+            apply_delta=apply_delta,
+            apply_extension=apply_extension,
+        )
 
     def sub_select_optimal_added_parameters(
         self,
-        keep_neurons: int,
+        keep_neurons: int | None = None,
+        threshold: float | None = None,
+        sub_select_previous: bool = True,
+        zeros_if_not_enough: bool = False,
+        zeros_fan_in: bool = True,
+        zeros_fan_out: bool = False,
     ) -> None:
         """
-        Select the first keep_neurons neurons of the optimal added parameters.
+        Select the first keep_neurons neurons of the optimal added parameters
+        linked to this layer.
 
         Parameters
         ----------
-        keep_neurons: int
-            number of neurons to keep
+        keep_neurons: int | None
+            number of neurons to keep, if None, the number of neurons
+            is determined by the threshold
+        threshold: float | None
+            threshold to determine the number of neurons to keep, if None,
+            keep_neurons must be provided
+        sub_select_previous: bool
+            if True, sub-select the previous layer added parameters as well
+        zeros_if_not_enough: bool
+            if True, will keep the all neurons and set the non selected ones to zero
+            (either first or last depending on zeros_fan_in and zeros_fan_out)
+        zeros_fan_in: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-in parameters to zero
+        zeros_fan_out: bool
+            if True and zeros_if_not_enough is True, will set the non selected
+            fan-out parameters to zero
         """
         assert (
             self.eigenvalues_extension is not None
         ), "No optimal added parameters computed."
-        self.second_layer.sub_select_optimal_added_parameters(keep_neurons)
+        self.second_layer.sub_select_optimal_added_parameters(
+            keep_neurons=keep_neurons,
+            threshold=threshold,
+            sub_select_previous=sub_select_previous,
+            zeros_if_not_enough=zeros_if_not_enough,
+            zeros_fan_in=zeros_fan_in,
+            zeros_fan_out=zeros_fan_out,
+        )
 
     @property
     def first_order_improvement(self) -> torch.Tensor:
@@ -400,25 +495,53 @@ class GrowingBlock(GrowingContainer):
             input_extension_init=input_extension_init,
         )
 
-    def normalize_optimal_updates(self, std_target: float | None = None) -> None:
+    def normalize_optimal_updates(self, **kwargs) -> None:
         """
         Normalize the optimal updates.
-
-        Ensure that the standard deviation of the weights of the updates is equal to
-        std_target.
-        If std_target is None, we use the standard deviation of the weights of the layer.
-        If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
-
-        Let s the target standard deviation then:
-        - optimal_delta_layer is scaled to have a std of s (so
-        by s / std(optimal_delta_layer))
-        - extended_input_layer is scaled to have a std of s (so
-        by s / std(extended_input_layer))
-        - extended_output_layer is scaled to match the scaling of the extended_input_layer
-        and the optimal_delta_layer
-        (so by std(extended_input_layer) / std(optimal_delta_layer))
         """
-        self.second_layer.normalize_optimal_updates(std_target=std_target)
+        self.second_layer.normalize_optimal_updates(**kwargs)
+
+    def missing_neurons(self) -> int:
+        """
+        Get the number of missing neurons to reach the target hidden features.
+
+        Returns
+        -------
+        int
+            number of missing neurons
+        """
+        return self.second_layer.missing_neurons()
+
+    def number_of_neurons_to_add(
+        self,
+        **kwargs,
+    ) -> int:
+        """Get the number of neurons to add in the next growth step.
+
+        Parameters
+        ----------
+        method : str
+            Method to use for determining the number of neurons to add.
+            Options are "fixed_proportional".
+        number_of_growth_steps : int
+            Number of growth steps planned, used only if method is "proportional".
+
+        Returns
+        -------
+        int
+            Number of neurons to add.
+        """
+        return self.second_layer.number_of_neurons_to_add(**kwargs)
+
+    def complete_growth(self, **kwargs) -> None:
+        """Complete the growth procedure for the block.
+
+        Parameters
+        ----------
+        extension_kwargs : dict
+            Keyword arguments for the extension procedure.
+        """
+        self.second_layer.complete_growth(**kwargs)
 
 
 class LinearGrowingBlock(GrowingBlock):
@@ -427,6 +550,7 @@ class LinearGrowingBlock(GrowingBlock):
         in_features: int,
         out_features: int,
         hidden_features: int = 0,
+        target_hidden_features: int | None = None,
         activation: torch.nn.Module | None = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
@@ -495,13 +619,13 @@ class LinearGrowingBlock(GrowingBlock):
             in_features=hidden_features,
             out_features=out_features,
             name=f"{name}(second_layer)",
+            target_in_features=target_hidden_features,
             previous_module=first_layer,
             **kwargs_second_layer,
         )
         super(LinearGrowingBlock, self).__init__(
             in_features=in_features,
             out_features=out_features,
-            hidden_features=hidden_features,
             pre_activation=pre_activation,
             name=name,
             first_layer=first_layer,
@@ -525,6 +649,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         out_channels: int,
         kernel_size: int | tuple[int, int] | None = None,
         hidden_channels: int = 0,
+        target_hidden_channels: int | None = None,
         activation: torch.nn.Module | None = None,
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
@@ -605,6 +730,7 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             in_channels=hidden_channels,
             out_channels=out_channels,
             name=f"{name}(second_layer)",
+            target_in_channels=target_hidden_channels,
             previous_module=first_layer,
             device=device,
             **kwargs_second_layer,
@@ -613,7 +739,6 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         super(RestrictedConv2dGrowingBlock, self).__init__(
             in_features=in_channels,
             out_features=out_channels,
-            hidden_features=hidden_channels,
             pre_activation=pre_activation,
             name=name,
             first_layer=first_layer,
