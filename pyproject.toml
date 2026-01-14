@@ -12,7 +12,7 @@ authors = [
 ]
 description = "Growing module for pytorch"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -23,6 +23,7 @@ dependencies = [
     "networkx",
     "torch",
     "numpy",
+    "tomli",
     "deprecated",
 ]
 [project.optional-dependencies]
