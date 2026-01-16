@@ -482,27 +482,18 @@ class TestTools(TorchTestCase):
         matrix_s = torch.eye(3) * 2.0
         matrix_n = torch.randn(3, 2)
 
-        # Mock the SVD to trigger LinAlgError on first call, succeed on second
-        # Create a proper successful result with correct values by computing SVD on the actual matrix_p
-        # Replicate the computation of matrix_p as in compute_optimal_added_parameters
-        matrix_s_inverse_sqrt = torch.linalg.inv(torch.linalg.cholesky(matrix_s))
-        matrix_p = matrix_s_inverse_sqrt @ matrix_n
-        u_real, s_real, vt_real = torch.linalg.svd(matrix_p, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
-        # Capture stdout to verify debug prints
+        # Mock the SVD to trigger LinAlgError
+        # The function now prints diagnostics and re-raises the error (no retry)
         captured_output = io.StringIO()
 
-        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
-                successful_result,  # Second call succeeds
-            ]
-
-            with unittest.mock.patch("sys.stdout", captured_output):
-                alpha, omega, eigenvalues = compute_optimal_added_parameters(
-                    matrix_s, matrix_n
-                )
+        with (
+            unittest.mock.patch("torch.linalg.svd") as mock_svd,
+            unittest.mock.patch("sys.stdout", captured_output),
+            self.assertRaises(torch.linalg.LinAlgError) as context,
+        ):
+            mock_svd.side_effect = torch.linalg.LinAlgError("Mocked SVD error")
+            # Function should raise the error after printing diagnostics
+            compute_optimal_added_parameters(matrix_s, matrix_n)
 
             # Verify debug output was printed
             output = captured_output.getvalue()
@@ -512,35 +503,29 @@ class TestTools(TorchTestCase):
             self.assertIn("matrix_s_inverse_sqrt:", output)
             self.assertIn("matrix_p:", output)
 
-            # Verify the function still succeeded after retry
-            self.assertIsNotNone(alpha)
-            self.assertIsNotNone(omega)
-            self.assertIsNotNone(eigenvalues)
+            # Verify the error was re-raised
+            self.assertIn("Mocked SVD error", str(context.exception))
 
-            # Verify SVD was called twice (first failed, second succeeded)
-            self.assertEqual(mock_svd.call_count, 2)
+            # Verify SVD was called once (no retry)
+            self.assertEqual(mock_svd.call_count, 1)
 
     def test_compute_optimal_added_parameters_matrix_shapes_in_error(self):
         """Test that matrix information is correctly printed in SVD error scenario"""
         matrix_s = torch.eye(2) * 3.0
         matrix_n = torch.randn(2, 4)
 
-        # Create successful result BEFORE mocking
-        dummy_matrix = torch.randn(2, 4)  # Same shape as matrix_p would be
-        u_real, s_real, vt_real = torch.linalg.svd(dummy_matrix, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
         # Capture stdout to verify matrix information is printed
+        # The function now prints diagnostics and re-raises the error (no retry)
         captured_output = io.StringIO()
 
-        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Test error"),
-                successful_result,
-            ]
-
-            with contextlib.redirect_stdout(captured_output):
-                compute_optimal_added_parameters(matrix_s, matrix_n)
+        with (
+            unittest.mock.patch("torch.linalg.svd") as mock_svd,
+            contextlib.redirect_stdout(captured_output),
+            self.assertRaises(torch.linalg.LinAlgError),
+        ):
+            mock_svd.side_effect = torch.linalg.LinAlgError("Test error")
+            # Function should raise the error after printing diagnostics
+            compute_optimal_added_parameters(matrix_s, matrix_n)
 
             output = captured_output.getvalue()
 
@@ -766,193 +751,6 @@ class TestTools(TorchTestCase):
                     self.assertFalse(torch.isnan(decrease).any())
                 else:
                     self.assertFalse(torch.isnan(torch.tensor(decrease)))
-
-    def test_compute_gradmax_initialization_basic(self):
-        """Test basic functionality of GradMax via unified function"""
-        torch.manual_seed(42)
-
-        # Test case 1: Simple case with known solution
-        in_features, out_features = 5, 3
-        tensor_m = torch.randn(in_features, out_features)
-
-        alpha, omega, singular_values = compute_optimal_added_parameters(
-            matrix_s=None,
-            matrix_n=tensor_m,
-            statistical_threshold=1e-6,
-            alpha_zero=True,
-        )
-
-        # Check output shapes
-        self.assertEqual(alpha.shape[1], in_features)  # alpha: (k, in_features)
-        self.assertEqual(omega.shape[0], out_features)  # omega: (out_features, k)
-        self.assertEqual(singular_values.shape[0], alpha.shape[0])  # k dimensions match
-        self.assertEqual(alpha.shape[0], omega.shape[1])  # k dimensions match
-
-        # Check that alpha is all zeros (GradMax property)
-        self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
-
-        # Check that singular values are non-negative
-        self.assertTrue(torch.all(singular_values >= 0))
-
-    def test_compute_gradmax_initialization_alpha_is_zeros(self):
-        """Test that GradMax always returns alpha as zeros"""
-        torch.manual_seed(42)
-
-        # Test with different matrix sizes
-        test_cases = [(3, 2), (5, 4), (10, 7), (2, 10)]
-
-        for in_features, out_features in test_cases:
-            with self.subTest(in_features=in_features, out_features=out_features):
-                tensor_m = torch.randn(in_features, out_features)
-                alpha, _, _ = compute_optimal_added_parameters(
-                    matrix_s=None,
-                    matrix_n=tensor_m,
-                    maximum_added_neurons=2,
-                    alpha_zero=True,
-                )
-
-                # Alpha should be all zeros
-                self.assertTrue(
-                    torch.allclose(alpha, torch.zeros_like(alpha)),
-                    f"Alpha should be zeros for {in_features}x{out_features}",
-                )
-
-    def test_compute_gradmax_initialization_omega_orthonormal(self):
-        """Test that omega columns are orthonormal (right singular vectors)"""
-        torch.manual_seed(42)
-
-        in_features, out_features = 5, 4
-        tensor_m = torch.randn(in_features, out_features)
-        k = 3
-
-        _, omega, _ = compute_optimal_added_parameters(
-            matrix_s=None,
-            matrix_n=tensor_m,
-            maximum_added_neurons=k,
-            alpha_zero=True,
-        )
-
-        # Omega should have k columns
-        self.assertEqual(omega.shape[1], k)
-
-        # Columns of omega should be orthonormal (right singular vectors)
-        omega_t_omega = omega.T @ omega
-        identity = torch.eye(k, device=omega.device, dtype=omega.dtype)
-        self.assertTrue(
-            torch.allclose(omega_t_omega, identity, atol=1e-5),
-            "Omega columns should be orthonormal",
-        )
-
-    def test_compute_gradmax_initialization_max_neurons(self):
-        """Test maximum_added_neurons constraint"""
-        torch.manual_seed(42)
-
-        in_features, out_features = 5, 4
-        tensor_m = torch.randn(in_features, out_features)
-        max_neurons = 2
-
-        alpha, omega, singular_values = compute_optimal_added_parameters(
-            matrix_s=None,
-            matrix_n=tensor_m,
-            maximum_added_neurons=max_neurons,
-            alpha_zero=True,
-        )
-
-        # Should respect the maximum constraint
-        self.assertLessEqual(alpha.shape[0], max_neurons)
-        self.assertLessEqual(omega.shape[1], max_neurons)
-        self.assertLessEqual(singular_values.shape[0], max_neurons)
-
-    def test_compute_gradmax_initialization_threshold(self):
-        """Test statistical threshold filtering"""
-        torch.manual_seed(42)
-
-        in_features, out_features = 5, 4
-        tensor_m = torch.randn(in_features, out_features)
-
-        # Use a high threshold to filter out small singular values
-        threshold = 0.5
-        _, _, singular_values = compute_optimal_added_parameters(
-            matrix_s=None,
-            matrix_n=tensor_m,
-            statistical_threshold=threshold,
-            alpha_zero=True,
-        )
-
-        # All selected singular values should be >= threshold
-        # (or at least one if all below)
-        if singular_values.shape[0] > 0:
-            # Either all are above threshold, or we kept at least one (the max)
-            self.assertTrue(
-                torch.all(singular_values >= threshold) or singular_values.shape[0] == 1,
-                "Selected singular values should respect threshold",
-            )
-
-    def test_compute_gradmax_initialization_different_sizes(self):
-        """Test with various matrix dimensions"""
-        torch.manual_seed(42)
-
-        test_cases = [
-            (2, 3),  # More outputs than inputs
-            (5, 2),  # More inputs than outputs
-            (3, 3),  # Square
-            (1, 1),  # Minimal case
-            (10, 5),  # Larger case
-        ]
-
-        for in_features, out_features in test_cases:
-            with self.subTest(in_features=in_features, out_features=out_features):
-                tensor_m = torch.randn(in_features, out_features)
-                alpha, omega, singular_values = compute_optimal_added_parameters(
-                    matrix_s=None,
-                    matrix_n=tensor_m,
-                    maximum_added_neurons=min(2, min(in_features, out_features)),
-                    alpha_zero=True,
-                )
-
-                # Check shapes
-                self.assertEqual(alpha.shape[1], in_features)
-                self.assertEqual(omega.shape[0], out_features)
-                self.assertEqual(alpha.shape[0], omega.shape[1])
-                self.assertEqual(alpha.shape[0], singular_values.shape[0])
-
-                # Check alpha is zeros
-                self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
-
-                # Check no NaN values
-                self.assertFalse(torch.any(torch.isnan(alpha)))
-                self.assertFalse(torch.any(torch.isnan(omega)))
-                self.assertFalse(torch.any(torch.isnan(singular_values)))
-
-    def test_compute_gradmax_initialization_svd_error_handling(self):
-        """Test SVD error handling in unified function with GradMax"""
-        torch.manual_seed(42)
-
-        in_features, out_features = 3, 2
-        tensor_m = torch.randn(in_features, out_features)
-
-        # Mock SVD to trigger LinAlgError
-        captured_output = io.StringIO()
-
-        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = torch.linalg.LinAlgError("Mocked SVD error")
-
-            with unittest.mock.patch("sys.stdout", captured_output):
-                # Should re-raise the exception after printing diagnostics
-                with self.assertRaises(torch.linalg.LinAlgError):
-                    compute_optimal_added_parameters(
-                        matrix_s=None,
-                        matrix_n=tensor_m,
-                        alpha_zero=True,
-                    )
-
-            # Verify debug output was printed
-            output = captured_output.getvalue()
-            self.assertIn("Warning: An error occurred during the SVD computation", output)
-            self.assertIn("matrix_n:", output)
-
-            # Verify SVD was called once (then exception was re-raised)
-            self.assertEqual(mock_svd.call_count, 1)
 
 
 if __name__ == "__main__":

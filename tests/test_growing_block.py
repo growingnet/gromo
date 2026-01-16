@@ -1179,6 +1179,215 @@ class TestLinearGrowingBlock(TorchTestCase):
         for obj in deleted_objects:
             self.assertIsNone(obj)
 
+    @unittest_parametrize(
+        ({"initialization_method": "tiny"}, {"initialization_method": "gradmax"})
+    )
+    def test_compute_optimal_updates_with_methods(
+        self, initialization_method: str = "tiny"
+    ):
+        """Test compute_optimal_updates with both TINY and GradMax methods.
+
+        Verifies that both initialization methods work correctly for GrowingBlock
+        with existing neurons (hidden_features > 0).
+        """
+        # Step 1: Create block with existing neurons
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            activation=torch.nn.ReLU(),
+            device=self.device,
+            name="test_block_methods",
+        )
+
+        # Step 2: Initialize computation
+        block.init_computation()
+
+        # Step 3: Forward/backward pass to gather statistics
+        x_batch = indicator_batch((self.in_features,), device=self.device)
+
+        block.zero_grad()
+        output = block(x_batch)
+        loss = (output**2).sum() / 2
+        loss.backward()
+
+        # Step 4: Update computation
+        block.update_computation()
+
+        # Step 5: Clear any previous updates to ensure clean state
+        block.delete_update()
+
+        # Step 6: Compute optimal updates with specified method
+        block.compute_optimal_updates(
+            initialization_method=initialization_method,
+            maximum_added_neurons=self.in_features,
+        )
+
+        # Step 7: Verify method-specific behavior
+        if initialization_method == "tiny":
+            # TINY-specific checks: optimal_delta_layer and parameter_update_decrease should be set
+            self.assertIsNotNone(
+                block.second_layer.optimal_delta_layer,
+                "TINY method should compute optimal_delta_layer",
+            )
+            self.assertIsNotNone(
+                block.parameter_update_decrease,
+                "TINY method should compute parameter_update_decrease",
+            )
+            self.assertIsInstance(block.parameter_update_decrease, torch.Tensor)
+        elif initialization_method == "gradmax":
+            # GradMax-specific checks: optimal_delta_layer and parameter_update_decrease should NOT be set
+            self.assertFalse(
+                hasattr(block.second_layer, "optimal_delta_layer")
+                and block.second_layer.optimal_delta_layer is not None,
+                "GradMax should not compute optimal_delta_layer",
+            )
+            self.assertFalse(
+                hasattr(block, "parameter_update_decrease")
+                and block.parameter_update_decrease is not None,
+                "GradMax should not compute parameter_update_decrease",
+            )
+        # Note: When new methods are added, add explicit elif branches here
+
+        # Step 8: Common checks for all methods
+        # Verify that extended layers were created
+        self.assertIsNotNone(
+            block.first_layer.extended_output_layer,
+            f"{initialization_method} should create extended_output_layer for first_layer",
+        )
+        self.assertIsNotNone(
+            block.second_layer.extended_input_layer,
+            f"{initialization_method} should create extended_input_layer for second_layer",
+        )
+
+        # Verify eigenvalues were computed
+        self.assertIsNotNone(
+            block.eigenvalues_extension,
+            f"{initialization_method} should compute eigenvalues_extension",
+        )
+        self.assertIsInstance(block.eigenvalues_extension, torch.Tensor)
+
+    def test_compute_optimal_updates_empty_block_gradmax(self):
+        """Test compute_optimal_updates with empty block (hidden_neurons == 0) using GradMax method.
+
+        This tests the special path where config["compute_delta"] == False and
+        hidden_neurons == 0, ensuring neurons can still be added without computing
+        optimal delta.
+        """
+        # Step 1: Create block with zero hidden features
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,  # Empty block
+            activation=torch.nn.Identity(),
+            device=self.device,
+            name="empty_block_gradmax",
+        )
+
+        # Step 2: Initialize computation
+        block.init_computation()
+
+        # Step 3: Forward/backward pass with indicator batch
+        x_batch = indicator_batch((self.in_features,), device=self.device)
+
+        block.zero_grad()
+        output = block(x_batch)
+
+        # Loss: ||output||^2 / 2
+        loss = (output**2).sum() / 2
+        loss.backward()
+
+        # Verify gradients exist
+        self.assertIsNotNone(block.second_layer.pre_activity.grad)
+
+        # Step 4: Update computation
+        block.update_computation()
+
+        # Step 5: Compute updates with GradMax method
+        block.compute_optimal_updates(
+            initialization_method="gradmax",
+            maximum_added_neurons=self.in_features,
+        )
+
+        # Step 6: Verify GradMax-specific behavior
+        # GradMax should NOT compute optimal_delta_layer or parameter_update_decrease
+        self.assertFalse(
+            hasattr(block.second_layer, "optimal_delta_layer")
+            and block.second_layer.optimal_delta_layer is not None,
+            "GradMax should not compute optimal_delta_layer even for empty block",
+        )
+        self.assertFalse(
+            hasattr(block, "parameter_update_decrease")
+            and block.parameter_update_decrease is not None,
+            "GradMax should not compute parameter_update_decrease even for empty block",
+        )
+
+        # Step 7: Verify that neurons can still be added
+        # Extended layers should be created
+        self.assertIsNotNone(
+            block.first_layer.extended_output_layer,
+            "GradMax should create extended_output_layer for empty block",
+        )
+        self.assertIsNotNone(
+            block.second_layer.extended_input_layer,
+            "GradMax should create extended_input_layer for empty block",
+        )
+
+        # Eigenvalues should be computed
+        self.assertIsNotNone(
+            block.eigenvalues_extension,
+            "GradMax should compute eigenvalues_extension for empty block",
+        )
+        self.assertIsInstance(block.eigenvalues_extension, torch.Tensor)
+        self.assertGreater(
+            block.eigenvalues_extension.shape[0],
+            0,
+            "GradMax should propose neurons for empty block",
+        )
+
+    def test_compute_optimal_updates_invalid_method(self):
+        """Test that invalid initialization method names are rejected.
+
+        Verifies that GrowingBlock.compute_optimal_updates raises ValueError
+        for invalid initialization_method names.
+        """
+        # Step 1: Create block with existing neurons
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            activation=torch.nn.ReLU(),
+            device=self.device,
+            name="test_block_invalid",
+        )
+
+        # Step 2: Initialize computation
+        block.init_computation()
+
+        # Step 3: Forward/backward pass to gather statistics
+        x_batch = indicator_batch((self.in_features,), device=self.device)
+
+        block.zero_grad()
+        output = block(x_batch)
+        loss = (output**2).sum() / 2
+        loss.backward()
+
+        # Step 4: Update computation
+        block.update_computation()
+
+        # Step 5: Test that invalid method name raises ValueError
+        with self.assertRaises(ValueError) as context:
+            block.compute_optimal_updates(initialization_method="invalid_method")
+
+        # Step 6: Verify error message contains expected information
+        error_msg = str(context.exception)
+        self.assertIn("Unknown initialization method", error_msg)
+        self.assertIn("invalid_method", error_msg)
+        self.assertIn("Supported methods", error_msg)
+        # Verify that supported methods are listed (tiny, gradmax, and future methods)
+        self.assertIn("tiny", error_msg)
+        self.assertIn("gradmax", error_msg)
+
     def test_apply_change(self):
         """Test apply_change method with different scenarios.
 

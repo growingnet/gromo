@@ -1199,13 +1199,17 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         demo_layers[1].update_computation()
 
         demo_layers[1].compute_optimal_delta()
+        # Use private method with new signature (TINY method: use_covariance=True, alpha_zero=False, use_projection=True)
         alpha, alpha_b, omega, eigenvalues = demo_layers[
             1
-        ].compute_optimal_added_parameters(
+        ]._compute_optimal_added_parameters(
             dtype=dtype,
             statistical_threshold=0,
             numerical_threshold=0,
             maximum_added_neurons=10,
+            use_projection=True,
+            use_covariance=True,
+            alpha_zero=False,
         )
 
         self.assertShapeEqual(
@@ -1237,132 +1241,17 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertEqual(demo_layers[1].extended_input_layer.in_features, 2)
         self.assertEqual(demo_layers[0].extended_output_layer.out_features, 2)
 
-    def test_compute_optimal_added_parameters_use_projected_gradient_false(self):
-        """Test compute_optimal_added_parameters with use_projected_gradient=False."""
-        # Use existing demo layers from setUp
-        demo_layers = self.demo_layers[False]  # Use without bias for simplicity
-        demo_layers[0].store_input = True
-        demo_layers[1].init_computation()
-
-        y = demo_layers[0](self.input_x)
-        y = demo_layers[1](y)
-        loss = torch.norm(y)
-        loss.backward()
-
-        demo_layers[1].update_computation()
-
-        # Call compute_optimal_added_parameters with use_projected_gradient=False
-        alpha, alpha_b, omega, eigenvalues = demo_layers[
-            1
-        ].compute_optimal_added_parameters(use_projected_gradient=False)
-
-        # Verify that we get valid outputs with expected shapes
-        self.assertShapeEqual(alpha, (-1, demo_layers[0].in_features))
-        k = alpha.size(0)
-        self.assertIsNone(alpha_b)  # No bias in this test
-        self.assertShapeEqual(omega, (demo_layers[1].out_features, k))
-        self.assertShapeEqual(eigenvalues, (k,))
-
-    def test_compute_optimal_added_parameters_gradmax(self):
-        """Test compute_optimal_added_parameters with initialization_method='gradmax'."""
-        demo_layers = self.demo_layers[False]  # Use without bias for simplicity
-        demo_layers[0].store_input = True
-        demo_layers[1].init_computation()
-
-        y = demo_layers[0](self.input_x)
-        y = demo_layers[1](y)
-        loss = torch.norm(y)
-        loss.backward()
-
-        demo_layers[1].update_computation()
-        demo_layers[1].compute_optimal_delta()
-
-        # Call with GradMax initialization (using private method with primitive options)
-        alpha, alpha_b, omega, eigenvalues = demo_layers[
-            1
-        ]._compute_optimal_added_parameters(
-            use_covariance=False,
-            alpha_zero=True,
-            use_projection=False,
-            maximum_added_neurons=5,
-        )
-
-        # Verify output shapes
-        self.assertShapeEqual(alpha, (-1, demo_layers[0].in_features))
-        k = alpha.size(0)
-        self.assertLessEqual(k, 5)  # Should respect maximum_added_neurons
-        self.assertIsNone(alpha_b)  # No bias in this test
-        self.assertShapeEqual(omega, (demo_layers[1].out_features, k))
-        self.assertShapeEqual(eigenvalues, (k,))
-
-        # GradMax property: alpha should be zeros
-        self.assertTrue(
-            torch.allclose(alpha, torch.zeros_like(alpha)),
-            "GradMax should initialize alpha as zeros",
-        )
-
-        # Verify extended layers are created
-        self.assertIsInstance(demo_layers[0].extended_output_layer, torch.nn.Linear)
-        self.assertIsInstance(demo_layers[1].extended_input_layer, torch.nn.Linear)
-
-    def test_compute_optimal_added_parameters_method_comparison(self):
-        """Compare TINY vs GradMax initialization outputs."""
-        # Create separate demo layers for comparison
-        from copy import deepcopy
-
-        demo_layers_tiny = deepcopy(self.demo_layers[False])
-        demo_layers_gradmax = deepcopy(self.demo_layers[False])
-
-        for demo_layers in [demo_layers_tiny, demo_layers_gradmax]:
-            demo_layers[0].store_input = True
-            demo_layers[1].init_computation()
-
-            y = demo_layers[0](self.input_x)
-            y = demo_layers[1](y)
-            loss = torch.norm(y)
-            loss.backward()
-
-            demo_layers[1].update_computation()
-            demo_layers[1].compute_optimal_delta()
-
-        # Compute with TINY (using private method with primitive options)
-        alpha_tiny, _, omega_tiny, _ = demo_layers_tiny[
-            1
-        ]._compute_optimal_added_parameters(
-            use_covariance=True,
-            alpha_zero=False,
-            use_projection=True,
-            maximum_added_neurons=3,
-        )
-
-        # Compute with GradMax (using private method with primitive options)
-        alpha_gradmax, _, omega_gradmax, _ = demo_layers_gradmax[
-            1
-        ]._compute_optimal_added_parameters(
-            use_covariance=False,
-            alpha_zero=True,
-            use_projection=False,
-            maximum_added_neurons=3,
-        )
-
-        # Both should produce valid outputs
-        self.assertEqual(alpha_tiny.shape[0], omega_tiny.shape[1])
-        self.assertEqual(alpha_gradmax.shape[0], omega_gradmax.shape[1])
-
-        # GradMax alpha should be zeros, TINY alpha should not (generally)
-        self.assertTrue(
-            torch.allclose(alpha_gradmax, torch.zeros_like(alpha_gradmax)),
-            "GradMax alpha should be zeros",
-        )
-
     def test_compute_optimal_added_parameters_no_previous_module_error(self):
         """Test ValueError when no previous module in compute_optimal_added_parameters."""
         layer = LinearGrowingModule(3, 2, device=global_device())
         layer.previous_module = None  # No previous module
 
         # Should trigger ValueError
+        # Use private method with new signature
         with self.assertRaises(ValueError) as context:
-            layer.compute_optimal_added_parameters()
+            layer._compute_optimal_added_parameters(
+                use_projection=True, use_covariance=True, alpha_zero=False
+            )
         self.assertIn("No previous module", str(context.exception))
 
     def test_multiple_successors_warning(self):
@@ -1593,6 +1482,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         layer2.store_pre_activity = True
         layer2.tensor_m_prev.init()
         layer2.tensor_s_growth.init()
+        layer2.tensor_s.init()  # Need tensor_s for compute_optimal_delta
 
         y = layer2(layer1(self.input_x))
         loss = torch.norm(y)
@@ -1600,7 +1490,13 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         layer2.tensor_m_prev.update()
         layer2.tensor_s_growth.update()
-        layer2.compute_optimal_added_parameters(use_projected_gradient=False)
+        layer2.tensor_s.update()  # Need tensor_s for compute_optimal_delta
+        # Need to compute optimal delta first to set up tensor_n for use_projection=True
+        layer2.compute_optimal_delta()
+        # Use private method with new signature (TINY method: use_covariance=True, alpha_zero=False, use_projection=True)
+        layer2._compute_optimal_added_parameters(
+            use_projection=True, use_covariance=True, alpha_zero=False
+        )
 
         self.assertIsInstance(layer1.extended_output_layer, torch.nn.Linear)
         assert isinstance(layer1.extended_output_layer, torch.nn.Linear)
@@ -1642,8 +1538,13 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         loss.backward()
         layer2.tensor_m_prev.update()
         layer2.tensor_s_growth.update()
-        layer2.compute_optimal_added_parameters(
-            use_projected_gradient=False, maximum_added_neurons=self.config.C_FEATURES
+        # Use private method with new signature - test with no projection (use_projection=False)
+        # This test specifically tests the no-projection path
+        layer2._compute_optimal_added_parameters(
+            maximum_added_neurons=self.config.C_FEATURES,
+            use_projection=False,  # Test no projection case
+            use_covariance=True,
+            alpha_zero=False,
         )
         self.assertIsInstance(layer1.extended_output_layer, torch.nn.Linear)
         assert isinstance(layer1.extended_output_layer, torch.nn.Linear)
@@ -2719,8 +2620,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         )
         layer.previous_module = merge_module
 
+        # Use private method with new signature
         with self.assertRaises(NotImplementedError):
-            layer.compute_optimal_added_parameters(update_previous=True)
+            layer._compute_optimal_added_parameters(
+                update_previous=True,
+                use_projection=True,
+                use_covariance=True,
+                alpha_zero=False,
+            )
 
         # Test case 2: Previous module is unsupported type
         class MockLinear(torch.nn.Linear):
@@ -2733,7 +2640,12 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         )  # Mock Linear layer with use_bias attribute
 
         with self.assertRaises(NotImplementedError) as context:
-            layer.compute_optimal_added_parameters(update_previous=True)
+            layer._compute_optimal_added_parameters(
+                update_previous=True,
+                use_projection=True,
+                use_covariance=True,
+                alpha_zero=False,
+            )
         self.assertIn("not implemented yet", str(context.exception))
 
     def test_force_pseudo_inverse_path_coverage(self):

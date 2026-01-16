@@ -9,7 +9,7 @@ import torch
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.conv2d_growing_module import RestrictedConv2dGrowingModule
-from gromo.modules.growing_module import GrowingModule
+from gromo.modules.growing_module import _METHOD_CONFIGS, GrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
@@ -344,14 +344,18 @@ class GrowingBlock(GrowingContainer):
 
     def compute_optimal_updates(
         self,
-        numerical_threshold: float = 1e-15,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float = 1e-10,
+        statistical_threshold: float = 1e-5,
         maximum_added_neurons: int | None = None,
+        update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
-    ) -> None:
+        initialization_method: str = "tiny",
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Compute the optimal update for second layer and additional neurons.
+
+        This method delegates to the second layer's compute_optimal_updates method,
+        using the specified initialization method.
 
         Parameters
         ----------
@@ -362,24 +366,67 @@ class GrowingBlock(GrowingContainer):
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
+        update_previous: bool
+            whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        initialization_method: str
+            Method to use for initialization. Options: "tiny" (default), "gradmax"
+            Each method defines a set of primitive options (compute_delta,
+            use_covariance, alpha_zero, use_projection).
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor | None]
+            optimal extension for the previous layer (weights and biases)
         """
-        if self.hidden_neurons > 0:
-            _, _, _ = self.second_layer.compute_optimal_delta()
-        else:
-            self.second_layer.parameter_update_decrease = torch.tensor(
-                0.0, device=self.device
+        # Validate and get method config
+        if initialization_method not in _METHOD_CONFIGS:
+            raise ValueError(
+                f"Unknown initialization method: {initialization_method}. "
+                f"Supported methods: {list(_METHOD_CONFIGS.keys())}"
             )
-        self.second_layer.compute_optimal_added_parameters(
+        config = _METHOD_CONFIGS[initialization_method]
+
+        # When hidden_neurons == 0, tensor statistics aren't initialized, so we need
+        # special handling: set parameter_update_decrease and call
+        # _compute_optimal_added_parameters directly to avoid compute_optimal_delta()
+        # call in compute_optimal_updates()
+        # Note: use_projection must be False when hidden_neurons == 0 because tensor_n
+        # requires delta_raw which is only set by compute_optimal_delta()
+        if self.hidden_neurons == 0:
+            if config["compute_delta"]:
+                self.second_layer.parameter_update_decrease = torch.tensor(
+                    0.0, device=self.device
+                )
+            # Call private method directly to avoid compute_optimal_delta() call
+            # Force use_projection=False when hidden_neurons == 0
+            # (can't compute tensor_n without delta_raw)
+            alpha_weight, alpha_bias, _, _ = (
+                self.second_layer._compute_optimal_added_parameters(
+                    numerical_threshold=numerical_threshold,
+                    statistical_threshold=statistical_threshold,
+                    maximum_added_neurons=maximum_added_neurons,
+                    update_previous=update_previous,
+                    dtype=dtype,
+                    use_covariance=config["use_covariance"],
+                    alpha_zero=config["alpha_zero"],
+                    use_projection=False,  # Must be False when hidden_neurons == 0
+                )
+            )
+            # Return the same tuple format as GrowingModule for consistency
+            return alpha_weight, alpha_bias
+
+        # When hidden_neurons > 0, delegate to second layer's
+        # compute_optimal_updates method. This will handle compute_optimal_delta()
+        # internally if needed
+        return self.second_layer.compute_optimal_updates(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
-            use_projected_gradient=self.hidden_neurons > 0 and use_projected_gradient,
+            update_previous=update_previous,
             dtype=dtype,
-            update_previous=True,
+            initialization_method=initialization_method,
         )
 
     def apply_change(

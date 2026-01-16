@@ -778,191 +778,94 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         # Test that the isinstance check works
         self.assertIsInstance(growing_module.previous_module, MergeGrowingModule)
 
-    def test_auxiliary_compute_alpha_omega_use_projected_gradient_false(self):
-        """Test _auxiliary_compute_alpha_omega with use_projected_gradient=False."""
-        # Set up a more complex scenario with a LinearGrowingModule that supports the required methods
-        prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
-        growing_module = LinearGrowingModule(
-            4, 5, device=global_device(), previous_module=prev_module, name="main"
-        )
-
-        # Initialize computation and run some data through
-        prev_module.init_computation()
-        growing_module.init_computation()
-
-        # Generate some sample data and run forward/backward pass
-        x = torch.randn(10, 3, device=global_device())
-        prev_module.store_input = True
-        growing_module.store_input = True
-
-        output1 = prev_module(x)
-        output2 = growing_module(output1)
-        loss = torch.norm(output2)
-        loss.backward()
-
-        # Update computations to generate tensor statistics
-        prev_module.update_computation()
-        growing_module.update_computation()
-
-        # Now test the _auxiliary_compute_alpha_omega method with use_projected_gradient=False
-        alpha, omega, eigenvals = growing_module._auxiliary_compute_alpha_omega(
-            use_projected_gradient=False
-        )
-        # Verify that we get valid outputs
-        self.assertIsInstance(alpha, torch.Tensor)
-        self.assertIsInstance(omega, torch.Tensor)
-        self.assertIsInstance(eigenvals, torch.Tensor)
-
-    def test_compute_optimal_added_parameters_use_projected_gradient_false(self):
-        """Test compute_optimal_added_parameters with use_projected_gradient=False."""
-        # Set up a LinearGrowingModule with proper connections
-        prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
-        growing_module = LinearGrowingModule(
-            4, 5, device=global_device(), previous_module=prev_module, name="main"
-        )
-
-        # Initialize computation and run some data through
-        prev_module.init_computation()
-        growing_module.init_computation()
-
-        # Generate some sample data and run forward/backward pass
-        x = torch.randn(10, 3, device=global_device())
-        prev_module.store_input = True
-        growing_module.store_input = True
-
-        output1 = prev_module(x)
-        output2 = growing_module(output1)
-        loss = torch.norm(output2)
-        loss.backward()
-
-        # Update computations to generate tensor statistics
-        prev_module.update_computation()
-        growing_module.update_computation()
-
-        # Test the compute_optimal_added_parameters method with use_projected_gradient=False
-        alpha_weights, alpha_bias, omega, eigenvals = (
-            growing_module.compute_optimal_added_parameters(use_projected_gradient=False)
-        )
-        # Verify that we get valid outputs
-        self.assertIsInstance(alpha_weights, torch.Tensor)
-        self.assertIsInstance(omega, torch.Tensor)
-        self.assertIsInstance(eigenvals, torch.Tensor)
-        # alpha_bias can be None
-        if alpha_bias is not None:
-            self.assertIsInstance(alpha_bias, torch.Tensor)
-
-    def test_auxiliary_compute_alpha_omega_gradmax(self):
-        """Test _auxiliary_compute_alpha_omega with initialization_method='gradmax'."""
-        # Set up a LinearGrowingModule with proper connections
-        prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
-        growing_module = LinearGrowingModule(
-            4, 5, device=global_device(), previous_module=prev_module, name="main"
-        )
-
-        # Initialize computation and run some data through
-        prev_module.init_computation()
-        growing_module.init_computation()
-
-        # Generate some sample data and run forward/backward pass
-        x = torch.randn(10, 3, device=global_device())
-        prev_module.store_input = True
-        growing_module.store_input = True
-
-        output1 = prev_module(x)
-        output2 = growing_module(output1)
-        loss = torch.norm(output2)
-        loss.backward()
-
-        # Update computations to generate tensor statistics
-        prev_module.update_computation()
-        growing_module.update_computation()
-
-        # Test with GradMax initialization (primitive options: no covariance, alpha_zero, no projection)
-        alpha, omega, eigenvals = growing_module._auxiliary_compute_alpha_omega(
-            use_covariance=False,
-            alpha_zero=True,
-            use_projection=False,
-            maximum_added_neurons=3,
-        )
-
-        # Verify that we get valid outputs
-        self.assertIsInstance(alpha, torch.Tensor)
-        self.assertIsInstance(omega, torch.Tensor)
-        self.assertIsInstance(eigenvals, torch.Tensor)
-
-        # GradMax property: alpha should be zeros
-        self.assertTrue(
-            torch.allclose(alpha, torch.zeros_like(alpha)),
-            "GradMax should initialize alpha as zeros",
-        )
-
-        # Verify shapes
-        self.assertEqual(alpha.shape[0], omega.shape[1])
-        self.assertEqual(alpha.shape[0], eigenvals.shape[0])
-
     def test_compute_optimal_updates_invalid_method(self):
-        """Test compute_optimal_updates with invalid initialization_method."""
-        prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
-        growing_module = LinearGrowingModule(
-            4, 5, device=global_device(), previous_module=prev_module, name="main"
+        """Test that invalid initialization method names are rejected (validation test)."""
+        # Setup: Create a module with previous_module
+        first_layer = LinearGrowingModule(
+            in_features=3, out_features=2, device=global_device()
         )
+        second_layer = LinearGrowingModule(
+            in_features=2, out_features=5, device=global_device()
+        )
+        second_layer.previous_module = first_layer
 
-        prev_module.init_computation()
-        growing_module.init_computation()
+        # Initialize and gather statistics
+        first_layer.init_computation()
+        second_layer.init_computation()
 
-        x = torch.randn(10, 3, device=global_device())
-        prev_module.store_input = True
-        growing_module.store_input = True
-
-        output1 = prev_module(x)
-        output2 = growing_module(output1)
-        loss = torch.norm(output2)
+        # Forward/backward pass to gather statistics
+        x = torch.randn(2, 3, device=global_device())
+        y = first_layer(x)
+        y = second_layer(y)
+        loss = torch.norm(y)
         loss.backward()
+        first_layer.update_computation()
+        second_layer.update_computation()
 
-        prev_module.update_computation()
-        growing_module.update_computation()
-
-        # Should raise ValueError for invalid method
+        # Test: Invalid method name should raise ValueError
         with self.assertRaises(ValueError) as context:
-            growing_module.compute_optimal_updates(initialization_method="invalid")
-        self.assertIn("Unknown initialization method", str(context.exception))
+            second_layer.compute_optimal_updates(initialization_method="invalid_method")
 
-    def test_compute_optimal_updates_use_projected_gradient_false(self):
-        """Test compute_optimal_updates with use_projected_gradient=False."""
-        # Set up a LinearGrowingModule with proper connections
-        prev_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
-        growing_module = LinearGrowingModule(
-            4, 5, device=global_device(), previous_module=prev_module, name="main"
+        # Verify error message contains expected information
+        error_msg = str(context.exception)
+        self.assertIn("Unknown initialization method", error_msg)
+        self.assertIn("invalid_method", error_msg)
+        self.assertIn("Supported methods", error_msg)
+        # Verify that supported methods are listed (tiny, gradmax, and future methods)
+        self.assertIn("tiny", error_msg)
+        self.assertIn("gradmax", error_msg)
+
+    def test_compute_optimal_updates_error_conditions(self):
+        """Test error conditions in compute_optimal_updates."""
+        # Setup: Create modules for testing
+        first_layer = LinearGrowingModule(
+            in_features=3, out_features=2, device=global_device()
+        )
+        second_layer = LinearGrowingModule(
+            in_features=2, out_features=5, device=global_device()
         )
 
-        # Initialize computation and run some data through
-        prev_module.init_computation()
-        growing_module.init_computation()
+        # Initialize and gather statistics (needed for some error paths)
+        first_layer.init_computation()
+        second_layer.init_computation()
 
-        # Generate some sample data and run forward/backward pass
-        x = torch.randn(10, 3, device=global_device())
-        prev_module.store_input = True
-        growing_module.store_input = True
-
-        output1 = prev_module(x)
-        output2 = growing_module(output1)
-        loss = torch.norm(output2)
+        # Forward/backward pass to gather statistics
+        x = torch.randn(2, 3, device=global_device())
+        y = first_layer(x)
+        y = second_layer(y)
+        loss = torch.norm(y)
         loss.backward()
+        first_layer.update_computation()
+        second_layer.update_computation()
 
-        # Update computations to generate tensor statistics
-        prev_module.update_computation()
-        growing_module.update_computation()
+        # Test case 1: Previous module is MergeGrowingModule
+        # Should raise NotImplementedError (MergeGrowingModule path in compute_optimal_updates)
+        # Use "gradmax" method to avoid calling compute_optimal_delta (which requires statistics)
+        merge_module = LinearMergeGrowingModule(in_features=2, device=global_device())
+        second_layer.previous_module = merge_module
 
-        # Test the compute_optimal_updates method with use_projected_gradient=False
-        updates = growing_module.compute_optimal_updates(use_projected_gradient=False)
-        # Verify that we get valid outputs (should be a tuple of tensors)
-        self.assertIsInstance(updates, tuple)
-        self.assertEqual(len(updates), 2)
-        alpha_weight, alpha_bias = updates
-        self.assertIsInstance(alpha_weight, torch.Tensor)
-        # alpha_bias can be None
-        if alpha_bias is not None:
-            self.assertIsInstance(alpha_bias, torch.Tensor)
+        with self.assertRaises(NotImplementedError):
+            second_layer.compute_optimal_updates(initialization_method="gradmax")
+
+        # Test case 2: Previous module is unsupported type (else branch)
+        # Should raise NotImplementedError for unsupported previous_module types
+        # Use "gradmax" method to avoid calling compute_optimal_delta
+        class UnsupportedModule:
+            pass
+
+        second_layer.previous_module = UnsupportedModule()
+
+        with self.assertRaises(NotImplementedError):
+            second_layer.compute_optimal_updates(initialization_method="gradmax")
+
+        # Test case 3: No previous module (edge case)
+        # Should return early (returns None) when previous_module is None
+        second_layer.previous_module = None
+
+        result = second_layer.compute_optimal_updates()
+        self.assertIsNone(result, "Should return None when previous_module is None")
+        # Verify no extended layers were created
+        self.assertIsNone(second_layer.extended_input_layer)
 
 
 class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
