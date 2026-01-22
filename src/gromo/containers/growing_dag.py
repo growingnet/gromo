@@ -232,6 +232,29 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         DAG_parameters["edge_attributes"] = edge_attributes
         return DAG_parameters
 
+    def export_dag_parameters(self) -> dict:
+        kernel_size = (3, 3)
+        node_attributes = {
+            node: {
+                "type": self.layer_type,
+                "size": value["size"],
+                "shape": value.get("shape"),
+                "kernel_size": kernel_size,
+            }
+            for node, value in self.nodes.items()
+        }
+        edge_attributes = {
+            "type": self.layer_type,
+            "use_bias": self.use_bias,
+            "kernel_size": kernel_size,
+        }
+        DAG_parameters = {}
+        DAG_parameters["edges"] = list(self.edges)
+        # DAG_parameters["nodes"] = self.nodes
+        DAG_parameters["node_attributes"] = node_attributes
+        DAG_parameters["edge_attributes"] = edge_attributes
+        return DAG_parameters
+
     @property
     def nodes(self) -> nx.reportviews.NodeView:
         """Get all nodes of dag
