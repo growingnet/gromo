@@ -486,14 +486,12 @@ class TestTools(TorchTestCase):
         # The function now prints diagnostics and re-raises the error (no retry)
         captured_output = io.StringIO()
 
-        with (
-            unittest.mock.patch("torch.linalg.svd") as mock_svd,
-            unittest.mock.patch("sys.stdout", captured_output),
-            self.assertRaises(torch.linalg.LinAlgError) as context,
-        ):
+        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
             mock_svd.side_effect = torch.linalg.LinAlgError("Mocked SVD error")
-            # Function should raise the error after printing diagnostics
-            compute_optimal_added_parameters(matrix_s, matrix_n)
+            with unittest.mock.patch("sys.stdout", captured_output):
+                with self.assertRaises(torch.linalg.LinAlgError) as context:
+                    # Function should raise the error after printing diagnostics
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             # Verify debug output was printed
             output = captured_output.getvalue()
@@ -515,17 +513,13 @@ class TestTools(TorchTestCase):
         matrix_n = torch.randn(2, 4)
 
         # Capture stdout to verify matrix information is printed
-        # The function now prints diagnostics and re-raises the error (no retry)
         captured_output = io.StringIO()
 
-        with (
-            unittest.mock.patch("torch.linalg.svd") as mock_svd,
-            contextlib.redirect_stdout(captured_output),
-            self.assertRaises(torch.linalg.LinAlgError),
-        ):
+        with unittest.mock.patch("torch.linalg.svd") as mock_svd:
             mock_svd.side_effect = torch.linalg.LinAlgError("Test error")
-            # Function should raise the error after printing diagnostics
-            compute_optimal_added_parameters(matrix_s, matrix_n)
+            with contextlib.redirect_stdout(captured_output):
+                with self.assertRaises(torch.linalg.LinAlgError):
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             output = captured_output.getvalue()
 
