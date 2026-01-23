@@ -815,8 +815,8 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         self.assertIn("tiny", error_msg)
         self.assertIn("gradmax", error_msg)
 
-    def test_compute_optimal_updates_error_conditions(self):
-        """Test error conditions in compute_optimal_updates."""
+    def test_compute_optimal_updates_merge_previous_module_error(self):
+        """Test that compute_optimal_updates raises NotImplementedError when previous_module is MergeGrowingModule."""
         # Setup: Create modules for testing
         first_layer = LinearGrowingModule(
             in_features=3, out_features=2, device=global_device()
@@ -838,7 +838,7 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         first_layer.update_computation()
         second_layer.update_computation()
 
-        # Test case 1: Previous module is MergeGrowingModule
+        # Test case: Previous module is MergeGrowingModule
         # Should raise NotImplementedError (MergeGrowingModule path in compute_optimal_updates)
         # Use "gradmax" method to avoid calling compute_optimal_delta (which requires statistics)
         merge_module = LinearMergeGrowingModule(in_features=2, device=global_device())
@@ -847,7 +847,30 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         with self.assertRaises(NotImplementedError):
             second_layer.compute_optimal_updates(initialization_method="gradmax")
 
-        # Test case 2: Previous module is unsupported type (else branch)
+    def test_compute_optimal_updates_unsupported_previous_module_error(self):
+        """Test that compute_optimal_updates raises NotImplementedError for unsupported previous_module types."""
+        # Setup: Create modules for testing
+        first_layer = LinearGrowingModule(
+            in_features=3, out_features=2, device=global_device()
+        )
+        second_layer = LinearGrowingModule(
+            in_features=2, out_features=5, device=global_device()
+        )
+
+        # Initialize and gather statistics (needed for some error paths)
+        first_layer.init_computation()
+        second_layer.init_computation()
+
+        # Forward/backward pass to gather statistics
+        x = torch.randn(2, 3, device=global_device())
+        y = first_layer(x)
+        y = second_layer(y)
+        loss = torch.norm(y)
+        loss.backward()
+        first_layer.update_computation()
+        second_layer.update_computation()
+
+        # Test case: Previous module is unsupported type (else branch)
         # Should raise NotImplementedError for unsupported previous_module types
         # Use "gradmax" method to avoid calling compute_optimal_delta
         class UnsupportedModule:
@@ -858,7 +881,30 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         with self.assertRaises(NotImplementedError):
             second_layer.compute_optimal_updates(initialization_method="gradmax")
 
-        # Test case 3: No previous module (edge case)
+    def test_compute_optimal_updates_no_previous_module_returns_none(self):
+        """Test that compute_optimal_updates returns None when previous_module is None."""
+        # Setup: Create modules for testing
+        first_layer = LinearGrowingModule(
+            in_features=3, out_features=2, device=global_device()
+        )
+        second_layer = LinearGrowingModule(
+            in_features=2, out_features=5, device=global_device()
+        )
+
+        # Initialize and gather statistics (needed for some error paths)
+        first_layer.init_computation()
+        second_layer.init_computation()
+
+        # Forward/backward pass to gather statistics
+        x = torch.randn(2, 3, device=global_device())
+        y = first_layer(x)
+        y = second_layer(y)
+        loss = torch.norm(y)
+        loss.backward()
+        first_layer.update_computation()
+        second_layer.update_computation()
+
+        # Test case: No previous module (edge case)
         # Should return early (returns None) when previous_module is None
         second_layer.previous_module = None
 

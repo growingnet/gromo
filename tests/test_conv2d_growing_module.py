@@ -1090,8 +1090,8 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = FullConv2dGrowingModule
 
-    def test_compute_optimal_added_parameters_update_previous_errors_conv2d(self):
-        """Test _compute_optimal_added_parameters update_previous error branches."""
+    def test_compute_optimal_added_parameters_conv2d_merge_previous_module_error(self):
+        """Test that _compute_optimal_added_parameters raises NotImplementedError when previous_module is Conv2dMergeGrowingModule."""
         # Use TestConv2dGrowingModuleBase factory to create a pair of connected layers
         base_tester = TestConv2dGrowingModuleBase()
         base_tester.setUp()
@@ -1113,7 +1113,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             mock_auxiliary_compute, layer
         )
 
-        # Test case 1: previous_module is Conv2dMergeGrowingModule -> NotImplementedError
+        # Test case: previous_module is Conv2dMergeGrowingModule -> NotImplementedError
         merge_conv = Conv2dMergeGrowingModule(
             in_channels=layer.in_channels,
             input_size=(8, 8),
@@ -1130,7 +1130,30 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 alpha_zero=False,
             )
 
-        # Test case 2: previous_module is LinearMergeGrowingModule -> NotImplementedError
+    def test_compute_optimal_added_parameters_linear_merge_previous_module_error(self):
+        """Test that _compute_optimal_added_parameters raises NotImplementedError when previous_module is LinearMergeGrowingModule."""
+        # Use TestConv2dGrowingModuleBase factory to create a pair of connected layers
+        base_tester = TestConv2dGrowingModuleBase()
+        base_tester.setUp()
+        _, layer = base_tester.create_demo_layers(bias=True)
+
+        # Mock the _auxiliary_compute_alpha_omega method to skip tensor statistics
+        def mock_auxiliary_compute(self, **kwargs):
+            # For Conv2dGrowingModule, omega is expected to have shape (out_channels, k)
+            k = 1
+            out_channels = layer.out_channels
+            # alpha second dimension is not constrained here because we don't hit
+            # the Conv2dGrowingModule reshape branch in this test
+            alpha = torch.randn(k, layer.in_features + 1, device=global_device())
+            omega = torch.randn(out_channels, k, device=global_device())
+            eigenvalues = torch.randn(k, device=global_device())
+            return alpha, omega, eigenvalues
+
+        layer._auxiliary_compute_alpha_omega = types.MethodType(
+            mock_auxiliary_compute, layer
+        )
+
+        # Test case: previous_module is LinearMergeGrowingModule -> NotImplementedError
         merge_linear = LinearMergeGrowingModule(
             in_features=layer.in_features,
             device=global_device(),
@@ -1146,7 +1169,30 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 alpha_zero=False,
             )
 
-        # Test case 3: previous_module is unsupported type -> generic NotImplementedError
+    def test_compute_optimal_added_parameters_unsupported_previous_module_error(self):
+        """Test that _compute_optimal_added_parameters raises NotImplementedError for unsupported previous_module types."""
+        # Use TestConv2dGrowingModuleBase factory to create a pair of connected layers
+        base_tester = TestConv2dGrowingModuleBase()
+        base_tester.setUp()
+        _, layer = base_tester.create_demo_layers(bias=True)
+
+        # Mock the _auxiliary_compute_alpha_omega method to skip tensor statistics
+        def mock_auxiliary_compute(self, **kwargs):
+            # For Conv2dGrowingModule, omega is expected to have shape (out_channels, k)
+            k = 1
+            out_channels = layer.out_channels
+            # alpha second dimension is not constrained here because we don't hit
+            # the Conv2dGrowingModule reshape branch in this test
+            alpha = torch.randn(k, layer.in_features + 1, device=global_device())
+            omega = torch.randn(out_channels, k, device=global_device())
+            eigenvalues = torch.randn(k, device=global_device())
+            return alpha, omega, eigenvalues
+
+        layer._auxiliary_compute_alpha_omega = types.MethodType(
+            mock_auxiliary_compute, layer
+        )
+
+        # Test case: previous_module is unsupported type -> generic NotImplementedError
         class MockConv2d(torch.nn.Conv2d):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
