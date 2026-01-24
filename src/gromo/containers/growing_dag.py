@@ -240,6 +240,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 "size": value["size"],
                 "shape": value.get("shape"),
                 "kernel_size": kernel_size,
+                "activation": self.activation if node != self.root else "id",
             }
             for node, value in self.nodes.items()
         }
