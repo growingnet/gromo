@@ -1188,7 +1188,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self, bias: bool, dtype: torch.dtype = torch.float32
     ):
         demo_layers = self.demo_layers[bias]
-        demo_layers[0].store_input = True
+        # Initialize computation using the proper API
+        demo_layers[0].init_computation()
         demo_layers[1].init_computation()
 
         y = demo_layers[0](self.input_x)
@@ -1196,6 +1197,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         loss = torch.norm(y)
         loss.backward()
 
+        # Update computation using the proper API
+        demo_layers[0].update_computation()
         demo_layers[1].update_computation()
 
         demo_layers[1].compute_optimal_delta()
@@ -1523,10 +1526,9 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         layer1.weight.data.fill_(0.0)
         layer2.weight.data.fill_(0.0)
 
-        layer1.store_input = True
-        layer2.store_pre_activity = True
-        layer2.tensor_m_prev.init()
-        layer2.tensor_s_growth.init()
+        # Initialize computation using the proper API
+        layer1.init_computation()
+        layer2.init_computation()
 
         input_x = indicator_batch((layer1.in_features,), device=global_device())
         y = layer2(layer1(input_x))
@@ -1534,8 +1536,10 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         # learning the identity
         loss = torch.norm(y - input_x) ** 2 / 2
         loss.backward()
-        layer2.tensor_m_prev.update()
-        layer2.tensor_s_growth.update()
+
+        # Update computation using the proper API
+        layer1.update_computation()
+        layer2.update_computation()
         # Use private method with new signature - test with no projection (use_projection=False)
         # This test specifically tests the no-projection path
         layer2._compute_optimal_added_parameters(

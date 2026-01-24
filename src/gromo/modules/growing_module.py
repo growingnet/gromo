@@ -1912,7 +1912,10 @@ class GrowingModule(torch.nn.Module):
             self.compute_optimal_delta(dtype=dtype)
 
         if self.previous_module is None:
-            return  # FIXME: change the definition of the function
+            raise ValueError(
+                f"No previous module for {self.name}. "
+                "Thus the optimal updates cannot be computed."
+            )
         elif isinstance(self.previous_module, GrowingModule):
             alpha_weight, alpha_bias, _, _ = self._compute_optimal_added_parameters(
                 numerical_threshold=numerical_threshold,

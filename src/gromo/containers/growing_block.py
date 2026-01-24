@@ -375,6 +375,16 @@ class GrowingBlock(GrowingContainer):
             Each method defines a set of primitive options (compute_delta,
             use_covariance, alpha_zero, use_projection).
 
+        Note
+        ----
+        When ``hidden_neurons == 0``, tensor statistics are not initialized,
+        so ``compute_optimal_delta()`` cannot be called. This means that
+        ``tensor_n`` (required for projection) cannot be computed. In this case,
+        ``use_projection`` is automatically set to ``False`` regardless of the
+        method configuration, and the raw gradient (``-tensor_m_prev()``) is used
+        instead of the projected gradient. A warning will be issued if the method
+        expects projection (e.g., TINY method).
+
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor | None]
@@ -399,6 +409,19 @@ class GrowingBlock(GrowingContainer):
                 self.second_layer.parameter_update_decrease = torch.tensor(
                     0.0, device=self.device
                 )
+
+            # Warn if method expects projection but we can't use it
+            if config["use_projection"]:
+                warn(
+                    f"GrowingBlock with hidden_neurons=0 cannot use projection "
+                    f"(tensor_n requires delta_raw from compute_optimal_delta()). "
+                    f"Method '{initialization_method}' expects use_projection=True, "
+                    f"but will use use_projection=False (raw gradient -tensor_m_prev). "
+                    f"This may result in different behavior than expected.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
             # Call private method directly to avoid compute_optimal_delta() call
             # Force use_projection=False when hidden_neurons == 0
             # (can't compute tensor_n without delta_raw)

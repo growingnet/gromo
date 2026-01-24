@@ -881,8 +881,8 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         with self.assertRaises(NotImplementedError):
             second_layer.compute_optimal_updates(initialization_method="gradmax")
 
-    def test_compute_optimal_updates_no_previous_module_returns_none(self):
-        """Test that compute_optimal_updates returns None when previous_module is None."""
+    def test_compute_optimal_updates_no_previous_module_raises_error(self):
+        """Test that compute_optimal_updates raises ValueError when previous_module is None."""
         # Setup: Create modules for testing
         first_layer = LinearGrowingModule(
             in_features=3, out_features=2, device=global_device()
@@ -905,11 +905,16 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         second_layer.update_computation()
 
         # Test case: No previous module (edge case)
-        # Should return early (returns None) when previous_module is None
+        # Should raise ValueError when previous_module is None
         second_layer.previous_module = None
 
-        result = second_layer.compute_optimal_updates()
-        self.assertIsNone(result, "Should return None when previous_module is None")
+        with self.assertRaises(ValueError) as context:
+            second_layer.compute_optimal_updates()
+
+        # Verify error message
+        error_msg = str(context.exception)
+        self.assertIn("No previous module", error_msg)
+        self.assertIn("optimal updates cannot be computed", error_msg)
         # Verify no extended layers were created
         self.assertIsNone(second_layer.extended_input_layer)
 
