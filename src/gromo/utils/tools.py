@@ -235,6 +235,12 @@ def compute_optimal_added_parameters(
         omega = v  # Orthonormal right singular vectors
     else:
         # TINY-style: alpha and omega both depend on sqrt(s) and S^{-1/2}
+        if matrix_s_inverse_sqrt is None:
+            raise ValueError(
+                "alpha_zero=False requires a covariance matrix S (matrix_s) so that "
+                "its inverse square root matrix_s_inverse_sqrt is defined. "
+                "Got matrix_s=None which implies matrix_s_inverse_sqrt=None."
+            )
         sqrt_s = torch.sqrt(torch.abs(s))
         alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
         omega = sqrt_s[:, None] * v

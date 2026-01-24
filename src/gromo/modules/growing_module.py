@@ -1797,8 +1797,8 @@ class GrowingModule(torch.nn.Module):
 
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-15,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float = 1e-10,
+        statistical_threshold: float = 1e-5,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
