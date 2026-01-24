@@ -1478,19 +1478,17 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         )
         layer2.previous_module = layer1
 
-        layer1.store_input = True
-        layer2.store_pre_activity = True
-        layer2.tensor_m_prev.init()
-        layer2.tensor_s_growth.init()
-        layer2.tensor_s.init()  # Need tensor_s for compute_optimal_delta
+        # Initialize computation using the proper API
+        layer1.init_computation()
+        layer2.init_computation()
 
         y = layer2(layer1(self.input_x))
         loss = torch.norm(y)
         loss.backward()
 
-        layer2.tensor_m_prev.update()
-        layer2.tensor_s_growth.update()
-        layer2.tensor_s.update()  # Need tensor_s for compute_optimal_delta
+        # Update computation using the proper API
+        layer1.update_computation()
+        layer2.update_computation()
         # Need to compute optimal delta first to set up tensor_n for use_projection=True
         layer2.compute_optimal_delta()
         # Use private method with new signature (TINY method: use_covariance=True, alpha_zero=False, use_projection=True)
