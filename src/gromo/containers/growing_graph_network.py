@@ -132,12 +132,6 @@ class GrowingGraphNetwork(GrowingContainer):
             device=self.device,
         )
 
-        if (
-            self.dag.root,
-            self.dag.end,
-        ) in self.dag.edges and self.layer_type == "linear":
-            self.dag.remove_edge(self.dag.root, self.dag.end)
-
     def reset_network(self) -> None:
         """Reset graph to empty"""
         self.init_empty_graph()
