@@ -313,6 +313,8 @@ class LinearGrowingModule(GrowingModule):
         default device, by default None
     name : str | None, optional
         name of the module, by default None
+    target_in_features: int | None, optional
+        target fan-in size, by default None
     """
 
     _layer_type = torch.nn.Linear
@@ -364,6 +366,13 @@ class LinearGrowingModule(GrowingModule):
 
     @property
     def in_neurons(self) -> int:
+        """Fan-in size
+
+        Returns
+        -------
+        int
+            fan-in size
+        """
         return self.layer.in_features
 
     @property

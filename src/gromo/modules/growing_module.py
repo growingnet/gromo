@@ -680,6 +680,10 @@ class GrowingModule(torch.nn.Module):
         device to use
     name: str | None
         name of the module
+    target_in_neurons: int | None, optional
+        target fan-in size, by default None
+    initial_in_neurons: int | None, optional
+        initial fan-in size, by default None
     """
 
     def __init__(
@@ -822,6 +826,18 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def in_neurons(self) -> int:
+        """Fan-in size
+
+        Returns
+        -------
+        int
+            fan-in size
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
         raise NotImplementedError
 
     @property
@@ -2536,6 +2552,11 @@ class GrowingModule(torch.nn.Module):
         normalization_type : str
             type of normalization to use, one of
             'equalize_second_layer', 'equalize_extensions', 'weird_normalization'
+
+        Raises
+        ------
+        ValueError
+            if there is no previous module or the normalization_type is invalid
         """
         existing_normalizations = [
             "equalize_second_layer",
@@ -2579,7 +2600,7 @@ class GrowingModule(torch.nn.Module):
             ----------
             layer: torch.nn.Module | None
                 The layer to calculate the scaling factor for.
-            If the layer is None or has no weights, return 1.0.
+            target_std: float
                 The target standard deviation.
 
             Returns
@@ -2823,6 +2844,11 @@ class GrowingModule(torch.nn.Module):
         -------
         int
             number of missing neurons
+
+        Raises
+        ------
+        ValueError
+            if target_in_neurons are not set
         """
         if self.target_in_neurons is None:
             raise ValueError(
@@ -2857,6 +2883,11 @@ class GrowingModule(torch.nn.Module):
         -------
         int
             Number of neurons to add.
+
+        Raises
+        ------
+        ValueError
+            if target_in_neurons or initial_in_neurons are not set or the method is unknown
         """
         if method == "fixed_proportional":
             if self.target_in_neurons is None:

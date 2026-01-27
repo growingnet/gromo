@@ -34,6 +34,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         kernel size fo the next modules
     post_merge_function : torch.nn.Module, optional
         activation function after the merge, by default torch.nn.Identity()
+    reshape_function : torch.nn.Module, optional
+        function that potentially reshapes the output of the module, by default torch.nn.Identity()
     previous_modules : list[GrowingModule  |  MergeGrowingModule] | None, optional
         list of preceding modules, by default None
     next_modules : list[GrowingModule  |  MergeGrowingModule] | None, optional
@@ -728,10 +730,17 @@ class Conv2dGrowingModule(GrowingModule):
 
     @property
     def in_neurons(self) -> int:
+        """Get the input channels of the layer
+
+        Returns
+        -------
+        int
+            input channels
+        """
         return self.in_channels
 
     @property
-    def in_channels(self):
+    def in_channels(self) -> int:
         """Get the input channels of the layer
 
         Returns
@@ -1794,6 +1803,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         default device, by default None
     name : str | None, optional
         name of the module, by default None
+    target_in_channels : int | None, optional
+        target in channels, by default None
     """
 
     def __init__(
