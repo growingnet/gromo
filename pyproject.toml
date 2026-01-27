@@ -133,7 +133,13 @@ ignore = [
     "COM812",  # Trailing comma missing (conflicts with formatter)
     "COM819",  # Trailing comma prohibited (conflicts with formatter)
     "C408",    # can initialise dict with dict(...)
+    "SIM102",  # forces non-nested if statements
     "SIM108",  # leads to decrease the actual coverage
+    "SIM117",  # nested with statements
+    "N802",    # function name should be lowercase
+    "N803",    # argument name should be lowercase
+    "N806",    # argument name should be lowercase
+    "E731",    # do not assign a lambda expression, use a def
     "E501",    # line too long
 ]
 

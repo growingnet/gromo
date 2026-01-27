@@ -144,8 +144,8 @@ class TestUtils(TorchTestCase):
             with self.subTest(device=device_name):
                 set_device(device_name)
 
-                callable_forward = lambda x: x**2 + 1  # noqa: E731
-                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)  # noqa: E731
+                callable_forward = lambda x: x**2 + 1
+                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)
                 x = torch.rand((5, 2), requires_grad=True, device=global_device())
                 y = torch.rand((5, 1), device=global_device())
                 lrate = 1e-3
@@ -192,7 +192,7 @@ class TestUtils(TorchTestCase):
 
                 # Test with model
                 model = nn.Linear(2, 1, device=global_device())
-                eval_fn = lambda: None  # noqa: E731
+                eval_fn = lambda: None
                 mini_batch_gradient_descent(
                     model=model,
                     cost_fn=cost_fn,
