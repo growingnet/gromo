@@ -1723,7 +1723,7 @@ class GrowingModule(torch.nn.Module):
 
     def _auxiliary_compute_alpha_omega(
         self,
-        numerical_threshold: float = 1e-15,
+        numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
@@ -1797,8 +1797,8 @@ class GrowingModule(torch.nn.Module):
 
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-10,
-        statistical_threshold: float = 1e-5,
+        numerical_threshold: float = 1e-6,
+        statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -1863,13 +1863,13 @@ class GrowingModule(torch.nn.Module):
 
     def compute_optimal_updates(
         self,
-        numerical_threshold: float = 1e-10,
-        statistical_threshold: float = 1e-5,
+        numerical_threshold: float = 1e-6,
+        statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
         initialization_method: str = "tiny",
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update and additional neurons.
 
@@ -1896,8 +1896,9 @@ class GrowingModule(torch.nn.Module):
 
         Returns
         -------
-        tuple[torch.Tensor, torch.Tensor | None]
-            optimal extension for the previous layer (weights and biases)
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            optimal extension for the previous layer (weights and biases).
+            Returns (None, None) when previous_module is None.
         """
         # Validate and get method config
         if initialization_method not in _METHOD_CONFIGS:
@@ -1912,10 +1913,7 @@ class GrowingModule(torch.nn.Module):
             self.compute_optimal_delta(dtype=dtype)
 
         if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}. "
-                "Thus the optimal updates cannot be computed."
-            )
+            return None, None
         elif isinstance(self.previous_module, GrowingModule):
             alpha_weight, alpha_bias, _, _ = self._compute_optimal_added_parameters(
                 numerical_threshold=numerical_threshold,

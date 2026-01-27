@@ -1432,8 +1432,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
 
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-10,
-        statistical_threshold: float = 1e-5,
+        numerical_threshold: float = 1e-6,
+        statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -1801,8 +1801,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
 
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-10,
-        statistical_threshold: float = 1e-5,
+        numerical_threshold: float = 1e-6,
+        statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,

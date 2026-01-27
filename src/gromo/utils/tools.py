@@ -133,7 +133,7 @@ def optimal_delta(
 def compute_optimal_added_parameters(
     matrix_s: torch.Tensor | None,
     matrix_n: torch.Tensor,
-    numerical_threshold: float = 1e-15,
+    numerical_threshold: float = 1e-6,
     statistical_threshold: float = 1e-3,
     maximum_added_neurons: int | None = None,
     alpha_zero: bool = False,
