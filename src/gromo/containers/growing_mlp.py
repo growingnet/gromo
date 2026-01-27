@@ -5,7 +5,6 @@ from torch import Tensor, nn
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
-from gromo.utils.utils import compute_tensor_stats
 
 
 class GrowingMLP(GrowingContainer):
@@ -124,7 +123,7 @@ class GrowingMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self, index: int | None = None) -> None:
-      """Reference all growable layers of the model in the _growing_layers private attribute"""
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         if index is not None:
             self._growing_layers = [self.layers[index]]  # type: ignore
         else:
@@ -169,12 +168,12 @@ class GrowingMLP(GrowingContainer):
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
 
-    def update_information(self) -> Dict[str, Any]:
+    def update_information(self) -> dict[str, Any]:
         """Update information for all growing layers including first order improvement
 
         Returns
         -------
-        Dict[str, Any]
+        dict[str, Any]
             information dictionary
         """
         information = {}
