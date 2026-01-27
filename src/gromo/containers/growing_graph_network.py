@@ -902,6 +902,13 @@ class GrowingGraphNetwork(GrowingContainer):
         self.clean_graph_with_chosen_action(options)
 
     def clean_graph_with_chosen_action(self, options: Sequence[Expansion]):
+        """Delete all current network extensions except for the chosen one
+
+        Parameters
+        ----------
+        options : Sequence[Expansion]
+            list of all possible extensions
+        """
         assert self.chosen_action is not None
 
         # Make selected nodes and edges non candidate
@@ -1016,13 +1023,15 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         x : torch.Tensor
             input tensor
+        x_ext: torch.Tensor, optional
+            extension tensor, by default None
         mask : dict, optional
             extension mask for specific nodes and edges, by default {}
             example: mask["edges"] for edges and mask["nodes"] for nodes
 
         Returns
         -------
-        torch.Tensor
+        torch.Tensor | tuple[torch.Tensor, torch.Tensor]
             output of the extended model
         """
         return self.dag.extended_forward(x, x_ext, mask=mask)

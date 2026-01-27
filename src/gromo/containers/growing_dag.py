@@ -1196,10 +1196,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def define_next_actions(self, expand_end: bool = False) -> list["Expansion"]:
         """Find all possible growth extensions for the current graph
 
+        Parameters
+        ----------
+        expand_end : bool, optional
+            expand the output dimension of the last node, by default False
+
         Returns
         -------
         list[Expansion]
             list with growth actions information
+
+        Raises
+        ------
+        NotImplementedError
+            if expand_end is set to True and there are more than one next modules
         """
         # TODO: check if they allow growing
         direct_edges, one_hop_edges = self.find_possible_extensions()
@@ -1352,6 +1362,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         ----------
         x : torch.Tensor
             input tensor
+        x_ext: torch.Tensor, optional
+            extension tensor, by default None
         mask : dict, optional
             extension mask for specific nodes and edges, by default {}
             example: mask["edges"] for edges and mask["nodes"] for nodes
@@ -1360,7 +1372,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        torch.Tensor
+        tuple[torch.Tensor, torch.Tensor | None]
             output of the extended model
         """
         if verbose:
@@ -1582,7 +1594,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             activation = list(self.nodes[n]["module"].post_merge_function)
             activation = (
                 "None"
-                if all([isinstance(act, torch.nn.Identity) for act in activation])
+                if all(isinstance(act, torch.nn.Identity) for act in activation)
                 else str(activation)
             )
             attrs = {

@@ -34,8 +34,6 @@ class GrowingBlock(GrowingContainer):
         the number of channels
     out_features : int
         number of output features
-    hidden_features : int
-        number of hidden features, if zero the block is the zero function
     pre_activation : torch.nn.Module
         activation function to use before the first layer
     name : str
@@ -130,6 +128,13 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def hidden_features(self) -> int:
+        """Fan-in size of the second layer
+
+        Returns
+        -------
+        int
+            fan-in size
+        """
         warn(
             "hidden_features is deprecated, use hidden_neurons instead.",
             DeprecationWarning,
@@ -139,6 +144,13 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def hidden_neurons(self) -> int:
+        """Fan-in size of the second layer
+
+        Returns
+        -------
+        int
+            fan-in size
+        """
         return self.second_layer.in_neurons
 
     @property
@@ -233,8 +245,8 @@ class GrowingBlock(GrowingContainer):
         ----------
         x: torch.Tensor
             input tensor
-        mask: None
-            mask tensor (not used)
+        mask: dict, optional
+            mask tensor (not used), by default {}
 
         Returns
         -------
@@ -551,15 +563,15 @@ class GrowingBlock(GrowingContainer):
         """
         return self.second_layer.number_of_neurons_to_add(**kwargs)
 
-    def complete_growth(self, **kwargs) -> None:
+    def complete_growth(self, **extension_kwargs: dict) -> None:
         """Complete the growth procedure for the block.
 
         Parameters
         ----------
-        extension_kwargs : dict
+        **extension_kwargs : dict
             Keyword arguments for the extension procedure.
         """
-        self.second_layer.complete_growth(**kwargs)
+        self.second_layer.complete_growth(**extension_kwargs)
 
 
 class LinearGrowingBlock(GrowingBlock):
@@ -574,6 +586,8 @@ class LinearGrowingBlock(GrowingBlock):
         number of output channels
     hidden_features : int
         number of hidden features, if zero the block is the zero function
+    target_hidden_features: int | None, optional
+        target hidden features, by default None
     activation : torch.nn.Module | None
         activation function to use, if None use the identity function
     pre_activation : torch.nn.Module | None
@@ -671,6 +685,8 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         size of the convolutional kernel
     hidden_channels : int
         number of hidden channels, if zero the block is the zero function
+    target_hidden_channels : int | None, optional
+        target hidden channels, by default None
     activation : torch.nn.Module | None
         activation function to use, if None use the identity function
     pre_activation : torch.nn.Module | None

@@ -27,8 +27,8 @@ class GrowingMLP(GrowingContainer):
         Whether to use bias in layers.
     flatten : bool
         Whether to flatten the input before passing it through the network.
-    device : Optional[torch.device]
-        Device to use for computation.
+    device : torch.device | None, optional
+        Device to use for computation, by default None.
 
     Raises
     ------
@@ -47,28 +47,6 @@ class GrowingMLP(GrowingContainer):
         flatten: bool = True,
         device: torch.device | None = None,
     ) -> None:
-        """
-        Initialize the growing MLP.
-
-        Parameters
-        ----------
-        in_features : int | list | tuple
-            Number of input features.
-        out_features : int
-            Number of output features.
-        hidden_size : int
-            Size of hidden layers.
-        number_hidden_layers : int
-            Number of hidden layers.
-        activation : nn.Module
-            Activation function.
-        use_bias : bool
-            Whether to use bias in layers.
-        flatten : bool
-            Whether to flatten the input before passing it through the network.
-        device : torch.device | None
-            Device to use for computation.
-        """
         if isinstance(in_features, int):
             pass
         elif isinstance(in_features, (list, tuple)):
@@ -255,7 +233,7 @@ class Perceptron(GrowingMLP):
         use bias, by default True
     flatten : bool, optional
         flatten the input, by default True
-    device : Optional[torch.device], optional
+    device : torch.device | None, optional
         default device, by default None
     """
 
