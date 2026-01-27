@@ -655,6 +655,8 @@ class Conv2dGrowingModule(GrowingModule):
         device for the layer
     name : str | None
         name of the layer used for debugging purpose
+    target_in_channels: int | None
+        target number of input channels for the layer when growing is performed
     """
 
     _layer_type = torch.nn.Conv2d
@@ -677,6 +679,7 @@ class Conv2dGrowingModule(GrowingModule):
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
+        target_in_channels: int | None = None,
     ) -> None:
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
@@ -706,6 +709,8 @@ class Conv2dGrowingModule(GrowingModule):
             ),
             device=device,
             name=name,
+            target_in_neurons=target_in_channels,
+            initial_in_neurons=in_channels,
         )
         self.layer: torch.nn.Conv2d
         self.kernel_size = self.layer.kernel_size
@@ -722,7 +727,11 @@ class Conv2dGrowingModule(GrowingModule):
     # activation function as the post_layer_function
 
     @property
-    def in_channels(self) -> int:
+    def in_neurons(self) -> int:
+        return self.in_channels
+
+    @property
+    def in_channels(self):
         """Get the input channels of the layer
 
         Returns
@@ -1337,6 +1346,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
+        target_in_channels: int | None = None,
     ) -> None:
         super(RestrictedConv2dGrowingModule, self).__init__(
             in_channels=in_channels,
@@ -1354,6 +1364,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             allow_growing=allow_growing,
             device=device,
             name=name,
+            target_in_channels=target_in_channels,
         )
         self.bordering_convolution = None
 
@@ -1803,6 +1814,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         allow_growing: bool = False,
         device: torch.device | None = None,
         name: str | None = None,
+        target_in_channels: int | None = None,
     ) -> None:
         super(FullConv2dGrowingModule, self).__init__(
             in_channels=in_channels,
@@ -1820,6 +1832,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             allow_growing=allow_growing,
             device=device,
             name=name,
+            target_in_channels=target_in_channels,
         )
         self._mask_tensor_t: torch.Tensor | None = None
         self._tensor_s_growth = TensorStatistic(

@@ -694,6 +694,8 @@ class GrowingModule(torch.nn.Module):
         next_module: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str | None = None,
+        target_in_neurons: int | None = None,
+        initial_in_neurons: int | None = None,
     ) -> None:
         if tensor_s_shape is None:
             warnings.warn(
@@ -717,6 +719,8 @@ class GrowingModule(torch.nn.Module):
             if name is None
             else f"{self.__class__.__name__}({name})"
         )
+        self.target_in_neurons = target_in_neurons
+        self._initial_in_neurons = initial_in_neurons
         self._config_data, _ = load_config()
         self.device = get_correct_device(self, device)
 
@@ -815,6 +819,10 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"C({self.name})",
         )
+
+    @property
+    def in_neurons(self) -> int:
+        raise NotImplementedError
 
     @property
     def in_features(self) -> int:
@@ -1055,9 +1063,9 @@ class GrowingModule(torch.nn.Module):
         if key == "store_input" and value is not self.store_input:
             self.__dict__["store_input"] = value
             if isinstance(self.previous_module, MergeGrowingModule):
-                # As a MergeGrowingModule may have multiple next modules
-                # we need to keep track of the number of modules that require the activity
-                # to be stored. Hence we store it as long as one of the module requires it.
+                # As a MergeGrowingModule may have multiple next modules we need to
+                # keep track of the number of modules that require the activity to be
+                # stored. Hence we store it as long as one of the module requires it.
                 self.previous_module.store_activity += 1 if value else -1
             else:
                 self._internal_store_input = value
@@ -1090,7 +1098,8 @@ class GrowingModule(torch.nn.Module):
                 pass
             else:
                 raise TypeError(
-                    f"Previous module must be a GrowingModule or MergeGrowingModule, got {type(self.previous_module)}"
+                    f"Previous module must be a GrowingModule or MergeGrowingModule, "
+                    f"got {type(self.previous_module)}"
                 )
         elif key == "weight":
             self.layer.weight = value
@@ -1196,7 +1205,8 @@ class GrowingModule(torch.nn.Module):
             else:
                 if x_ext is not None:  # TODO: and is not empty
                     warnings.warn(
-                        f"x_ext must be None got {x_ext} for {self.name}. As the input is not extended, no extension is needed.",
+                        f"x_ext must be None got {x_ext} for {self.name}. As the input "
+                        f"is not extended, no extension is needed.",
                         UserWarning,
                     )
 
@@ -1221,7 +1231,8 @@ class GrowingModule(torch.nn.Module):
         force_update: bool = True,
     ) -> tuple[int, ...] | None:
         """
-        Update the input size of the layer. Either according to the parameter or the input currently stored.
+        Update the input size of the layer. Either according to the parameter or
+        the input currently stored.
 
         Parameters
         ----------
@@ -1356,7 +1367,8 @@ class GrowingModule(torch.nn.Module):
     # Statistics computation
     def projected_v_goal(self, input_vector: torch.Tensor) -> torch.Tensor:
         """
-        Compute the projected gradient of the goal with respect to the activity of the layer.
+        Compute the projected gradient of the goal with respect to the activity
+        of the layer.
 
         dLoss/dA_proj := dLoss/dA - dW B[-1] where A is the pre-activation vector of the
         layer, and dW the optimal delta for the layer
@@ -1425,12 +1437,13 @@ class GrowingModule(torch.nn.Module):
             return self.previous_module.tensor_s
         elif isinstance(self.previous_module, MergeGrowingModule):
             raise NotImplementedError(
-                f"S growth is not implemented for module preceded by an MergeGrowingModule."
-                f" (error in {self.name})"
+                f"S growth is not implemented for module preceded by an "
+                f"MergeGrowingModule. (error in {self.name})"
             )
         else:
             raise NotImplementedError(
-                f"S growth is not implemented yet for {type(self.previous_module)} as previous module."
+                f"S growth is not implemented yet for {type(self.previous_module)} "
+                f"as previous module."
             )
 
     @tensor_s_growth.setter
@@ -1440,7 +1453,8 @@ class GrowingModule(torch.nn.Module):
         """
         raise AttributeError(
             f"You tried to set tensor_s_growth of a GrowingModule (name={self.name})."
-            "This is not allowed because tensor_s_growth refers to the previous module's tensor_s, not the current module's tensor_s."
+            f"This is not allowed because tensor_s_growth refers to the previous module's"
+            f" tensor_s, not the current module's tensor_s."
         )
 
     def compute_m_update(
@@ -1801,8 +1815,8 @@ class GrowingModule(torch.nn.Module):
                 < 1e-4
             ):
                 warnings.warn(
-                    f"Scaling factor {scaling_factor} is different from the one "
-                    f"used during the extended_forward {self._scaling_factor_next_module}."
+                    f"Scaling factor {scaling_factor} is different from the one used"
+                    f" during the extended_forward {self._scaling_factor_next_module}."
                 )
         if extension_size > 0 or self.extended_output_layer is not None:
             assert isinstance(self.extended_output_layer, torch.nn.Module), (
@@ -1890,7 +1904,8 @@ class GrowingModule(torch.nn.Module):
                 ), "The bias of the input extension must be null."
                 if self.scaling_factor == 0:
                     warnings.warn(
-                        "The scaling factor is null. The input extension will have no effect."
+                        "The scaling factor is null. "
+                        "The input extension will have no effect."
                     )
                 self.layer_in_extension(
                     weight=sqrt_factor * self.extended_input_layer.weight
@@ -1902,8 +1917,8 @@ class GrowingModule(torch.nn.Module):
                         if extension_size is None:
                             assert self.eigenvalues_extension is not None, (
                                 "We need to determine the size of the extension but "
-                                "it was not given as parameter nor could be automatically "
-                                "determined as self.eigenvalues_extension is None"
+                                "it was not given as parameter nor could be automatically"
+                                " determined as self.eigenvalues_extension is None"
                                 f"(Error occurred in {self.name})"
                             )
                             extension_size = self.eigenvalues_extension.shape[0]
@@ -1959,7 +1974,8 @@ class GrowingModule(torch.nn.Module):
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]
-            optimal delta for the weights, the biases if needed and the first order decrease
+            optimal delta for the weights, the biases if needed and
+            the first order decrease
         """
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
@@ -1995,7 +2011,8 @@ class GrowingModule(torch.nn.Module):
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+            threshold to consider an eigenvalue as zero in the square root of
+            the inverse of S
         statistical_threshold: float
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
@@ -2058,7 +2075,8 @@ class GrowingModule(torch.nn.Module):
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+            threshold to consider an eigenvalue as zero in the square root of
+            the inverse of S
         statistical_threshold: float
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
@@ -2119,7 +2137,8 @@ class GrowingModule(torch.nn.Module):
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
+            threshold to consider an eigenvalue as zero in the square root of
+            the inverse of S
         statistical_threshold: float
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
@@ -2300,7 +2319,8 @@ class GrowingModule(torch.nn.Module):
                                 "This may lead to errors when using extended_forward.",
                                 UserWarning,
                             )
-                        # otherwise it is ok as user already deleted the extended_output_layer
+                        # otherwise it is ok as user already deleted
+                        # the extended_output_layer
                     elif isinstance(self.previous_module, MergeGrowingModule):
                         return
                         # the user intentionally decided to take care of deletion of the
@@ -2475,7 +2495,11 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def normalize_optimal_updates(self, std_target: float | None = None) -> None:
+    def normalize_optimal_updates(
+        self,
+        std_target: float | None = None,
+        normalization_type: str = "legacy_normalization",
+    ) -> None:
         """
         Normalize optimal update to target standard deviation
 
@@ -2485,7 +2509,8 @@ class GrowingModule(torch.nn.Module):
         We use the standard deviation of the weights of the layer if it has weights.
         If the layer has no weights, we aim to have a std of 1 / sqrt(in_features).
 
-        Let s the target standard deviation then:
+        If normalization_type is "equalize_second_layer":
+        Let s be the target standard deviation then:
         - optimal_delta_layer is scaled to have a std of s (so
         by s / std(optimal_delta_layer))
         - extended_input_layer is scaled to have a std of s (so
@@ -2494,11 +2519,31 @@ class GrowingModule(torch.nn.Module):
         and the optimal_delta_layer
         (so by std(extended_input_layer) / std(optimal_delta_layer))
 
+        If normalization_type is "equalize_extensions":
+        Let s be the target standard deviation then:
+        - extended_input_layer is scaled to have a std of s (so
+        by s / std(extended_input_layer))
+        - extended_output_layer is scaled to have a std of s (so
+        by s / std(extended_output_layer))
+        - optimal_delta_layer is scaled to match the scaling of the extended_input_layer
+        and the extended_output_layer
+        (so by s ** 2 / (std(extended_input_layer) * std(extended_output_layer)))
+
         Parameters
         ----------
         std_target : float | None
             target standard deviation for the weights of the updates
+        normalization_type : str
+            type of normalization to use, one of
+            'equalize_second_layer', 'equalize_extensions', 'weird_normalization'
         """
+        existing_normalizations = [
+            "equalize_second_layer",
+            "equalize_extensions",
+            "weird_normalization",
+            "legacy_normalization",
+        ]
+
         # Determine target standard deviation
         if std_target is None:
             if (
@@ -2518,31 +2563,73 @@ class GrowingModule(torch.nn.Module):
                 std_target = 1.0 / (
                     self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
                 )
+        assert isinstance(std_target, float), "std_target must be a float."
+        assert std_target > 0, "std_target must be positive."
 
-        delta_scale = 1.0
-        # Get current standard deviations and calculate scaling factors
-        if self.optimal_delta_layer is not None and hasattr(
-            self.optimal_delta_layer, "weight"
-        ):
-            current_std = self.optimal_delta_layer.weight.std().item()
-            if current_std > 0:
-                delta_scale = std_target / current_std
+        def _get_scale(layer: torch.nn.Module | None, target_std: float) -> float:
+            """
+            Calculate the scaling factor for a layer to reach the target standard
+            deviation.
 
-        if self.extended_input_layer is not None and hasattr(
-            self.extended_input_layer, "weight"
-        ):
-            current_std = self.extended_input_layer.weight.std().item()
-            if current_std > 0:
-                input_extension_scale = std_target / current_std
+            If the layer is None or has no weights, return 1.0.
+            If the current standard deviation is 0, return
+            self.get_fan_in_from_layer(layer) ** (-0.5).
+
+            Parameters
+            ----------
+            layer: torch.nn.Module | None
+                The layer to calculate the scaling factor for.
+            If the layer is None or has no weights, return 1.0.
+                The target standard deviation.
+
+            Returns
+            -------
+            float
+                The scaling factor for the layer.
+            """
+            if layer is not None and hasattr(layer, "weight"):
+                if (current_std := layer.weight.std().item()) > 0:
+                    return target_std / current_std
+                else:
+                    return self.get_fan_in_from_layer(layer) ** (-0.5)
             else:
-                input_extension_scale = 1.0 / (
-                    self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
-                )
-        else:
-            input_extension_scale = 1.0
+                return 1.0
 
-        # Calculate output extension scale to maintain relationship
-        output_extension_scale = input_extension_scale / delta_scale
+        if normalization_type == "equalize_second_layer":
+            # Get current standard deviations and calculate scaling factors
+            delta_scale = _get_scale(self.optimal_delta_layer, std_target)
+            input_extension_scale = _get_scale(self.extended_input_layer, std_target)
+            # Calculate output extension scale to maintain relationship
+            output_extension_scale = delta_scale / input_extension_scale
+        elif normalization_type == "equalize_extensions":
+            # Get current standard deviations and calculate scaling factors
+            input_extension_scale = _get_scale(self.extended_input_layer, std_target)
+
+            if self.previous_module is not None:
+                assert isinstance(self.previous_module, GrowingModule)
+                output_extension_scale = _get_scale(
+                    self.previous_module.extended_output_layer,
+                    std_target,
+                )
+            else:
+                raise ValueError(
+                    "Cannot use equalize_extensions normalization "
+                    "as there is no previous module."
+                )
+            # Calculate delta scale to maintain relationship
+            delta_scale = input_extension_scale * output_extension_scale
+        elif (
+            normalization_type == "legacy_normalization"
+            or normalization_type == "weird_normalization"
+        ):
+            delta_scale = _get_scale(self.optimal_delta_layer, std_target)
+            output_extension_scale = _get_scale(self.extended_input_layer, std_target)
+            input_extension_scale = 1.0
+        else:
+            raise ValueError(
+                f"normalization_type must be one of {existing_normalizations}, "
+                f"got {normalization_type} instead."
+            )
 
         # Apply scaling using existing methods
         if self.optimal_delta_layer is not None and delta_scale != 1.0:
@@ -2727,6 +2814,81 @@ class GrowingModule(torch.nn.Module):
                 self.previous_module.bias,
                 self.previous_module.get_fan_in_from_layer(layer_to_init),
             )
+
+    def missing_neurons(self) -> int:
+        """
+        Get the number of missing neurons to reach the target hidden features.
+
+        Returns
+        -------
+        int
+            number of missing neurons
+        """
+        if self.target_in_neurons is None:
+            raise ValueError(
+                "Target in neurons is not set, cannot compute missing neurons."
+            )
+        return self.target_in_neurons - self.in_neurons
+
+    def number_of_neurons_to_add(
+        self,
+        method: str = "fixed_proportional",
+        number_of_growth_steps: int = 1,
+    ) -> int:
+        """Get the number of neurons to add in the next growth step.
+
+        Methods
+        -------
+        - fixed_proportional: add a fixed proportion of the total number of neurons
+          to add at each growth step. The amount to add is computed as
+          an integer division as a consequence a few neurons may remain to be added
+          after all growth steps have been performed.
+
+
+        Parameters
+        ----------
+        method : str
+            Method to use for determining the number of neurons to add.
+            Options are "fixed_proportional".
+        number_of_growth_steps : int
+            Number of growth steps planned, used only if method is "fixed_proportional".
+
+        Returns
+        -------
+        int
+            Number of neurons to add.
+        """
+        if method == "fixed_proportional":
+            if self.target_in_neurons is None:
+                raise ValueError(
+                    "Target in neurons is not set, cannot compute neurons to add."
+                )
+            if self._initial_in_neurons is None:
+                raise ValueError(
+                    "Initial in neurons is not set, cannot compute neurons to add."
+                )
+            total_to_add = self.target_in_neurons - self._initial_in_neurons
+            return total_to_add // number_of_growth_steps
+        else:
+            raise ValueError(f"Unknown method: {method}.")
+
+    def complete_growth(self, extension_kwargs: dict) -> None:
+        """
+        Complete the growth to the target size.
+
+        Parameters
+        ----------
+        extension_kwargs : dict
+            Additional arguments for creating layer extensions.
+        """
+        neurons_to_add = self.missing_neurons()
+        if neurons_to_add > 0:
+            self.create_layer_extensions(
+                extension_size=neurons_to_add,
+                **extension_kwargs,
+            )
+            self.apply_change(extension_size=neurons_to_add)
+            self.delete_update(include_previous=True)
 
 
 if __name__ == "__main__":

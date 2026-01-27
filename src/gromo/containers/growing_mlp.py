@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 import torch
 from torch import Tensor, nn
@@ -46,30 +46,51 @@ class GrowingMLP(GrowingContainer):
         activation: nn.Module = nn.SELU(),
         use_bias: bool = True,
         flatten: bool = True,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
     ) -> None:
+        """
+        Initialize the growing MLP.
+
+        Parameters
+        ----------
+        in_features : int | list | tuple
+            Number of input features.
+        out_features : int
+            Number of output features.
+        hidden_size : int
+            Size of hidden layers.
+        number_hidden_layers : int
+            Number of hidden layers.
+        activation : nn.Module
+            Activation function.
+        use_bias : bool
+            Whether to use bias in layers.
+        flatten : bool
+            Whether to flatten the input before passing it through the network.
+        device : torch.device | None
+            Device to use for computation.
+        """
+        if isinstance(in_features, int):
+            pass
+        elif isinstance(in_features, (list, tuple)):
+            if flatten:
+                in_features = int(torch.tensor(in_features).prod().item())
+            else:
+                in_features = in_features[-1]
+        else:
+            raise TypeError(
+                f"Expected in_features to be int, list, or tuple, got {type(in_features)}"
+            )
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
         )
-
-        if isinstance(self.in_features, int):
-            self.num_features = self.in_features
-        elif isinstance(self.in_features, (list, tuple)):
-            if flatten:
-                self.num_features = int(torch.tensor(self.in_features).prod().item())
-            else:
-                self.num_features = self.in_features[-1]
-        else:
-            raise TypeError(
-                f"Expected in_features to be int, list, or tuple, got {type(self.in_features)}"
-            )
 
         # Flatten input
         self.flatten = nn.Flatten(start_dim=1) if flatten else nn.Identity()
         self.layers = nn.ModuleList()
         self.layers.append(
             LinearGrowingModule(
-                self.num_features,
+                self.in_features,
                 hidden_size,
                 post_layer_function=activation,
                 use_bias=use_bias,
@@ -83,7 +104,7 @@ class GrowingMLP(GrowingContainer):
                     hidden_size,
                     hidden_size,
                     post_layer_function=activation,
-                    previous_module=self.layers[-1],
+                    previous_module=self.layers[-1],  # type: ignore
                     use_bias=use_bias,
                     name=f"Layer {i + 1}",
                     device=self.device,
@@ -93,7 +114,7 @@ class GrowingMLP(GrowingContainer):
             LinearGrowingModule(
                 hidden_size,
                 self.out_features,
-                previous_module=self.layers[-1],
+                previous_module=self.layers[-1],  # type: ignore
                 use_bias=use_bias,
                 name=f"Layer {number_hidden_layers}",
                 device=self.device,
@@ -102,9 +123,12 @@ class GrowingMLP(GrowingContainer):
 
         self.set_growing_layers()
 
-    def set_growing_layers(self) -> None:
-        """Reference all growable layers of the model in the _growing_layers private attribute"""
-        self._growing_layers = list(self.layers[1:])
+    def set_growing_layers(self, index: int | None = None) -> None:
+      """Reference all growable layers of the model in the _growing_layers private attribute"""
+        if index is not None:
+            self._growing_layers = [self.layers[index]]  # type: ignore
+        else:
+            self._growing_layers = list(self.layers[1:])  # type: ignore
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -125,7 +149,7 @@ class GrowingMLP(GrowingContainer):
             x = layer(x)
         return x
 
-    def extended_forward(self, x: Tensor) -> Tensor:
+    def extended_forward(self, x: Tensor) -> Tensor:  # type: ignore
         """
         Forward pass of the growing MLP with the current modifications.
 
@@ -144,25 +168,6 @@ class GrowingMLP(GrowingContainer):
         for layer in self.layers:
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
-
-    def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
-        """Compute statistics of the weights of the model
-
-        Returns
-        -------
-        Dict[int, Dict[str, Any]]
-            statistics dictionary
-        """
-        statistics = {}
-        for i, layer in enumerate(self.layers):
-            statistics[i] = {
-                "weight": compute_tensor_stats(layer.weight),
-            }
-            if layer.bias is not None:
-                statistics[i]["bias"] = compute_tensor_stats(layer.bias)
-            statistics[i]["input_shape"] = layer.in_features
-            statistics[i]["output_shape"] = layer.out_features
-        return statistics
 
     def update_information(self) -> Dict[str, Any]:
         """Update information for all growing layers including first order improvement
@@ -231,7 +236,7 @@ class GrowingMLP(GrowingContainer):
         assert (
             0 <= item < len(self.layers)
         ), f"{item=} should be in [0, {len(self.layers)})"
-        return self.layers[item]
+        return self.layers[item]  # type: ignore
 
 
 class Perceptron(GrowingMLP):
@@ -263,7 +268,7 @@ class Perceptron(GrowingMLP):
         activation: nn.Module = nn.Sigmoid(),
         use_bias: bool = True,
         flatten: bool = True,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
     ) -> None:
         super().__init__(
             in_features=in_features,
