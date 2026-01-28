@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Added documentation linting in CI/CD and reduced warnings in tests (:gh:`158` by `Stella Douka`_)
 - New tutorial for `GrowingContainer` (:gh:`188` by `Théo Rudkiewicz`_)
 - Update `GrowingBlock` to include recently added features in `GrowingModule` such as `in_neurons` property, `target_in_neurons` parameter, and methods for multi-step growth processes (:gh:`186` by `Théo Rudkiewicz`_)
 - Add `in_neurons` property and `target_in_neurons` parameter to `GrowingModule`, `LinearGrowingModule`, and `Conv2dGrowingModule` for tracking neuron counts during growth. Add `missing_neurons`, `number_of_neurons_to_add`, and `complete_growth` methods to simplify multi-step growth processes (:gh:`187` by `Théo Rudkiewicz`_)
