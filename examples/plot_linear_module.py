@@ -57,7 +57,7 @@ loss.backward()
 
 for layer in net:
     layer.update_computation()
-
+    # Note: Returns (None, None) for layers without previous_module (e.g., first layer)
     layer.compute_optimal_updates()
 
 for layer in net:
@@ -112,5 +112,5 @@ loss.backward()
 
 for layer in net:
     layer.update_computation()
-
+    # Note: Returns (None, None) for layers without previous_module (e.g., first layer)
     layer.compute_optimal_updates()
