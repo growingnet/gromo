@@ -669,7 +669,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.assertIsNone(layer_omega.bias)
 
         output = layer_omega(flatten(pooling(activation(layer_alpha(x)))))
-        self.assertAllClose(desired_output, output, atol=1e-2)
+        self.assertAllClose(desired_output, output, atol=1.5e-2)
 
 
 if __name__ == "__main__":

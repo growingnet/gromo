@@ -1,8 +1,7 @@
 import contextlib
 import io
 import unittest.mock
-import warnings
-from unittest import TestCase, main
+from unittest import main
 
 import torch
 
@@ -49,7 +48,7 @@ class TestTools(TorchTestCase):
             devices = (torch.device("cuda"), torch.device("cpu"))
         else:
             devices = (torch.device("cpu"),)
-            print(f"Warning: No cuda device available therefore only testing on cpu")
+            print("Warning: No cuda device available therefore only testing on cpu")
         for device in devices:
             matrix = torch.randn(5, 3, dtype=torch.float64, device=device)
             matrix = matrix.t() @ matrix
@@ -377,6 +376,23 @@ class TestTools(TorchTestCase):
         with self.assertRaises(AssertionError):
             compute_optimal_added_parameters(matrix_s, matrix_n)
 
+    def test_compute_optimal_added_parameters_alpha_zero_false_requires_matrix_s(self):
+        """Test that ValueError is raised when alpha_zero=False but matrix_s=None"""
+        # This is an invalid combination: alpha_zero=False requires matrix_s to compute
+        # matrix_s_inverse_sqrt, but matrix_s=None means no covariance matrix
+        matrix_n = torch.randn(3, 2)
+
+        with self.assertRaises(ValueError) as context:
+            compute_optimal_added_parameters(
+                matrix_s=None,  # No covariance matrix
+                matrix_n=matrix_n,
+                alpha_zero=False,  # But we need matrix_s for this path
+            )
+
+        error_msg = str(context.exception)
+        self.assertIn("alpha_zero=False requires a covariance matrix S", error_msg)
+        self.assertIn("matrix_s_inverse_sqrt", error_msg)
+
     def test_create_bordering_effect_convolution(self):
         """Test create_bordering_effect_convolution function"""
         # Test basic functionality
@@ -483,27 +499,16 @@ class TestTools(TorchTestCase):
         matrix_s = torch.eye(3) * 2.0
         matrix_n = torch.randn(3, 2)
 
-        # Mock the SVD to trigger LinAlgError on first call, succeed on second
-        # Create a proper successful result with correct values by computing SVD on the actual matrix_p
-        # Replicate the computation of matrix_p as in compute_optimal_added_parameters
-        matrix_s_inverse_sqrt = torch.linalg.inv(torch.linalg.cholesky(matrix_s))
-        matrix_p = matrix_s_inverse_sqrt @ matrix_n
-        u_real, s_real, vt_real = torch.linalg.svd(matrix_p, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
-        # Capture stdout to verify debug prints
+        # Mock the SVD to trigger LinAlgError
+        # The function now prints diagnostics and re-raises the error (no retry)
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
-                successful_result,  # Second call succeeds
-            ]
-
+            mock_svd.side_effect = torch.linalg.LinAlgError("Mocked SVD error")
             with unittest.mock.patch("sys.stdout", captured_output):
-                alpha, omega, eigenvalues = compute_optimal_added_parameters(
-                    matrix_s, matrix_n
-                )
+                with self.assertRaises(torch.linalg.LinAlgError) as context:
+                    # Function should raise the error after printing diagnostics
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             # Verify debug output was printed
             output = captured_output.getvalue()
@@ -513,35 +518,25 @@ class TestTools(TorchTestCase):
             self.assertIn("matrix_s_inverse_sqrt:", output)
             self.assertIn("matrix_p:", output)
 
-            # Verify the function still succeeded after retry
-            self.assertIsNotNone(alpha)
-            self.assertIsNotNone(omega)
-            self.assertIsNotNone(eigenvalues)
+            # Verify the error was re-raised
+            self.assertIn("Mocked SVD error", str(context.exception))
 
-            # Verify SVD was called twice (first failed, second succeeded)
-            self.assertEqual(mock_svd.call_count, 2)
+            # Verify SVD was called once (no retry)
+            self.assertEqual(mock_svd.call_count, 1)
 
     def test_compute_optimal_added_parameters_matrix_shapes_in_error(self):
         """Test that matrix information is correctly printed in SVD error scenario"""
         matrix_s = torch.eye(2) * 3.0
         matrix_n = torch.randn(2, 4)
 
-        # Create successful result BEFORE mocking
-        dummy_matrix = torch.randn(2, 4)  # Same shape as matrix_p would be
-        u_real, s_real, vt_real = torch.linalg.svd(dummy_matrix, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
         # Capture stdout to verify matrix information is printed
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Test error"),
-                successful_result,
-            ]
-
+            mock_svd.side_effect = torch.linalg.LinAlgError("Test error")
             with contextlib.redirect_stdout(captured_output):
-                compute_optimal_added_parameters(matrix_s, matrix_n)
+                with self.assertRaises(torch.linalg.LinAlgError):
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             output = captured_output.getvalue()
 

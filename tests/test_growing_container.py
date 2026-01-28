@@ -10,6 +10,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from tests.unittest_tools import unittest_parametrize
 
 
 # Create synthetic data
@@ -209,20 +210,46 @@ class TestGrowingContainer(unittest.TestCase):
                 "compute_optimal_updates was not called on the growing layer",
             )
 
-    def test_compute_optimal_updates(self):
+    @unittest_parametrize(
+        ({"initialization_method": "tiny"}, {"initialization_method": "gradmax"})
+    )
+    def test_compute_optimal_updates(self, initialization_method: str = "tiny"):
         gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
+        # Clear any previous updates to ensure clean state for each test case
+        for layer in self.model._growing_layers:
+            layer.delete_update()
+        self.model.compute_optimal_updates(initialization_method=initialization_method)
 
         for layer in self.model._growing_layers:
-            # Check if the optimal updates are computed
-            self.assertTrue(
-                hasattr(layer, "optimal_delta_layer"),
-                "compute_optimal_updates was not called on the growing layer",
-            )
-            self.assertTrue(
-                hasattr(layer, "parameter_update_decrease"),
-                "compute_optimal_updates was not called on the growing layer",
-            )
+            # Use explicit elif checks (not generic else) for future-proofing
+            if initialization_method == "tiny":
+                # TINY-specific checks
+                self.assertTrue(
+                    hasattr(layer, "optimal_delta_layer"),
+                    "compute_optimal_updates was not called on the growing layer",
+                )
+                self.assertTrue(
+                    hasattr(layer, "parameter_update_decrease"),
+                    "compute_optimal_updates was not called on the growing layer",
+                )
+            elif initialization_method == "gradmax":
+                # GradMax-specific checks
+                # optimal_delta_layer should not be set (may not exist or be None)
+                self.assertFalse(
+                    hasattr(layer, "optimal_delta_layer")
+                    and layer.optimal_delta_layer is not None,
+                    "GradMax should not compute optimal_delta_layer",
+                )
+                # parameter_update_decrease should not be set (may not exist or be None)
+                self.assertFalse(
+                    hasattr(layer, "parameter_update_decrease")
+                    and layer.parameter_update_decrease is not None,
+                    "GradMax should not compute parameter_update_decrease",
+                )
+            # Note: When new methods are added, add explicit elif branches here
+            # Do NOT use a generic else clause
+
+            # Common checks for all methods
             if layer.previous_module is not None:
                 self.assertTrue(
                     hasattr(layer, "extended_input_layer"),

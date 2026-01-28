@@ -131,90 +131,120 @@ def optimal_delta(
 
 
 def compute_optimal_added_parameters(
-    matrix_s: torch.Tensor,
+    matrix_s: torch.Tensor | None,
     matrix_n: torch.Tensor,
-    numerical_threshold: float = 1e-15,
+    numerical_threshold: float = 1e-6,
     statistical_threshold: float = 1e-3,
     maximum_added_neurons: int | None = None,
+    alpha_zero: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
 
+    This function operates on primitive options, not method names.
+
     Parameters
     ----------
-    matrix_s: torch.Tensor in (s, s)
-        square matrix S
+    matrix_s: torch.Tensor | None in (s, s)
+        Square matrix S. If None, identity matrix is used.
     matrix_n: torch.Tensor in (s, t)
-        matrix N
+        Matrix N (correlation matrix)
     numerical_threshold: float
-        threshold to consider an eigenvalue as zero in the square root of the inverse of S
+        Threshold to consider an eigenvalue as zero in square root of inverse of S
     statistical_threshold: float
-        threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+        Threshold to consider a singular value as zero in the SVD
     maximum_added_neurons: int | None
-        maximum number of added neurons, if None all significant neurons are kept
+        Maximum number of added neurons, if None all significant neurons are kept
+    alpha_zero: bool
+        If True, set alpha (incoming weights) to zero, else compute from SVD.
+        When True, omega uses orthonormal singular vectors (GradMax-style).
+        When False, both alpha and omega are scaled by sqrt(s) (TINY-style).
 
     Returns
     -------
     tuple[torch.Tensor, torch.Tensor, torch.Tensor] in (k, s) (t, k) (k,)
-        optimal added weights alpha, omega and eigenvalues lambda
+        Optimal added weights alpha, omega and singular values s
     """
-    # matrix_n = matrix_n.t()
-    s_1, s_2 = matrix_s.shape
-    assert s_1 == s_2, "The input matrix S must be square."
-    n_1, n_2 = matrix_n.shape
-    assert s_2 == n_1, (
-        f"The input matrices S and N must have compatible shapes."
-        f"(got {matrix_s.shape=} and {matrix_n.shape=})"
-    )
-    if not torch.allclose(matrix_s, matrix_s.t()):
-        diff = torch.abs(matrix_s - matrix_s.t())
-        warn(
-            f"Warning: The input matrix S is not symmetric.\n"
-            f"Max difference: {diff.max():.2e},\n"
-            f"% of non-zero elements: {100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
+    # Validate inputs
+    n_1, _ = matrix_n.shape
+
+    if matrix_s is not None:
+        # TINY path: validate S matrix
+        s_1, s_2 = matrix_s.shape
+        assert s_1 == s_2, "The input matrix S must be square."
+        assert s_2 == n_1, (
+            f"The input matrices S and N must have compatible shapes."
+            f"(got {matrix_s.shape=} and {matrix_n.shape=})"
         )
-        matrix_s = (matrix_s + matrix_s.t()) / 2
+        if not torch.allclose(matrix_s, matrix_s.t()):
+            diff = torch.abs(matrix_s - matrix_s.t())
+            warn(
+                f"Warning: The input matrix S is not symmetric.\n"
+                f"Max difference: {diff.max():.2e},\n"
+                f"% of non-zero elements: "
+                f"{100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
+            )
+            matrix_s = (matrix_s + matrix_s.t()) / 2
 
-    # assert torch.allclose(matrix_s, matrix_s.t()), "The input matrix S must be symmetric."
+        # Compute the square root of the inverse of S
+        matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
+            matrix_s, threshold=numerical_threshold
+        )
+        # Compute the product P := S^{-1/2} N
+        matrix_p = matrix_s_inverse_sqrt @ matrix_n
+    else:
+        # GradMax path: S = Identity, so S^{-1/2} = Identity
+        matrix_p = matrix_n
+        matrix_s_inverse_sqrt = None
 
-    # compute the square root of the inverse of S
-    matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
-        matrix_s, threshold=numerical_threshold
-    )
-    # compute the product P := S^{-1/2} N
-    matrix_p = matrix_s_inverse_sqrt @ matrix_n
-    # compute the SVD of the product
+    # Compute the SVD of the product
     try:
         u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
-    except torch.linalg.LinAlgError:
+    except torch.linalg.LinAlgError as e:
         print("Warning: An error occurred during the SVD computation.")
-        print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
+        if matrix_s is not None:
+            print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
         print(f"matrix_n: {matrix_n.min()=}, {matrix_n.max()=}, {matrix_n.shape=}")
-        print(
-            f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, {matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
-        )
+        if matrix_s_inverse_sqrt is not None:
+            print(
+                f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, "
+                f"{matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
+            )
         print(f"matrix_p: {matrix_p.min()=}, {matrix_p.max()=}, {matrix_p.shape=}")
-        u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
-        # raise ValueError("An error occurred during the SVD computation.")
+        raise e
 
-        # u = torch.zeros((1, matrix_p.shape[0]))
-        # s = torch.zeros(1)
-        # v = torch.randn((matrix_p.shape[1], 1))
-        # return u, v, s
-
-    # select the singular values
+    # Select the singular values
     selected_singular_values = s >= min(statistical_threshold, s.max())
     if maximum_added_neurons is not None:
         selected_singular_values[maximum_added_neurons:] = False
 
-    # keep only the significant singular values but keep at least one
+    # Keep only the significant singular values but keep at least one
     s = s[selected_singular_values]
     u = u[:, selected_singular_values]
     v = v[selected_singular_values, :]
-    # compute the optimal added weights
-    sqrt_s = torch.sqrt(torch.abs(s))
-    alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
-    omega = sqrt_s[:, None] * v
+
+    # Compute output based on alpha_zero option
+    if alpha_zero:
+        # GradMax-style: alpha = 0, omega = orthonormal singular vectors
+        k_selected = len(s)
+        alpha = torch.zeros(
+            (n_1, k_selected),
+            device=matrix_n.device,
+            dtype=matrix_n.dtype,
+        )
+        omega = v  # Orthonormal right singular vectors
+    else:
+        # TINY-style: alpha and omega both depend on sqrt(s) and S^{-1/2}
+        if matrix_s_inverse_sqrt is None:
+            raise ValueError(
+                "alpha_zero=False requires a covariance matrix S (matrix_s) so that "
+                "its inverse square root matrix_s_inverse_sqrt is defined. "
+                "Got matrix_s=None which implies matrix_s_inverse_sqrt=None."
+            )
+        sqrt_s = torch.sqrt(torch.abs(s))
+        alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
+        omega = sqrt_s[:, None] * v
+
     return alpha.t(), omega.t(), s
 
 
@@ -267,7 +297,8 @@ def compute_mask_tensor_t(
     """
     Compute the tensor T
     For:
-    - input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H'[-1]W'[-1]) after the pooling
+    - input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H'[-1]W'[-1])
+      after the pooling
     - output tensor: B in (S, HW)
     - conv kernel tensor: W in (S, S[-1], Hd, Wd)
     T is the tensor in (HW, HdWd, H'[-1]W'[-1]) such that:
