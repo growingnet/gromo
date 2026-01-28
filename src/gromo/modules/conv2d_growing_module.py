@@ -452,7 +452,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         Returns
         -------
         torch.Tensor
-            _description_
+            full activity tensor B concatenated from all previous modules' inputs
         """
         assert self.previous_modules, f"No previous modules for {self.name}."
         n = self.previous_modules[0].input.shape[0]

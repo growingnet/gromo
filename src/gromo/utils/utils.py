@@ -64,13 +64,13 @@ def get_correct_device(self: object, device: torch.device | str | None) -> torch
     return device
 
 
-def torch_zeros(*size: tuple[int, int], **kwargs) -> torch.Tensor:
+def torch_zeros(*size: int, **kwargs) -> torch.Tensor:
     """Create zero tensors on global selected device
 
     Parameters
     ----------
-    *size : tuple[int, int]
-        size of tensor
+    *size : int
+        variable number of integers that form the shape tuple of the tensor
     **kwargs
 
     Returns
@@ -85,13 +85,13 @@ def torch_zeros(*size: tuple[int, int], **kwargs) -> torch.Tensor:
         return torch.zeros(*size, device=__global_device, **kwargs)
 
 
-def torch_ones(*size: tuple[int, int], **kwargs) -> torch.Tensor:
+def torch_ones(*size: int, **kwargs) -> torch.Tensor:
     """Create one tensors on global selected device
 
     Parameters
     ----------
-    *size : tuple[int, int]
-        size of tensor
+    *size : int
+        variable number of integers that form the shape tuple of the tensor
     **kwargs
 
     Returns
@@ -421,7 +421,7 @@ def batch_gradient_descent(
     forward_fn : Callable
         Forward function
     cost_fn : Callable
-        _description_
+        cost function that computes loss between model output and target
     target : torch.Tensor
         target tensor
     optimizer : torch.optim.Optimizer
