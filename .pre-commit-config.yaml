@@ -54,6 +54,12 @@ repos:
         ]
         exclude: ^docs/ | ^setup\.py$ |
 
+  - repo: https://github.com/jsh9/pydoclint
+    rev: 0.8.1
+    hooks:
+      - id: pydoclint
+        exclude: ^docs/ |  ^setup\.py$ | ^tests/ |
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.3
     hooks:

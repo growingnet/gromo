@@ -2,7 +2,12 @@ import unittest
 
 import torch
 
-from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
+from gromo.containers.growing_dag import (
+    Expansion,
+    ExpansionType,
+    GrowingDAG,
+    InterMergeExpansion,
+)
 from gromo.modules.constant_module import ConstantModule
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import (
@@ -10,12 +15,13 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.utils import global_device
+from tests.torch_unittest import TorchTestCase
 
 
 # torch.set_default_tensor_type(torch.DoubleTensor)
 
 
-class TestGrowingDAG(unittest.TestCase):
+class TestGrowingDAG(TorchTestCase):
     def setUp(self) -> None:
         self.in_features = 10
         self.hidden_size = 5
@@ -547,7 +553,7 @@ class TestGrowingDAG(unittest.TestCase):
         expansions = [
             Expansion(
                 self.dag,
-                type="new edge",
+                exp_type=ExpansionType.NEW_EDGE,
                 previous_node=self.dag.root,
                 next_node=self.dag.end,
             )
@@ -576,10 +582,16 @@ class TestGrowingDAG(unittest.TestCase):
             self.init_node_attributes,
             zero_weights=True,
         )
-        bottleneck, input_B = self.dag.calculate_bottleneck(
-            actions=expansions,
-            dataloader=dataloader,
-        )
+
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            bottleneck, input_B = self.dag.calculate_bottleneck(
+                actions=expansions,
+                dataloader=dataloader,
+            )
+
         for node_module in self.dag.get_all_node_modules():
             self.assertIsNone(node_module.activity)
         self.assertIsNotNone(
@@ -816,11 +828,11 @@ class TestGrowingDAG(unittest.TestCase):
         base_actions = self.dag.define_next_actions(expand_end=False)
         self.assertEqual(len(base_actions), 2)
         self.assertIsInstance(base_actions[0], Expansion)
-        self.assertEqual(base_actions[0].type, "new edge")
+        self.assertEqual(base_actions[0].type, ExpansionType.NEW_EDGE)
         self.assertEqual(base_actions[0].previous_node, start)
         self.assertEqual(base_actions[0].next_node, end)
         self.assertIsInstance(base_actions[1], Expansion)
-        self.assertEqual(base_actions[1].type, "new node")
+        self.assertEqual(base_actions[1].type, ExpansionType.NEW_NODE)
         self.assertEqual(base_actions[1].expanding_node, "1@dag-linear_a")
         self.assertEqual(base_actions[1].previous_node, start)
         self.assertEqual(base_actions[1].next_node, end)
@@ -837,7 +849,7 @@ class TestGrowingDAG(unittest.TestCase):
         actions = self.dag.define_next_actions(expand_end=True)
         self.assertEqual(len(actions), 3)
         self.assertIsInstance(actions[2], InterMergeExpansion)
-        self.assertEqual(actions[2].type, "expanded node")
+        self.assertEqual(actions[2].type, ExpansionType.EXPANDED_NODE)
         self.assertEqual(actions[2].expanding_node, end)
         self.assertEqual(actions[2].adjacent_expanding_node, "next")  # type: ignore
         self.assertIsNone(actions[2].previous_node)
@@ -928,7 +940,9 @@ class TestGrowingDAG(unittest.TestCase):
         in_features = 0
         out_features = 2
         batch_size = 5
-        linear = torch.nn.Linear(in_features, out_features, device=global_device())
+        with self.assertWarns(UserWarning):
+            # Initializing zero-element tensors is a no-op
+            linear = torch.nn.Linear(in_features, out_features, device=global_device())
         x = torch.rand((batch_size, in_features), device=global_device())
         self.assertTrue(
             torch.all(
@@ -1095,7 +1109,7 @@ class TestGrowingDAG(unittest.TestCase):
         loss_fn = torch.nn.MSELoss()
         actual_out, _ = dag.extended_forward(x)
         actual_loss = loss_fn(actual_out, y).item()
-        acc, loss, f1 = dag.evaluate_extended(x, y, loss_fn, with_f1score=True)
+        acc, loss, f1 = dag.evaluate_extended(x, y, loss_fn, with_f1score=True)  # type: ignore
         self.assertEqual(acc, -1)
         self.assertEqual(f1, -1)
         self.assertEqual(loss, actual_loss)
@@ -1104,25 +1118,26 @@ class TestGrowingDAG(unittest.TestCase):
         with self.assertRaises(ValueError):
             Expansion(
                 self.dag,
-                type="random",
+                exp_type="random",  # type: ignore
             )
 
         with self.assertRaises(ValueError):
             Expansion(
                 self.dag,
-                type="new edge",
+                exp_type=ExpansionType.NEW_EDGE,
             )
         with self.assertWarns(UserWarning):
+            # When creating a new edge the expanding node argument is not required
             Expansion(
                 self.dag,
-                type="new edge",
+                exp_type=ExpansionType.NEW_EDGE,
                 previous_node=self.dag.root,
                 next_node=self.dag.end,
                 expanding_node="test",
             )
         expansion = Expansion(
             self.dag,
-            type="new edge",
+            exp_type=ExpansionType.NEW_EDGE,
             previous_node=self.dag.root,
             next_node=self.dag.end,
         )
@@ -1131,18 +1146,19 @@ class TestGrowingDAG(unittest.TestCase):
         with self.assertRaises(ValueError):
             Expansion(
                 self.dag,
-                type="new node",
+                exp_type=ExpansionType.NEW_NODE,
             )
 
         with self.assertRaises(ValueError):
             Expansion(
                 self.dag,
-                type="expanded node",
+                exp_type=ExpansionType.EXPANDED_NODE,
             )
         with self.assertWarns(UserWarning):
+            # When expanding an existing node the previous and next nodes arguments are not required
             Expansion(
                 self.dag,
-                type="expanded node",
+                exp_type=ExpansionType.EXPANDED_NODE,
                 expanding_node="test",
                 previous_node=self.dag.root,
             )
@@ -1151,7 +1167,7 @@ class TestGrowingDAG(unittest.TestCase):
         # Add new edge
         expansion = Expansion(
             self.dag,
-            type="new edge",
+            exp_type=ExpansionType.NEW_EDGE,
             previous_node=self.dag.root,
             next_node=self.dag.end,
         )
@@ -1171,7 +1187,7 @@ class TestGrowingDAG(unittest.TestCase):
         # Add new node
         expansion = Expansion(
             self.dag,
-            type="new node",
+            exp_type=ExpansionType.NEW_NODE,
             expanding_node="test",
             previous_node=self.dag.root,
             next_node=self.dag.end,
@@ -1213,7 +1229,7 @@ class TestGrowingDAG(unittest.TestCase):
         )
         expansion = Expansion(
             self.dag,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node="test",
         )
         self.assertEqual(
@@ -1257,7 +1273,7 @@ class TestGrowingDAG(unittest.TestCase):
         # Add new edge
         expansion = InterMergeExpansion(
             dag,
-            type="new edge",
+            exp_type=ExpansionType.NEW_EDGE,
             previous_node=dag.root,
             next_node=dag.end,
         )
@@ -1287,7 +1303,7 @@ class TestGrowingDAG(unittest.TestCase):
         # Add new node
         expansion = InterMergeExpansion(
             self.dag_conv,
-            type="new node",
+            exp_type=ExpansionType.NEW_NODE,
             expanding_node="test",
             previous_node=self.dag_conv.root,
             next_node=self.dag_conv.end,
@@ -1352,7 +1368,7 @@ class TestGrowingDAG(unittest.TestCase):
         )
         expansion = InterMergeExpansion(
             self.dag_conv,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node="test",
         )
         expansion.expand()
@@ -1392,7 +1408,7 @@ class TestGrowingDAG(unittest.TestCase):
         # Expansion with the first MergeGrowingModule
         expansion = InterMergeExpansion(
             self.dag_conv,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node=self.dag_conv.end,
             adjacent_expanding_node=dag.root,
         )
@@ -1400,7 +1416,9 @@ class TestGrowingDAG(unittest.TestCase):
         self.assertEqual(
             expansion.previous_nodes, [self.dag_conv.get_node_module(self.dag_conv.root)]
         )
-        self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
+        with self.assertWarns(UserWarning):
+            # Node does not belong in the current dag. All external nodes are assumed to be non-candidate.
+            self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
         self.assertEqual(
             expansion.new_edges,
             [
@@ -1473,18 +1491,20 @@ class TestGrowingDAG(unittest.TestCase):
         dag.toggle_node_candidate("test", True)
         expansion = InterMergeExpansion(
             dag,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node=dag.root,
             adjacent_expanding_node=self.dag_conv.end,
         )
         expansion.expand()
-        self.assertEqual(
-            expansion.previous_nodes,
-            [
-                self.dag_conv.get_node_module(self.dag_conv.root),
-                self.dag_conv.get_node_module("test"),
-            ],
-        )
+        with self.assertWarns(UserWarning):
+            # Node does not belong in the current dag. All external nodes are assumed to be non-candidate.
+            self.assertEqual(
+                expansion.previous_nodes,
+                [
+                    self.dag_conv.get_node_module(self.dag_conv.root),
+                    self.dag_conv.get_node_module("test"),
+                ],
+            )
         self.assertEqual(expansion.next_nodes, [dag.get_node_module(dag.end)])
         self.assertEqual(
             expansion.new_edges,
@@ -1555,7 +1575,7 @@ class TestGrowingDAG(unittest.TestCase):
     def test_update_growth_history(self) -> None:
         expansion = Expansion(
             self.dag,
-            type="new node",
+            exp_type=ExpansionType.NEW_NODE,
             expanding_node="1",
             previous_node=self.dag.root,
             next_node=self.dag.end,
