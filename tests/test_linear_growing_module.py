@@ -1362,6 +1362,27 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             expected_shape = (layer.in_features, layer.in_features)
             self.assertEqual(p_result.shape, expected_shape)
 
+    def test_compute_cross_covariance_update_unsupported_previous_module_error(self):
+        """Test NotImplementedError when previous_module is unsupported type."""
+        # Create layer
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="test_layer")
+
+        # Set unsupported previous module type (regular torch.nn.Linear)
+        layer.previous_module = torch.nn.Linear(2, 3)
+
+        # Set up required state for compute_cross_covariance_update
+        layer.store_input = True
+        layer._internal_store_input = True
+        layer._input = torch.randn(2, 3, device=global_device())
+
+        # Should raise NotImplementedError
+        with self.assertRaises(NotImplementedError) as context:
+            layer.compute_cross_covariance_update()
+
+        # Verify error message
+        self.assertIn("not implemented yet", str(context.exception))
+        self.assertIn("previous module", str(context.exception))
+
     def test_compute_s_update_else_branch(self):
         """Test the else branch in LinearMergeGrowingModule compute_s_update"""
         # Create a LinearMergeGrowingModule and set bias=False to trigger the else branch
