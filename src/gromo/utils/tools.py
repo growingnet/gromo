@@ -303,8 +303,8 @@ def compute_mask_tensor_t(
     t_info = unfold(
         torch.arange(1, input_shape[0] * input_shape[1] + 1)
         .float()
-        .reshape((1, input_shape[0], input_shape[1]))
-    ).int()
+        .reshape((1, 1, input_shape[0], input_shape[1]))
+    ).reshape(conv.kernel_size[0]*conv.kernel_size[1], h*w).int()
     for lc in range(h * w):
         for k in range(conv.kernel_size[0] * conv.kernel_size[1]):
             if t_info[k, lc] > 0:
