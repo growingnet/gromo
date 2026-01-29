@@ -2,7 +2,8 @@ import copy
 import string
 import warnings
 from collections import deque
-from typing import Callable, Iterator, Mapping
+from enum import Enum
+from typing import Any, Callable, Iterator, Mapping
 
 import networkx as nx
 import torch
@@ -31,6 +32,45 @@ supported_layer_types = ["linear", "convolution"]
 
 
 class GrowingDAG(nx.DiGraph, GrowingContainer):
+    """Represents a directed acyclic graph with edges as GrowingModule and nodes as MergeGrowingModule
+
+    Parameters
+    ----------
+    in_features : int
+        input features
+    out_features : int
+        output features
+    neurons : int
+        number of neurons to add on each growth step
+    use_bias : bool
+        use bias
+    use_batch_norm : bool
+        use Batch Normalization
+    default_layer_type : str, optional
+        the type of layer operations, to choose between "linear" and "convolution", by default "linear"
+    activation : str, optional
+        the default activation function, by default "selu"
+    name : str, optional
+        name of the dag, by default ""
+    root : str, optional
+        name of the root node, by default "start"
+    end : str, optional
+        name of the end node, by default "end"
+    input_shape : tuple[int, int] | None, optional
+        the expected shape of the input excluding batch size and channels, by default None
+    DAG_parameters : dict | None, optional
+        configuration dictionary to create a custom initial dag, by default None
+    device : torch.device | str | None, optional
+        default device, by default None
+
+    Raises
+    ------
+    ValueError
+        if the reserved character "_" is used in the name of the dag
+    NotImplementedError
+        if the default layer type is not supported
+    """
+
     def __init__(
         self,
         in_features: int,
@@ -44,7 +84,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         root: str = "start",
         end: str = "end",
         input_shape: tuple[int, int] | None = None,
-        DAG_parameters: dict = None,
+        DAG_parameters: dict | None = None,
         device: torch.device | str | None = None,
     ) -> None:
         nx.DiGraph.__init__(self)
@@ -90,9 +130,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     # Override functions from GrowingContainer
 
     def set_growing_layers(self) -> None:
+        """
+        Reference all growable layers of the dag as all the edges and nodes
+        """
         self._growing_layers = self.get_all_edge_modules() + self.get_all_node_modules()
 
     def init_computation(self):
+        """Initialize statistics computations for all nodes"""
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 node_module.store_activity = True
@@ -100,6 +144,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 node_module.init_computation()
 
     def update_computation(self):
+        """Update statistics computations for all nodes"""
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 continue
@@ -108,10 +153,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             node_module.update_computation()
 
     def reset_computation(self):
+        """Reset the computation of the optimal added parameters on the whole network"""
+        for edge_module in self.get_all_edge_modules():
+            edge_module.reset_computation()
         for node_module in self.get_all_node_modules():
             node_module.reset_computation()
 
-    def compute_optimal_updates(self, *args, **kwargs):
+    def compute_optimal_updates(self, *args: Any, **kwargs: Any):
+        """Compute optimal delta for growth procedure for all nodes"""
         self.compute_optimal_delta(*args, **kwargs)
 
     def compute_optimal_delta(
@@ -120,6 +169,18 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
     ):
+        """Compute optimal delta for growth procedure for all nodes
+
+        Parameters
+        ----------
+        update : bool, optional
+            update the optimal delta layer attribute and the first order decrease, by default True
+        return_deltas: bool, optional
+            placeholder argument as this function does not return anything
+        force_pseudo_inverse : bool, optional
+            use the pseudo-inverse to compute the optimal delta even if the
+            matrix is invertible, by default False
+        """
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 continue
@@ -130,12 +191,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )
 
     def delete_update(self):
+        """Delete tensor updates for all nodes"""
         for node_module in self.get_all_node_modules():
             node_module.delete_update(include_previous=True)
 
     # Initialize GrowingDAG and properties
 
     def init_dag_parameters(self) -> dict:
+        """Initialize configuration parameters of the dag
+
+        Returns
+        -------
+        dict
+            configuration dictionary for initial dag
+        """
         edges = [(self.root, self.end)]
         node_attributes = {
             self.root: {
@@ -165,26 +234,68 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
     @property
     def nodes(self) -> nx.reportviews.NodeView:
+        """Get all nodes of dag
+
+        Returns
+        -------
+        nx.reportviews.NodeView
+            nodes
+        """
         return super().nodes
 
     @property
     def edges(self) -> nx.reportviews.OutEdgeView:
+        """Get all edges of dag
+
+        Returns
+        -------
+        nx.reportviews.OutEdgeView
+            edges
+        """
         return super().edges
 
     @property
     def out_edges(self) -> nx.reportviews.OutEdgeView:
+        """Get output edges of dag
+
+        Returns
+        -------
+        nx.reportviews.OutEdgeView
+            output edges
+        """
         return super().out_edges
 
     @property
     def in_edges(self) -> nx.reportviews.InEdgeView:
+        """Get input edges of dag
+
+        Returns
+        -------
+        nx.reportviews.InEdgeView
+            input edges
+        """
         return super().in_edges
 
     @property
     def in_degree(self) -> nx.reportviews.InDegreeView:
+        """Get in-degree of dag
+
+        Returns
+        -------
+        nx.reportviews.InDegreeView
+            in-degree
+        """
         return super().in_degree
 
     @property
     def out_degree(self) -> nx.reportviews.OutDegreeView:
+        """Get out-degree of dag
+
+        Returns
+        -------
+        nx.reportviews.OutDegreeView
+            out-degree
+        """
         return super().out_degree
 
     # Module setters and attributes
@@ -362,7 +473,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        edges : list
+        edges : list | set
             list of edges to retrieve modules
 
         Returns
@@ -377,7 +488,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        nodes : list
+        nodes : list | set
             list of nodes to retrieve modules
 
         Returns
@@ -408,6 +519,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return self.get_node_modules(list(self.nodes))
 
     def is_empty(self) -> bool:
+        """Check if the dag has no connections
+
+        Returns
+        -------
+        bool
+            empty dag
+        """
         return nx.is_empty(self)
 
     # Add new modules
@@ -427,7 +545,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             incoming node of edge
         next_node : str
             outgoing node of edge
-        edge_attributes : _type_, optional
+        edge_attributes : dict, optional
             extra attributes of edge, by default {}
         zero_weights : bool, optional
             set the weights to zero, by default False
@@ -469,9 +587,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Raises
         ------
         KeyError
-            when type of node is not specified in node_attributes dictionary
-        KeyError
-            when size of node is not specified in node_attributes dictionary
+            if the "type" and the "size" of node is not specified in node_attributes dictionary
         """
         new_edges = [(prev_node, new_node), (new_node, next_node)]
         self.add_edges_from(new_edges)
@@ -494,13 +610,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.set_growing_layers()
 
     def update_nodes(
-        self, nodes: list | Mapping, node_attributes: dict[str, dict]
+        self, nodes: list[str] | Mapping, node_attributes: dict[str, dict]
     ) -> None:
         """Create new merge modules for nodes based on incoming and outgoing edges
 
         Parameters
         ----------
-        nodes : list[str]
+        nodes : list[str] | Mapping
             list of nodes to update modules
         node_attributes : dict[str, dict]
             extra attributes for nodes. Keys are node names and values are dictionaries with attributes. Keys \"type\" and \"size\" are mandatory
@@ -508,9 +624,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Raises
         ------
         KeyError
-            when type of node is not specified in node_attributes[node] dictionary
-        KeyError
-            when size of node is not specified in node_attributes[node] dictionary
+            if the "type" and the "size" of node is not specified in node_attributes[node] dictionary
+        NotImplementedError
+            if the type of the node is invalid
         """
         for node in nodes:
             attributes = node_attributes.get(node, {})
@@ -583,12 +699,19 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        edges : list[tuple[str]]
+        edges : list[tuple[str, str]]
             list of edges to update modules
         edge_attributes : dict, optional
             extra attributes for edges, by default {}
         zero_weights : bool, optional
             set the weights to zero, by default False
+
+        Raises
+        ------
+        KeyError
+            if the kernel_size is not specified in edge_attributes
+        NotImplementedError
+            if the type of the node is invalid
         """
         for prev_node, next_node in edges:
             name = f"{prev_node.split('_')[0]}_{next_node.split('_')[0]}"
@@ -693,34 +816,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )
 
             self.get_node_module(prev_node).set_next_modules(
-                list(
-                    module for module in self.get_edge_modules(self.out_edges(prev_node))
-                )
+                list(self.get_edge_modules(self.out_edges(prev_node)))
             )
             self.get_node_module(next_node).set_previous_modules(
-                list(module for module in self.get_edge_modules(self.in_edges(next_node)))
+                list(self.get_edge_modules(self.in_edges(next_node)))
             )
 
         self._get_ancestors(self.root)
 
-    def reset_computation(self) -> None:
-        """Reset the computation of the optimal added parameters on the whole network"""
-        for edge_module in self.get_all_edge_modules():
-            edge_module.reset_computation()
-        for node_module in self.get_all_node_modules():
-            node_module.reset_computation()
-
-    def delete_update(self) -> None:
-        """Delete extended input and output layers and optimal added parameters on the whole network"""
-        for edge_module in self.get_all_edge_modules():
-            edge_module.delete_update(delete_output=True, include_previous=False)
-        for node_module in self.get_all_node_modules():
-            node_module.delete_update()
-
-    def is_empty(self) -> bool:
-        return nx.is_empty(self)
-
     def update_size(self) -> None:
+        """Update the sizes of all the nodes and edges based on their modules"""
         super().update_size()
         for node in self.nodes():
             module = self.get_node_module(node)
@@ -756,6 +861,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             self.set_growing_layers()
 
     def remove_node(self, node: str) -> None:
+        """Remove node from dag
+
+        Parameters
+        ----------
+        node : str
+            node name
+        """
         if node in self.nodes:
             node_module = self.get_node_module(node)
             node_module.__del__()
@@ -769,7 +881,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Parameters
         ----------
         mapping : dict
-            A dictionary mapping old node names to new node names.
+            A dictionary mapping old node names to new node names
+
+        Raises
+        ------
+        ValueError
+            if the new node already exists in the graph
         """
         # nx.relabel_nodes(self, mapping, copy=True)
         for old_name, new_name in mapping.items():
@@ -973,7 +1090,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        direct_successors : dict[str, list[str]]
+        direct_successors : Mapping[str, list[str]] | Mapping[str, set[str]]
             dictionary with direct successors of nodes
 
         Returns
@@ -1005,7 +1122,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        successors : dict[str, list[str]]
+        successors : Mapping[str, list[str]] | Mapping[str, set[str]]
             dictionary with all successors fo nodes
         size : int, optional
             size of new node to add, by default 0
@@ -1048,7 +1165,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        tuple[list[dict]]
+        tuple[list[dict], list[dict]]
             discovered direct connections, discovered one-hop connections
         """
         # TODO: add existing nodes growing
@@ -1079,10 +1196,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def define_next_actions(self, expand_end: bool = False) -> list["Expansion"]:
         """Find all possible growth extensions for the current graph
 
+        Parameters
+        ----------
+        expand_end : bool, optional
+            expand the output dimension of the last node, by default False
+
         Returns
         -------
         list[Expansion]
             list with growth actions information
+
+        Raises
+        ------
+        NotImplementedError
+            if expand_end is set to True and there are more than one next modules
         """
         # TODO: check if they allow growing
         direct_edges, one_hop_edges = self.find_possible_extensions()
@@ -1098,7 +1225,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
             expansion = Expansion(
                 self,
-                "new edge",
+                ExpansionType.NEW_EDGE,
                 previous_node=previous_node,
                 next_node=next_node,
                 edge_attributes=edge_attributes,
@@ -1115,7 +1242,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
             expansion = Expansion(
                 self,
-                "new node",
+                ExpansionType.NEW_NODE,
                 expanding_node=new_node,
                 previous_node=previous_node,
                 next_node=next_node,
@@ -1128,7 +1255,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node in self.nodes:
             if (node == self.root) or (node == self.end):
                 continue
-            expansion = Expansion(self, "expanded node", expanding_node=node)
+            expansion = Expansion(self, ExpansionType.EXPANDED_NODE, expanding_node=node)
             actions.append(expansion)
 
         if expand_end:
@@ -1140,7 +1267,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             elif len(next_node) == 1:
                 expansion = InterMergeExpansion(
                     self,
-                    "expanded node",
+                    ExpansionType.EXPANDED_NODE,
                     expanding_node=self.end,
                     adjacent_expanding_node=next_node[0]._name,
                 )
@@ -1229,12 +1356,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         mask: dict = {},
         verbose: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Extended forward function for DAG model
+        """Extended forward function for DAG model including extensions of the modules
 
         Parameters
         ----------
         x : torch.Tensor
             input tensor
+        x_ext: torch.Tensor, optional
+            extension tensor, by default None
         mask : dict, optional
             extension mask for specific nodes and edges, by default {}
             example: mask["edges"] for edges and mask["nodes"] for nodes
@@ -1243,8 +1372,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Returns
         -------
-        torch.Tensor
-            output of model
+        tuple[torch.Tensor, torch.Tensor | None]
+            output of the extended model
         """
         if verbose:
             print("\nExtended Forward DAG...")
@@ -1313,6 +1442,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     # Parameters
 
     def parameters(self) -> Iterator:
+        """Returns parameters Iterator
+
+        Returns
+        -------
+        Iterator
+            parameters iterator
+        """
         # TODO : Temporary solution
         param = []
         for edge in self.edges:
@@ -1337,7 +1473,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         Parameters
         ----------
-        edges : list[tuple[str]]
+        edges : list[tuple[str, str]]
             list of edges to consider
 
         Returns
@@ -1458,7 +1594,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             activation = list(self.nodes[n]["module"].post_merge_function)
             activation = (
                 "None"
-                if all([isinstance(act, torch.nn.Identity) for act in activation])
+                if all(isinstance(act, torch.nn.Identity) for act in activation)
                 else str(activation)
             )
             attrs = {
@@ -1481,7 +1617,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return self.__str__()
 
 
-expansion_types = ["new edge", "new node", "expanded node"]
+class ExpansionType(Enum):
+    """Expansion types for GrowingDAG"""
+
+    NEW_EDGE = 0
+    NEW_NODE = 1
+    EXPANDED_NODE = 2
 
 
 class Expansion:
@@ -1491,38 +1632,45 @@ class Expansion:
     ----------
     dag : GrowingDAG
         enclosed GrowingDAG object that is deep-copied
-    type : str
-        type of expansion, can be one of ["new edge", "new node", "expanded node"]
+    exp_type : ExpansionType
+        type of expansion, can be one of [ExpansionType.NEW_EDGE, ExpansionType.NEW_NODE, ExpansionType.EXPANDED_NODE]
     growth_history : dict, optional
         expansion history of the enclosed GrowingDAG, by default {}
-    expanding_node : str, optional
-        node to be expanded, only relevant in expansion types "new node" and "expanded node", by default None
-    previous_node : str, optional
-        previous node for expansion, only relevant in expansion types "new edge" and "new node", by default None
-    next_node : str, optional
-        next node for expansion, only relevant in expansion types "new edge" and "new node", by default None
+    expanding_node : str | None, optional
+        node to be expanded, only relevant in expansion types ExpansionType.NEW_NODE and ExpansionType.EXPANDED_NODE, by default None
+    previous_node : str | None, optional
+        previous node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
+    next_node : str | None, optional
+        next node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
     edge_attributes : dict, optional
         attributes of new edges, by default {}
     node_attributes : dict, optional
         attributes of new nodes, by default {}
+
+    Raises
+    ------
+    ValueError
+        if the type is ExpansionType.NEW_EDGE and the previous_node and next_node are missing
+        or the type is ExpansionType.NEW_NODE and the previous_node, next_node and new_node are missing
+        or the type is ExpansionType.EXPANDED_NODE and the new_node is missing
     """
 
     def __init__(
         self,
         dag: GrowingDAG,
-        type: str,
+        exp_type: ExpansionType,
         growth_history: dict = {},
-        expanding_node: str = None,
-        previous_node: str = None,
-        next_node: str = None,
+        expanding_node: str | None = None,
+        previous_node: str | None = None,
+        next_node: str | None = None,
         edge_attributes: dict = {},
         node_attributes: dict = {},
     ) -> None:
-        if type not in expansion_types:
+        if not isinstance(exp_type, ExpansionType):
             raise ValueError(
-                f"The expansion type should be one of {expansion_types}. Found {type}."
+                f"The expansion type should be one of {['ExpansionType.'+m.name for m in ExpansionType]}. Found '{exp_type}'."
             )
-        self.type = type
+        self.type = exp_type
         self.dag = dag  # reference to the original dag
         self.growth_history = copy.deepcopy(growth_history)
         self.metrics = {}
@@ -1534,7 +1682,7 @@ class Expansion:
         self.edge_attributes = edge_attributes
         self.node_attributes = node_attributes
 
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             if self.previous_node is None or self.next_node is None:
                 raise ValueError(
                     f"When creating a new edge the previous and next nodes arguments are required. Found {previous_node=} {next_node=}."
@@ -1545,7 +1693,7 @@ class Expansion:
                     f"When creating a new edge the expanding node argument is not required. Found {expanding_node=}.",
                     UserWarning,
                 )
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             if (
                 self.expanding_node is None
                 or self.previous_node is None
@@ -1554,7 +1702,7 @@ class Expansion:
                 raise ValueError(
                     f"When creating a new node the expanding, previous, and next nodes arguments are required. Found {expanding_node=} {previous_node=} {next_node=}."
                 )
-        elif self.type == "expanded node":
+        elif self.type == ExpansionType.EXPANDED_NODE:
             if self.expanding_node is None:
                 raise ValueError(
                     f"When expanding an existing node the expanding node argument is required. Found {expanding_node=}."
@@ -1569,7 +1717,14 @@ class Expansion:
 
     @property
     def previous_nodes(self) -> list[str]:
-        if self.type == "new edge" or self.type == "new node":
+        """Get list of previous nodes of the expansion
+
+        Returns
+        -------
+        list[str]
+            previous nodes
+        """
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.previous_node]  # type: ignore
         else:  # Expand existing node
             return [
@@ -1580,7 +1735,14 @@ class Expansion:
 
     @property
     def next_nodes(self) -> list[str]:
-        if self.type == "new edge" or self.type == "new node":
+        """Get list of next nodes of the expansion
+
+        Returns
+        -------
+        list[str]
+            next nodes
+        """
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.next_node]  # type: ignore
         else:
             return [
@@ -1591,9 +1753,16 @@ class Expansion:
 
     @property
     def new_edges(self) -> list[tuple]:
-        if self.type == "new edge":
+        """Get list of new edges created or expanded by the expansion
+
+        Returns
+        -------
+        list[tuple]
+            new edges
+        """
+        if self.type == ExpansionType.NEW_EDGE:
             return [(self.previous_node, self.next_node)]
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return [
                 (self.previous_node, self.expanding_node),
                 (self.expanding_node, self.next_node),
@@ -1615,9 +1784,16 @@ class Expansion:
 
     @property
     def in_edges(self) -> list[GrowingModule]:
-        if self.type == "new edge":
+        """Get list of input edge modules create or expanded by the expansion
+
+        Returns
+        -------
+        list[GrowingModule]
+            new input edge modules
+        """
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.previous_node, self.expanding_node)])
         else:
             return self.dag.get_edge_modules(
@@ -1630,9 +1806,16 @@ class Expansion:
 
     @property
     def out_edges(self) -> list[GrowingModule]:
-        if self.type == "new edge":
+        """Get list of output edge modules created or expanded by the expansion
+
+        Returns
+        -------
+        list[GrowingModule]
+            new output edge modules
+        """
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.expanding_node, self.next_node)])
         else:
             return self.dag.get_edge_modules(
@@ -1645,12 +1828,12 @@ class Expansion:
 
     def expand(self) -> None:
         """Create new edge or node on the enclosed GrowingDAG"""
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
             self.dag.toggle_edge_candidate(
                 self.previous_node, self.next_node, candidate=True
             )
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes, zero_weights=True)  # type: ignore
             self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
 
@@ -1665,7 +1848,7 @@ class Expansion:
 
         Parameters
         ----------
-        step : int
+        current_step : int
             current growth step
         neurons_added : list, optional
             list of edges that were added or increased in dimension, by default []
@@ -1706,6 +1889,13 @@ class Expansion:
         )
 
     def create_mask(self) -> dict:
+        """Create expansion mask for extended forward functions
+
+        Returns
+        -------
+        dict
+            nodes and edges to be used in extended forward
+        """
         mask = {
             "nodes": [self.expanding_node],
             "edges": self.new_edges,
@@ -1767,20 +1957,44 @@ class Expansion:
         )
 
     def __repr__(self) -> str:
-        if self.type == "new edge":
+        if self.type == ExpansionType.NEW_EDGE:
             return f"[Expansion]: New edge from {self.previous_node} to {self.next_node}"
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return f"[Expansion]: New node {self.expanding_node} from {self.previous_node} to {self.next_node}"
-        elif self.type == "expanded node":
+        elif self.type == ExpansionType.EXPANDED_NODE:
             return f"[Expansion]: Expanding node {self.expanding_node}"
         return "[Expansion]: NotImplemented"
 
 
 class InterMergeExpansion(Expansion):
+    """Wrapper for expansions between two GrowingDAGs
+
+    Parameters
+    ----------
+    dag : GrowingDAG
+        enclosed GrowingDAG object that is deep-copied
+    exp_type : ExpansionType
+        type of expansion, can be one of [ExpansionType.NEW_EDGE, ExpansionType.NEW_NODE, ExpansionType.EXPANDED_NODE]
+    growth_history : dict, optional
+        expansion history of the enclosed GrowingDAG, by default {}
+    expanding_node : str | None, optional
+        node to be expanded, only relevant in expansion types ExpansionType.NEW_NODE and ExpansionType.EXPANDED_NODE, by default None
+    previous_node : str | None, optional
+        previous node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
+    next_node : str | None, optional
+        next node for expansion, only relevant in expansion types ExpansionType.NEW_EDGE and ExpansionType.NEW_NODE, by default None
+    adjacent_expanding_node: str | None, optional
+        adjacent node to the expanded node belonging in different GrowingDAG, only relevant in expansion type ExpansionType.EXPANDED_NODE, by default None
+    edge_attributes : dict, optional
+        attributes of new edges, by default {}
+    node_attributes : dict, optional
+        attributes of new nodes, by default {}
+    """
+
     def __init__(
         self,
         dag: GrowingDAG,
-        type: str,
+        exp_type: ExpansionType,
         growth_history: dict = {},
         expanding_node: str | None = None,
         previous_node: str | None = None,
@@ -1791,7 +2005,7 @@ class InterMergeExpansion(Expansion):
     ) -> None:
         super().__init__(
             dag,
-            type,
+            exp_type,
             growth_history,
             expanding_node,
             previous_node,
@@ -1805,7 +2019,14 @@ class InterMergeExpansion(Expansion):
 
     @property
     def previous_nodes(self) -> list[MergeGrowingModule]:
-        if self.type == "new edge" or self.type == "new node":
+        """Get list of previous node modules of the expansion
+
+        Returns
+        -------
+        list[MergeGrowingModule]
+            previous node modules
+        """
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.dag.get_node_module(self.previous_node)]
         else:
             previous_nodes = []
@@ -1826,7 +2047,14 @@ class InterMergeExpansion(Expansion):
 
     @property
     def next_nodes(self) -> list[MergeGrowingModule]:
-        if self.type == "new edge" or self.type == "new node":
+        """Get list of next node modules of the expansion
+
+        Returns
+        -------
+        list[MergeGrowingModule]
+            next node modules
+        """
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return [self.dag.get_node_module(self.next_node)]
         else:
             next_nodes = []
@@ -1845,7 +2073,14 @@ class InterMergeExpansion(Expansion):
 
     @property
     def new_edges(self) -> list[GrowingModule]:
-        if self.type == "new edge" or self.type == "new node":
+        """Get list of new edge modules created or expanded by the expansion
+
+        Returns
+        -------
+        list[GrowingModule]
+            new edge modules
+        """
+        if self.type == ExpansionType.NEW_EDGE or self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules(super().new_edges)
         else:
             new_edges = []
@@ -1876,9 +2111,16 @@ class InterMergeExpansion(Expansion):
 
     @property
     def in_edges(self) -> list[GrowingModule]:
-        if self.type == "new edge":
+        """Get list of input edge modules create or expanded by the expansion
+
+        Returns
+        -------
+        list[GrowingModule]
+            new input edge modules
+        """
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.previous_node, self.expanding_node)])
         else:
             in_edges = []
@@ -1898,9 +2140,16 @@ class InterMergeExpansion(Expansion):
 
     @property
     def out_edges(self) -> list[GrowingModule]:
-        if self.type == "new edge":
+        """Get list of output edge modules created or expanded by the expansion
+
+        Returns
+        -------
+        list[GrowingModule]
+            new output edge modules
+        """
+        if self.type == ExpansionType.NEW_EDGE:
             return self.dag.get_edge_modules([(self.previous_node, self.next_node)])
-        elif self.type == "new node":
+        elif self.type == ExpansionType.NEW_NODE:
             return self.dag.get_edge_modules([(self.expanding_node, self.next_node)])
         else:
             out_edges = []
@@ -1917,6 +2166,13 @@ class InterMergeExpansion(Expansion):
             return out_edges
 
     def create_mask(self) -> dict:
+        """Create expansion mask for extended forward functions
+
+        Returns
+        -------
+        dict
+            nodes and edges to be used in extended forward
+        """
         mask = {
             "nodes": [self.expanding_node, self.adjacent_expanding_node],
             "edges": [edge._name for edge in self.new_edges],

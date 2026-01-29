@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 
 from gromo.containers.growing_mlp import GrowingMLP, Perceptron
+from gromo.utils.utils import compute_tensor_stats
 from tests.test_growing_container import create_synthetic_data, gather_statistics
 from tests.torch_unittest import TorchTestCase
 
@@ -63,7 +64,11 @@ class TestGrowingMLP(TorchTestCase):
 
         # Compute the optimal updates for growing functionality
         gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            self.model.compute_optimal_updates()
 
     def test_set_growing_layers(self):
         """Test setting growing layers in the GrowingMLP model."""

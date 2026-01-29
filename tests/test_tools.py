@@ -1,8 +1,7 @@
 import contextlib
 import io
 import unittest.mock
-import warnings
-from unittest import TestCase, main
+from unittest import main
 
 import torch
 
@@ -49,7 +48,7 @@ class TestTools(TorchTestCase):
             devices = (torch.device("cuda"), torch.device("cpu"))
         else:
             devices = (torch.device("cpu"),)
-            print(f"Warning: No cuda device available therefore only testing on cpu")
+            print("Warning: No cuda device available therefore only testing on cpu")
         for device in devices:
             matrix = torch.randn(5, 3, dtype=torch.float64, device=device)
             matrix = matrix.t() @ matrix
@@ -338,7 +337,7 @@ class TestTools(TorchTestCase):
         matrix_s_nonsym = torch.tensor([[1.0, 0.5], [0.3, 1.0]])
         matrix_n = torch.tensor([[1.0], [1.0]])
 
-        with self.assertWarns(UserWarning):
+        with self.assertWarns(UserWarning):  # The input matrix S is not symmetric
             alpha, omega, eigenvalues = compute_optimal_added_parameters(
                 matrix_s_nonsym, matrix_n
             )
@@ -643,7 +642,7 @@ class TestTools(TorchTestCase):
             ),
             unittest.mock.patch("gromo.utils.tools.warn") as mock_warn,
         ):
-            delta, decrease = optimal_delta(tensor_s, tensor_m)
+            delta, _ = optimal_delta(tensor_s, tensor_m)
 
             # Should have called warning about pseudo-inverse
             mock_warn.assert_called()
@@ -668,7 +667,7 @@ class TestTools(TorchTestCase):
         # Mock torch.trace to return a negative value
         with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
             with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
-                delta, decrease = optimal_delta(tensor_s, tensor_m)
+                optimal_delta(tensor_s, tensor_m)
 
                 # The warning should be called
                 mock_warn.assert_called()
@@ -694,7 +693,7 @@ class TestTools(TorchTestCase):
         # Mock torch.trace to return negative value, triggering the retry mechanism
         with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
             with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
-                delta, decrease = optimal_delta(tensor_s, tensor_m)
+                optimal_delta(tensor_s, tensor_m)
 
                 # Should warn about negative decrease and trying float64
                 warn_calls = [str(call) for call in mock_warn.call_args_list]
@@ -718,9 +717,7 @@ class TestTools(TorchTestCase):
 
         with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
             with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
-                delta, decrease = optimal_delta(
-                    tensor_s, tensor_m, force_pseudo_inverse=True
-                )
+                delta, _ = optimal_delta(tensor_s, tensor_m, force_pseudo_inverse=True)
 
                 # Should warn about setting delta to zero
                 warn_calls = [str(call) for call in mock_warn.call_args_list]

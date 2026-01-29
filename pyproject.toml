@@ -122,6 +122,9 @@ select = [
     "N",     # pep8-naming
     # "UP",  # pyupgrade
     "RUF",   # Ruff-specific rules
+    "D101",  # docstring in public class
+    "D102",  # docstring in public method
+    "D103",  # docstring in public function
 ]
 
 # Ignore some rules that might be too strict for existing codebase
@@ -130,14 +133,21 @@ ignore = [
     "COM812",  # Trailing comma missing (conflicts with formatter)
     "COM819",  # Trailing comma prohibited (conflicts with formatter)
     "C408",    # can initialise dict with dict(...)
+    "SIM102",  # forces non-nested if statements
     "SIM108",  # leads to decrease the actual coverage
+    "SIM117",  # nested with statements
+    "N802",    # function name should be lowercase
+    "N803",    # argument name should be lowercase
+    "N806",    # argument name should be lowercase
+    "E731",    # do not assign a lambda expression, use a def
+    "E501",    # line too long
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can have more relaxed type checking
-"tests/**/*.py" = ["ANN", "ARG"]
+"tests/**/*.py" = ["ANN", "ARG", "D"]
 # Examples can ignore type annotations
-"examples/**/*.py" = ["ANN"]
+"examples/**/*.py" = ["ANN", "D"]
 # Init files can ignore unused imports
 "**/__init__.py" = ["F401"]
 

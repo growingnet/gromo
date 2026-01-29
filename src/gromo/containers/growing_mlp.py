@@ -10,11 +10,35 @@ from gromo.modules.linear_growing_module import LinearGrowingModule
 class GrowingMLP(GrowingContainer):
     """
     Represents a growing MLP network.
+
+    Parameters
+    ----------
+    in_features : int | list[int] | tuple[int, ...]
+        Number of input features.
+    out_features : int
+        Number of output features.
+    hidden_size : int
+        Size of hidden layers.
+    number_hidden_layers : int
+        Number of hidden layers.
+    activation : nn.Module
+        Activation function.
+    use_bias : bool
+        Whether to use bias in layers.
+    flatten : bool
+        Whether to flatten the input before passing it through the network.
+    device : torch.device | None, optional
+        Device to use for computation, by default None.
+
+    Raises
+    ------
+    TypeError
+        if input features are not of type int, list or tuple
     """
 
     def __init__(
         self,
-        in_features: int | list[int] | tuple[int],
+        in_features: int | list[int] | tuple[int, ...],
         out_features: int,
         hidden_size: int,
         number_hidden_layers: int,
@@ -23,28 +47,6 @@ class GrowingMLP(GrowingContainer):
         flatten: bool = True,
         device: torch.device | None = None,
     ) -> None:
-        """
-        Initialize the growing MLP.
-
-        Parameters
-        ----------
-        in_features : int | list | tuple
-            Number of input features.
-        out_features : int
-            Number of output features.
-        hidden_size : int
-            Size of hidden layers.
-        number_hidden_layers : int
-            Number of hidden layers.
-        activation : nn.Module
-            Activation function.
-        use_bias : bool
-            Whether to use bias in layers.
-        flatten : bool
-            Whether to flatten the input before passing it through the network.
-        device : torch.device | None
-            Device to use for computation.
-        """
         if isinstance(in_features, int):
             pass
         elif isinstance(in_features, (list, tuple)):
@@ -99,6 +101,7 @@ class GrowingMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self, index: int | None = None) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         if index is not None:
             self._growing_layers = [self.layers[index]]  # type: ignore
         else:
@@ -144,6 +147,13 @@ class GrowingMLP(GrowingContainer):
         return x
 
     def update_information(self) -> dict[str, Any]:
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        dict[str, Any]
+            information dictionary
+        """
         information = {}
         for i, layer in enumerate(self._growing_layers):
             layer_information = {
@@ -155,6 +165,13 @@ class GrowingMLP(GrowingContainer):
         return information
 
     def normalise(self, verbose: bool = False) -> None:
+        """Normalize the weight of the model
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            print info, by default False
+        """
         max_values = torch.zeros(len(self.layers), device=self.device)
         for i, layer in enumerate(self.layers):
             max_values[i] = layer.weight.abs().max()
@@ -200,6 +217,26 @@ class GrowingMLP(GrowingContainer):
 
 
 class Perceptron(GrowingMLP):
+    """Represents a Perceptron MLP
+
+    Parameters
+    ----------
+    in_features : int
+        input features
+    hidden_feature : int
+        hidden features
+    out_features : int
+        output features
+    activation : nn.Module, optional
+        activation function, by default nn.Sigmoid()
+    use_bias : bool, optional
+        use bias, by default True
+    flatten : bool, optional
+        flatten the input, by default True
+    device : torch.device | None, optional
+        default device, by default None
+    """
+
     def __init__(
         self,
         in_features: int,
