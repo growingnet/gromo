@@ -228,9 +228,9 @@ class GrowingBlock(GrowingContainer):
         if kwargs_layer is None:
             kwargs_layer = dict()
         if kwargs_first_layer is None:
-            kwargs_first_layer = kwargs_layer
+            kwargs_first_layer = kwargs_layer.copy()
         if kwargs_second_layer is None:
-            kwargs_second_layer = kwargs_layer
+            kwargs_second_layer = kwargs_layer.copy()
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -752,7 +752,6 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
                 if kernel_size is None:
                     raise ValueError(f"kernel_size must be specified for {name}.")
                 kwargs["kernel_size"] = kernel_size
-                break
             elif kernel_size is not None:
                 warn(
                     f"kernel_size specified in both arguments and kwargs for {name}, "
