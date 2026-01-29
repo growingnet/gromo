@@ -159,7 +159,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node_module in self.get_all_node_modules():
             node_module.reset_computation()
 
-    def compute_optimal_updates(self, *args, **kwargs: Any):
+    def compute_optimal_updates(self, *args: Any, **kwargs: Any):
         """Compute optimal delta for growth procedure for all nodes"""
         self.compute_optimal_delta(*args, **kwargs)
 
