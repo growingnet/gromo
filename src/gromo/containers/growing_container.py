@@ -19,7 +19,7 @@ class GrowingContainer(torch.nn.Module):
     device : torch.device | str | None, optional
         default device, by default None
     name : str, optional
-        name of the model, by default ""
+        name of the model, by default "GrowingContainer"
     """
 
     def __init__(
@@ -27,7 +27,7 @@ class GrowingContainer(torch.nn.Module):
         in_features: int,
         out_features: int,
         device: torch.device | str | None = None,
-        name: str = "",
+        name: str = "GrowingContainer",
     ) -> None:
         super(GrowingContainer, self).__init__()
         self._config_data, _ = load_config()
