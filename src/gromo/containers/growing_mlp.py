@@ -13,7 +13,7 @@ class GrowingMLP(GrowingContainer):
 
     Parameters
     ----------
-    in_features : int | list[int] | tuple[int]
+    in_features : int | list[int] | tuple[int, ...]
         Number of input features.
     out_features : int
         Number of output features.
@@ -38,7 +38,7 @@ class GrowingMLP(GrowingContainer):
 
     def __init__(
         self,
-        in_features: int | list[int] | tuple[int],
+        in_features: int | list[int] | tuple[int, ...],
         out_features: int,
         hidden_size: int,
         number_hidden_layers: int,
