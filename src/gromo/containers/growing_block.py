@@ -144,7 +144,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def hidden_neurons(self) -> int:
-        """Fan-in size of the second layer
+        """Number of hidden neurons.
 
         Returns
         -------
