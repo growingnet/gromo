@@ -90,7 +90,7 @@ class SequentialGrowingContainer(GrowingContainer):
                 f"'sequential' and 'all'."
             )
 
-    def number_of_neurons_to_add(self, **kwargs) -> int:
+    def number_of_neurons_to_add(self, **kwargs: Any) -> int:
         """Get the number of neurons to add in the next growth step."""
         if self.layer_to_grow_index < 0:
             raise RuntimeError(

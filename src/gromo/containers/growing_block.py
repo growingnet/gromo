@@ -356,7 +356,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.cross_covariance.reset()
         self.second_layer.tensor_s_growth.reset()
 
-    def delete_update(self, **kwargs):
+    def delete_update(self, **kwargs: Any):
         """
         Delete the update of the block.
         """
@@ -525,7 +525,7 @@ class GrowingBlock(GrowingContainer):
             input_extension_init=input_extension_init,
         )
 
-    def normalize_optimal_updates(self, **kwargs) -> None:
+    def normalize_optimal_updates(self, **kwargs: Any) -> None:
         """
         Normalize the optimal updates.
         """
@@ -544,13 +544,13 @@ class GrowingBlock(GrowingContainer):
 
     def number_of_neurons_to_add(
         self,
-        **kwargs: dict,
+        **kwargs: str | int,
     ) -> int:
         """Get the number of neurons to add in the next growth step.
 
         Parameters
         ----------
-        **kwargs : dict
+        **kwargs : str | int
             method : str
                 Method to use for determining the number of neurons to add.
                 Options are "fixed_proportional".

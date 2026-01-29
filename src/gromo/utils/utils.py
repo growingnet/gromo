@@ -64,14 +64,14 @@ def get_correct_device(self: object, device: torch.device | str | None) -> torch
     return device
 
 
-def torch_zeros(*size: int, **kwargs) -> torch.Tensor:
+def torch_zeros(*size: int, **kwargs: Any) -> torch.Tensor:
     """Create zero tensors on global selected device
 
     Parameters
     ----------
     *size : int
         variable number of integers that form the shape tuple of the tensor
-    **kwargs
+    **kwargs : Any
 
     Returns
     -------
@@ -85,14 +85,14 @@ def torch_zeros(*size: int, **kwargs) -> torch.Tensor:
         return torch.zeros(*size, device=__global_device, **kwargs)
 
 
-def torch_ones(*size: int, **kwargs) -> torch.Tensor:
+def torch_ones(*size: int, **kwargs: Any) -> torch.Tensor:
     """Create one tensors on global selected device
 
     Parameters
     ----------
     *size : int
         variable number of integers that form the shape tuple of the tensor
-    **kwargs
+    **kwargs : Any
 
     Returns
     -------

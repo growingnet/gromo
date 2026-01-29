@@ -117,7 +117,7 @@ class GrowingContainer(torch.nn.Module):
                 force_pseudo_inverse=force_pseudo_inverse,
             )
 
-    def compute_optimal_updates(self, *args, **kwargs) -> None:
+    def compute_optimal_updates(self, *args, **kwargs: Any) -> None:
         """Compute optimal updates for growth procedure"""
         for layer in self._growing_layers:
             if isinstance(layer, (GrowingModule, GrowingContainer)):
