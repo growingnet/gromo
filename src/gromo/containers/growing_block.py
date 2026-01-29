@@ -155,7 +155,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def eigenvalues_extension(self) -> torch.Tensor | None:
-        """Get the eigenvalues extension of the second layer
+        """Get the eigenvalues extension of block
 
         Returns
         -------
@@ -166,7 +166,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def parameter_update_decrease(self) -> torch.Tensor | None:
-        """Get the parameter update decrease of the second layer
+        """Get the parameter update decrease of the block
 
         Returns
         -------
@@ -191,7 +191,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def scaling_factor(self) -> torch.Tensor:
-        """Get the scaling factor of the second layer
+        """Get the scaling factor of the block
 
         Returns
         -------
