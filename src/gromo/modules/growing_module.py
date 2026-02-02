@@ -826,12 +826,12 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def in_neurons(self) -> int:
-        """Fan-in size
+        """Number of input neurons
 
         Returns
         -------
         int
-            fan-in size
+            number of input neurons
 
         Raises
         ------
