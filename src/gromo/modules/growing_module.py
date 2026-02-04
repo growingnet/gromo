@@ -444,7 +444,7 @@ class MergeGrowingModule(torch.nn.Module):
             f"The tensor M should have shape ({self.total_in_features}, {self.in_features}). "
             f"Got {previous_tensor_m.shape}."
         )
-        delta, _ = optimal_delta(
+        delta, self.parameter_update_decrease = optimal_delta(
             previous_tensor_s,
             previous_tensor_m,
             dtype=dtype,

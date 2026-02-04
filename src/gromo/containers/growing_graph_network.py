@@ -23,6 +23,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.disk_dataset import MemMapDataset
 from gromo.utils.utils import (
     line_search,
     mini_batch_gradient_descent,
@@ -480,6 +481,40 @@ class GrowingGraphNetwork(GrowingContainer):
             verbose=verbose,
         )
 
+        # Compute activity update
+        if isinstance(input_x, str):
+            assert isinstance(bottleneck, str)
+            if len(input_x_keys) <= 0 or len(bottleneck_keys) <= 0:
+                raise ValueError("At least one key is required for X and Y")
+            dataset = MemMapDataset(input_x, bottleneck, input_x_keys, bottleneck_keys)
+        elif isinstance(input_x, torch.Tensor):
+            assert isinstance(bottleneck, torch.Tensor)
+            dataset = torch.utils.data.TensorDataset(input_x, bottleneck)
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=self.neuron_batch_size, shuffle=False
+        )
+
+        with torch.no_grad():
+            new_block_output = torch.empty(0)
+            for x, _ in dataloader:
+                out = self.block_forward(
+                    layer_fn=F.linear if linear_alpha_layer else F.conv2d,
+                    alpha=alpha,
+                    omega=omega,
+                    bias=bias,
+                    x=x.to(self.device),
+                    sigma=node_module.post_merge_function,
+                    **(
+                        {
+                            "padding": "same",
+                        }
+                        if not linear_alpha_layer
+                        else {}
+                    ),
+                )
+                new_block_output = torch.cat((new_block_output, out.cpu()))
+        expansion.metrics["block_output"] = new_block_output
+
         # Record layer extensions of new block
         i = 0
         alpha = alpha.view(self.neurons, -1)  # (neurons, total_in_features)
@@ -646,6 +681,26 @@ class GrowingGraphNetwork(GrowingContainer):
             fast=True,
             verbose=verbose,
         )
+
+        # Compute activity update
+        if isinstance(activity, str):
+            assert isinstance(bottleneck, str)
+            if len(activity_keys) <= 0 or len(bottleneck_keys) <= 0:
+                raise ValueError("At least one key is required for X and Y")
+            dataset = MemMapDataset(activity, bottleneck, activity_keys, bottleneck_keys)
+        elif isinstance(activity, torch.Tensor):
+            assert isinstance(bottleneck, torch.Tensor)
+            dataset = torch.utils.data.TensorDataset(activity, bottleneck)
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=self.neuron_batch_size, shuffle=False
+        )
+
+        with torch.no_grad():
+            new_layer_output = torch.empty(0)
+            for x, _ in dataloader:
+                x = x.to(device)
+                new_layer_output = torch.cat((new_layer_output, forward_fn(x).cpu()))
+        expansion.metrics["block_output"] = new_layer_output
 
         # Record layer extensions
         new_edge_module.optimal_delta_layer = new_edge_module.layer_of_tensor(
