@@ -144,7 +144,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def hidden_neurons(self) -> int:
-        """Fan-in size of the second layer
+        """Number of hidden neurons.
 
         Returns
         -------
@@ -155,7 +155,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def eigenvalues_extension(self) -> torch.Tensor | None:
-        """Get the eigenvalues extension of the second layer
+        """Get the eigenvalues extension of block
 
         Returns
         -------
@@ -166,7 +166,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def parameter_update_decrease(self) -> torch.Tensor | None:
-        """Get the parameter update decrease of the second layer
+        """Get the parameter update decrease of the block
 
         Returns
         -------
@@ -191,7 +191,7 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def scaling_factor(self) -> torch.Tensor:
-        """Get the scaling factor of the second layer
+        """Get the scaling factor of the block
 
         Returns
         -------
@@ -228,9 +228,9 @@ class GrowingBlock(GrowingContainer):
         if kwargs_layer is None:
             kwargs_layer = dict()
         if kwargs_first_layer is None:
-            kwargs_first_layer = kwargs_layer
+            kwargs_first_layer = kwargs_layer.copy()
         if kwargs_second_layer is None:
-            kwargs_second_layer = kwargs_layer
+            kwargs_second_layer = kwargs_layer.copy()
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -356,7 +356,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.cross_covariance.reset()
         self.second_layer.tensor_s_growth.reset()
 
-    def delete_update(self, **kwargs):
+    def delete_update(self, **kwargs: Any):
         """
         Delete the update of the block.
         """
@@ -525,7 +525,7 @@ class GrowingBlock(GrowingContainer):
             input_extension_init=input_extension_init,
         )
 
-    def normalize_optimal_updates(self, **kwargs) -> None:
+    def normalize_optimal_updates(self, **kwargs: Any) -> None:
         """
         Normalize the optimal updates.
         """
@@ -544,13 +544,13 @@ class GrowingBlock(GrowingContainer):
 
     def number_of_neurons_to_add(
         self,
-        **kwargs: dict,
+        **kwargs: str | int,
     ) -> int:
         """Get the number of neurons to add in the next growth step.
 
         Parameters
         ----------
-        **kwargs : dict
+        **kwargs : str | int
             method : str
                 Method to use for determining the number of neurons to add.
                 Options are "fixed_proportional".
@@ -752,7 +752,6 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
                 if kernel_size is None:
                     raise ValueError(f"kernel_size must be specified for {name}.")
                 kwargs["kernel_size"] = kernel_size
-                break
             elif kernel_size is not None:
                 warn(
                     f"kernel_size specified in both arguments and kwargs for {name}, "

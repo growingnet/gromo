@@ -14,7 +14,6 @@ import torch
 import torch.nn as nn
 
 from gromo.containers.growing_mlp import GrowingMLP, Perceptron
-from gromo.utils.utils import compute_tensor_stats
 from tests.test_growing_container import create_synthetic_data, gather_statistics
 from tests.torch_unittest import TorchTestCase
 

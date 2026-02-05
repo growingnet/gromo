@@ -186,37 +186,31 @@ class TestGrowingDAG(TorchTestCase):
         )
         self.assertEqual(
             set(self.dag.get_all_edge_modules()),
-            set(
-                [
-                    self.dag.get_edge_module(self.dag.root, self.dag.end),
-                    self.dag.get_edge_module(self.dag.root, "test"),
-                    self.dag.get_edge_module("test", self.dag.end),
-                ]
-            ),
+            {
+                self.dag.get_edge_module(self.dag.root, self.dag.end),
+                self.dag.get_edge_module(self.dag.root, "test"),
+                self.dag.get_edge_module("test", self.dag.end),
+            },
         )
 
     def test_get_all_node_modules(self) -> None:
         self.assertEqual(
             set(self.dag.get_all_node_modules()),
-            set(
-                [
-                    self.dag.get_node_module(self.dag.root),
-                    self.dag.get_node_module(self.dag.end),
-                ]
-            ),
+            {
+                self.dag.get_node_module(self.dag.root),
+                self.dag.get_node_module(self.dag.end),
+            },
         )
         self.dag.add_node_with_two_edges(
             self.dag.root, "test", self.dag.end, self.init_node_attributes
         )
         self.assertEqual(
             set(self.dag.get_all_node_modules()),
-            set(
-                [
-                    self.dag.get_node_module(self.dag.root),
-                    self.dag.get_node_module("test"),
-                    self.dag.get_node_module(self.dag.end),
-                ]
-            ),
+            {
+                self.dag.get_node_module(self.dag.root),
+                self.dag.get_node_module("test"),
+                self.dag.get_node_module(self.dag.end),
+            },
         )
 
     def test_add_direct_edge(self) -> None:
@@ -623,23 +617,23 @@ class TestGrowingDAG(TorchTestCase):
     def test_get_ancestors(self) -> None:
         start, end = self.dag.root, self.dag.end
         self.dag.add_direct_edge(start, end)
-        self.assertEqual(self.dag.ancestors[start], set([start]))
-        self.assertEqual(self.dag.ancestors[end], set([start, end]))
+        self.assertEqual(self.dag.ancestors[start], {start})
+        self.assertEqual(self.dag.ancestors[end], {start, end})
 
         self.dag.add_node_with_two_edges(
             start, "1", end, node_attributes=self.init_node_attributes
         )
-        self.assertEqual(self.dag.ancestors[start], set([start]))
-        self.assertEqual(self.dag.ancestors["1"], set([start, "1"]))
-        self.assertEqual(self.dag.ancestors[end], set([start, "1", end]))
+        self.assertEqual(self.dag.ancestors[start], {start})
+        self.assertEqual(self.dag.ancestors["1"], {start, "1"})
+        self.assertEqual(self.dag.ancestors[end], {start, "1", end})
 
         self.dag.add_node_with_two_edges(
             start, "2", "1", node_attributes=self.init_node_attributes
         )
-        self.assertEqual(self.dag.ancestors[start], set([start]))
-        self.assertEqual(self.dag.ancestors["1"], set([start, "2", "1"]))
-        self.assertEqual(self.dag.ancestors["2"], set([start, "2"]))
-        self.assertEqual(self.dag.ancestors[end], set([start, "2", "1", end]))
+        self.assertEqual(self.dag.ancestors[start], {start})
+        self.assertEqual(self.dag.ancestors["1"], {start, "2", "1"})
+        self.assertEqual(self.dag.ancestors["2"], {start, "2"})
+        self.assertEqual(self.dag.ancestors[end], {start, "2", "1", end})
 
     def test_indirect_connection_exists(self) -> None:
         start, end = self.dag.root, self.dag.end

@@ -1,7 +1,7 @@
 import copy
 import operator
 import warnings
-from typing import Callable, Iterator, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
 import numpy as np
 import torch
@@ -190,7 +190,7 @@ class GrowingGraphNetwork(GrowingContainer):
         bias: torch.Tensor,
         x: torch.Tensor,
         sigma: nn.Module,
-        **kwargs,
+        **kwargs: Any,
     ) -> torch.Tensor:
         """
         Output of block connection with specific weights
@@ -210,7 +210,7 @@ class GrowingGraphNetwork(GrowingContainer):
             input vector (*in_features, batch_size)
         sigma : nn.Module
             activation function
-        **kwargs
+        **kwargs : Any
 
         Returns
         -------

@@ -70,12 +70,12 @@ class TensorStatistic:
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
     @torch.no_grad()
-    def update(self, **kwargs: dict) -> tuple[torch.Tensor, int] | None:
+    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
         """Update tensor based on update_function
 
         Parameters
         ----------
-        **kwargs : dict
+        **kwargs : Any
 
         Returns
         -------
@@ -225,12 +225,12 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         return self._trace / self._batches
 
     @torch.no_grad()
-    def update(self, **kwargs: dict) -> tuple[torch.Tensor, int] | None:
+    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
         """Update tensor based on update_function
 
         Parameters
         ----------
-        **kwargs : dict
+        **kwargs : Any
 
         Returns
         -------

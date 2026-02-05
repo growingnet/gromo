@@ -3,7 +3,7 @@ import string
 import warnings
 from collections import deque
 from enum import Enum
-from typing import Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 import networkx as nx
 import torch
@@ -159,7 +159,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node_module in self.get_all_node_modules():
             node_module.reset_computation()
 
-    def compute_optimal_updates(self, *args, **kwargs):
+    def compute_optimal_updates(self, *args: Any, **kwargs: Any):
         """Compute optimal delta for growth procedure for all nodes"""
         self.compute_optimal_delta(*args, **kwargs)
 

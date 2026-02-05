@@ -1,5 +1,5 @@
 import warnings
-from typing import Iterator
+from typing import Any, Iterator
 
 import numpy as np
 import torch
@@ -223,7 +223,7 @@ class MergeGrowingModule(torch.nn.Module):
         else:
             raise ValueError(f"verbose={verbose} is not a valid value.")
 
-    def __repr__(self, *args, **kwargs):
+    def __repr__(self, *args: Any, **kwargs: Any):
         return self.__str__(*args, **kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -826,12 +826,12 @@ class GrowingModule(torch.nn.Module):
 
     @property
     def in_neurons(self) -> int:
-        """Fan-in size
+        """Number of input neurons
 
         Returns
         -------
         int
-            fan-in size
+            number of input neurons
 
         Raises
         ------
@@ -1072,7 +1072,7 @@ class GrowingModule(torch.nn.Module):
         else:
             raise ValueError(f"verbose={verbose} is not a valid value.")
 
-    def __repr__(self, *args, **kwargs):
+    def __repr__(self, *args: Any, **kwargs: Any):
         return self.__str__(*args, **kwargs)
 
     def __setattr__(self, key, value):
@@ -1607,13 +1607,13 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def add_parameters(self, **kwargs: dict) -> None:
+    def add_parameters(self, **kwargs: Any) -> None:
         """
         Grow the module by adding new parameters to the layer.
 
         Parameters
         ----------
-        **kwargs: dict
+        **kwargs: Any
             typically include the values of the new parameters to add to the layer
 
         Raises
