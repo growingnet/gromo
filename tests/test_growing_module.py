@@ -757,16 +757,9 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         # For now, just ensure the method can be called
         self.model.allow_growing = True
 
-        # Test that the method exists and can be called
-        try:
-            # Call without proper setup to potentially trigger some paths
+        # Incomplete setup: call is expected to raise.
+        with self.assertRaises((AssertionError, ValueError, RuntimeError)):
             self.model.compute_optimal_delta(update=False)
-        except (AssertionError, ValueError, RuntimeError):
-            # These are expected for incomplete setup
-            pass
-
-        # This ensures the method is executed and the coverage lines are hit
-        self.assertTrue(True)  # Test passes if we reach here
 
     def test_isinstance_merge_growing_module_check(self):
         """Test isinstance check for MergeGrowingModule."""
