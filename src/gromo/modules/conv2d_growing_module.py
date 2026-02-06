@@ -459,7 +459,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         AssertionError
             if the module has no previous modules (previous_modules is empty or falsy)
         """
-        assert self.previous_modules, f"No previous modules for {self.name}."
+        if not self.previous_modules:
+            raise AssertionError(f"No previous modules for {self.name}.")
         n = self.previous_modules[0].input.shape[0]
         nb_patch = int(self.previous_modules[0].output_volume / self.in_channels)
         full_activity = torch.ones(
