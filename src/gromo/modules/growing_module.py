@@ -2220,8 +2220,10 @@ class GrowingModule(torch.nn.Module):
 
         Raises
         ------
+        ValueError
+            If ``initialization_method`` is not one of the supported methods.
         NotImplementedError
-            if the previous module is not of type GrowingModule
+            If the previous module is not of type GrowingModule.
         """
         # Validate and get method config
         if initialization_method not in _METHOD_CONFIGS:

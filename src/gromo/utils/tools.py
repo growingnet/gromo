@@ -151,25 +151,36 @@ def compute_optimal_added_parameters(
 
     Parameters
     ----------
-    matrix_s: torch.Tensor | None in (s, s)
-        Square matrix S. If None, identity matrix is used.
-    matrix_n: torch.Tensor in (s, t)
-        Matrix N (correlation matrix)
-    numerical_threshold: float
+    matrix_s : torch.Tensor | None
+        Square matrix S of shape (s, s). If None, identity matrix is used.
+    matrix_n : torch.Tensor
+        Matrix N (correlation matrix) of shape (s, t).
+    numerical_threshold : float
         Threshold to consider an eigenvalue as zero in square root of inverse of S
-    statistical_threshold: float
+    statistical_threshold : float
         Threshold to consider a singular value as zero in the SVD
-    maximum_added_neurons: int | None
+    maximum_added_neurons : int | None
         Maximum number of added neurons, if None all significant neurons are kept
-    alpha_zero: bool
+    alpha_zero : bool
         If True, set alpha (incoming weights) to zero, else compute from SVD.
         When True, omega uses orthonormal singular vectors (GradMax-style).
         When False, both alpha and omega are scaled by sqrt(s) (TINY-style).
 
     Returns
     -------
-    tuple[torch.Tensor, torch.Tensor, torch.Tensor] in (k, s) (t, k) (k,)
-        Optimal added weights alpha, omega and singular values s
+    torch.Tensor
+        Optimal added weights alpha, shape (k, s).
+    torch.Tensor
+        Optimal added weights omega, shape (t, k).
+    torch.Tensor
+        Singular values s, shape (k,).
+
+    Raises
+    ------
+    ValueError
+        If ``alpha_zero`` is False and ``matrix_s`` is None (S required for TINY).
+    torch.linalg.LinAlgError
+        If SVD of S^{-1/2} N fails.
     """
     # Validate inputs
     n_1, _ = matrix_n.shape

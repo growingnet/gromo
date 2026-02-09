@@ -415,6 +415,11 @@ class GrowingBlock(GrowingContainer):
         instead of the projected gradient. A warning will be issued if the method
         expects projection (e.g., TINY method).
 
+        Raises
+        ------
+        ValueError
+            If ``initialization_method`` is not one of the supported methods.
+
         Returns
         -------
         tuple[torch.Tensor | None, torch.Tensor | None]
