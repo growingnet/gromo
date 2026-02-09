@@ -2,7 +2,12 @@ import unittest
 
 import torch
 
-from gromo.utils.dependence_estimator import *
+from gromo.utils.dependence_estimator import (
+    HSIC,
+    calculate_dependency,
+    center_kernel_matrix,
+    gaussian_kernel,
+)
 from tests.torch_unittest import TorchTestCase
 
 
@@ -108,12 +113,12 @@ class TestDependenceEstimator(TorchTestCase):
 
         # Test with normalization disabled
         result_no_norm = calculate_dependency(X_inputs, Y, n_samples, normalize=False)
-        for key in result.keys():
+        for key in result:
             self.assertNotEqual(result[key].item(), result_no_norm[key].item())
 
         # More samples
         result_more_samples = calculate_dependency(X_inputs, Y, n_samples=20)
-        for key in result.keys():
+        for key in result:
             self.assertNotEqual(result[key], result_more_samples[key])
 
 

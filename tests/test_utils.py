@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
+from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
+from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.utils import (
     activation_fn,
     batch_gradient_descent,
@@ -18,7 +20,6 @@ from gromo.utils.utils import (
     line_search,
     mini_batch_gradient_descent,
     reset_device,
-    safe_forward,
     set_device,
     set_from_conf,
     torch_ones,
@@ -143,8 +144,8 @@ class TestUtils(TorchTestCase):
             with self.subTest(device=device_name):
                 set_device(device_name)
 
-                callable_forward = lambda x: x**2 + 1  # noqa: E731
-                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)  # noqa: E731
+                callable_forward = lambda x: x**2 + 1
+                cost_fn = lambda pred, y: torch.sum((pred - y) ** 2)
                 x = torch.rand((5, 2), requires_grad=True, device=global_device())
                 y = torch.rand((5, 1), device=global_device())
                 lrate = 1e-3
@@ -191,7 +192,7 @@ class TestUtils(TorchTestCase):
 
                 # Test with model
                 model = nn.Linear(2, 1, device=global_device())
-                eval_fn = lambda: None  # noqa: E731
+                eval_fn = lambda: None
                 mini_batch_gradient_descent(
                     model=model,
                     cost_fn=cost_fn,
@@ -349,7 +350,7 @@ class TestUtils(TorchTestCase):
         self.assertGreater(f1_macro_score, 0.0)
         self.assertLess(f1_macro_score, 1.0)
 
-    def test_safe_forward(self) -> None:
+    def test_safe_forward_linear(self) -> None:
         """Test safe_forward function for Linear layers with various input configurations."""
         # Test on each available device
         for device_name in self.available_devices:
@@ -362,12 +363,14 @@ class TestUtils(TorchTestCase):
                 out_features = 3
                 batch_size = 4
 
-                # Create a mock linear layer
-                linear_layer = nn.Linear(in_features, out_features, device=device)
+                # Create a linear layer
+                linear_layer = LinearGrowingModule(
+                    in_features=in_features, out_features=out_features, device=device
+                )
 
                 # Test normal forward pass
                 input_tensor = torch.randn(batch_size, in_features, device=device)
-                output = safe_forward(linear_layer, input_tensor)
+                output = linear_layer(input_tensor)
 
                 self.assertShapeEqual(output, (batch_size, out_features))
                 # Compare with normal linear forward
@@ -378,41 +381,163 @@ class TestUtils(TorchTestCase):
 
                 # Test with zero input features (edge case)
                 zero_in_features = 0
-                zero_linear = nn.Linear(zero_in_features, out_features, device=device)
+                with self.assertWarns(UserWarning):
+                    # Initializing zero-element tensors is a no-op
+                    zero_linear = LinearGrowingModule(
+                        in_features=zero_in_features,
+                        out_features=out_features,
+                        device=device,
+                    )
                 zero_input = torch.empty(batch_size, zero_in_features, device=device)
 
-                zero_output = safe_forward(zero_linear, zero_input)
+                zero_output = zero_linear(zero_input)
                 self.assertShapeEqual(zero_output, (batch_size, out_features))
                 # Should return zeros with requires_grad=True
                 self.assertTrue(torch.all(zero_output == 0))
                 self.assertTrue(zero_output.requires_grad)
 
-                # Test input shape mismatch (should raise AssertionError)
-                wrong_input = torch.randn(batch_size, in_features + 1, device=device)
-                with self.assertRaises(AssertionError) as context:
-                    safe_forward(linear_layer, wrong_input)
-
-                self.assertIn("Input shape", str(context.exception))
-                self.assertIn("must match the input feature size", str(context.exception))
-
                 # Test with different batch dimensions
                 input_3d = torch.randn(2, 3, in_features, device=device)
-                output_3d = safe_forward(linear_layer, input_3d)
+                output_3d = linear_layer(input_3d)
                 self.assertShapeEqual(output_3d, (2, 3, out_features))
 
                 # Test with single sample
                 input_single = torch.randn(1, in_features, device=device)
-                output_single = safe_forward(linear_layer, input_single)
+                output_single = linear_layer(input_single)
                 self.assertShapeEqual(output_single, (1, out_features))
 
                 # Test without bias
-                linear_no_bias = nn.Linear(
-                    in_features, out_features, bias=False, device=device
+                linear_no_bias = LinearGrowingModule(
+                    in_features=in_features,
+                    out_features=out_features,
+                    use_bias=False,
+                    device=device,
                 )
-                output_no_bias = safe_forward(linear_no_bias, input_tensor)
+                output_no_bias = linear_no_bias(input_tensor)
                 self.assertShapeEqual(output_no_bias, (batch_size, out_features))
                 expected_no_bias = torch.nn.functional.linear(
                     input_tensor, linear_no_bias.weight, None
+                )
+                self.assertAllClose(output_no_bias, expected_no_bias)
+
+    def test_safe_forward_convolution(self) -> None:
+        """Test safe_forward function for Conv2d layers with various input configurations."""
+        # Test on each available device
+        for device_name in self.available_devices:
+            with self.subTest(device=device_name):
+                set_device(device_name)
+                device = global_device()
+
+                # Test normal case with non-zero features
+                in_channels = 5
+                out_channels = 3
+                kernel_size = (3, 3)
+                input_size = (5, 5)
+                output_size = (3, 3)
+                batch_size = 4
+
+                # Create a conv layer
+                conv_layer = Conv2dGrowingModule(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    kernel_size=kernel_size,
+                    input_size=input_size,
+                    device=device,
+                )
+
+                # Test normal forward pass
+                input_tensor = torch.randn(
+                    batch_size, in_channels, *input_size, device=device
+                )
+                output = conv_layer(input_tensor)
+
+                self.assertShapeEqual(output, (batch_size, out_channels, *output_size))
+                # Compare with normal conv forward
+                expected_output = torch.nn.functional.conv2d(
+                    input_tensor, conv_layer.weight, conv_layer.bias
+                )
+                self.assertAllClose(output, expected_output)
+
+                # Test with zero input channels (edge case)
+                zero_in_channels = 0
+                with self.assertWarns(UserWarning):
+                    # Initializing zero-element tensors is a no-op
+                    zero_conv = Conv2dGrowingModule(
+                        in_channels=zero_in_channels,
+                        out_channels=out_channels,
+                        kernel_size=kernel_size,
+                        input_size=input_size,
+                        device=device,
+                    )
+                zero_input = torch.empty(
+                    batch_size, zero_in_channels, *input_size, device=device
+                )
+
+                zero_output = zero_conv(zero_input)
+                self.assertShapeEqual(
+                    zero_output, (batch_size, out_channels, *output_size)
+                )
+                # Should return zeros with requires_grad=True
+                self.assertTrue(torch.all(zero_output == 0))
+                self.assertTrue(zero_output.requires_grad)
+
+                # Test with zero output channels (edge case)
+                zero_out_channels = 0
+                with self.assertWarns(UserWarning):
+                    # Initializing zero-element tensors is a no-op
+                    zero_conv = Conv2dGrowingModule(
+                        in_channels=in_channels,
+                        out_channels=zero_out_channels,
+                        kernel_size=kernel_size,
+                        input_size=input_size,
+                        device=device,
+                    )
+                zero_output = zero_conv(input_tensor)
+                self.assertShapeEqual(
+                    zero_output, (batch_size, zero_out_channels, *output_size)
+                )
+                # Should return zeros with requires_grad=True
+                self.assertTrue(torch.all(zero_output == 0))
+                self.assertTrue(zero_output.requires_grad)
+
+                # Test with both zero input and output channels
+                with self.assertWarns(UserWarning):
+                    # Initializing zero-element tensors is a no-op
+                    zero_conv = Conv2dGrowingModule(
+                        in_channels=zero_in_channels,
+                        out_channels=zero_out_channels,
+                        kernel_size=kernel_size,
+                        input_size=input_size,
+                        device=device,
+                    )
+                zero_output = zero_conv(zero_input)
+                self.assertShapeEqual(
+                    zero_output, (batch_size, zero_out_channels, *output_size)
+                )
+                # Should return zeros with requires_grad=True
+                self.assertTrue(torch.all(zero_output == 0))
+                self.assertTrue(zero_output.requires_grad)
+
+                # Test with single sample
+                input_single = torch.randn(1, in_channels, *input_size, device=device)
+                output_single = conv_layer(input_single)
+                self.assertShapeEqual(output_single, (1, out_channels, *output_size))
+
+                # Test without bias
+                conv_no_bias = Conv2dGrowingModule(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    use_bias=False,
+                    kernel_size=kernel_size,
+                    input_size=input_size,
+                    device=device,
+                )
+                output_no_bias = conv_no_bias(input_tensor)
+                self.assertShapeEqual(
+                    output_no_bias, (batch_size, out_channels, *output_size)
+                )
+                expected_no_bias = torch.nn.functional.conv2d(
+                    input_tensor, conv_no_bias.weight, None
                 )
                 self.assertAllClose(output_no_bias, expected_no_bias)
 
