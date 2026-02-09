@@ -1413,42 +1413,46 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertGreater(m_samples, 0)
 
     def test_negative_parameter_update_decrease_paths(self):
-        """Test error paths for problematic parameter computations"""
+        """Test that the layer emits the expected warning when parameter_update_decrease is negative.
+
+        We use a full init/forward/backward/update_computation setup so compute_optimal_delta
+        runs with valid S and M. We then mock torch.trace to return a negative value so that
+        optimal_delta (in tools) takes the warning path and we can assert on it.
+        """
         from unittest.mock import patch
 
-        # Create a layer and set up for computation
         layer = LinearGrowingModule(2, 2, device=global_device(), name="test_layer")
-
-        # Set up basic tensors to trigger the problematic computation path
         layer.init_computation()
         layer.store_input = True
         layer.store_pre_activity = True
 
-        # Create a simple forward pass
-        x = torch.randn(3, 2, device=global_device())
-        _ = layer(x)
+        # Full setup so tensor_s and tensor_m are valid
+        x = torch.randn(3, 2, device=global_device(), requires_grad=True)
+        out = layer(x)
+        out.sum().backward()
+        layer.update_computation()
 
-        # Try to force a negative parameter update decrease scenario
-        # by creating problematic tensor conditions
-        with patch("warnings.warn") as mock_warn:
-            try:
-                # This test is mainly to increase coverage of the error handling paths
-                # We create conditions that might trigger the warning paths
+        # Force the negative parameter_update_decrease path (same pattern as test_tools)
+        with patch("gromo.utils.tools.warn") as mock_warn:
+            with patch(
+                "torch.trace", return_value=torch.tensor(-1.0, device=global_device())
+            ):
                 layer.compute_optimal_delta(update=False)
 
-                # Check if any warnings about parameter update decrease were called
-                warning_calls = [
-                    call
-                    for call in mock_warn.call_args_list
-                    if "parameter update decrease" in str(call)
-                ]
-
-                # The test passes if we exercised the code paths, regardless of warnings
-                self.assertTrue(True)  # Code paths exercised
-
-            except (AssertionError, ValueError, RuntimeError):
-                # Expected failures for incomplete/problematic tensor conditions.
-                self.assertTrue(True)  # Error paths exercised
+            warning_calls = [
+                call
+                for call in mock_warn.call_args_list
+                if "parameter update decrease" in str(call)
+            ]
+            self.assertGreater(
+                len(warning_calls),
+                0,
+                "Expected at least one 'parameter update decrease' warning when trace is mocked negative",
+            )
+            self.assertTrue(
+                all("should be positive" in str(call) for call in warning_calls),
+                "parameter update decrease warnings should contain 'should be positive'",
+            )
 
     def test_zero_bottleneck(self):
         """Test behavior when bottleneck is fully resolved

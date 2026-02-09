@@ -1283,7 +1283,7 @@ class TestMergeGrowingModuleComputeOptimalDelta(TorchTestCase):
         self.assertEqual(len(deltas), 1)
 
         # Verify deltas are tensors with correct shapes
-        delta_w, delta_b = deltas[0]
+        delta_w, _ = deltas[0]
         self.assertIsInstance(delta_w, torch.Tensor)
         self.assertFalse(torch.isnan(delta_w).any())
 
