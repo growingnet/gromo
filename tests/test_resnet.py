@@ -423,7 +423,9 @@ class TestResNet(TorchTestCase):
             "output_extension_init": "zeros",
             "input_extension_init": "zeros",
         }
-        model.complete_growth(extension_kwargs=extension_kwargs)
+        with self.assertWarns(UserWarning):
+            # The scaling factor is null. The input extension will have no effect.
+            model.complete_growth(extension_kwargs=extension_kwargs)
 
         # Verify that hidden neurons increased
         new_neurons = first_block.hidden_neurons

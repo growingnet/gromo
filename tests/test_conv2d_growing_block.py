@@ -62,7 +62,7 @@ class TestConv2dGrowingBlock(TorchTestCase):
         # Check basic properties
         self.assertEqual(block.in_features, self.in_channels)
         self.assertEqual(block.out_features, self.out_channels)
-        self.assertEqual(block.hidden_features, self.hidden_channels)
+        self.assertEqual(block.hidden_neurons, self.hidden_channels)
         self.assertEqual(block.name, "test_conv_block")
 
         # Check layer configurations
@@ -167,7 +167,7 @@ class TestConv2dGrowingBlock(TorchTestCase):
         block.apply_change()
 
         # Verify the block grew
-        self.assertEqual(block.hidden_features, self.hidden_channels + added_neurons)
+        self.assertEqual(block.hidden_neurons, self.hidden_channels + added_neurons)
         self.assertEqual(
             block.first_layer.out_channels, self.hidden_channels + added_neurons
         )

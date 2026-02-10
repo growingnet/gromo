@@ -1,3 +1,4 @@
+from typing import Optional
 from warnings import warn
 
 import numpy as np
@@ -371,7 +372,7 @@ def full_search(
     loss: nn.Module,
     dataloader: torch.utils.data.DataLoader,
     batch_limit: int = 1_000_000,
-    initial_loss: float = None,
+    initial_loss: Optional[float] = None,
     first_order_improvement: float = 1,
     min_value: float = -100,
     max_value: float = 100,

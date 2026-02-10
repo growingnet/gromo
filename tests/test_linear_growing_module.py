@@ -1452,13 +1452,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
                 # We create conditions that might trigger the warning paths
                 layer.compute_optimal_delta(update=False)
 
-                # Check if any warnings about parameter update decrease were called
-                warning_calls = [
-                    call
-                    for call in mock_warn.call_args_list
-                    if "parameter update decrease" in str(call)
-                ]
-
                 # The test passes if we exercised the code paths, regardless of warnings
                 self.assertTrue(True)  # Code paths exercised
 
@@ -3045,12 +3038,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
 
         # Test input feature addition
         try:
-            layer.add_parameters(
-                matrix_extension=torch.randn(3, 2, device=global_device()),
-                bias_extension=None,
-                added_in_features=2,
-                added_out_features=0,
-            )
+            with self.assertWarns(UserWarning):
+                # The size has been changed but it is up to the user to change the connected layers.
+                layer.add_parameters(
+                    matrix_extension=torch.randn(3, 2, device=global_device()),
+                    bias_extension=None,
+                    added_in_features=2,
+                    added_out_features=0,
+                )
             self.assertEqual(layer.weight.shape[1], original_weight_shape[1] + 2)
         except (AssertionError, ValueError, RuntimeError):
             pass  # Configs where addition may fail.
@@ -3060,12 +3055,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
 
         # Test output feature addition
         try:
-            layer.add_parameters(
-                matrix_extension=torch.randn(2, 4, device=global_device()),
-                bias_extension=torch.randn(2, device=global_device()),
-                added_in_features=0,
-                added_out_features=2,
-            )
+            with self.assertWarns(UserWarning):
+                # The size has been changed but it is up to the user to change the connected layers.
+                layer.add_parameters(
+                    matrix_extension=torch.randn(2, 4, device=global_device()),
+                    bias_extension=torch.randn(2, device=global_device()),
+                    added_in_features=0,
+                    added_out_features=2,
+                )
             self.assertEqual(layer.weight.shape[0], 3 + 2)
         except (AssertionError, ValueError, RuntimeError):
             pass  # Configs where addition may fail.
@@ -4097,7 +4094,9 @@ class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
         self.assertEqual(layer2.missing_neurons(), 3)
 
         # Complete growth
-        layer2.complete_growth(extension_kwargs={})
+        with self.assertWarns(UserWarning):
+            # The scaling factor is null. The input extension will have no effect.
+            layer2.complete_growth(extension_kwargs={})
 
         # Verify final state
         self.assertEqual(layer2.in_features, 6)

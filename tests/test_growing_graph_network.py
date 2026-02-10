@@ -307,8 +307,9 @@ class TestGrowingGraphNetwork(TorchTestCase):
 
     @unittest_parametrize(({"evaluate": True}, {"evaluate": False}))
     def test_execute_expansions(self, evaluate: bool) -> None:
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
+        with self.assertWarnsRegex(
+            UserWarning, ".*Initializing zero-element tensors is a no-op.*"
+        ):
             self.net.execute_expansions(
                 self.actions,
                 self.bottleneck,
@@ -511,7 +512,10 @@ class TestGrowingGraphNetwork(TorchTestCase):
         options = self.net_conv.dag.define_next_actions()
         for opt in options:
             opt.metrics["scaling_factor"] = 1
-            opt.expand()
+            with self.assertMaybeWarns(
+                UserWarning, "Initializing zero-element tensors is a no-op"
+            ):
+                opt.expand()
         self.assertIn("2@_a", self.net_conv.dag)
         self.assertIn("2@_b", self.net_conv.dag)
 
@@ -548,7 +552,10 @@ class TestGrowingGraphNetwork(TorchTestCase):
         options = self.net_conv.dag.define_next_actions(expand_end=True)
         for opt in options:
             opt.metrics["scaling_factor"] = 1
-            opt.expand()
+            with self.assertMaybeWarns(
+                UserWarning, "Initializing zero-element tensors is a no-op"
+            ):
+                opt.expand()
         self.net_conv.dag.get_edge_module("1", end).extended_output_layer = (
             torch.nn.Conv2d(
                 in_channels=self.net_conv.neurons,
@@ -670,12 +677,15 @@ class TestGrowingGraphNetwork(TorchTestCase):
             start_conv: x,
         }
 
-        self.net_conv.expand_node(
-            expansion=expansion,
-            bottlenecks=bottleneck,
-            activities=activity,
-            verbose=False,
-        )
+        with self.assertWarnsRegex(
+            UserWarning, ".*Node end@lin does not belong in the current GrowingDAG().*"
+        ):
+            self.net_conv.expand_node(
+                expansion=expansion,
+                bottlenecks=bottleneck,
+                activities=activity,
+                verbose=False,
+            )
 
         layer_alpha = self.net_conv.dag.get_edge_module(
             start_conv, end_conv

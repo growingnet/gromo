@@ -5,9 +5,10 @@ import torch.nn as nn
 
 from gromo.containers.growing_mlp_mixer import GrowingMLPMixer
 from tests.test_growing_container import create_synthetic_data, gather_statistics
+from tests.torch_unittest import TorchTestCase
 
 
-class TestGrowingMLPMixer(unittest.TestCase):
+class TestGrowingMLPMixer(TorchTestCase):
     def setUp(self):
         # Create synthetic data
         self.in_features = (3, 32, 32)
@@ -40,7 +41,8 @@ class TestGrowingMLPMixer(unittest.TestCase):
 
         # Compute the optimal updates
         gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
+        with self.assertMaybeWarns(UserWarning, "The input matrix S is not symmetric"):
+            self.model.compute_optimal_updates()
 
     def test_init(self):
         l1 = GrowingMLPMixer(

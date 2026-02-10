@@ -29,7 +29,7 @@ jobs:
 
       - name: Run ruff linting
         run: |
-          ruff check --output-format=github .
+          ruff check --output-format=github src tests
 
       - name: Run ruff formatting check
         run: |

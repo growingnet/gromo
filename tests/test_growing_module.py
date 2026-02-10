@@ -39,36 +39,40 @@ class TestGrowingModule(TorchTestCase):
         self.second_layer_ext = torch.nn.Linear(7, 5, device=global_device(), bias=False)
 
     def test_activation_gradient_sequential(self):
-        model_in = GrowingModule(
-            layer=torch.nn.Identity(),
-            post_layer_function=torch.nn.Sequential(
-                torch.nn.ReLU(),
-                ReLUSigmoid(),
-                ReLUSigmoid(),
-            ),
-            allow_growing=False,
-        )
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
+            model_in = GrowingModule(
+                layer=torch.nn.Identity(),
+                post_layer_function=torch.nn.Sequential(
+                    torch.nn.ReLU(),
+                    ReLUSigmoid(),
+                    ReLUSigmoid(),
+                ),
+                allow_growing=False,
+            )
 
-        model_out = GrowingModule(
-            layer=torch.nn.Identity(),
-            previous_module=model_in,
-        )
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
+            model_out = GrowingModule(
+                layer=torch.nn.Identity(),
+                previous_module=model_in,
+            )
         with self.assertWarns(UserWarning):
             value = model_out.activation_gradient.item()
         self.assertIsInstance(value, float)
         self.assertAlmostEqual(value, 0.0625, places=2)
 
     def test_activation_gradient_automatic_differentiation(self):
-        model_in = GrowingModule(
-            layer=torch.nn.Identity(),
-            post_layer_function=ReLUSigmoid(),
-            allow_growing=False,
-        )
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
+            model_in = GrowingModule(
+                layer=torch.nn.Identity(),
+                post_layer_function=ReLUSigmoid(),
+                allow_growing=False,
+            )
 
-        model_out = GrowingModule(
-            layer=torch.nn.Identity(),
-            previous_module=model_in,
-        )
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
+            model_out = GrowingModule(
+                layer=torch.nn.Identity(),
+                previous_module=model_in,
+            )
         with self.assertWarns(UserWarning):
             value = model_out.activation_gradient.item()
         self.assertIsInstance(value, float)
@@ -88,7 +92,7 @@ class TestGrowingModule(TorchTestCase):
         - with fixed post layer size (crash)
         - with variable post layer size (no crash)
         """
-        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
             model = GrowingModule(
                 self.first_layer,
                 post_layer_function=SizedIdentity(2),
@@ -98,7 +102,7 @@ class TestGrowingModule(TorchTestCase):
         with self.assertRaises(ValueError):
             model.extended_forward(self.x)
 
-        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
             model = GrowingModule(
                 self.first_layer,
                 post_layer_function=SizedIdentity(2),
@@ -139,7 +143,7 @@ class TestGrowingModule(TorchTestCase):
 
         # ========== Test with out extension ==========
         # extended input without extension crashes
-        with self.assertWarns(UserWarning):  # x_ext must be None
+        with self.assertWarnsRegex(UserWarning, ".*x_ext must be None.*"):
             self.model.extended_forward(self.x, self.x_ext)
 
         self.model.extended_output_layer = self.layer_out_extension
@@ -158,14 +162,14 @@ class TestGrowingModule(TorchTestCase):
         self.assertIsInstance(repr(self.model), str)
 
     def test_init(self):
-        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
             GrowingModule(
                 self.layer,
                 extended_post_layer_function=SizedIdentity(2),
                 allow_growing=False,
             )
 
-        with self.assertWarns(UserWarning):  # The tensor S shape is not provided
+        with self.assertWarnsRegex(UserWarning, ".*The tensor S shape is not provided.*"):
             GrowingModule(
                 self.layer,
                 extended_post_layer_function=torch.nn.Sequential(
@@ -265,8 +269,9 @@ class TestGrowingModule(TorchTestCase):
 
         # incorrect behavior
         reset(l1, False)
-        with self.assertWarns(UserWarning):
-            # No previous module is associated with this layer
+        with self.assertWarnsRegex(
+            UserWarning, ".*no previous module is associated with this layer.*"
+        ):
             l1.delete_update()
 
         # incorrect behavior
@@ -1253,7 +1258,7 @@ class TestMergeGrowingModuleComputeOptimalDelta(TorchTestCase):
         self.assertEqual(len(deltas), 1)
 
         # Verify deltas are tensors with correct shapes
-        delta_w, delta_b = deltas[0]
+        delta_w, _ = deltas[0]
         self.assertIsInstance(delta_w, torch.Tensor)
         self.assertFalse(torch.isnan(delta_w).any())
 
