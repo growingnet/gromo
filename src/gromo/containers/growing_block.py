@@ -377,7 +377,6 @@ class GrowingBlock(GrowingContainer):
         numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
-        update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
         initialization_method: str = "tiny",
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
@@ -396,8 +395,6 @@ class GrowingBlock(GrowingContainer):
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
-        update_previous: bool
-            whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
         initialization_method: str
@@ -466,7 +463,7 @@ class GrowingBlock(GrowingContainer):
                     numerical_threshold=numerical_threshold,
                     statistical_threshold=statistical_threshold,
                     maximum_added_neurons=maximum_added_neurons,
-                    update_previous=update_previous,
+                    update_previous=True,
                     dtype=dtype,
                     use_covariance=config["use_covariance"],
                     alpha_zero=config["alpha_zero"],
@@ -483,7 +480,7 @@ class GrowingBlock(GrowingContainer):
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
-            update_previous=update_previous,
+            update_previous=True,
             dtype=dtype,
             initialization_method=initialization_method,
         )
