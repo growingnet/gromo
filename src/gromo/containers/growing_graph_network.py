@@ -520,17 +520,19 @@ class GrowingGraphNetwork(GrowingContainer):
                     ),
                 )
                 new_block_output = torch.cat((new_block_output, out.cpu()))
-        expansion.metrics["block_output"] = new_block_output
+        expansion.metrics["block_output"] = {}
 
         # Record layer extensions of new block
         i = 0
-        alpha = alpha.view(self.neurons, -1)  # (neurons, total_in_features)
         for i_edge, prev_edge_module in enumerate(expansion.in_edges):
             # Output extension for alpha weights
-            in_features = int(prev_edge_module.in_features)  # type: ignore
-            prev_edge_module._scaling_factor_next_module[0] = 1  # type: ignore
+            if isinstance(prev_edge_module, LinearGrowingModule):
+                in_features = prev_edge_module.in_features
+            elif isinstance(prev_edge_module, Conv2dGrowingModule):
+                in_features = prev_edge_module.in_channels
+            prev_edge_module._scaling_factor_next_module[0] = 1
 
-            _weight = alpha[:, i : i + in_features]
+            _weight = alpha[:, i : i + in_features, :]
             _weight = _weight.view((self.neurons, *prev_edge_module.weight.shape[1:]))
             _bias = bias[:, i_edge]
 
@@ -539,24 +541,20 @@ class GrowingGraphNetwork(GrowingContainer):
                 bias=_bias,
             )  # bias is mandatory
             i += in_features
+
         i = 0
-        omega = omega.view(-1, self.neurons)  # (total_out_features, neurons)
         for next_edge_module in expansion.out_edges:
             # Input extension for omega weights
             if isinstance(next_edge_module, LinearGrowingModule):
-                out_features = int(next_edge_module.out_features)  # type: ignore
+                out_features = next_edge_module.out_features
                 next_edge_module.extended_input_layer = nn.Linear(
                     self.neurons, out_features, bias=False
                 )
             elif isinstance(next_edge_module, Conv2dGrowingModule):
-                out_features = int(
-                    next_edge_module.out_channels
-                    * next_edge_module.kernel_size[0]
-                    * next_edge_module.kernel_size[1]
-                )
+                out_features = next_edge_module.out_channels
                 next_edge_module.extended_input_layer = nn.Conv2d(
                     in_channels=self.neurons,
-                    out_channels=next_edge_module.out_channels,
+                    out_channels=out_features,
                     bias=False,
                     kernel_size=next_edge_module.layer.kernel_size,
                     stride=next_edge_module.layer.stride,
@@ -564,6 +562,10 @@ class GrowingGraphNetwork(GrowingContainer):
                     dilation=next_edge_module.layer.dilation,
                 )
             next_edge_module.scaling_factor = 1  # type: ignore
+
+            expansion.metrics["block_output"][next_edge_module.next_module._name] = (
+                new_block_output[:, i : i + out_features, :]
+            )
 
             _weight = omega[i : i + out_features, :]
             _weight = _weight.view(
@@ -705,9 +707,9 @@ class GrowingGraphNetwork(GrowingContainer):
         with torch.no_grad():
             new_layer_output = torch.empty(0)
             for x, _ in dataloader:
-                x = x.to(device)
+                x = x.to(self.device)
                 new_layer_output = torch.cat((new_layer_output, forward_fn(x).cpu()))
-        expansion.metrics["block_output"] = new_layer_output
+        expansion.metrics["block_output"][next_node_module._name] = new_layer_output
 
         # Record layer extensions
         new_edge_module.optimal_delta_layer = new_edge_module.layer_of_tensor(
