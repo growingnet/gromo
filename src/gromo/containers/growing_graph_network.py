@@ -243,7 +243,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # If activity has extra trailing singleton dims like (b, c, 1, 1)
         if activity.dim() == bottleneck.dim() + 2 and activity.shape[2:] == (1, 1):
             activity = activity.squeeze(-1).squeeze(-1)
-        loss = activity - bottleneck
+        loss = activity - bottleneck + 0.001 * torch.sum(activity**2)
         return (loss**2).sum() / loss.numel()
 
     def bi_level_bottleneck_optimization(
@@ -498,7 +498,7 @@ class GrowingGraphNetwork(GrowingContainer):
             new_block_output = torch.empty(0)
             for x, _ in dataloader:
                 out = self.block_forward(
-                    layer_fn=F.linear if linear_alpha_layer else F.conv2d,
+                    layer_fn=func.linear if linear_alpha_layer else func.conv2d,
                     alpha=alpha,
                     omega=omega,
                     bias=bias,

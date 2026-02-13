@@ -1,4 +1,5 @@
 import copy
+import math
 import string
 import warnings
 from collections import deque
@@ -1345,6 +1346,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             merge_module = self.get_node_module(node)
             if verbose:
                 print("\t-->", merge_module)
+            output[node] = output[node] / math.sqrt(
+                max(1, len(merge_module.previous_modules))
+            )
             output[node] = merge_module(output[node])
         if verbose:
             print()
@@ -1432,6 +1436,17 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             merge_module = self.get_node_module(node)
             if verbose:
                 print("\t-->", merge_module)
+
+            output[node] = (
+                output[node][0] / math.sqrt(max(1, len(merge_module.previous_modules))),
+                (
+                    output[node][1]
+                    / math.sqrt(max(1, len(merge_module.previous_modules)))
+                    if output[node][1] is not None
+                    else None
+                ),
+            )
+
             output[node] = (
                 merge_module(output[node][0]),
                 merge_module(output[node][1]),
