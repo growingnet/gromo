@@ -461,6 +461,13 @@ class GrowingGraphNetwork(GrowingContainer):
         alpha = alpha.detach().clone().requires_grad_()
         omega = omega.detach().clone().requires_grad_()
         bias = bias.detach().clone().requires_grad_()
+        sigma = copy.copy(node_module.post_merge_function)
+        if isinstance(sigma, torch.nn.Sequential):
+            for i, module in enumerate(sigma):
+                if hasattr(module, "grow"):
+                    sigma[i] = torch.nn.Identity()
+        elif hasattr(sigma, "grow"):
+            sigma = torch.nn.Identity()
 
         # Gradient descent on bottleneck
         # [bi-level]  loss = edge_weight - bottleneck
@@ -470,7 +477,7 @@ class GrowingGraphNetwork(GrowingContainer):
             omega=omega,
             bias=bias,
             B=input_x,
-            sigma=node_module.post_merge_function,
+            sigma=sigma,
             bottleneck=bottleneck,
             input_keys=input_x_keys,
             target_keys=bottleneck_keys,
