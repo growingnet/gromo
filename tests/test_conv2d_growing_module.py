@@ -284,7 +284,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             input_size=m.output_size,
             device=global_device(),
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(AssertionError), self.assertWarns(UserWarning):
+            # You are setting the next modules with a non-empty tensor S
             m.set_next_modules([n1, n3])
 
         # Kernel size mismatch between merge and next -> assertion
@@ -1474,7 +1475,11 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_couple[1].update_computation()
         demo_couple[1].tensor_s_growth.update()
 
-        demo_couple[1].compute_optimal_delta()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            demo_couple[1].compute_optimal_delta()
         demo_couple[1].delta_raw *= 0
 
         self.assertAllClose(
@@ -1910,7 +1915,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
 
         # Update input sizes
         # Access bordered_unfolded_extended_prev_input - this should not crash
-        bordered_tensor = current_module.bordered_unfolded_extended_prev_input
+        with self.assertWarns(UserWarning):
+            # The input size of the layer has changed
+            bordered_tensor = current_module.bordered_unfolded_extended_prev_input
 
         # Verify tensor structure
         self.assertShapeEqual(
@@ -2018,7 +2025,11 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
         # Subtest 2: Without features (hidden_channels=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden channels
-            layer_in, layer_out = self.create_demo_layers(bias=False, hidden_channels=0)
+            with self.assertWarns(UserWarning):
+                # Initializing zero-element tensors is a no-op
+                layer_in, layer_out = self.create_demo_layers(
+                    bias=False, hidden_channels=0
+                )
 
             # When out_channels=0, the layer has no weights
             # So copy_uniform should fallback to 1/sqrt(fan_in)
