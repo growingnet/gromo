@@ -392,6 +392,8 @@ class GrowingGraphNetwork(GrowingContainer):
         ------
         TypeError
             if bottleneck and activities do not have the same type
+        ValueError
+            if bottleneck and activities are of type str and there are no previous or next modules
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
@@ -500,7 +502,9 @@ class GrowingGraphNetwork(GrowingContainer):
         if isinstance(input_x, str):
             assert isinstance(bottleneck, str)
             if len(input_x_keys) <= 0 or len(bottleneck_keys) <= 0:
-                raise ValueError("At least one key is required for X and Y")
+                raise ValueError(
+                    "At least one key is required for activities and bottleneck"
+                )
             dataset = MemMapDataset(input_x, bottleneck, input_x_keys, bottleneck_keys)
         elif isinstance(input_x, torch.Tensor):
             assert isinstance(bottleneck, torch.Tensor)
@@ -627,6 +631,8 @@ class GrowingGraphNetwork(GrowingContainer):
         ------
         TypeError
             if bottleneck and activities do not have the same type
+        ValueError
+            if bottleneck and activities are of type str and there are no previous or next modules
         """
 
         new_edge_module = self.dag.get_edge_module(
@@ -707,7 +713,9 @@ class GrowingGraphNetwork(GrowingContainer):
         if isinstance(activity, str):
             assert isinstance(bottleneck, str)
             if len(activity_keys) <= 0 or len(bottleneck_keys) <= 0:
-                raise ValueError("At least one key is required for X and Y")
+                raise ValueError(
+                    "At least one key is required for activities and bottleneck"
+                )
             dataset = MemMapDataset(activity, bottleneck, activity_keys, bottleneck_keys)
         elif isinstance(activity, torch.Tensor):
             assert isinstance(bottleneck, torch.Tensor)
