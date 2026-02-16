@@ -377,6 +377,8 @@ class GrowingGraphNetwork(GrowingContainer):
         ------
         TypeError
             if bottleneck and activities do not have the same type
+        ValueError
+            if bottleneck and activities are of type str and there are no previous or next modules
         """
 
         node_module = self.dag.get_node_module(expansion.expanding_node)
@@ -474,6 +476,42 @@ class GrowingGraphNetwork(GrowingContainer):
             verbose=verbose,
         )
 
+        # Compute activity update
+        if isinstance(input_x, str):
+            assert isinstance(bottleneck, str)
+            if len(input_x_keys) <= 0 or len(bottleneck_keys) <= 0:
+                raise ValueError(
+                    "At least one key is required for activities and bottleneck"
+                )
+            dataset = MemMapDataset(input_x, bottleneck, input_x_keys, bottleneck_keys)
+        elif isinstance(input_x, torch.Tensor):
+            assert isinstance(bottleneck, torch.Tensor)
+            dataset = torch.utils.data.TensorDataset(input_x, bottleneck)
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=self.neuron_batch_size, shuffle=False
+        )
+
+        with torch.no_grad():
+            new_block_output = torch.empty(0)
+            for x, _ in dataloader:
+                out = self.block_forward(
+                    layer_fn=func.linear if linear_alpha_layer else func.conv2d,
+                    alpha=alpha,
+                    omega=omega,
+                    bias=bias,
+                    x=x.to(self.device),
+                    sigma=node_module.post_merge_function,
+                    **(
+                        {
+                            "padding": "same",
+                        }
+                        if not linear_alpha_layer
+                        else {}
+                    ),
+                )
+                new_block_output = torch.cat((new_block_output, out.cpu()))
+        expansion.metrics["block_output"] = {}
+
         # Record layer extensions of new block
         i = 0
         alpha = alpha.view(self.neurons, -1)  # (neurons, total_in_features)
@@ -565,6 +603,8 @@ class GrowingGraphNetwork(GrowingContainer):
         ------
         TypeError
             if bottleneck and activities do not have the same type
+        ValueError
+            if bottleneck and activities are of type str and there are no previous or next modules
         """
 
         new_edge_module = self.dag.get_edge_module(
@@ -640,6 +680,28 @@ class GrowingGraphNetwork(GrowingContainer):
             fast=True,
             verbose=verbose,
         )
+
+        # Compute activity update
+        if isinstance(activity, str):
+            assert isinstance(bottleneck, str)
+            if len(activity_keys) <= 0 or len(bottleneck_keys) <= 0:
+                raise ValueError(
+                    "At least one key is required for activities and bottleneck"
+                )
+            dataset = MemMapDataset(activity, bottleneck, activity_keys, bottleneck_keys)
+        elif isinstance(activity, torch.Tensor):
+            assert isinstance(bottleneck, torch.Tensor)
+            dataset = torch.utils.data.TensorDataset(activity, bottleneck)
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=self.neuron_batch_size, shuffle=False
+        )
+
+        with torch.no_grad():
+            new_layer_output = torch.empty(0)
+            for x, _ in dataloader:
+                x = x.to(self.device)
+                new_layer_output = torch.cat((new_layer_output, forward_fn(x).cpu()))
+        expansion.metrics["block_output"] = {next_node_module._name: new_layer_output}
 
         # Record layer extensions
         new_edge_module.optimal_delta_layer = new_edge_module.layer_of_tensor(
