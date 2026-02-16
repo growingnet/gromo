@@ -37,6 +37,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
             loss_fn=torch.nn.CrossEntropyLoss(),
             layer_type="linear",
         )
+        self.net.dag.remove_edge(self.net.dag.root, self.net.dag.end)
         self.net.dag.add_node_with_two_edges(
             self.net.dag.root,
             "1",
@@ -131,12 +132,12 @@ class TestGrowingGraphNetwork(TorchTestCase):
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
         self.assertEqual(len(self.net.dag.nodes), 2)
-        self.assertEqual(len(self.net.dag.edges), 0)
+        self.assertEqual(len(self.net.dag.edges), 1)
         self.assertIn(self.net.dag.root, self.net.dag.nodes)
         self.assertIn(self.net.dag.end, self.net.dag.nodes)
         self.assertEqual(self.net.dag.in_degree(self.net.dag.root), 0)
-        self.assertEqual(self.net.dag.out_degree(self.net.dag.root), 0)
-        self.assertEqual(self.net.dag.in_degree(self.net.dag.end), 0)
+        self.assertEqual(self.net.dag.out_degree(self.net.dag.root), 1)
+        self.assertEqual(self.net.dag.in_degree(self.net.dag.end), 1)
         self.assertEqual(self.net.dag.out_degree(self.net.dag.end), 0)
         self.assertEqual(self.net.dag.nodes[self.net.dag.root]["size"], self.in_features)
         self.assertEqual(self.net.dag.nodes[self.net.dag.end]["size"], self.out_features)
