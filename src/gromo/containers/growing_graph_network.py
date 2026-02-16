@@ -24,6 +24,7 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.disk_dataset import MemMapDataset
+from gromo.utils.tools import lecun_normal_
 from gromo.utils.utils import (
     line_search,
     mini_batch_gradient_descent,
@@ -243,7 +244,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # If activity has extra trailing singleton dims like (b, c, 1, 1)
         if activity.dim() == bottleneck.dim() + 2 and activity.shape[2:] == (1, 1):
             activity = activity.squeeze(-1).squeeze(-1)
-        loss = activity - bottleneck + 0.001 * torch.sum(activity**2)
+        loss = activity - bottleneck  # + 0.001 * torch.sum(activity**2)
         return (loss**2).sum() / loss.numel()
 
     def bi_level_bottleneck_optimization(
@@ -455,9 +456,9 @@ class GrowingGraphNetwork(GrowingContainer):
                 device=self.device,
             )
         bias = torch.rand((self.neurons, in_edges), device=self.device)
-        alpha = alpha / np.sqrt(alpha.numel())
-        omega = omega / np.sqrt(omega.numel())
-        bias = bias / np.sqrt(bias.numel())
+        lecun_normal_(alpha)
+        lecun_normal_(omega)
+        nn.init.zeros_(bias)
         alpha = alpha.detach().clone().requires_grad_()
         omega = omega.detach().clone().requires_grad_()
         bias = bias.detach().clone().requires_grad_()
@@ -664,8 +665,8 @@ class GrowingGraphNetwork(GrowingContainer):
                 device=self.device,
             )
             bias = torch.rand((new_edge_module.out_channels), device=self.device)
-        weight = weight / np.sqrt(weight.numel())
-        bias = bias / np.sqrt(bias.numel())
+        lecun_normal_(weight)
+        torch.nn.init.zeros_(bias)
         weight = weight.detach().clone().requires_grad_()
         bias = bias.detach().clone().requires_grad_()
 
@@ -709,7 +710,7 @@ class GrowingGraphNetwork(GrowingContainer):
             for x, _ in dataloader:
                 x = x.to(self.device)
                 new_layer_output = torch.cat((new_layer_output, forward_fn(x).cpu()))
-        expansion.metrics["block_output"][next_node_module._name] = new_layer_output
+        expansion.metrics["block_output"] = {next_node_module._name: new_layer_output}
 
         # Record layer extensions
         new_edge_module.optimal_delta_layer = new_edge_module.layer_of_tensor(

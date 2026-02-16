@@ -1,3 +1,4 @@
+import math
 from warnings import warn
 
 import torch
@@ -437,3 +438,34 @@ def apply_border_effect_on_unfolded(
     unfolded_tensor = unfolded_tensor.flatten(start_dim=2)
 
     return unfolded_tensor
+
+
+def lecun_normal_(tensor: torch.Tensor) -> torch.Tensor:
+    """Initialize weight tensor with LecunNorm
+    Draws samples from a truncated normal distribution centered around 0 with std = sqrt(1 / fan_in)
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        weight tensor
+
+    Returns
+    -------
+    torch.Tensor
+        initialized weight tensor
+
+    Raises
+    ------
+    ValueError
+        if the shape of the tensor is not 2D or 4D
+    """
+    if tensor.ndim == 2:  # Linear
+        fan_in = tensor.size(1)
+    elif tensor.ndim == 4:  # Conv2d
+        fan_in = tensor.size(1) * tensor.size(2) * tensor.size(3)
+    else:
+        raise ValueError(
+            f"Only supports Linear (2D) or Conv2d (4D) weights, got tensor with shape {tensor.shape}"
+        )
+    std = 1.0 / math.sqrt(fan_in)
+    return torch.nn.init.normal_(tensor, mean=0.0, std=std)

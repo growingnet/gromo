@@ -21,6 +21,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.tools import lecun_normal_
 from gromo.utils.utils import (
     activation_fn,
     compute_BIC,
@@ -230,6 +231,37 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         DAG_parameters = {}
         DAG_parameters["edges"] = edges
+        DAG_parameters["node_attributes"] = node_attributes
+        DAG_parameters["edge_attributes"] = edge_attributes
+        return DAG_parameters
+
+    def export_dag_parameters(self) -> dict:
+        """Export detailed parameters of the dag in dictionary format
+
+        Returns
+        -------
+        dict
+            dictionary with parameters sizes and attributes
+        """
+        kernel_size = (3, 3)
+        node_attributes = {
+            node: {
+                "type": self.layer_type,
+                "size": value["size"],
+                "shape": value.get("shape"),
+                "kernel_size": kernel_size,
+                "activation": self.activation if node != self.root else "id",
+            }
+            for node, value in self.nodes.items()
+        }
+        edge_attributes = {
+            "type": self.layer_type,
+            "use_bias": self.use_bias,
+            "kernel_size": kernel_size,
+        }
+        DAG_parameters = {}
+        DAG_parameters["edges"] = list(self.edges)
+        # DAG_parameters["nodes"] = self.nodes
         DAG_parameters["node_attributes"] = node_attributes
         DAG_parameters["edge_attributes"] = edge_attributes
         return DAG_parameters
@@ -782,9 +814,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 raise NotImplementedError
 
             if zero_weights:
-                new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
-                if new_module.use_bias:
-                    new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
+                nn.init.zeros_(new_module.weight)
+            else:
+                lecun_normal_(new_module.weight)
+            if new_module.use_bias:
+                nn.init.zeros_(new_module.bias)
 
             self.__set_edge_module(
                 prev_node,
