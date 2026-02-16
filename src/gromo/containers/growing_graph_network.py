@@ -533,7 +533,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 in_features = prev_edge_module.in_channels
             prev_edge_module._scaling_factor_next_module[0] = 1
 
-            _weight = alpha[:, i : i + in_features, :]
+            _weight = alpha[:, i : i + in_features, ...]
             _weight = _weight.view((self.neurons, *prev_edge_module.weight.shape[1:]))
             _bias = bias[:, i_edge]
 
@@ -565,10 +565,10 @@ class GrowingGraphNetwork(GrowingContainer):
             next_edge_module.scaling_factor = 1  # type: ignore
 
             expansion.metrics["block_output"][next_edge_module.next_module._name] = (
-                new_block_output[:, i : i + out_features, :]
+                new_block_output[:, i : i + out_features, ...]
             )
 
-            _weight = omega[i : i + out_features, :]
+            _weight = omega[i : i + out_features, ...]
             _weight = _weight.view(
                 (
                     next_edge_module.weight.shape[0],
