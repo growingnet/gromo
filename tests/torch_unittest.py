@@ -68,6 +68,9 @@ def indicator_batch(
 
 
 class TorchTestCase(TestCase):
+    def setUp(self) -> None:
+        torch.manual_seed(0)
+
     def assertShapeEqual(
         self,
         t: torch.Tensor,
@@ -95,7 +98,7 @@ class TorchTestCase(TestCase):
         self.assertEqual(
             t.dim(),
             len(shape),
-            f"Error: {t.dim()=} should be {len(shape)=}\n" f"{message}",
+            f"Error: {t.dim()=} should be {len(shape)=}\n{message}",
         )
         for i, s in enumerate(shape):
             if s is not None and s >= 0:
@@ -140,7 +143,7 @@ class TorchTestCase(TestCase):
         self.assertEqual(
             a.shape,
             b.shape,
-            f"Error: tensors have different shapes {a.shape=} {b.shape=}\n" f"{message}",
+            f"Error: tensors have different shapes {a.shape=} {b.shape=}\n{message}",
         )
         all_close = torch.allclose(a, b, atol=atol, rtol=rtol)
         max_diff = 0
