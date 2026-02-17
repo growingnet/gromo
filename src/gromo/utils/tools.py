@@ -32,7 +32,7 @@ def sqrt_inverse_matrix_semi_positive(
         # Sometimes, due to numerical issues, we get an error:
         # The algorithm failed to converge because the input matrix is
         # ill-conditioned or has too many repeated eigenvalues
-        matrix += 1e-6 * torch.eye(
+        matrix += torch.finfo(matrix.dtype).resolution * torch.eye(
             matrix.shape[0],
             device=matrix.device,
             dtype=matrix.dtype,
