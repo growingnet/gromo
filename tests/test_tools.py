@@ -30,12 +30,8 @@ test_input_shapes = [
 class TestTools(TorchTestCase):
     def test_sqrt_inverse_matrix_semi_positive(self):
         matrix = 9 * torch.eye(5)
-        sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
-            matrix, preferred_linalg_library=None
-        )
-        self.assertTrue(
-            torch.allclose(sqrt_inverse_matrix @ sqrt_inverse_matrix, matrix.inverse())
-        )
+        sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(matrix)
+        self.assertAllClose(sqrt_inverse_matrix @ sqrt_inverse_matrix, matrix.inverse())
 
     def test_random_sqrt_inverse_matrix_semi_positive(self):
         """
@@ -43,7 +39,6 @@ class TestTools(TorchTestCase):
         with X in (5, 3)
         Test the function on cpu and cuda if available.
         """
-        torch.manual_seed(0)
         if torch.cuda.is_available():
             devices = (torch.device("cuda"), torch.device("cpu"))
         else:
@@ -53,16 +48,14 @@ class TestTools(TorchTestCase):
             matrix = torch.randn(5, 3, dtype=torch.float64, device=device)
             matrix = matrix.t() @ matrix
             sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
-                matrix, threshold=1e-7, preferred_linalg_library=None
+                matrix, threshold=1e-7
             )
             reconstructed_inverse = sqrt_inverse_matrix @ sqrt_inverse_matrix
             if torch.abs(torch.linalg.det(matrix)) > 1e-5:
-                correct = torch.allclose(reconstructed_inverse, torch.linalg.inv(matrix))
-                self.assertTrue(
-                    correct,
-                    f"Error of "
-                    f"{torch.abs(reconstructed_inverse - matrix.inverse()).max().item():.2e}"
-                    f"with device {device}",
+                self.assertAllClose(
+                    reconstructed_inverse,
+                    torch.linalg.inv(matrix),
+                    message=f"Error with device {device}",
                 )
 
     def test_compute_output_shape_conv(self):
@@ -70,7 +63,6 @@ class TestTools(TorchTestCase):
         Test the compute_output_shape_conv function
         with various inputs shapes and conv kernel sizes.
         """
-        torch.manual_seed(0)
         kernel_sizes = [1, 2, 3, 5, 7]
         input_shapes = [2, 5, 11, 41]
         for k_h in kernel_sizes:
@@ -102,12 +94,9 @@ class TestTools(TorchTestCase):
         Test the compute_mask_tensor_t function.
         Check that it respects its property.
         """
-        torch.manual_seed(0)
-
         for k_h in (1, 2, 3):
             for k_w in (1, 2, 3):
                 with self.subTest(k_h=k_h, k_w=k_w):
-
                     conv = torch.nn.Conv2d(2, 3, (k_h, k_w), bias=False)
                     # TODO: add test for the case with bias activated
                     conv_kernel_flatten = conv.weight.data.flatten(start_dim=2)
@@ -121,10 +110,11 @@ class TestTools(TorchTestCase):
                         mask,
                         x_input_flatten,
                     )
-                    self.assertTrue(
-                        torch.allclose(y_th, y_via_mask, atol=1e-6),
-                        f"Error with {h=}, {w=}, {k_h=}, {k_w=} "
-                        f"Error: {torch.abs(y_th - y_via_mask).max().item():.2e}",
+                    self.assertAllClose(
+                        y_th,
+                        y_via_mask,
+                        atol=1e-6,
+                        message=f"Error with {h=}, {w=}, {k_h=}, {k_w=} ",
                     )
 
     @unittest_parametrize(test_input_shapes)
@@ -133,7 +123,6 @@ class TestTools(TorchTestCase):
         Test the compute_mask_tensor_t function with bias activated.
         Check that it respects its property.
         """
-        torch.manual_seed(0)
         for k_h in (1, 2, 3):
             for k_w in (1, 2, 3):
                 conv = torch.nn.Conv2d(2, 3, (k_h, k_w), bias=True)
@@ -150,11 +139,13 @@ class TestTools(TorchTestCase):
                         x_input_flatten,
                     )
                     self.assertTrue(conv.bias is not None, "Bias should be activated")
+                    assert conv.bias is not None
                     y_via_mask += conv.bias.data.view(1, -1, 1)
-                    self.assertTrue(
-                        torch.allclose(y_th, y_via_mask, atol=1e-6),
-                        f"Error with {h=}, {w=}, {k_h=}, {k_w=} "
-                        f"Error: {torch.abs(y_th - y_via_mask).max().item():.2e}",
+                    self.assertAllClose(
+                        y_th,
+                        y_via_mask,
+                        atol=1e-6,
+                        message=f"Error with {h=}, {w=}, {k_h=}, {k_w=} ",
                     )
 
     def test_apply_border_effect_on_unfolded_typing(self, bias: bool = False):
@@ -164,7 +155,7 @@ class TestTools(TorchTestCase):
         unfolded_x = torch.nn.functional.unfold(
             x,
             kernel_size=conv1.kernel_size,
-            padding=conv1.padding,
+            padding=conv1.padding,  # type: ignore
             stride=conv1.stride,
             dilation=conv1.dilation,
         )
@@ -203,7 +194,7 @@ class TestTools(TorchTestCase):
         unfolded_x = torch.nn.functional.unfold(
             x,
             kernel_size=conv1.kernel_size,
-            padding=conv1.padding,
+            padding=conv1.padding,  # type: ignore
             stride=conv1.stride,
             dilation=conv1.dilation,
         )
@@ -253,6 +244,7 @@ class TestTools(TorchTestCase):
         # )
         w_c1 = conv1.weight.flatten(start_dim=1)
         if bias:
+            assert conv1.bias is not None
             w_c1 = torch.cat([w_c1, conv1.bias[:, None]], dim=1)
 
         y_via_mask = torch.einsum(
@@ -407,75 +399,33 @@ class TestTools(TorchTestCase):
             create_bordering_effect_convolution(0, conv)  # Invalid channels
 
         with self.assertRaises(TypeError):
-            create_bordering_effect_convolution(12, "not_a_conv")  # Wrong type
+            create_bordering_effect_convolution(
+                12,
+                "not_a_conv",  # type: ignore
+            )  # Wrong type
 
     def test_sqrt_inverse_matrix_semi_positive_preferred_linalg(self):
         """Test sqrt_inverse_matrix_semi_positive with preferred_linalg_library parameter (Line 35)"""
         matrix = 4 * torch.eye(3)
 
         # Test with preferred_linalg_library set to None (should work)
-        result = sqrt_inverse_matrix_semi_positive(matrix, preferred_linalg_library=None)
+        result = sqrt_inverse_matrix_semi_positive(matrix)
         expected = sqrt_inverse_matrix_semi_positive(matrix)
         self.assertTrue(torch.allclose(result, expected))
 
         # Test with preferred_linalg_library set to "magma"
         if torch.cuda.is_available():
             matrix_cuda = matrix.cuda()
-            result_magma = sqrt_inverse_matrix_semi_positive(
-                matrix_cuda, preferred_linalg_library="magma"
-            )
+            torch.backends.cuda.preferred_linalg_library(
+                "magma"
+            )  # Set preferred library to magma
+            result_magma = sqrt_inverse_matrix_semi_positive(matrix_cuda)
             # Should execute line: torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
             self.assertIsNotNone(result_magma)
             self.assertEqual(result_magma.device.type, "cuda")
-
-    def test_sqrt_inverse_matrix_semi_positive_linalg_error_cusolver(self):
-        """Test LinAlgError handling with cusolver (Lines 38-45)"""
-        # Create a simple test matrix
-        matrix = 2 * torch.eye(3)
-
-        # Mock the LinAlgError and the backend setting to test cusolver path
-        import unittest.mock
-
-        with unittest.mock.patch("torch.linalg.eigh") as mock_eigh:
-            with unittest.mock.patch.object(
-                torch.backends.cuda, "preferred_linalg_library"
-            ):
-                # Test cusolver specific error handling
-                mock_eigh.side_effect = torch.linalg.LinAlgError("Mocked error")
-
-                # Test cusolver specific error handling
-                with self.assertRaises(ValueError) as context:
-                    sqrt_inverse_matrix_semi_positive(
-                        matrix, preferred_linalg_library="cusolver"
-                    )
-
-                # Should trigger if cusolver, raise ValueError
-                error_msg = str(context.exception)
-                self.assertIn("CUDA < 12.1", error_msg)
-                self.assertIn("magma", error_msg)
-
-    def test_sqrt_inverse_matrix_semi_positive_linalg_error_fallback(self):
-        """Test LinAlgError handling fallback (Line 45)"""
-        # Create a matrix for testing
-        matrix = 2 * torch.eye(3)
-
-        # Mock the LinAlgError to test the fallback error handling path
-        import unittest.mock
-
-        with unittest.mock.patch("torch.linalg.eigh") as mock_eigh:
-            original_error = torch.linalg.LinAlgError("Mocked original error")
-            mock_eigh.side_effect = original_error
-
-            # Test the else branch in the exception handler
-            # We'll patch the preferred_linalg_library check to simulate non-cusolver
-            with unittest.mock.patch.object(
-                torch.backends.cuda, "preferred_linalg_library"
-            ):
-                with self.assertRaises(torch.linalg.LinAlgError) as context:
-                    sqrt_inverse_matrix_semi_positive(
-                        matrix, preferred_linalg_library="default"  # Not cusolver
-                    )
-                self.assertEqual(str(context.exception), "Mocked original error")
+            torch.backends.cuda.preferred_linalg_library(
+                "default"
+            )  # Reset to default after test
 
     def test_compute_optimal_added_parameters_svd_error_handling(self):
         """Test SVD LinAlgError handling and debug output"""
