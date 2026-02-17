@@ -1,4 +1,3 @@
-import logging
 from warnings import warn
 
 import torch
@@ -23,7 +22,6 @@ def sqrt_inverse_matrix_semi_positive(
     torch.Tensor
         square root of the inverse of the input matrix
     """
-    logger = logging.getLogger(__name__)
     assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
     assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
     assert torch.isnan(matrix).sum() == 0, "The input matrix must not contain NaN values."
@@ -34,9 +32,14 @@ def sqrt_inverse_matrix_semi_positive(
         # Sometimes, due to numerical issues, we get an error:
         # The algorithm failed to converge because the input matrix is
         # ill-conditioned or has too many repeated eigenvalues
-        matrix += 1e-6 * torch.eye(matrix.shape[0], device=matrix.device)
-        logger.warning(
-            "Adding a small identity matrix to make the input matrix positive definite."
+        matrix += 1e-6 * torch.eye(
+            matrix.shape[0],
+            device=matrix.device,
+            dtype=matrix.dtype,
+        )
+        warn(
+            message="Adding a small identity matrix to make the input matrix positive definite.",
+            category=RuntimeWarning,
         )
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
 
