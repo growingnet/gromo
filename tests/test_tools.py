@@ -405,13 +405,10 @@ class TestTools(TorchTestCase):
             )  # Wrong type
 
     def test_sqrt_inverse_matrix_semi_positive_preferred_linalg(self):
-        """Test sqrt_inverse_matrix_semi_positive with preferred_linalg_library parameter (Line 35)"""
+        """Test sqrt_inverse_matrix_semi_positive with `magama` preferred_linalg_library"""
         matrix = 4 * torch.eye(3)
 
-        # Test with preferred_linalg_library set to None (should work)
-        result = sqrt_inverse_matrix_semi_positive(matrix)
         expected = sqrt_inverse_matrix_semi_positive(matrix)
-        self.assertTrue(torch.allclose(result, expected))
 
         # Test with preferred_linalg_library set to "magma"
         if torch.cuda.is_available():
@@ -420,12 +417,17 @@ class TestTools(TorchTestCase):
                 "magma"
             )  # Set preferred library to magma
             result_magma = sqrt_inverse_matrix_semi_positive(matrix_cuda)
-            # Should execute line: torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
             self.assertIsNotNone(result_magma)
             self.assertEqual(result_magma.device.type, "cuda")
             torch.backends.cuda.preferred_linalg_library(
                 "default"
             )  # Reset to default after test
+            self.assertAllClose(
+                result_magma.cpu(),
+                expected,
+                atol=1e-6,
+                message="Error with magma preferred_linalg_library",
+            )
 
     def test_compute_optimal_added_parameters_svd_error_handling(self):
         """Test SVD LinAlgError handling and debug output"""
