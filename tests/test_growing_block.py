@@ -1204,14 +1204,31 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.assertIsNone(obj)
 
     @unittest_parametrize(
-        ({"initialization_method": "tiny"}, {"initialization_method": "gradmax"})
+        (
+            {
+                "compute_delta": True,
+                "use_covariance": True,
+                "alpha_zero": False,
+                "use_projection": True,
+            },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": False,
+            },
+        )
     )
     def test_compute_optimal_updates_with_methods(
-        self, initialization_method: str = "tiny"
+        self,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
     ):
-        """Test compute_optimal_updates with both TINY and GradMax methods.
+        """Test compute_optimal_updates with both TINY and GradMax configurations.
 
-        Verifies that both initialization methods work correctly for GrowingBlock
+        Verifies that both initialization configurations work correctly for GrowingBlock
         with existing neurons (hidden_features > 0).
         """
         # Step 1: Create block with existing neurons
@@ -1241,53 +1258,56 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Step 5: Clear any previous updates to ensure clean state
         block.delete_update()
 
-        # Step 6: Compute optimal updates with specified method
+        # Step 6: Compute optimal updates with specified configuration
         block.compute_optimal_updates(
-            initialization_method=initialization_method,
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
             maximum_added_neurons=self.in_features,
         )
 
-        # Step 7: Verify method-specific behavior
-        if initialization_method == "tiny":
+        # Step 7: Verify configuration-specific behavior
+        if not alpha_zero:
             # TINY-specific checks: optimal_delta_layer and parameter_update_decrease should be set
             self.assertIsNotNone(
                 block.second_layer.optimal_delta_layer,
-                "TINY method should compute optimal_delta_layer",
+                "TINY configuration should compute optimal_delta_layer",
             )
             self.assertIsNotNone(
                 block.parameter_update_decrease,
-                "TINY method should compute parameter_update_decrease",
+                "TINY configuration should compute parameter_update_decrease",
             )
             self.assertIsInstance(block.parameter_update_decrease, torch.Tensor)
-        elif initialization_method == "gradmax":
+        else:
             # GradMax-specific checks: optimal_delta_layer and parameter_update_decrease should NOT be set
             self.assertFalse(
                 hasattr(block.second_layer, "optimal_delta_layer")
                 and block.second_layer.optimal_delta_layer is not None,
-                "GradMax should not compute optimal_delta_layer",
+                "GradMax configuration should not compute optimal_delta_layer",
             )
             self.assertFalse(
                 hasattr(block, "parameter_update_decrease")
                 and block.parameter_update_decrease is not None,
-                "GradMax should not compute parameter_update_decrease",
+                "GradMax configuration should not compute parameter_update_decrease",
             )
-        # Note: When new methods are added, add explicit elif branches here
 
-        # Step 8: Common checks for all methods
+        # Step 8: Common checks for all configurations
         # Verify that extended layers were created
+        method_name = "TINY" if not alpha_zero else "GradMax"
         self.assertIsNotNone(
             block.first_layer.extended_output_layer,
-            f"{initialization_method} should create extended_output_layer for first_layer",
+            f"{method_name} configuration should create extended_output_layer for first_layer",
         )
         self.assertIsNotNone(
             block.second_layer.extended_input_layer,
-            f"{initialization_method} should create extended_input_layer for second_layer",
+            f"{method_name} configuration should create extended_input_layer for second_layer",
         )
 
         # Verify eigenvalues were computed
         self.assertIsNotNone(
             block.eigenvalues_extension,
-            f"{initialization_method} should compute eigenvalues_extension",
+            f"{method_name} should compute eigenvalues_extension",
         )
         self.assertIsInstance(block.eigenvalues_extension, torch.Tensor)
 
@@ -1327,9 +1347,12 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Step 4: Update computation
         block.update_computation()
 
-        # Step 5: Compute updates with GradMax method
+        # Step 5: Compute updates with GradMax configuration
         block.compute_optimal_updates(
-            initialization_method="gradmax",
+            compute_delta=False,
+            use_covariance=False,
+            alpha_zero=True,
+            use_projection=False,
             maximum_added_neurons=self.in_features,
         )
 
@@ -1368,49 +1391,6 @@ class TestLinearGrowingBlock(TorchTestCase):
             0,
             "GradMax should propose neurons for empty block",
         )
-
-    def test_compute_optimal_updates_invalid_method(self):
-        """Test that invalid initialization method names are rejected.
-
-        Verifies that GrowingBlock.compute_optimal_updates raises ValueError
-        for invalid initialization_method names.
-        """
-        # Step 1: Create block with existing neurons
-        block = LinearGrowingBlock(
-            in_features=self.in_features,
-            out_features=self.in_features,
-            hidden_features=self.hidden_features,
-            activation=torch.nn.ReLU(),
-            device=self.device,
-            name="test_block_invalid",
-        )
-
-        # Step 2: Initialize computation
-        block.init_computation()
-
-        # Step 3: Forward/backward pass to gather statistics
-        x_batch = indicator_batch((self.in_features,), device=self.device)
-
-        block.zero_grad()
-        output = block(x_batch)
-        loss = (output**2).sum() / 2
-        loss.backward()
-
-        # Step 4: Update computation
-        block.update_computation()
-
-        # Step 5: Test that invalid method name raises ValueError
-        with self.assertRaises(ValueError) as context:
-            block.compute_optimal_updates(initialization_method="invalid_method")
-
-        # Step 6: Verify error message contains expected information
-        error_msg = str(context.exception)
-        self.assertIn("Unknown initialization method", error_msg)
-        self.assertIn("invalid_method", error_msg)
-        self.assertIn("Supported methods", error_msg)
-        # Verify that supported methods are listed (tiny, gradmax, and future methods)
-        self.assertIn("tiny", error_msg)
-        self.assertIn("gradmax", error_msg)
 
     def test_apply_change(self):
         """Test apply_change method with different scenarios.

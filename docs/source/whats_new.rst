@@ -20,7 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-- Add GradMax initialization method support for neuron addition. Users can now choose between 'tiny' (default, based on optimal functional gradient) and 'gradmax' (maximizes gradient norm of new weights) when calling `compute_optimal_added_parameters` or `compute_optimal_updates`. Includes comprehensive unit tests, integration tests, and example scripts demonstrating usage (:gh:`193` by `Stéphane Rivaud`_)
+- Refactor ``compute_optimal_updates`` in ``GrowingModule`` and ``GrowingBlock`` to accept primitive boolean options (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``) instead of the ``initialization_method`` string parameter. This enables composable configurations for neuron initialization methods. Default values match TINY behavior for backward compatibility. For GradMax behavior, use ``compute_delta=False, use_covariance=False, alpha_zero=True, use_projection=False`` (:gh:`193` by `Stéphane Rivaud`_)
 - Added documentation linting in CI/CD and reduced warnings in tests (:gh:`158` by `Stella Douka`_)
 - New tutorial for `GrowingContainer` (:gh:`188` by `Théo Rudkiewicz`_)
 - Update `GrowingBlock` to include recently added features in `GrowingModule` such as `in_neurons` property, `target_in_neurons` parameter, and methods for multi-step growth processes (:gh:`186` by `Théo Rudkiewicz`_)
@@ -102,6 +102,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- The ``initialization_method`` parameter in ``GrowingModule.compute_optimal_updates()`` and ``GrowingBlock.compute_optimal_updates()`` has been replaced by four boolean parameters: ``compute_delta`` (default ``True``), ``use_covariance`` (default ``True``), ``alpha_zero`` (default ``False``), and ``use_projection`` (default ``True``). The internal ``_METHOD_CONFIGS`` dictionary has been removed. Migration: replace ``initialization_method="tiny"`` with defaults (no change needed), replace ``initialization_method="gradmax"`` with ``compute_delta=False, use_covariance=False, alpha_zero=True, use_projection=False`` (:gh:`193` by `Stéphane Rivaud`_)
 - Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
 - Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)

@@ -801,19 +801,6 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         first_layer.update_computation()
         second_layer.update_computation()
 
-        # Test: Invalid method name should raise ValueError
-        with self.assertRaises(ValueError) as context:
-            second_layer.compute_optimal_updates(initialization_method="invalid_method")
-
-        # Verify error message contains expected information
-        error_msg = str(context.exception)
-        self.assertIn("Unknown initialization method", error_msg)
-        self.assertIn("invalid_method", error_msg)
-        self.assertIn("Supported methods", error_msg)
-        # Verify that supported methods are listed (tiny, gradmax, and future methods)
-        self.assertIn("tiny", error_msg)
-        self.assertIn("gradmax", error_msg)
-
     def test_compute_optimal_updates_merge_previous_module_error(self):
         """Test that compute_optimal_updates raises NotImplementedError when previous_module is MergeGrowingModule."""
         # Setup: Create modules for testing
@@ -839,12 +826,17 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
 
         # Test case: Previous module is MergeGrowingModule
         # Should raise NotImplementedError (MergeGrowingModule path in compute_optimal_updates)
-        # Use "gradmax" method to avoid calling compute_optimal_delta (which requires statistics)
+        # Use GradMax options to avoid calling compute_optimal_delta (which requires statistics)
         merge_module = LinearMergeGrowingModule(in_features=2, device=global_device())
         second_layer.previous_module = merge_module
 
         with self.assertRaises(NotImplementedError):
-            second_layer.compute_optimal_updates(initialization_method="gradmax")
+            second_layer.compute_optimal_updates(
+                compute_delta=False,
+                use_covariance=False,
+                alpha_zero=True,
+                use_projection=False,
+            )
 
     def test_compute_optimal_updates_unsupported_previous_module_error(self):
         """Test that compute_optimal_updates raises NotImplementedError for unsupported previous_module types."""
@@ -871,14 +863,19 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
 
         # Test case: Previous module is unsupported type (else branch)
         # Should raise NotImplementedError for unsupported previous_module types
-        # Use "gradmax" method to avoid calling compute_optimal_delta
+        # Use GradMax options to avoid calling compute_optimal_delta
         class UnsupportedModule:
             pass
 
         second_layer.previous_module = UnsupportedModule()
 
         with self.assertRaises(NotImplementedError):
-            second_layer.compute_optimal_updates(initialization_method="gradmax")
+            second_layer.compute_optimal_updates(
+                compute_delta=False,
+                use_covariance=False,
+                alpha_zero=True,
+                use_projection=False,
+            )
 
     def test_compute_optimal_updates_no_previous_module_returns_none(self):
         """Test that compute_optimal_updates returns None when previous_module is None."""

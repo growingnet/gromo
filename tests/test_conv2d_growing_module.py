@@ -1216,9 +1216,28 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             )
 
     @unittest_parametrize(
-        ({"initialization_method": "tiny"}, {"initialization_method": "gradmax"})
+        (
+            {
+                "compute_delta": True,
+                "use_covariance": True,
+                "alpha_zero": False,
+                "use_projection": True,
+            },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": False,
+            },
+        )
     )
-    def test_zero_bottleneck(self, initialization_method: str = "tiny"):
+    def test_zero_bottleneck(
+        self,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+    ):
         """Test behavior when bottleneck is fully resolved
         with parameter change for FullConv2d."""
         # Create FullConv2d equivalent of the demo layers
@@ -1240,11 +1259,16 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_layer_2.update_computation()
         # Clear any previous updates to ensure clean state for each test case
         demo_layer_2.delete_update()
-        demo_layer_2.compute_optimal_updates(initialization_method=initialization_method)
+        demo_layer_2.compute_optimal_updates(
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
+        )
 
-        # Use explicit elif checks (not generic else) for future-proofing
-        if initialization_method == "tiny":
-            # For FullConv2d with TINY, tensor_n should be zero when bottleneck is fully resolved
+        # Use explicit checks for configuration-specific behavior
+        if not alpha_zero:
+            # For FullConv2d with TINY configuration, tensor_n should be zero when bottleneck is fully resolved
             self.assertAllClose(
                 demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-6
             )
@@ -1254,24 +1278,22 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 torch.zeros_like(demo_layer_2.eigenvalues_extension),
                 atol=2e-6,
             )
-        elif initialization_method == "gradmax":
+        else:
             # GradMax-specific checks
             # optimal_delta_layer should not be set (may not exist or be None)
             self.assertFalse(
                 hasattr(demo_layer_2, "optimal_delta_layer")
                 and demo_layer_2.optimal_delta_layer is not None,
-                "GradMax should not compute optimal_delta_layer",
+                "GradMax configuration should not compute optimal_delta_layer",
             )
             # parameter_update_decrease should not be set (may not exist or be None)
             self.assertFalse(
                 hasattr(demo_layer_2, "parameter_update_decrease")
                 and demo_layer_2.parameter_update_decrease is not None,
-                "GradMax should not compute parameter_update_decrease",
+                "GradMax configuration should not compute parameter_update_decrease",
             )
             # Verify eigenvalues are computed
             assert isinstance(demo_layer_2.eigenvalues_extension, torch.Tensor)
-        # Note: When new methods are added, add explicit elif branches here
-        # Do NOT use a generic else clause
 
     def test_compute_m_prev_without_intermediate_input(self):
         """Check that the batch size is computed using stored variables for FullConv2d"""
@@ -1726,9 +1748,28 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = RestrictedConv2dGrowingModule
 
     @unittest_parametrize(
-        ({"initialization_method": "tiny"}, {"initialization_method": "gradmax"})
+        (
+            {
+                "compute_delta": True,
+                "use_covariance": True,
+                "alpha_zero": False,
+                "use_projection": True,
+            },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": False,
+            },
+        )
     )
-    def test_zero_bottleneck_restricted(self, initialization_method: str = "tiny"):
+    def test_zero_bottleneck_restricted(
+        self,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+    ):
         """Test behavior when bottleneck is fully resolved
         with parameter change for RestrictedConv2d."""
         # Use predefined demo_couple objects
@@ -1750,11 +1791,16 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         demo_layer_2.update_computation()
         # Clear any previous updates to ensure clean state for each test case
         demo_layer_2.delete_update()
-        demo_layer_2.compute_optimal_updates(initialization_method=initialization_method)
+        demo_layer_2.compute_optimal_updates(
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
+        )
 
-        # Use explicit elif checks (not generic else) for future-proofing
-        if initialization_method == "tiny":
-            # For RestrictedConv2d with TINY, tensor_n should be zero when bottleneck is fully resolved
+        # Use explicit checks for configuration-specific behavior
+        if not alpha_zero:
+            # For RestrictedConv2d with TINY configuration, tensor_n should be zero when bottleneck is fully resolved
             self.assertAllClose(
                 demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-6
             )
@@ -1763,24 +1809,22 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
                 torch.zeros_like(demo_layer_2.eigenvalues_extension),
                 atol=1e-6,
             )
-        elif initialization_method == "gradmax":
+        else:
             # GradMax-specific checks
             # optimal_delta_layer should not be set (may not exist or be None)
             self.assertFalse(
                 hasattr(demo_layer_2, "optimal_delta_layer")
                 and demo_layer_2.optimal_delta_layer is not None,
-                "GradMax should not compute optimal_delta_layer",
+                "GradMax configuration should not compute optimal_delta_layer",
             )
             # parameter_update_decrease should not be set (may not exist or be None)
             self.assertFalse(
                 hasattr(demo_layer_2, "parameter_update_decrease")
                 and demo_layer_2.parameter_update_decrease is not None,
-                "GradMax should not compute parameter_update_decrease",
+                "GradMax configuration should not compute parameter_update_decrease",
             )
             # Verify eigenvalues are computed
             assert isinstance(demo_layer_2.eigenvalues_extension, torch.Tensor)
-        # Note: When new methods are added, add explicit elif branches here
-        # Do NOT use a generic else clause
 
     def test_compute_m_prev_without_intermediate_input_restricted(self):
         """Check that the batch size is computed using stored variables

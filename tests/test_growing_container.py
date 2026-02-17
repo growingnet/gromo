@@ -211,18 +211,42 @@ class TestGrowingContainer(unittest.TestCase):
             )
 
     @unittest_parametrize(
-        ({"initialization_method": "tiny"}, {"initialization_method": "gradmax"})
+        (
+            {
+                "compute_delta": True,
+                "use_covariance": True,
+                "alpha_zero": False,
+                "use_projection": True,
+            },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": False,
+            },
+        )
     )
-    def test_compute_optimal_updates(self, initialization_method: str = "tiny"):
+    def test_compute_optimal_updates(
+        self,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+    ):
         gather_statistics(self.dataloader, self.model, self.loss)
         # Clear any previous updates to ensure clean state for each test case
         for layer in self.model._growing_layers:
             layer.delete_update()
-        self.model.compute_optimal_updates(initialization_method=initialization_method)
+        self.model.compute_optimal_updates(
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
+        )
 
         for layer in self.model._growing_layers:
-            # Use explicit elif checks (not generic else) for future-proofing
-            if initialization_method == "tiny":
+            # Use explicit checks for configuration-specific behavior
+            if not alpha_zero:
                 # TINY-specific checks
                 self.assertTrue(
                     hasattr(layer, "optimal_delta_layer"),
@@ -232,22 +256,20 @@ class TestGrowingContainer(unittest.TestCase):
                     hasattr(layer, "parameter_update_decrease"),
                     "compute_optimal_updates was not called on the growing layer",
                 )
-            elif initialization_method == "gradmax":
+            else:
                 # GradMax-specific checks
                 # optimal_delta_layer should not be set (may not exist or be None)
                 self.assertFalse(
                     hasattr(layer, "optimal_delta_layer")
                     and layer.optimal_delta_layer is not None,
-                    "GradMax should not compute optimal_delta_layer",
+                    "GradMax configuration should not compute optimal_delta_layer",
                 )
                 # parameter_update_decrease should not be set (may not exist or be None)
                 self.assertFalse(
                     hasattr(layer, "parameter_update_decrease")
                     and layer.parameter_update_decrease is not None,
-                    "GradMax should not compute parameter_update_decrease",
+                    "GradMax configuration should not compute parameter_update_decrease",
                 )
-            # Note: When new methods are added, add explicit elif branches here
-            # Do NOT use a generic else clause
 
             # Common checks for all methods
             if layer.previous_module is not None:

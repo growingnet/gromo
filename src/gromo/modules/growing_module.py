@@ -20,24 +20,6 @@ from gromo.utils.utils import (
 # Constants for gradient computation
 GRADIENT_COMPUTATION_EPSILON = 1e-5  # Small perturbation for gradient computation
 
-# Method configurations: name -> primitive options
-# Each method is defined by a set of boolean flags that control computation behavior
-_METHOD_CONFIGS = {
-    "tiny": {
-        "compute_delta": True,  # Compute optimal delta for existing weights
-        "use_covariance": True,  # Use S matrix (covariance preconditioning)
-        "alpha_zero": False,  # Set alpha (incoming weights) to zero
-        "use_projection": True,  # Use projected gradient (tensor_n) vs raw gradient
-    },
-    "gradmax": {
-        "compute_delta": False,  # Skip optimal delta computation
-        "use_covariance": False,  # S = Identity (no covariance preconditioning)
-        "alpha_zero": True,  # Set alpha to zero
-        "use_projection": False,  # Use raw gradient (-tensor_m_prev)
-    },
-    # Future: "senn": {...}
-}
-
 
 class MergeGrowingModule(torch.nn.Module):
     """
@@ -2118,6 +2100,7 @@ class GrowingModule(torch.nn.Module):
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
+        **kwargs: Any,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2186,55 +2169,57 @@ class GrowingModule(torch.nn.Module):
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
-        initialization_method: str = "tiny",
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+        **kwargs: Any,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update and additional neurons.
 
-        This is the public API that accepts method names and translates them
-        to primitive options for internal functions.
+        This method computes optimal weight updates for growing neural networks
+        by analyzing gradient statistics and covariance information.
 
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of
-            the inverse of S
+            Threshold to consider an eigenvalue as zero in the square root of
+            the inverse of S (covariance matrix).
         statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+            Threshold to consider an eigenvalue as zero in the SVD of S^{-1/2} N.
         maximum_added_neurons: int | None
-            maximum number of added neurons, if None all significant neurons are kept
+            Maximum number of added neurons. If None, all significant neurons are kept.
         update_previous: bool
-            whether to change the previous layer extended_output_layer
+            Whether to change the previous layer's extended_output_layer.
         dtype: torch.dtype
-            dtype for the computation of the optimal delta and added parameters
-        initialization_method: str
-            Method to use for initialization. Options: "tiny" (default), "gradmax"
-            Each method defines a set of primitive options (compute_delta,
-            use_covariance, alpha_zero, use_projection).
+            Data type for the computation of the optimal delta and added parameters.
+        compute_delta: bool
+            Whether to compute optimal delta for existing weights. When True, updates
+            existing parameters before computing new neuron additions.
+        use_covariance: bool
+            Whether to use the S matrix (covariance preconditioning). When False,
+            S is treated as the identity matrix.
+        alpha_zero: bool
+            Whether to set alpha (incoming weights to new neurons) to zero. When True,
+            new neurons start with zero incoming weights.
+        use_projection: bool
+            Whether to use projected gradient (tensor_n) versus raw gradient
+            (-tensor_m_prev) for computing new neuron parameters.
 
         Returns
         -------
         tuple[torch.Tensor | None, torch.Tensor | None]
-            optimal extension for the previous layer (weights and biases).
+            Optimal extension for the previous layer (weights and biases).
             Returns (None, None) when previous_module is None.
 
         Raises
         ------
-        ValueError
-            If ``initialization_method`` is not one of the supported methods.
         NotImplementedError
             If the previous module is not of type GrowingModule.
         """
-        # Validate and get method config
-        if initialization_method not in _METHOD_CONFIGS:
-            raise ValueError(
-                f"Unknown initialization method: {initialization_method}. "
-                f"Supported methods: {list(_METHOD_CONFIGS.keys())}"
-            )
-        config = _METHOD_CONFIGS[initialization_method]
-
-        # Compute optimal delta if required by method
-        if config["compute_delta"]:
+        # Compute optimal delta if required
+        if compute_delta:
             self.compute_optimal_delta(dtype=dtype)
 
         if self.previous_module is None:
@@ -2246,9 +2231,10 @@ class GrowingModule(torch.nn.Module):
                 maximum_added_neurons=maximum_added_neurons,
                 update_previous=update_previous,
                 dtype=dtype,
-                use_covariance=config["use_covariance"],
-                alpha_zero=config["alpha_zero"],
-                use_projection=config["use_projection"],
+                use_covariance=use_covariance,
+                alpha_zero=alpha_zero,
+                use_projection=use_projection,
+                **kwargs,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):

@@ -9,7 +9,7 @@ import torch
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.conv2d_growing_module import RestrictedConv2dGrowingModule
-from gromo.modules.growing_module import _METHOD_CONFIGS, GrowingModule
+from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
@@ -378,13 +378,17 @@ class GrowingBlock(GrowingContainer):
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
-        initialization_method: str = "tiny",
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+        **kwargs: Any,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update for second layer and additional neurons.
 
         This method delegates to the second layer's compute_optimal_updates method,
-        using the specified initialization method.
+        using the specified primitive options.
 
         Parameters
         ----------
@@ -397,10 +401,18 @@ class GrowingBlock(GrowingContainer):
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
-        initialization_method: str
-            Method to use for initialization. Options: "tiny" (default), "gradmax"
-            Each method defines a set of primitive options (compute_delta,
-            use_covariance, alpha_zero, use_projection).
+        compute_delta: bool
+            If True, compute and store parameter_update_decrease (delta).
+            Default is True (TINY behavior).
+        use_covariance: bool
+            If True, use covariance-based computation for added parameters.
+            Default is True (TINY behavior).
+        alpha_zero: bool
+            If True, initialize alpha (added neuron weights) to zero.
+            Default is False (TINY behavior).
+        use_projection: bool
+            If True, use projection-based gradient for added parameters.
+            Default is True (TINY behavior).
 
         Note
         ----
@@ -408,14 +420,9 @@ class GrowingBlock(GrowingContainer):
         so ``compute_optimal_delta()`` cannot be called. This means that
         ``tensor_n`` (required for projection) cannot be computed. In this case,
         ``use_projection`` is automatically set to ``False`` regardless of the
-        method configuration, and the raw gradient (``-tensor_m_prev()``) is used
-        instead of the projected gradient. A warning will be issued if the method
-        expects projection (e.g., TINY method).
-
-        Raises
-        ------
-        ValueError
-            If ``initialization_method`` is not one of the supported methods.
+        parameter value, and the raw gradient (``-tensor_m_prev()``) is used
+        instead of the projected gradient. A warning will be issued if
+        ``use_projection=True`` is requested.
 
         Returns
         -------
@@ -423,14 +430,6 @@ class GrowingBlock(GrowingContainer):
             optimal extension for the previous layer (weights and biases).
             Returns (None, None) when previous_module is None.
         """
-        # Validate and get method config
-        if initialization_method not in _METHOD_CONFIGS:
-            raise ValueError(
-                f"Unknown initialization method: {initialization_method}. "
-                f"Supported methods: {list(_METHOD_CONFIGS.keys())}"
-            )
-        config = _METHOD_CONFIGS[initialization_method]
-
         # When hidden_neurons == 0, tensor statistics aren't initialized, so we need
         # special handling: set parameter_update_decrease and call
         # _compute_optimal_added_parameters directly to avoid compute_optimal_delta()
@@ -438,19 +437,17 @@ class GrowingBlock(GrowingContainer):
         # Note: use_projection must be False when hidden_neurons == 0 because tensor_n
         # requires delta_raw which is only set by compute_optimal_delta()
         if self.hidden_neurons == 0:
-            if config["compute_delta"]:
+            if compute_delta:
                 self.second_layer.parameter_update_decrease = torch.tensor(
                     0.0, device=self.device
                 )
 
-            # Warn if method expects projection but we can't use it
-            if config["use_projection"]:
+            # Warn if projection is requested but we can't use it
+            if use_projection:
                 warn(
-                    f"GrowingBlock with hidden_neurons=0 cannot use projection "
-                    f"(tensor_n requires delta_raw from compute_optimal_delta()). "
-                    f"Method '{initialization_method}' expects use_projection=True, "
-                    f"but will use use_projection=False (raw gradient -tensor_m_prev). "
-                    f"This may result in different behavior than expected.",
+                    "GrowingBlock with hidden_neurons=0 cannot use projection "
+                    "(tensor_n requires delta_raw from compute_optimal_delta()). "
+                    "Falling back to use_projection=False.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -465,9 +462,10 @@ class GrowingBlock(GrowingContainer):
                     maximum_added_neurons=maximum_added_neurons,
                     update_previous=True,
                     dtype=dtype,
-                    use_covariance=config["use_covariance"],
-                    alpha_zero=config["alpha_zero"],
+                    use_covariance=use_covariance,
+                    alpha_zero=alpha_zero,
                     use_projection=False,  # Must be False when hidden_neurons == 0
+                    **kwargs,
                 )
             )
             # Return the same tuple format as GrowingModule for consistency
@@ -482,7 +480,11 @@ class GrowingBlock(GrowingContainer):
             maximum_added_neurons=maximum_added_neurons,
             update_previous=True,
             dtype=dtype,
-            initialization_method=initialization_method,
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
+            **kwargs,
         )
 
     def apply_change(
