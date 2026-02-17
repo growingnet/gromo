@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Fix a convergence problem in `sqrt_inverse_matrix_semi_positive` (:gh:`192` by `Théo Rudkiewicz`_)
 - Added documentation linting in CI/CD and reduced warnings in tests (:gh:`158` by `Stella Douka`_)
 - New tutorial for `GrowingContainer` (:gh:`188` by `Théo Rudkiewicz`_)
 - Update `GrowingBlock` to include recently added features in `GrowingModule` such as `in_neurons` property, `target_in_neurons` parameter, and methods for multi-step growth processes (:gh:`186` by `Théo Rudkiewicz`_)
