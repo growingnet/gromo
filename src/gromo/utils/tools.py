@@ -17,21 +17,11 @@ def sqrt_inverse_matrix_semi_positive(
         input matrix, square and semi-positive definite
     threshold: float
         threshold to consider an eigenvalue as zero
-    preferred_linalg_library: None | str
-        linalg library to use, should be one of ("magma", "cusolver"), "cusolver" may fail
-        for non-positive definite matrix if CUDA < 12.1 is used
-        see: https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html
 
     Returns
     -------
     torch.Tensor
         square root of the inverse of the input matrix
-
-    Raises
-    ------
-    ValueError
-        if preferred_linalg_library is "cusolver" this is probably a CUDA error
-    torch.linalg.LinAlgError
     """
     logger = logging.getLogger(__name__)
     assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
@@ -41,6 +31,9 @@ def sqrt_inverse_matrix_semi_positive(
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
     except torch.linalg.LinAlgError:
+        # Sometimes, due to numerical issues, we get an error:
+        # The algorithm failed to converge because the input matrix is
+        # ill-conditioned or has too many repeated eigenvalues
         matrix += 1e-6 * torch.eye(matrix.shape[0], device=matrix.device)
         logger.warning(
             "Adding a small identity matrix to make the input matrix positive definite."
