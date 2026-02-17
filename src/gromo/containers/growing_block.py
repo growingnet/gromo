@@ -413,6 +413,8 @@ class GrowingBlock(GrowingContainer):
         use_projection: bool
             If True, use projection-based gradient for added parameters.
             Default is True (TINY behavior).
+        **kwargs: Any
+            Additional keyword arguments (currently unused, reserved for future extensions).
 
         Note
         ----

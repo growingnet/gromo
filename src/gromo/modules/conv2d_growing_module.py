@@ -1,5 +1,6 @@
 import types
 from math import prod
+from typing import Any
 from warnings import warn
 
 import torch
@@ -1667,6 +1668,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
+        **kwargs: Any,  # noqa: ARG002
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2097,6 +2099,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
+        **kwargs: Any,  # noqa: ARG002
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.

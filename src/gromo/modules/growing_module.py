@@ -2127,6 +2127,8 @@ class GrowingModule(torch.nn.Module):
             if True, set alpha (incoming weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        **kwargs: Any
+            Additional keyword arguments (currently unused, reserved for future extensions).
 
         Returns
         -------
@@ -2206,6 +2208,8 @@ class GrowingModule(torch.nn.Module):
         use_projection: bool
             Whether to use projected gradient (tensor_n) versus raw gradient
             (-tensor_m_prev) for computing new neuron parameters.
+        **kwargs: Any
+            Additional keyword arguments passed to `_compute_optimal_added_parameters`.
 
         Returns
         -------
