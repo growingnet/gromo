@@ -646,7 +646,7 @@ class LinearGrowingBlock(GrowingBlock):
                 kwargs_second_layer=kwargs_second_layer,
             )
         )
-        with catch_warnings(category=UserWarning):
+        with catch_warnings():  # category=UserWarning requires python 3.11
             # Ignore warnings about the initialization of zero neurons:
             # UserWarning: Initializing zero-element tensors is a no-op
             filterwarnings(
@@ -774,7 +774,7 @@ class Conv2dGrowingBlock(GrowingBlock):
                     f"kernel_size specified in both arguments and kwargs for {name}, "
                     f"using value from kwargs."
                 )
-        with catch_warnings(category=UserWarning):
+        with catch_warnings():  # category=UserWarning requires python 3.11
             # Ignore warnings about the initialization of zero neurons:
             # UserWarning: Initializing zero-element tensors is a no-op
             filterwarnings(
