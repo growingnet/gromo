@@ -17,7 +17,7 @@ class TestTensorStatistic(TestCase):
         set_device("cpu")
         x = None
         n_samples = 0
-        f = lambda: (x.sum(dim=0), x.size(0))  # type: ignore  # noqa: E731
+        f = lambda: (x.sum(dim=0), x.size(0))  # type: ignore
         tensor_statistic = self._tested_class(
             shape=(2, 3), update_function=f, name="Average"
         )

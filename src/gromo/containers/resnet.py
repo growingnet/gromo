@@ -15,6 +15,36 @@ from gromo.modules.growing_normalisation import GrowingBatchNorm2d
 
 
 class ResNetBasicBlock(SequentialGrowingContainer):
+    """
+    Represents a growing ResNet with basic blocks.
+    Parameters
+    ----------
+    in_features : int
+        Number of input features (channels).
+    out_features : int
+        Number of output features (channels).
+    device : torch.device | str | None
+        Device to run the model on.
+    activation : nn.Module
+        Activation function to use.
+    input_block_kernel_size : int
+        Kernel size for the input block.
+    output_block_kernel_size : int
+        Kernel size for the output block.
+    reduction_factor : float
+        Factor to reduce the number of channels in the bottleneck.
+        If 0, starts with no channels. If 1, starts with all channels.
+    small_inputs : bool
+        If True, adapt the network for small input images (e.g., CIFAR-10/100).
+        This uses smaller kernels, no stride, and
+        no max pooling in the initial layers.
+    inplanes : int
+        Number of initial planes (channels) after the first convolution.
+        (Default is 64 as in standard ResNet architectures.)
+    nb_stages : int
+        Number of stages in the ResNet.
+    """
+
     def __init__(
         self,
         in_features: int = 3,
@@ -28,35 +58,6 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         inplanes: int = 64,
         nb_stages: int = 4,
     ) -> None:
-        """
-        Initialize the ResNet with basic blocks.
-        Parameters
-        ----------
-        in_features : int
-            Number of input features (channels).
-        out_features : int
-            Number of output features (channels).
-        device : torch.device | str | None
-            Device to run the model on.
-        activation : nn.Module
-            Activation function to use.
-        input_block_kernel_size : int
-            Kernel size for the input block.
-        output_block_kernel_size : int
-            Kernel size for the output block.
-        reduction_factor : float
-            Factor to reduce the number of channels in the bottleneck.
-            If 0, starts with no channels. If 1, starts with all channels.
-        small_inputs : bool
-            If True, adapt the network for small input images (e.g., CIFAR-10/100).
-            This uses smaller kernels, no stride, and
-            no max pooling in the initial layers.
-        inplanes : int
-            Number of initial planes (channels) after the first convolution.
-            (Default is 64 as in standard ResNet architectures.)
-        nb_stages : int
-            Number of stages in the ResNet.
-        """
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
         )
@@ -233,6 +234,18 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         self._growable_layers.append(new_block)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward function
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output of model
+        """
         x = self.pre_net(x)
         for stage in self.stages:
             x = stage(x)
@@ -244,6 +257,20 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         x: torch.Tensor,
         mask: dict | None = None,  # noqa: ARG002
     ) -> torch.Tensor:
+        """Extended forward function including extensions of the modules
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+        mask : dict | None, optional
+            extension mask for specific nodes and edges, by default None
+
+        Returns
+        -------
+        torch.Tensor
+            output of the extended model
+        """
         x = self.pre_net(x)
         for stage in self.stages:  # type: ignore
             stage: nn.Sequential
@@ -309,6 +336,11 @@ def init_full_resnet_structure(
     -------
     ResNetBasicBlock
         The initialized ResNet-18 model.
+
+    Raises
+    ------
+    TypeError
+        if argument number_of_blocks_per_stage is not of type int or a tuple of four ints
     """
     if isinstance(input_shape, torch.Size):
         input_shape = tuple(input_shape)  # type: ignore
