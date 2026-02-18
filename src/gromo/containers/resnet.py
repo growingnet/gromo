@@ -500,7 +500,12 @@ def init_full_resnet_structure(
     Raises
     ------
     TypeError
-        if argument number_of_blocks_per_stage is not of type int or a tuple of four ints
+        If ``number_of_blocks_per_stage`` is not an int or a tuple of ints,
+        or if a ``hidden_channels`` element is neither an int nor a tuple.
+    ValueError
+        If ``hidden_channels`` length does not match ``nb_stages``,
+        or if a per-stage tuple length does not match the corresponding
+        ``number_of_blocks_per_stage``.
     """
     if isinstance(input_shape, torch.Size):
         input_shape = tuple(input_shape)  # type: ignore
