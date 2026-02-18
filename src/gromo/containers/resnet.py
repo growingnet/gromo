@@ -93,7 +93,8 @@ class ResNetBasicBlock(SequentialGrowingContainer):
                 in_channels=input_channels,
                 out_channels=output_channels,
                 hidden_channels=stage_hidden_channels,
-                stride=stage_stride,
+                input_block_stride=stage_stride,
+                output_block_stride=1,
                 name=f"Stage {i} Block 0",
                 use_downsample=(i > 0),
             )
@@ -115,7 +116,20 @@ class ResNetBasicBlock(SequentialGrowingContainer):
                     self._growable_layers.append(block)
 
     def _build_pre_net(self, in_features: int, inplanes: int) -> nn.Sequential:
-        """Build the pre-network (stem) based on input size and architecture type."""
+        """Build the pre-network (stem) based on input size and architecture type.
+
+        Parameters
+        ----------
+        in_features : int
+            Number of input features (channels).
+        inplanes : int
+            Number of output planes (channels) after the first convolution.
+
+        Returns
+        -------
+        nn.Sequential
+            The stem network.
+        """
         if self.small_inputs:
             # For small inputs like CIFAR-10/100 (32x32)
             layers: list[nn.Module] = [
@@ -153,7 +167,18 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         return nn.Sequential(*layers)
 
     def _build_post_net(self, final_channels: int) -> nn.Sequential:
-        """Build the post-network (head) based on architecture type."""
+        """Build the post-network (head) based on architecture type.
+
+        Parameters
+        ----------
+        final_channels : int
+            Number of channels from the last stage.
+
+        Returns
+        -------
+        nn.Sequential
+            The head network.
+        """
         layers: list[nn.Module] = []
         if self.use_preactivation:
             layers.append(nn.BatchNorm2d(final_channels, device=self.device))
@@ -172,13 +197,41 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         in_channels: int,
         out_channels: int,
         hidden_channels: int,
-        stride: int,
         name: str,
         use_downsample: bool = False,
+        input_block_stride: int = 1,
+        output_block_stride: int = 1,
         input_block_kernel_size: int | None = None,
         output_block_kernel_size: int | None = None,
     ) -> Conv2dGrowingBlock:
-        """Create a ResNet block with the appropriate configuration."""
+        """Create a ResNet block with the appropriate configuration.
+
+        Parameters
+        ----------
+        in_channels : int
+            Number of input channels.
+        out_channels : int
+            Number of output channels.
+        hidden_channels : int
+            Number of hidden channels in the block.
+        name : str
+            Name of the block.
+        use_downsample : bool
+            If True, add a downsample module to match dimensions.
+        input_block_stride : int
+            Stride for the first convolutional layer.
+        output_block_stride : int
+            Stride for the second convolutional layer.
+        input_block_kernel_size : int | None
+            Kernel size for the first layer. If None, uses the instance default.
+        output_block_kernel_size : int | None
+            Kernel size for the second layer. If None, uses the instance default.
+
+        Returns
+        -------
+        Conv2dGrowingBlock
+            The constructed block.
+        """
         if input_block_kernel_size is None:
             input_block_kernel_size = self.input_block_kernel_size
         if output_block_kernel_size is None:
@@ -188,12 +241,13 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             "kernel_size": input_block_kernel_size,
             "padding": 1,
             "use_bias": False,
-            "stride": stride,
+            "stride": input_block_stride,
         }
-        kwargs_layer = {
+        kwargs_second_layer = {
             "kernel_size": output_block_kernel_size,
             "padding": 1,
             "use_bias": False,
+            "stride": output_block_stride,
         }
         mid_activation = nn.Sequential(
             GrowingBatchNorm2d(hidden_channels, device=self.device),
@@ -214,7 +268,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
                         in_channels=in_channels,
                         out_channels=out_channels,
                         kernel_size=1,
-                        stride=stride,
+                        stride=input_block_stride,
                         bias=False,
                         device=self.device,
                     ),
@@ -231,7 +285,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
                         in_channels=in_channels,
                         out_channels=out_channels,
                         kernel_size=1,
-                        stride=stride,
+                        stride=input_block_stride,
                         bias=False,
                         device=self.device,
                     ),
@@ -246,7 +300,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             out_channels=out_channels,
             hidden_channels=hidden_channels,
             kwargs_first_layer=kwargs_first_layer,
-            kwargs_layer=kwargs_layer,
+            kwargs_second_layer=kwargs_second_layer,
             pre_activation=pre_activation,
             mid_activation=mid_activation,
             extended_mid_activation=self.activation,
@@ -265,8 +319,23 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         output_block_kernel_size: int | None = None,
         hidden_channels: int = 0,
     ) -> None:
-        """
-        Append a new block to the specified stage of the ResNet.
+        """Append a new block to the specified stage of the ResNet.
+
+        Parameters
+        ----------
+        stage_index : int
+            Index of the stage to append the block to.
+        input_block_kernel_size : int | None
+            Kernel size for the first layer. If None, uses the instance default.
+        output_block_kernel_size : int | None
+            Kernel size for the second layer. If None, uses the instance default.
+        hidden_channels : int
+            Number of hidden channels in the new block.
+
+        Raises
+        ------
+        IndexError
+            If stage_index is out of range.
         """
         if not self.use_preactivation:
             assert hidden_channels > 0, (
@@ -289,7 +358,8 @@ class ResNetBasicBlock(SequentialGrowingContainer):
             in_channels=input_channels,
             out_channels=output_channels,
             hidden_channels=hidden_channels,
-            stride=1,
+            input_block_stride=1,
+            output_block_stride=1,
             name=f"Stage {stage_index} Block {len(stage)}",
             use_downsample=False,
             input_block_kernel_size=input_block_kernel_size,
