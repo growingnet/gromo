@@ -122,15 +122,13 @@ class TestLinearGrowingBlock(TorchTestCase):
 
     def test_init_with_zero_features(self):
         """Test initialization with 0 hidden features."""
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.in_features,
-                hidden_features=0,
-                device=self.device,
-                name="zero_block",
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            device=self.device,
+            name="zero_block",
+        )
 
         # Check basic properties
         self.assertEqual(block.in_features, self.in_features)
@@ -197,14 +195,12 @@ class TestLinearGrowingBlock(TorchTestCase):
 
     def test_forward_zero_features_no_downsample(self):
         """Test forward pass with 0 hidden features and no downsample."""
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.in_features,
-                hidden_features=0,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            device=self.device,
+        )
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
         output = block(x)
@@ -220,15 +216,13 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.in_features, self.out_features, device=self.device
         )
 
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.out_features,
-                hidden_features=0,
-                downsample=downsample,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=0,
+            downsample=downsample,
+            device=self.device,
+        )
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
         output = block(x)
@@ -292,14 +286,12 @@ class TestLinearGrowingBlock(TorchTestCase):
 
     def test_input_storage_zero_features_no_downsample(self):
         """Test input and pre-activity storage with 0 hidden features and no downsample."""
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.in_features,
-                hidden_features=0,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            device=self.device,
+        )
 
         # Enable storage
         block.first_layer.store_input = True
@@ -321,15 +313,13 @@ class TestLinearGrowingBlock(TorchTestCase):
             self.in_features, self.out_features, device=self.device
         )
 
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.out_features,
-                hidden_features=0,
-                downsample=downsample,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=0,
+            downsample=downsample,
+            device=self.device,
+        )
 
         # Enable storage directly
         block.first_layer.store_input = True
@@ -396,14 +386,12 @@ class TestLinearGrowingBlock(TorchTestCase):
 
     def test_extended_forward_zero_features_no_downsample(self):
         """Test extended_forward with zero hidden features."""
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.in_features,
-                hidden_features=0,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            device=self.device,
+        )
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
 
@@ -437,15 +425,13 @@ class TestLinearGrowingBlock(TorchTestCase):
 
     def test_extended_forward_zero_features_with_downsample(self):
         """Test extended_forward with zero hidden features and downsample."""
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.out_features,
-                hidden_features=0,
-                downsample=self.downsample,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=0,
+            downsample=self.downsample,
+            device=self.device,
+        )
 
         x = torch.randn(self.batch_size, self.in_features, device=self.device)
 
@@ -580,14 +566,12 @@ class TestLinearGrowingBlock(TorchTestCase):
 
     def test_pre_activity_storage_zero_features_no_downsample(self):
         """Test pre-activity storage with 0 hidden features and no downsample."""
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.in_features,
-                hidden_features=0,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            device=self.device,
+        )
 
         # Enable pre-activity storage directly
         block.second_layer.store_pre_activity = True
@@ -616,15 +600,13 @@ class TestLinearGrowingBlock(TorchTestCase):
 
     def test_pre_activity_storage_zero_features_with_downsample(self):
         """Test pre-activity storage with 0 hidden features and downsample."""
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.out_features,
-                hidden_features=0,
-                downsample=self.downsample,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=0,
+            downsample=self.downsample,
+            device=self.device,
+        )
 
         # Enable pre-activity storage directly
         block.second_layer.store_pre_activity = True
@@ -803,15 +785,12 @@ class TestLinearGrowingBlock(TorchTestCase):
     @unittest_parametrize(({"hidden_features": 0}, {"hidden_features": 3}))
     def test_init_computation(self, hidden_features: int = 0):
         """Test initialization of computation."""
-        with self.assertMaybeWarns(
-            UserWarning, "Initializing zero-element tensors is a no-op"
-        ):
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.in_features,
-                hidden_features=hidden_features,
-                device=self.device,
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=hidden_features,
+            device=self.device,
+        )
 
         # Initialize computation
         block.init_computation()
@@ -900,16 +879,14 @@ class TestLinearGrowingBlock(TorchTestCase):
         """
 
         # Step 1: Create the block with no downsampling, no activation
-        with self.assertWarns(UserWarning):
-            # Initializing zero-element tensors is a no-op
-            block = LinearGrowingBlock(
-                in_features=self.in_features,
-                out_features=self.in_features,  # Same dimensions for identity mapping
-                hidden_features=0,  # Start with 0 features
-                activation=torch.nn.Identity(),
-                device=self.device,
-                name="test_block",
-            )
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,  # Same dimensions for identity mapping
+            hidden_features=0,  # Start with 0 features
+            activation=torch.nn.Identity(),
+            device=self.device,
+            name="test_block",
+        )
 
         # Step 2: Init the computation
         block.init_computation()

@@ -3,7 +3,7 @@ Module to define a two layer block similar to a BasicBlock in ResNet.
 """
 
 from typing import Any
-from warnings import catch_warnings, simplefilter, warn
+from warnings import catch_warnings, filterwarnings, warn
 
 import torch
 from deprecated import deprecated
@@ -647,7 +647,13 @@ class LinearGrowingBlock(GrowingBlock):
             )
         )
         with catch_warnings(category=UserWarning):
-            simplefilter("ignore", UserWarning)
+            # Ignore warnings about the initialization of zero neurons:
+            # UserWarning: Initializing zero-element tensors is a no-op
+            filterwarnings(
+                "ignore",
+                message="Initializing zero-element tensors is a no-op",
+                category=UserWarning,
+            )
             first_layer = LinearGrowingModule(
                 in_features=in_features,
                 out_features=hidden_features,
@@ -769,7 +775,13 @@ class Conv2dGrowingBlock(GrowingBlock):
                     f"using value from kwargs."
                 )
         with catch_warnings(category=UserWarning):
-            simplefilter("ignore", UserWarning)
+            # Ignore warnings about the initialization of zero neurons:
+            # UserWarning: Initializing zero-element tensors is a no-op
+            filterwarnings(
+                "ignore",
+                message="Initializing zero-element tensors is a no-op",
+                category=UserWarning,
+            )
             first_layer = growing_conv_type(
                 in_channels=in_channels,
                 out_channels=hidden_channels,
