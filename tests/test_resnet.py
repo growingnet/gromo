@@ -8,7 +8,7 @@ from tests.unittest_tools import unittest_parametrize
 
 
 if TYPE_CHECKING:
-    from gromo.containers.growing_block import RestrictedConv2dGrowingBlock
+    from gromo.containers.growing_block import Conv2dGrowingBlock
 
 
 try:
@@ -298,7 +298,7 @@ class TestResNet(TorchTestCase):
         self.assertShapeEqual(output1, (2, 10))
 
         # Get the first block from the first stage
-        first_block: RestrictedConv2dGrowingBlock = model.stages[0][0]  # type: ignore
+        first_block: Conv2dGrowingBlock = model.stages[0][0]  # type: ignore
 
         # Create layer extensions for the first block
         extension_size = 16  # Add 16 channels
@@ -471,7 +471,7 @@ class TestResNet(TorchTestCase):
         )
 
         # Get initial hidden neurons for the first block
-        first_block: RestrictedConv2dGrowingBlock = model.stages[0][0]  # type: ignore
+        first_block: Conv2dGrowingBlock = model.stages[0][0]  # type: ignore
         initial_neurons = first_block.hidden_neurons
 
         # Call complete_growth with extension kwargs (without extension_size)

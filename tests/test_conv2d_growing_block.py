@@ -1,6 +1,7 @@
 import torch
 
-from gromo.containers.growing_block import RestrictedConv2dGrowingBlock
+from gromo.containers.growing_block import Conv2dGrowingBlock
+from gromo.modules.conv2d_growing_module import RestrictedConv2dGrowingModule
 from gromo.utils.utils import global_device
 
 
@@ -11,7 +12,7 @@ except ImportError:
 
 
 class TestConv2dGrowingBlock(TorchTestCase):
-    """Test RestrictedConv2dGrowingBlock functionality."""
+    """Test Conv2dGrowingBlock functionality."""
 
     def setUp(self):
         torch.manual_seed(0)
@@ -24,10 +25,10 @@ class TestConv2dGrowingBlock(TorchTestCase):
         self.input_width = 11
 
     def test_init(self):
-        """Test initialization of RestrictedConv2dGrowingBlock."""
+        """Test initialization of Conv2dGrowingBlock."""
         with self.assertRaises(ValueError):
             # kernel_size must be specified
-            RestrictedConv2dGrowingBlock(
+            Conv2dGrowingBlock(
                 in_channels=self.in_channels,
                 out_channels=self.out_channels,
                 kernel_size=None,
@@ -36,7 +37,7 @@ class TestConv2dGrowingBlock(TorchTestCase):
             )
 
         # Init with kwargs dictionaries
-        block = RestrictedConv2dGrowingBlock(
+        block = Conv2dGrowingBlock(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
             hidden_channels=0,
@@ -48,7 +49,7 @@ class TestConv2dGrowingBlock(TorchTestCase):
         self.assertEqual(block.second_layer.kernel_size, (3, 3))
         self.assertEqual(block.second_layer.padding, (1, 1))
 
-        block = RestrictedConv2dGrowingBlock(
+        block = Conv2dGrowingBlock(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
             kernel_size=3,
@@ -80,7 +81,7 @@ class TestConv2dGrowingBlock(TorchTestCase):
         with self.assertWarns(UserWarning):
             # Warns because no extended_mid_activation is provided
             # and mid_activation is fixed size
-            block = RestrictedConv2dGrowingBlock(
+            block = Conv2dGrowingBlock(
                 in_channels=self.in_channels,
                 out_channels=self.out_channels,
                 kernel_size=3,
@@ -112,7 +113,7 @@ class TestConv2dGrowingBlock(TorchTestCase):
         # Create block with GrowableIdentity activation
         growable_activation = GrowableIdentity(self.hidden_channels)
 
-        block = RestrictedConv2dGrowingBlock(
+        block = Conv2dGrowingBlock(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
             kernel_size=3,
@@ -121,6 +122,7 @@ class TestConv2dGrowingBlock(TorchTestCase):
             extended_mid_activation=torch.nn.Identity(),
             device=self.device,
             kwargs_layer={"padding": 1},
+            growing_conv_type=RestrictedConv2dGrowingModule,
         )
 
         x = torch.randn(
