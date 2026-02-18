@@ -26,6 +26,26 @@ class GrowingBlock(GrowingContainer):
     - Layer first
     - Activation mid
     - Layer second
+
+    Parameters
+    ----------
+    first_layer : GrowingModule
+        first layer of the block
+    second_layer : GrowingModule
+        second layer of the block
+    in_features : int
+        number of input features, in case of convolutional layer,
+        the number of channels
+    out_features : int
+        number of output features
+    pre_activation : torch.nn.Module
+        activation function to use before the first layer
+    name : str
+        name of the block
+    downsample : torch.nn.Module
+        operation to apply on the residual stream
+    device : torch.device | None
+        device to use for the block
     """
 
     def __init__(
@@ -39,31 +59,6 @@ class GrowingBlock(GrowingContainer):
         downsample: torch.nn.Module = torch.nn.Identity(),
         device: torch.device | None = None,
     ) -> None:
-        """
-        Initialise the block.
-
-        Parameters
-        ----------
-        first_layer: GrowingModule
-            first layer of the block
-        second_layer: GrowingModule
-            second layer of the block
-        in_features: int
-            number of input features, in case of convolutional layer,
-            the number of channels
-        out_features: int
-            number of output features
-        hidden_features: int
-            number of hidden features, if zero the block is the zero function
-        pre_activation: torch.nn.Module
-            activation function to use before the first layer
-        name: str
-            name of the block
-        downsample: torch.nn.Module
-            operation to apply on the residual stream
-        device: torch.device | None
-            device to use for the block
-        """
         assert in_features == out_features or not isinstance(
             downsample, torch.nn.Identity
         ), (
@@ -137,6 +132,13 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def hidden_features(self) -> int:
+        """Fan-in size of the second layer
+
+        Returns
+        -------
+        int
+            fan-in size
+        """
         warn(
             "hidden_features is deprecated, use hidden_neurons instead.",
             DeprecationWarning,
@@ -146,14 +148,35 @@ class GrowingBlock(GrowingContainer):
 
     @property
     def hidden_neurons(self) -> int:
+        """Number of hidden neurons.
+
+        Returns
+        -------
+        int
+            fan-in size
+        """
         return self.second_layer.in_neurons
 
     @property
-    def eigenvalues_extension(self):
+    def eigenvalues_extension(self) -> torch.Tensor | None:
+        """Get the eigenvalues extension of block
+
+        Returns
+        -------
+        torch.Tensor | None
+            eigenvalues extension
+        """
         return self.second_layer.eigenvalues_extension
 
     @property
-    def parameter_update_decrease(self):
+    def parameter_update_decrease(self) -> torch.Tensor | None:
+        """Get the parameter update decrease of the block
+
+        Returns
+        -------
+        torch.Tensor | None
+            parameter update decrease
+        """
         return self.second_layer.parameter_update_decrease
 
     @parameter_update_decrease.setter
@@ -171,7 +194,14 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.parameter_update_decrease = value
 
     @property
-    def scaling_factor(self):
+    def scaling_factor(self) -> torch.Tensor:
+        """Get the scaling factor of the block
+
+        Returns
+        -------
+        torch.Tensor
+            scaling factor
+        """
         return self.second_layer.scaling_factor
 
     @scaling_factor.setter
@@ -202,9 +232,9 @@ class GrowingBlock(GrowingContainer):
         if kwargs_layer is None:
             kwargs_layer = dict()
         if kwargs_first_layer is None:
-            kwargs_first_layer = kwargs_layer
+            kwargs_first_layer = kwargs_layer.copy()
         if kwargs_second_layer is None:
-            kwargs_second_layer = kwargs_layer
+            kwargs_second_layer = kwargs_layer.copy()
         return pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -219,8 +249,8 @@ class GrowingBlock(GrowingContainer):
         ----------
         x: torch.Tensor
             input tensor
-        mask: None
-            mask tensor (not used)
+        mask: dict, optional
+            mask tensor (not used), by default {}
 
         Returns
         -------
@@ -330,7 +360,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.cross_covariance.reset()
         self.second_layer.tensor_s_growth.reset()
 
-    def delete_update(self, **kwargs):
+    def delete_update(self, **kwargs: Any):
         """
         Delete the update of the block.
         """
@@ -499,7 +529,7 @@ class GrowingBlock(GrowingContainer):
             input_extension_init=input_extension_init,
         )
 
-    def normalize_optimal_updates(self, **kwargs) -> None:
+    def normalize_optimal_updates(self, **kwargs: Any) -> None:
         """
         Normalize the optimal updates.
         """
@@ -518,17 +548,18 @@ class GrowingBlock(GrowingContainer):
 
     def number_of_neurons_to_add(
         self,
-        **kwargs,
+        **kwargs: str | int,
     ) -> int:
         """Get the number of neurons to add in the next growth step.
 
         Parameters
         ----------
-        method : str
-            Method to use for determining the number of neurons to add.
-            Options are "fixed_proportional".
-        number_of_growth_steps : int
-            Number of growth steps planned, used only if method is "proportional".
+        **kwargs : str | int
+            method : str
+                Method to use for determining the number of neurons to add.
+                Options are "fixed_proportional".
+            number_of_growth_steps : int
+                Number of growth steps planned, used only if method is "proportional".
 
         Returns
         -------
@@ -537,18 +568,56 @@ class GrowingBlock(GrowingContainer):
         """
         return self.second_layer.number_of_neurons_to_add(**kwargs)
 
-    def complete_growth(self, **kwargs) -> None:
+    def complete_growth(self, **extension_kwargs: dict) -> None:
         """Complete the growth procedure for the block.
 
         Parameters
         ----------
-        extension_kwargs : dict
+        **extension_kwargs : dict
             Keyword arguments for the extension procedure.
         """
-        self.second_layer.complete_growth(**kwargs)
+        self.second_layer.complete_growth(**extension_kwargs)
 
 
 class LinearGrowingBlock(GrowingBlock):
+    """
+    Represent a linear growing block.
+
+    Parameters
+    ----------
+    in_features : int
+        number of input channels
+    out_features : int
+        number of output channels
+    hidden_features : int
+        number of hidden features, if zero the block is the zero function
+    target_hidden_features: int | None, optional
+        target hidden features, by default None
+    activation : torch.nn.Module | None
+        activation function to use, if None use the identity function
+    pre_activation : torch.nn.Module | None
+        activation function to use before the first layer,
+        if None use the activation function
+    mid_activation : torch.nn.Module | None
+        activation function to use between the two layers,
+        if None use the activation function
+    extended_mid_activation : torch.nn.Module | None
+        activation function to use between the two layers in the extended forward,
+        if None use the mid_activation
+    name : str
+        name of the block
+    kwargs_layer : dict | None
+        dictionary of arguments for the layers (e.g. bias, ...)
+    kwargs_first_layer : dict | None
+        dictionary of arguments for the first layer, if None use kwargs_layer
+    kwargs_second_layer : dict | None
+        dictionary of arguments for the second layer, if None use kwargs_layer
+    downsample : torch.nn.Module
+        operation to apply on the residual stream
+    device : torch.device | None
+        device to use for the block
+    """
+
     def __init__(
         self,
         in_features: int,
@@ -567,44 +636,6 @@ class LinearGrowingBlock(GrowingBlock):
         downsample: torch.nn.Module = torch.nn.Identity(),
         device: torch.device | None = None,
     ) -> None:
-        """
-        Initialise the block.
-
-        Parameters
-        ----------
-        in_features: int
-            number of input channels
-        out_features: int
-            number of output channels
-        hidden_features: int
-            number of hidden features, if zero the block is the zero function
-        activation: torch.nn.Module | None
-            activation function to use, if None use the identity function
-        pre_activation: torch.nn.Module | None
-            activation function to use before the first layer,
-            if None use the activation function
-        mid_activation: torch.nn.Module | None
-            activation function to use between the two layers,
-            if None use the activation function
-        extended_mid_activation: torch.nn.Module | None
-            activation function to use between the two layers in the extended forward,
-            if None use the mid_activation
-        pre_addition_function: torch.nn.Module | None
-            function to use after the second layer,
-            defaults to the identity function
-        name: str
-            name of the block
-        kwargs_layer: dict | None
-            dictionary of arguments for the layers (e.g. bias, ...)
-        kwargs_first_layer: dict | None
-            dictionary of arguments for the first layer, if None use kwargs_layer
-        kwargs_second_layer: dict | None
-            dictionary of arguments for the second layer, if None use kwargs_layer
-        downsample: torch.nn.Module
-            operation to apply on the residual stream
-        device: torch.device | None
-            device to use for the block
-        """
         pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer = (
             self.set_default_values(
                 activation=activation,
@@ -652,7 +683,48 @@ class Conv2dGrowingBlock(GrowingBlock):
     Conv2dGrowingModule layers.
 
     This creates a two-layer block similar to LinearGrowingBlock but using
-    Conv2dGrowingModule layers instead of LinearGrowingModule layers.
+    RestrictedConv2dGrowingModule layers instead of LinearGrowingModule layers.
+
+    Parameters
+    ----------
+    in_channels : int
+        number of input channels
+    out_channels : int
+        number of output channels
+    kernel_size : int | tuple[int, int] | None
+        size of the convolutional kernel
+    hidden_channels : int
+        number of hidden channels, if zero the block is the zero function
+    target_hidden_channels : int | None, optional
+        target hidden channels, by default None
+    activation : torch.nn.Module | None
+        activation function to use, if None use the identity function
+    pre_activation : torch.nn.Module | None
+        activation function to use before the first layer,
+        if None use the activation function
+    mid_activation : torch.nn.Module | None
+        activation function to use between the two layers,
+        if None use the activation function
+    extended_mid_activation : torch.nn.Module | None
+        extended activation function to use between the two layers,
+        if None use the extended activation function
+    name : str
+        name of the block
+    kwargs_layer : dict | None
+        dictionary of arguments for the layers (e.g. use_bias, ...)
+    kwargs_first_layer : dict | None
+        dictionary of arguments for the first layer, if None use kwargs_layer
+    kwargs_second_layer : dict | None
+        dictionary of arguments for the second layer, if None use kwargs_layer
+    downsample : torch.nn.Module
+        operation to apply on the residual stream
+    device : torch.device | None
+        device to use for the block
+
+    Raises
+    ------
+    ValueError
+        if argument kernel_size is None and also not specified in kwargs_first_layer or kwargs_second_layer
     """
 
     def __init__(
@@ -675,46 +747,6 @@ class Conv2dGrowingBlock(GrowingBlock):
         growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
         device: torch.device | None = None,
     ) -> None:
-        """
-        Initialise the convolutional block.
-
-        Parameters
-        ----------
-        in_channels: int
-            number of input channels
-        out_channels: int
-            number of output channels
-        kernel_size: int | tuple[int, int] | None
-            size of the convolutional kernel
-        hidden_channels: int
-            number of hidden channels, if zero the block is the zero function
-        activation: torch.nn.Module | None
-            activation function to use, if None use the identity function
-        pre_activation: torch.nn.Module | None
-            activation function to use before the first layer,
-            if None use the activation function
-        mid_activation: torch.nn.Module | None
-            activation function to use between the two layers,
-            if None use the activation function
-        pre_addition_function: torch.nn.Module | None
-            function to use after the second layer,
-            defaults to the identity function
-        name: str
-            name of the block
-        kwargs_layer: dict | None
-            dictionary of arguments for the layers (e.g. use_bias, ...)
-        kwargs_first_layer: dict | None
-            dictionary of arguments for the first layer, if None use kwargs_layer
-        kwargs_second_layer: dict | None
-            dictionary of arguments for the second layer, if None use kwargs_layer
-        downsample: torch.nn.Module
-            operation to apply on the residual stream
-        growing_conv_type: type[Conv2dGrowingModule]
-            type of convolutional growing module to use
-            (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...)
-        device: torch.device | None
-            device to use for the block
-        """
         pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer = (
             self.set_default_values(
                 activation=activation,

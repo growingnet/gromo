@@ -4,7 +4,12 @@ import unittest
 import torch
 from torch.nn.functional import one_hot
 
-from gromo.containers.growing_dag import Expansion, GrowingDAG, InterMergeExpansion
+from gromo.containers.growing_dag import (
+    Expansion,
+    ExpansionType,
+    GrowingDAG,
+    InterMergeExpansion,
+)
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
 
@@ -145,7 +150,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
         next_nodes = self.net.dag.end
         expansion = Expansion(
             self.net.dag,
-            "new node",
+            ExpansionType.NEW_NODE,
             expanding_node=node,
             previous_node=prev_nodes,
             next_node=next_nodes,
@@ -176,7 +181,10 @@ class TestGrowingGraphNetwork(TorchTestCase):
         prev_node = self.net.dag.root
         next_node = self.net.dag.end
         expansion = Expansion(
-            self.net.dag, "new edge", previous_node=prev_node, next_node=next_node
+            self.net.dag,
+            ExpansionType.NEW_EDGE,
+            previous_node=prev_node,
+            next_node=next_node,
         )
         expansion.dag.add_direct_edge(prev_node, next_node)
         edge_module = expansion.dag.get_edge_module(prev_node, next_node)
@@ -214,7 +222,10 @@ class TestGrowingGraphNetwork(TorchTestCase):
         prev_node = self.net_conv.dag.root
         next_node = self.net_conv.dag.end
         expansion = Expansion(
-            self.net_conv.dag, "new edge", previous_node=prev_node, next_node=next_node
+            self.net_conv.dag,
+            ExpansionType.NEW_EDGE,
+            previous_node=prev_node,
+            next_node=next_node,
         )
         expansion.dag.add_direct_edge(
             prev_node, next_node, edge_attributes={"kernel_size": self.kernel_size}
@@ -296,16 +307,18 @@ class TestGrowingGraphNetwork(TorchTestCase):
 
     @unittest_parametrize(({"evaluate": True}, {"evaluate": False}))
     def test_execute_expansions(self, evaluate: bool) -> None:
-        self.net.execute_expansions(
-            self.actions,
-            self.bottleneck,
-            self.input_B,
-            amplitude_factor=False,
-            evaluate=evaluate,
-            train_dataloader=self.dataloader,
-            dev_dataloader=self.dataloader,
-            val_dataloader=self.test_dataloader,
-        )
+        with self.assertWarns(UserWarning):
+            # Initializing zero-element tensors is a no-op
+            self.net.execute_expansions(
+                self.actions,
+                self.bottleneck,
+                self.input_B,
+                amplitude_factor=False,
+                evaluate=evaluate,
+                train_dataloader=self.dataloader,
+                dev_dataloader=self.dataloader,
+                val_dataloader=self.test_dataloader,
+            )
 
         for expansion in self.actions:
             if evaluate:
@@ -371,7 +384,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.actions.append(
             InterMergeExpansion(
                 self.net.dag,
-                type="expanded node",
+                exp_type=ExpansionType.EXPANDED_NODE,
                 expanding_node=self.net.dag.end,
                 adjacent_expanding_node="test",
             )
@@ -426,7 +439,10 @@ class TestGrowingGraphNetwork(TorchTestCase):
 
         min_value = torch.inf
         for i, opt in enumerate(options):
-            opt.expand()
+            with self.assertMaybeWarns(
+                UserWarning, "Initializing zero-element tensors is a no-op"
+            ):
+                opt.expand()
             opt.growth_history = i
             opt.metrics["scaling_factor"] = 1
             opt.metrics["loss_train"] = None
@@ -446,24 +462,30 @@ class TestGrowingGraphNetwork(TorchTestCase):
                     min_value = opt.metrics["loss_val"]
                     min_index = i
 
-        if options[min_index].type != "new edge":
+        if options[min_index].type != ExpansionType.NEW_EDGE:
             node_module = self.net.dag.get_node_module(options[min_index].expanding_node)
             for module in node_module.previous_modules:
                 weight = torch.rand(
                     (self.neurons, module.in_features), device=module.device
                 )
                 bias = torch.rand(self.neurons, device=module.device)
-                module.extended_output_layer = module.layer_of_tensor(
-                    weight=weight, bias=bias
-                )
+                with self.assertMaybeWarns(
+                    UserWarning, "Initializing zero-element tensors is a no-op"
+                ):
+                    module.extended_output_layer = module.layer_of_tensor(
+                        weight=weight, bias=bias
+                    )
             for module in node_module.next_modules:
                 weight = torch.rand(
                     (module.out_features, self.neurons), device=module.device
                 )
                 bias = torch.zeros(module.out_features, device=module.device)
-                module.extended_input_layer = module.layer_of_tensor(
-                    weight=weight, bias=bias
-                )
+                with self.assertMaybeWarns(
+                    UserWarning, "Initializing zero-element tensors is a no-op"
+                ):
+                    module.extended_input_layer = module.layer_of_tensor(
+                        weight=weight, bias=bias
+                    )
 
         self.net.choose_growth_best_action(options, use_bic=use_bic)
 
@@ -474,7 +496,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
             edge_module.optimal_delta_layer
             for edge_module in self.net.dag.get_all_edge_modules()
         )
-        if options[min_index].type != "new edge":
+        if options[min_index].type != ExpansionType.NEW_EDGE:
             self.assertIsNotNone(
                 edge_module.extended_output_layer
                 for edge_module in node_module.previous_modules
@@ -607,7 +629,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
 
         expansion = InterMergeExpansion(
             dag=self.net_conv.dag,
-            type="expanded node",
+            exp_type=ExpansionType.EXPANDED_NODE,
             expanding_node=end_conv,
             adjacent_expanding_node=start_linear,
         )

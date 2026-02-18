@@ -10,6 +10,7 @@ from torch import Tensor
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.utils import compute_tensor_stats
 
 
 class GrowingResidualBlock(GrowingContainer):
@@ -21,6 +22,19 @@ class GrowingResidualBlock(GrowingContainer):
     - Layer first
     - Activation mid
     - Layer second
+
+    Parameters
+    ----------
+    num_features : int
+        Number of input and output features, in case of convolutional layer, the number of channels.
+    hidden_features : int
+        Number of hidden features, if zero the block is the zero function.
+    activation : Optional[nn.Module]
+        Activation function to use, if None use the identity function.
+    name : str
+        Name of the block.
+    kwargs_layer : Optional[Dict[str, Any]]
+        Dictionary of arguments for the layers (e.g., bias, ...).
     """
 
     def __init__(
@@ -31,22 +45,6 @@ class GrowingResidualBlock(GrowingContainer):
         name: str = "block",
         kwargs_layer: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """
-        Initialize the block.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of input and output features, in case of convolutional layer, the number of channels.
-        hidden_features : int
-            Number of hidden features, if zero the block is the zero function.
-        activation : Optional[nn.Module]
-            Activation function to use, if None use the identity function.
-        name : str
-            Name of the block.
-        kwargs_layer : Optional[Dict[str, Any]]
-            Dictionary of arguments for the layers (e.g., bias, ...).
-        """
         if kwargs_layer is None:
             kwargs_layer = {}
 
@@ -79,6 +77,7 @@ class GrowingResidualBlock(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
         self._growing_layers = [self.second_layer]
 
     def extended_forward(self, x: Tensor) -> Tensor:
@@ -129,35 +128,36 @@ class GrowingResidualBlock(GrowingContainer):
             x = y + x
         return x
 
-    @staticmethod
-    def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        std_value = tensor.std().item() if tensor.numel() > 1 else -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
-
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        """Compute statistics of the weights of the block
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]
+            statistics dictionary
+        """
         statistics = {}
         statistics[0] = {
-            "weight": self.tensor_statistics(self.first_layer.weight),
+            "weight": compute_tensor_stats(self.first_layer.weight),
         }
         if self.first_layer.bias is not None:
-            statistics[0]["bias"] = self.tensor_statistics(self.first_layer.bias)
+            statistics[0]["bias"] = compute_tensor_stats(self.first_layer.bias)
         statistics[1] = {
-            "weight": self.tensor_statistics(self.second_layer.weight),
+            "weight": compute_tensor_stats(self.second_layer.weight),
         }
         if self.second_layer.bias is not None:
-            statistics[1]["bias"] = self.tensor_statistics(self.second_layer.bias)
+            statistics[1]["bias"] = compute_tensor_stats(self.second_layer.bias)
         statistics["hidden_shape"] = self.hidden_features
         return statistics
 
     def update_information(self) -> Dict[str, Any]:
+        """Update information for all growing layers of block including first order improvement
+
+        Returns
+        -------
+        Dict[str, Any]
+            information dictionary
+        """
         layer_information = {
             "update_value": self.second_layer.first_order_improvement,
             "parameter_improvement": self.second_layer.parameter_update_decrease,
@@ -167,6 +167,26 @@ class GrowingResidualBlock(GrowingContainer):
 
 
 class GrowingResidualMLP(GrowingContainer):
+    """Represent a Residual MLP
+
+    Parameters
+    ----------
+    in_features : torch.Size | tuple[int, ...]
+        input features
+    out_features : int
+        output features
+    num_features : int
+        number of features
+    hidden_features : int
+        hidden features
+    num_blocks : int
+        number of blocks
+    activation : torch.nn.Module, optional
+        activation function, by default torch.nn.ReLU()
+    device : torch.device, optional
+        default device, by default None
+    """
+
     def __init__(
         self,
         in_features: torch.Size | tuple[int, ...],
@@ -213,9 +233,22 @@ class GrowingResidualMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self):
-        self._growing_layers = list(block.second_layer for block in self.blocks)
+        """Reference all growable layers of the model in the _growing_layers private attribute"""
+        self._growing_layers = [block.second_layer for block in self.blocks]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward function
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output of the model
+        """
         x = self.embedding(x)
         for block in self.blocks:
             x = block(x)
@@ -223,6 +256,18 @@ class GrowingResidualMLP(GrowingContainer):
         return x
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Extended forward function including extensions of the modules
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            output of the extended model
+        """
         x = self.embedding(x)
         for block in self.blocks:
             x = block.extended_forward(x)
@@ -230,6 +275,20 @@ class GrowingResidualMLP(GrowingContainer):
         return x
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
+        """Select the updates of a layer with a specific index and delete the rest
+
+        Parameters
+        ----------
+        layer_index : int
+            selected layer index
+        verbose : bool, optional
+            print info, by default False
+
+        Returns
+        -------
+        int
+            selected layer index
+        """
         for i, layer in enumerate(self._growing_layers):
             if verbose:
                 print(f"Block {i} improvement: {layer.first_order_improvement}")
@@ -245,37 +304,35 @@ class GrowingResidualMLP(GrowingContainer):
                 self.currently_updated_layer_index = i
         return self.currently_updated_layer_index
 
-    @staticmethod
-    def tensor_statistics(tensor) -> dict[str, float]:
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        if tensor.numel() > 1:
-            std_value = tensor.std().item()
-        else:
-            std_value = -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
-
     def weights_statistics(self) -> dict[int, dict[str, dict[str, float]]]:
+        """Compute statistics of the weights of the model
+
+        Returns
+        -------
+        dict[int, dict[str, dict[str, float]]]
+            statistics dictionary
+        """
         statistics = {}
         for i, block in enumerate(self.blocks):
-            statistics[i] = {"weight_0": self.tensor_statistics(block.first_layer.weight)}
+            statistics[i] = {"weight_0": compute_tensor_stats(block.first_layer.weight)}
             if block.first_layer.bias is not None:
-                statistics[i]["bias_0"] = self.tensor_statistics(block.first_layer.bias)
+                statistics[i]["bias_0"] = compute_tensor_stats(block.first_layer.bias)
 
-            statistics[i]["weight_1"] = self.tensor_statistics(block.second_layer.weight)
+            statistics[i]["weight_1"] = compute_tensor_stats(block.second_layer.weight)
             if block.second_layer.bias is not None:
-                statistics[i]["bias_1"] = self.tensor_statistics(block.second_layer.bias)
+                statistics[i]["bias_1"] = compute_tensor_stats(block.second_layer.bias)
 
             statistics[i]["hidden_shape"] = block.hidden_features
         return statistics
 
-    def update_information(self):
+    def update_information(self) -> dict:
+        """Update information for all growing layers including first order improvement
+
+        Returns
+        -------
+        dict
+            information dictionary
+        """
         information = dict()
         for i, layer in enumerate(self._growing_layers):
             layer_information = dict()

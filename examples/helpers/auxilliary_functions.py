@@ -225,19 +225,24 @@ def compute_statistics(
     ----------
     growing_model: GrowingMLP
         The model to evaluate
-    loss_function: nn.Module | Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+    dataloader: torch.utils.data.DataLoader
+        The dataloader to use
+    loss_function: nn.Module
         The loss function to use.
         /!/ The loss function should not be averaged over the batch
     aux_loss_function: nn.Module | None
         The auxiliary loss function to use.
-    dataloader: DataLoader
-        The dataloader to use
     batch_limit: int
         The maximum number of batches to use
     device: torch.device
         The device to use
     show: bool
         If True, display a progress bar
+
+    Returns
+    -------
+    tuple[float, float]
+        loss, auxiliary loss
     """
     assert (
         loss_function.reduction == "sum"

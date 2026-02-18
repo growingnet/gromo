@@ -2,6 +2,8 @@
 Growing Batch Normalization module for extending batch normalization layers dynamically.
 """
 
+from typing import Callable
+
 import torch
 import torch.nn as nn
 
@@ -12,6 +14,25 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
 
     This class provides the common functionality for growing batch normalization
     layers by adding new parameters with default or custom values.
+
+    Parameters
+    ----------
+    num_features : int
+        Number of features (channels) in the input
+    eps : float, optional
+        A value added to the denominator for numerical stability, by default=1e-5
+    momentum : float, optional
+        The value used for the running_mean and running_var computation, by default=0.1
+    affine : bool, optional
+        Whether to learn affine parameters (weight and bias), by default=True
+    track_running_stats : bool, optional
+        Whether to track running statistics, by default=True
+    device : torch.device | None, optional
+        Device to place the layer on
+    dtype : torch.dtype | None, optional
+        Data type for the parameters
+    name : str, optional
+        Name of the layer for debugging, by default="growing_batch_norm"
     """
 
     def __init__(
@@ -25,28 +46,6 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         dtype: torch.dtype | None = None,
         name: str = "growing_batch_norm",
     ):
-        """
-        Initialize the base growing batch norm functionality.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of features (channels) in the input
-        eps : float, default=1e-5
-            A value added to the denominator for numerical stability
-        momentum : float, default=0.1
-            The value used for the running_mean and running_var computation
-        affine : bool, default=True
-            Whether to learn affine parameters (weight and bias)
-        track_running_stats : bool, default=True
-            Whether to track running statistics
-        device : torch.device, optional
-            Device to place the layer on
-        dtype : torch.dtype, optional
-            Data type for the parameters
-        name : str, default="growing_batch_norm"
-            Name of the layer for debugging
-        """
         super(GrowingBatchNorm, self).__init__(
             num_features=num_features,
             eps=eps,
@@ -63,7 +62,7 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         param_name: str,
         additional_features: int,
         new_values: torch.Tensor | None,
-        default_value_fn,
+        default_value_fn: Callable,
         device: torch.device,
         as_parameter: bool = True,
     ) -> None:
@@ -76,15 +75,20 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             Name of the parameter/buffer to extend
         additional_features : int
             Number of additional features to add
-        new_values : torch.Tensor, optional
+        new_values : torch.Tensor | None, optional
             Custom values for the new features. If None, uses default_value_fn.
-        default_value_fn : callable
+        default_value_fn : Callable
             Function to generate default values:
             fn(additional_features, device, dtype) -> torch.Tensor
         device : torch.device
             Device to place new parameters on
-        as_parameter : bool, default=True
-            Whether to treat as nn.Parameter (True) or buffer (False)
+        as_parameter : bool, optional
+            Whether to treat as nn.Parameter (True) or buffer (False), by default=True
+
+        Raises
+        ------
+        ValueError
+            if the parameter does not have additional_features as a number of elements
         """
         current_param = getattr(self, param_name, None)
         if current_param is None:
@@ -130,16 +134,21 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         ----------
         additional_features : int
             Number of additional features to add
-        new_weights : torch.Tensor, optional
+        new_weights : torch.Tensor | None, optional
             Custom weights for the new features. If None, defaults to ones.
-        new_biases : torch.Tensor, optional
+        new_biases : torch.Tensor | None, optional
             Custom biases for the new features. If None, defaults to zeros.
-        new_running_mean : torch.Tensor, optional
+        new_running_mean : torch.Tensor | None, optional
             Custom running mean for new features. If None, defaults to zeros.
-        new_running_var : torch.Tensor, optional
+        new_running_var : torch.Tensor | None, optional
             Custom running variance for new features. If None, defaults to ones.
-        device : torch.device, optional
+        device : torch.device | None, optional
             Device to place new parameters on. If None, uses current device.
+
+        Raises
+        ------
+        ValueError
+            if the additional_features argument is not positive
         """
         if additional_features <= 0:
             raise ValueError(
