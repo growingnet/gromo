@@ -1,7 +1,7 @@
 import contextlib
 import io
 import unittest.mock
-from unittest import main
+from unittest import main, mock
 
 import torch
 
@@ -57,6 +57,36 @@ class TestTools(TorchTestCase):
                     torch.linalg.inv(matrix),
                     message=f"Error with device {device}",
                 )
+
+    @unittest_parametrize(
+        (
+            {"dtype": torch.float32},
+            {"dtype": torch.float64},
+        )
+    )
+    def test_sqrt_inverse_matrix_semi_positive_shrinkage(self, dtype=torch.float32):
+        """
+        Test that the sqrt_inverse_matrix_semi_positive function applies shrinkage correctly.
+        """
+        matrix = torch.zeros(5, 5, dtype=dtype)
+        with mock.patch(
+            "gromo.utils.tools.torch.linalg.eigh",
+            side_effect=[
+                torch.linalg.LinAlgError("forced"),
+                torch.linalg.eigh(
+                    torch.eye(5, dtype=dtype) * torch.finfo(dtype).resolution
+                ),
+            ],
+        ):
+            with self.assertWarns(RuntimeWarning):
+                sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
+                    matrix, threshold=torch.finfo(dtype).resolution
+                )
+            self.assertAllClose(
+                sqrt_inverse_matrix,
+                torch.zeros_like(matrix, dtype=dtype),
+                message="Shrinkage not applied correctly",
+            )
 
     def test_compute_output_shape_conv(self):
         """
