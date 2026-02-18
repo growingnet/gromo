@@ -198,6 +198,7 @@ class TestResNet(TorchTestCase):
             number_of_blocks_per_stage=1,
             reduction_factor=0.5,
             device=device,
+            use_preactivation=True,
         )
 
         # Create a random input on the same device
@@ -300,7 +301,7 @@ class TestResNet(TorchTestCase):
         first_block: RestrictedConv2dGrowingBlock = model.stages[0][0]  # type: ignore
 
         # Create layer extensions for the first block
-        extension_size = 16  # Add 8 channels
+        extension_size = 16  # Add 16 channels
         first_block.create_layer_extensions(
             extension_size=extension_size,
             output_extension_init="copy_uniform",
