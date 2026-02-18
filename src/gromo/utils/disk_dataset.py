@@ -8,6 +8,20 @@ from torch.utils.data import Dataset, IterableDataset
 
 
 class DiskDataset(IterableDataset):
+    """Dataset that loads data from the disk
+
+    Parameters
+    ----------
+    input_filename : str
+        file name of input data dictionary
+    target_filename : str
+        filename of target data dictionary
+    input_keys : list[str]
+        keys to concatenate for the input
+    target_keys : list[str]
+        keys to concatenate for the target
+    """
+
     def __init__(
         self,
         input_filename: str,
@@ -21,6 +35,18 @@ class DiskDataset(IterableDataset):
         self.target_keys = target_keys
 
     def load_data(self) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
+        """Load data from disk and yield features and target
+
+        Yields
+        ------
+        tuple[torch.Tensor, torch.Tensor]
+            x, y
+
+        Raises
+        ------
+        ValueError
+            if target and input data do not have the same length
+        """
         input_t = torch.load(self.input_filename)
         target_t = torch.load(self.target_filename)
 
@@ -41,6 +67,26 @@ class DiskDataset(IterableDataset):
 
 
 class MemMapDataset(Dataset):
+    """Dataset for lazy loading from the disk.
+    Datapoints are read one by one from the disk.
+
+    Parameters
+    ----------
+    input_filename : str
+        file name of input data dictionary
+    target_filename : str
+        file name of target data dictionary
+    input_keys : list[str]
+        keys to concatenate for the input
+    target_keys : list[str]
+        keys to concatenate for the target
+
+    Raises
+    ------
+    ValueError
+        if target and input data do not have the same length
+    """
+
     def __init__(
         self,
         input_filename: str,
@@ -92,6 +138,23 @@ class MemMapDataset(Dataset):
 
 
 class SimpleMemMapDataset(Dataset):
+    """Dataset for lazy loading from the disk.
+    Datapoints are read one by one from the disk.
+    Assumes that the data keys are in separate files.
+
+    Parameters
+    ----------
+    input_filenames : list[str]
+        file names of input data to concatenate
+    target_filenames : list[str]
+        file names of target data to concatenate
+
+    Raises
+    ------
+    ValueError
+        if target and input data do not have the same length
+    """
+
     def __init__(self, input_filenames: list[str], target_filenames: list[str]) -> None:
         self.input_filenames = input_filenames
         self.target_filenames = target_filenames
@@ -125,7 +188,16 @@ class SimpleMemMapDataset(Dataset):
         return x, y
 
 
-def convert_dict_to_npy(pt_path: str, prefix: str):
+def convert_dict_to_npy(pt_path: str, prefix: str) -> None:
+    """Convert dictionary data files to separate files
+
+    Parameters
+    ----------
+    pt_path : str
+        dictionary file path
+    prefix : str
+        new files prefix
+    """
     data = torch.load(pt_path, map_location="cpu")
     for key, tensor in data.items():
         np.save(f"temp/{prefix}_{key}.npy", tensor.numpy())
