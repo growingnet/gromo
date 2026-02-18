@@ -604,6 +604,9 @@ class LinearGrowingBlock(GrowingBlock):
     extended_mid_activation : torch.nn.Module | None
         activation function to use between the two layers in the extended forward,
         if None use the mid_activation
+    pre_addition_function : torch.nn.Module
+        activation function to use before the addition with the identity,
+        if None use the identity function
     name : str
         name of the block
     kwargs_layer : dict | None
@@ -714,6 +717,9 @@ class Conv2dGrowingBlock(GrowingBlock):
     extended_mid_activation : torch.nn.Module | None
         extended activation function to use between the two layers,
         if None use the extended activation function
+    pre_addition_function : torch.nn.Module
+        activation function to use before the addition with the identity,
+        if None use the identity function
     name : str
         name of the block
     kwargs_layer : dict | None
@@ -724,6 +730,8 @@ class Conv2dGrowingBlock(GrowingBlock):
         dictionary of arguments for the second layer, if None use kwargs_layer
     downsample : torch.nn.Module
         operation to apply on the residual stream
+    growing_conv_type : type[Conv2dGrowingModule]
+        type of convolutional growing module to use, default is RestrictedConv2dGrowingModule
     device : torch.device | None
         device to use for the block
 

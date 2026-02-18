@@ -35,9 +35,9 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         Kernel size for the input block.
     output_block_kernel_size : int
         Kernel size for the output block.
-    reduction_factor : float
-        Factor to reduce the number of channels in the bottleneck.
-        If 0, starts with no channels. If 1, starts with all channels.
+    hidden_channels : tuple[int, ...]
+        Tuple specifying the number of hidden channels for the first block of each stage.
+        The length of the tuple determines the number of stages.
     small_inputs : bool
         If True, adapt the network for small input images (e.g., CIFAR-10/100).
         This uses smaller kernels, no stride, and
@@ -45,8 +45,12 @@ class ResNetBasicBlock(SequentialGrowingContainer):
     inplanes : int
         Number of initial planes (channels) after the first convolution.
         (Default is 64 as in standard ResNet architectures.)
-    nb_stages : int
-        Number of stages in the ResNet.
+    use_preactivation : bool
+        If True, use full pre-activation ResNet (BN-ReLU before conv).
+        If False, use classical ResNet (conv-BN-ReLU).
+    growing_conv_type : type[Conv2dGrowingModule]
+        Type of convolutional growing module to use
+        (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...).
     """
 
     def __init__(
