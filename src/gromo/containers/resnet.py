@@ -109,8 +109,8 @@ class ResNetBasicBlock(SequentialGrowingContainer):
 
         self.post_net = self._build_post_net(inplanes * (2 ** (nb_stages - 1)))
 
-        # Initialize the growing layers list with all
-        # RestrictedConv2dGrowingBlock instances
+        # Initialize the growing layers list with all Conv2dGrowingBlock instances
+        # (each configured via the `growing_conv_type` argument)
         self._growing_layers = []
         for stage in self.stages:  # type: ignore
             stage: nn.Sequential
@@ -358,13 +358,14 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         input_channels = stage[ref_block_idx].out_features
         output_channels = input_channels
 
+        num_blocks = sum(1 for m in stage if isinstance(m, Conv2dGrowingBlock))
         new_block = self._create_block(
             in_channels=input_channels,
             out_channels=output_channels,
             hidden_channels=hidden_channels,
             input_block_stride=1,
             output_block_stride=1,
-            name=f"Stage {stage_index} Block {len(stage)}",
+            name=f"Stage {stage_index} Block {num_blocks}",
             use_downsample=False,
             input_block_kernel_size=input_block_kernel_size,
             output_block_kernel_size=output_block_kernel_size,
