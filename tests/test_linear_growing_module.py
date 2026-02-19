@@ -4097,12 +4097,23 @@ class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
         self.assertEqual(layer2.missing_neurons(), 3)
 
         # Complete growth
-        layer2.complete_growth(extension_kwargs={})
+        layer2.complete_growth(
+            extension_kwargs={
+                "output_extension_init": "zeros",
+                "input_extension_init": "copy_uniform",
+            }
+        )
 
         # Verify final state
         self.assertEqual(layer2.in_features, 6)
         self.assertEqual(layer1.out_features, 6)
         self.assertEqual(layer2.missing_neurons(), 0)
+        self.assertTrue(torch.all(layer1.weight[-3:] == 0.0))
+        self.assertNotEqual(
+            torch.abs(layer2.layer.weight[:, -3:]).sum().item(),
+            0.0,
+            msg="New weights should not be zero after growth",
+        )
 
     def test_complete_growth_does_nothing_when_already_at_target(self) -> None:
         """Test that complete_growth does nothing when layer is at target size."""
