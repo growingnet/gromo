@@ -2918,7 +2918,7 @@ class GrowingModule(torch.nn.Module):
                 extension_size=neurons_to_add,
                 **extension_kwargs,
             )
-            self.apply_change(extension_size=neurons_to_add)
+            self.apply_change(extension_size=neurons_to_add, scaling_factor=1.0)
             self.delete_update(include_previous=True)
 
 
