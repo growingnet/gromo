@@ -1176,7 +1176,7 @@ class GrowingModule(torch.nn.Module):
         WARNING: does not store the input and pre-activity tensors.
         WARNING: the scaling factor is squared for the optimal delta and
         linear for the extension. (Instead of linear for the optimal delta and
-        squared for the extension as in the theory).
+        root squared for the extension as in the theory).
 
         Parameters
         ----------
@@ -1203,8 +1203,7 @@ class GrowingModule(torch.nn.Module):
         """
         pre_activity = self.layer(x)
 
-        # FIXME: should the scaling factor be squared with torch.sign?
-        linear_factor = self.scaling_factor**2 * torch.sign(self.scaling_factor)
+        linear_factor = self.scaling_factor**2
         sqrt_factor = self.scaling_factor
 
         if self.optimal_delta_layer is not None and use_optimal_delta:
@@ -1901,7 +1900,7 @@ class GrowingModule(torch.nn.Module):
         if scaling_factor is not None:
             self.scaling_factor = scaling_factor  # type: ignore
             # this type problem is due to the use of the setter to change the scaling factor
-        linear_factor = self.scaling_factor**2 * torch.sign(self.scaling_factor)
+        linear_factor = self.scaling_factor**2
         sqrt_factor = self.scaling_factor
         if apply_delta and self.optimal_delta_layer is not None:
             self.parameter_step(
