@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Change the behavior for negative scaling factor. Now use a positive scaling factor for the parameter update independently of the sign of the scaling factor. (:gh:`195` by `Théo Rudkiewicz`_)
 - Fix a convergence problem in `sqrt_inverse_matrix_semi_positive` (:gh:`192` by `Théo Rudkiewicz`_)
 - Added documentation linting in CI/CD and reduced warnings in tests (:gh:`158` by `Stella Douka`_)
 - New tutorial for `GrowingContainer` (:gh:`188` by `Théo Rudkiewicz`_)
