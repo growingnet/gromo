@@ -586,8 +586,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         self.add_edge(prev_node, next_node)
         edges = [(prev_node, next_node)]
+        _edge_attributes = copy.copy(edge_attributes)
+        _edge_attributes["use_bias"] = False
         self.update_edges(
-            edges, edge_attributes=edge_attributes, zero_weights=zero_weights
+            edges, edge_attributes=_edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(edges)
         self.set_growing_layers()
@@ -637,8 +639,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # TODO: separate functions for different modules, no need to check the type of node
         # self.nodes[new_node].update(node_attributes)
         self.update_nodes([new_node], node_attributes={new_node: node_attributes})
+
+        _edge_attributes = {edge: copy.copy(edge_attributes) for edge in new_edges}
+        _edge_attributes[new_edges[1]]["use_bias"] = False
         self.update_edges(
-            new_edges, edge_attributes=edge_attributes, zero_weights=zero_weights
+            new_edges, edge_attributes=_edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(new_edges)
         self.set_growing_layers()
@@ -749,8 +754,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         for prev_node, next_node in edges:
             name = f"{prev_node.split('_')[0]}_{next_node.split('_')[0]}"
+            if any(isinstance(v, dict) for v in edge_attributes.values()):
+                _attributes = edge_attributes[(prev_node, next_node)]
+            else:
+                _attributes = edge_attributes
 
-            if edge_attributes.get("constant"):
+            if _attributes.get("constant"):
                 self.__set_edge_module(
                     prev_node,
                     next_node,
@@ -770,7 +779,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 new_module = LinearGrowingModule(
                     in_features=self.nodes[prev_node]["size"],
                     out_features=self.nodes[next_node]["size"],
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     device=self.device,
                     name=f"L{name}",
                 )
@@ -778,11 +787,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 self.nodes[prev_node]["type"] == "convolution"
                 and self.nodes[next_node]["type"] == "convolution"
             ):
-                if "kernel_size" not in edge_attributes:
+                if "kernel_size" not in _attributes:
                     raise KeyError(
-                        'The kernel size of the edge should be specified at initialization. Example: key "kernel_size" in edge_attributes'
+                        'The kernel size of the edge should be specified at initialization. Example: key "kernel_size" in edge_attributes[edge]'
                     )
-                kernel_size = edge_attributes["kernel_size"]
+                kernel_size = _attributes["kernel_size"]
                 input_size = self.get_node_module(prev_node).output_size
                 default_padding = ((kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2)
                 new_module = FullConv2dGrowingModule(
@@ -790,10 +799,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     out_channels=self.nodes[next_node]["size"],
                     kernel_size=kernel_size,
                     input_size=input_size,
-                    stride=edge_attributes.get("stride", 1),
-                    padding=edge_attributes.get("padding", default_padding),
-                    dilation=edge_attributes.get("dilation", 1),
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    stride=_attributes.get("stride", 1),
+                    padding=_attributes.get("padding", default_padding),
+                    dilation=_attributes.get("dilation", 1),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     # allow_growing=True,
                     device=self.device,
                     name=f"C{name}",
@@ -806,7 +815,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 new_module = LinearGrowingModule(
                     in_features=in_features,
                     out_features=self.nodes[next_node]["size"],
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     device=self.device,
                     name=f"L{name}",
                 )
