@@ -586,10 +586,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         self.add_edge(prev_node, next_node)
         edges = [(prev_node, next_node)]
-        _edge_attributes = copy.copy(edge_attributes)
-        _edge_attributes["use_bias"] = False
         self.update_edges(
-            edges, edge_attributes=_edge_attributes, zero_weights=zero_weights
+            edges, edge_attributes=edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(edges)
         self.set_growing_layers()
