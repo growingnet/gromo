@@ -434,7 +434,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         total_in_features = sum([edge.in_features if isinstance(edge, LinearGrowingModule) else edge.in_channels for edge in expansion.in_edges])  # type: ignore
         total_out_features = sum([edge.out_features if isinstance(edge, LinearGrowingModule) else edge.out_channels for edge in expansion.out_edges])  # type: ignore
-        in_edges = len(expansion.in_edges)
+        in_edges = sum(int(edge.use_bias) for edge in expansion.in_edges)  # type:ignore
 
         # Initialize alpha and omega weights
         if linear_alpha_layer:
@@ -524,8 +524,8 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion.metrics["block_output"] = {}
 
         # Record layer extensions of new block
-        i = 0
-        for i_edge, prev_edge_module in enumerate(expansion.in_edges):
+        i, i_bias = 0, 0
+        for prev_edge_module in expansion.in_edges:
             # Output extension for alpha weights
             if isinstance(prev_edge_module, LinearGrowingModule):
                 in_features = prev_edge_module.in_features
@@ -535,7 +535,11 @@ class GrowingGraphNetwork(GrowingContainer):
 
             _weight = alpha[:, i : i + in_features, ...]
             _weight = _weight.view((self.neurons, *prev_edge_module.weight.shape[1:]))
-            _bias = bias[:, i_edge]
+            if prev_edge_module.use_bias:
+                _bias = bias[:, i_bias]
+                i_bias += 1
+            else:
+                _bias = None
 
             prev_edge_module.extended_output_layer = prev_edge_module.layer_of_tensor(
                 weight=_weight,
