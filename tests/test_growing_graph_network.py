@@ -473,7 +473,8 @@ class TestGrowingGraphNetwork(TorchTestCase):
                     UserWarning, "Initializing zero-element tensors is a no-op"
                 ):
                     module.extended_output_layer = module.layer_of_tensor(
-                        weight=weight, bias=bias
+                        weight=weight,
+                        bias=bias if module.use_bias else None,
                     )
             for module in node_module.next_modules:
                 weight = torch.rand(
@@ -484,7 +485,8 @@ class TestGrowingGraphNetwork(TorchTestCase):
                     UserWarning, "Initializing zero-element tensors is a no-op"
                 ):
                     module.extended_input_layer = module.layer_of_tensor(
-                        weight=weight, bias=bias
+                        weight=weight,
+                        bias=bias if module.use_bias else None,
                     )
 
         self.net.choose_growth_best_action(options, use_bic=use_bic)
