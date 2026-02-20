@@ -1428,44 +1428,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertIsInstance(m_result, torch.Tensor)
         self.assertGreater(m_samples, 0)
 
-    def test_negative_parameter_update_decrease_paths(self):
-        """Test error paths for problematic parameter computations"""
-        from unittest.mock import patch
-
-        # Create a layer and set up for computation
-        layer = LinearGrowingModule(2, 2, device=global_device(), name="test_layer")
-
-        # Set up basic tensors to trigger the problematic computation path
-        layer.init_computation()
-        layer.store_input = True
-        layer.store_pre_activity = True
-
-        # Create a simple forward pass
-        x = torch.randn(3, 2, device=global_device())
-        _ = layer(x)
-
-        # Try to force a negative parameter update decrease scenario
-        # by creating problematic tensor conditions
-        with patch("warnings.warn") as mock_warn:
-            try:
-                # This test is mainly to increase coverage of the error handling paths
-                # We create conditions that might trigger the warning paths
-                layer.compute_optimal_delta(update=False)
-
-                # Check if any warnings about parameter update decrease were called
-                warning_calls = [
-                    call
-                    for call in mock_warn.call_args_list
-                    if "parameter update decrease" in str(call)
-                ]
-
-                # The test passes if we exercised the code paths, regardless of warnings
-                self.assertTrue(True)  # Code paths exercised
-
-            except (AssertionError, ValueError, RuntimeError):
-                # Expected failures for incomplete/problematic tensor conditions.
-                self.assertTrue(True)  # Error paths exercised
-
     def test_zero_bottleneck(self):
         """Test behavior when bottleneck is fully resolved
         with parameter change."""
