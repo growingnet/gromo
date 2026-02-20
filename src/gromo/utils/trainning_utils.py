@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Generator
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -87,7 +87,7 @@ def enumerate_dataloader(
     dataloader_seed: int | None = None,
     batch_limit: int | None = None,
     epochs: float | None = None,
-) -> Iterator[tuple[int, Any]]:
+) -> Generator[tuple[int, Any]]:
     """
     A generator that yields batches from a dataloader with an optional batch limit.
 
@@ -108,8 +108,8 @@ def enumerate_dataloader(
 
     Yields
     ------
-    Iterator[int, Any]
-        An iterator yielding tuples of (batch_index, batch_data).
+    Generator[tuple[int, Any]]
+        A generator yielding tuples of (batch_index, batch_data).
 
     Raises
     ------
@@ -153,7 +153,7 @@ def evaluate_model(
     loss_function: nn.Module,
     use_extended_model: bool = False,
     metrics: Metric | None = None,
-    batch_limit: int = -1,
+    batch_limit: int | None = None,
     dataloader_seed: int | None = None,
     device: torch.device = torch.device("cpu"),
 ) -> tuple[float, float]:
@@ -173,8 +173,8 @@ def evaluate_model(
     metrics : Metric | None, optional
         A Metric instance to track auxiliary metrics (e.g., accuracy).
         Will be reset at the start and updated each batch. Default is None.
-    batch_limit : int, optional
-        Maximum number of batches to evaluate. Use -1 for no limit. Default is -1.
+    batch_limit : int | None, optional
+        Maximum number of batches to evaluate. Use -1 for no limit. Default is None.
     dataloader_seed : int | None, optional
         An optional seed to set for the dataloader's random number generator (if it has
         one). This can be used to ensure reproducibility when shuffling is involved.
@@ -234,9 +234,9 @@ def train(
     scheduler: Any | None,
     loss_function: nn.Module,
     metrics: Metric | None = None,
-    batch_limit: int = -1,
+    batch_limit: int | None = None,
     dataloader_seed: int | None = None,
-    device: torch.device | None = None,
+    device: torch.device = torch.device("cpu"),
 ) -> tuple[float, float]:
     """
     Train the model on the train_dataloader
@@ -249,19 +249,21 @@ def train(
         The dataloader for training data.
     optimizer : torch.optim.Optimizer
         The optimizer to use.
-    scheduler : optional
+    scheduler : Any | None, optional
         Learning rate scheduler. Default is None.
     loss_function : nn.Module
         The loss function to use. Must have reduction="mean".
     metrics : Metric | None, optional
         A Metric instance to track auxiliary metrics (e.g., accuracy).
         Will be reset at the start and updated each batch. Default is None.
-    batch_limit : int, optional
-        Maximum number of batches to train. Use -1 for no limit. Default is -1.
-    device : torch.device | None, optional
-        Device to use. Default is None (uses global_device()).
-    verbose : bool, optional
-        Whether to print training progress. Default is False.
+    batch_limit : int | None, optional
+        Maximum number of batches to train. Use -1 for no limit. Default is None.
+    dataloader_seed : int | None, optional
+        An optional seed to set for the dataloader's random number generator (if it has
+        one). This can be used to ensure reproducibility when shuffling is involved.
+        Default is None.
+    device : torch.device, optional
+        Device to use. Default is torch.device("cpu").
 
     Returns
     -------
@@ -339,10 +341,8 @@ def compute_statistics(
         An optional seed to set for the dataloader's random number generator (if it has
         one). This can be used to ensure reproducibility when shuffling is involved.
         Default is None.
-    device : torch.device | None, optional
+    device : torch.device, optional
         The device to use. Default is torch.device("cpu").
-    show : bool, optional
-        If True, display a progress bar. Default is False.
 
     Returns
     -------
