@@ -245,9 +245,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             for node, value in self.nodes.items()
         }
         edge_attributes = {
-            "type": self.layer_type,
-            "use_bias": self.use_bias,
-            "kernel_size": kernel_size,
+            str(edge): {
+                "type": self.layer_type,
+                "use_bias": self.get_edge_module(*edge).use_bias,
+                "kernel_size": kernel_size,
+            }
+            for edge in self.edges
         }
         DAG_parameters = {}
         DAG_parameters["edges"] = list(self.edges)
@@ -627,6 +630,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # TODO: separate functions for different modules, no need to check the type of node
         # self.nodes[new_node].update(node_attributes)
         self.update_nodes([new_node], node_attributes={new_node: node_attributes})
+
+        _edge_attributes = {str(edge): copy.copy(edge_attributes) for edge in new_edges}
+        _edge_attributes[str(new_edges[1])]["use_bias"] = False
         self.update_edges(
             new_edges, edge_attributes=edge_attributes, zero_weights=zero_weights
         )
@@ -739,6 +745,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         for prev_node, next_node in edges:
             name = f"{prev_node.split('_')[0]}_{next_node.split('_')[0]}"
+            if any(isinstance(v, dict) for v in edge_attributes.values()):
+                _attributes = edge_attributes[str((prev_node, next_node))]
+            else:
+                _attributes = edge_attributes
 
             if edge_attributes.get("constant"):
                 self.__set_edge_module(
