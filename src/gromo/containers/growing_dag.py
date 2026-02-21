@@ -1,6 +1,4 @@
 import copy
-import math
-import string
 import warnings
 from collections import deque
 from enum import Enum
@@ -24,6 +22,7 @@ from gromo.modules.linear_growing_module import (
 from gromo.utils.tools import lecun_normal_
 from gromo.utils.utils import (
     activation_fn,
+    alphabetic_index,
     compute_BIC,
     evaluate_extended_dataset,
     f1_micro,
@@ -1278,7 +1277,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # All possible one-hop connections
         for i, attr in enumerate(one_hop_edges):
             previous_node = attr.get("previous_node")
-            new_node = f"{attr.get('new_node')}_{string.ascii_lowercase[i]}"
+            new_node = f"{attr.get('new_node')}_{alphabetic_index(i)}"
             next_node = attr.get("next_node")
             node_attributes = attr.get("node_attributes", {})
             edge_attributes = attr.get("edge_attributes", {})
@@ -1387,9 +1386,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             merge_module = self.get_node_module(node)
             if verbose:
                 print("\t-->", merge_module)
-            output[node] = output[node] / math.sqrt(
-                max(1, len(merge_module.previous_modules))
-            )
+
             output[node] = merge_module(output[node])
         if verbose:
             print()
@@ -1479,19 +1476,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 print("\t-->", merge_module)
 
             output[node] = (
-                output[node][0] / math.sqrt(max(1, len(merge_module.previous_modules))),
-                (
-                    output[node][1]
-                    / math.sqrt(max(1, len(merge_module.previous_modules)))
-                    if output[node][1] is not None
-                    else None
-                ),
-            )
-
-            output[node] = (
                 merge_module(output[node][0]),
                 merge_module(output[node][1]),
-            )  # TODO: simplify
+            )
         if verbose:
             print()
         return output[self.end]
