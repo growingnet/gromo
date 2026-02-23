@@ -904,6 +904,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             self.remove_edge(*edge)
             self._get_ancestors(self.root)
             self.set_growing_layers()
+            if str(edge) in self._modules:
+                del self._modules[str(edge)]
 
     def remove_node(self, node: str) -> None:
         """Remove node from dag
@@ -919,6 +921,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             super().remove_node(node)
             self._get_ancestors(self.root)
             self.set_growing_layers()
+            if node in self._modules:
+                del self._modules[node]
 
     def rename_nodes(self, mapping: dict) -> None:
         """Rename nodes in the graph.
