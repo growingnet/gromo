@@ -233,7 +233,7 @@ class GrowingModel(GrowingContainer):
     Growing model class, inheriting from GrowingContainer.
     This class can be used to represent the overall model architecture, while the
     GrowingContainer can be used to represent submodules of the model.
-    This class does not allow to grow it's output and change
+    This class does not allow to grow its output and change
     the `extended_forward` signature.
 
     Parameters
