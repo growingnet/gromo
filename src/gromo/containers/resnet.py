@@ -10,7 +10,7 @@ import torch
 from torch import nn
 
 from gromo.containers.growing_block import Conv2dGrowingBlock
-from gromo.containers.sequential_growing_container import SequentialGrowingContainer
+from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     RestrictedConv2dGrowingModule,
@@ -18,7 +18,7 @@ from gromo.modules.conv2d_growing_module import (
 from gromo.modules.growing_normalisation import GrowingBatchNorm2d
 
 
-class ResNetBasicBlock(SequentialGrowingContainer):
+class ResNetBasicBlock(SequentialGrowingModel):
     """
     Represents a growing ResNet with basic blocks.
     Parameters
@@ -396,7 +396,7 @@ class ResNetBasicBlock(SequentialGrowingContainer):
         x = self.post_net(x)
         return x
 
-    def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
+    def extended_forward(
         self,
         x: torch.Tensor,
         mask: dict | None = None,  # noqa: ARG002
