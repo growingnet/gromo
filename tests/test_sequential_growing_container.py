@@ -1,6 +1,6 @@
 import torch
 
-from gromo.containers.sequential_growing_container import SequentialGrowingContainer
+from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
@@ -10,7 +10,7 @@ except ImportError:
     from torch_unittest import TorchTestCase
 
 
-class DummySequentialGrowingContainer(SequentialGrowingContainer):
+class DummySequentialGrowingContainer(SequentialGrowingModel):
     """
     Dummy implementation of SequentialGrowingContainer for testing purposes.
     Uses two simple linear layers in sequence.
@@ -80,8 +80,8 @@ class DummySequentialGrowingContainer(SequentialGrowingContainer):
         return torch.tensor(0.0)
 
 
-class TestSequentialGrowingContainer(TorchTestCase):
-    """Test SequentialGrowingContainer implementation."""
+class TestSequentialGrowingModel(TorchTestCase):
+    """Test SequentialGrowingModel implementation."""
 
     def setUp(self):
         """Set up test fixtures."""

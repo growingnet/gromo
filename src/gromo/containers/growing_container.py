@@ -226,3 +226,30 @@ class GrowingContainer(torch.nn.Module):
             if isinstance(module, GrowingModule):
                 stats[module.name] = module.weights_statistics()
         return stats
+
+
+class GrowingModel(GrowingContainer):
+    """
+    Growing model class, inheriting from GrowingContainer.
+    This class can be used to represent the overall model architecture, while the
+    GrowingContainer can be used to represent submodules of the model.
+    This class does not allow to grow it's output and change
+    the `extended_forward` signature.
+
+    Parameters
+    ----------
+    in_features : int
+        input features, to be interpreted based on current needs
+    out_features : int
+        output features, to be interpreted based on current needs
+    device : torch.device | str | None, optional
+        default device, by default None
+    name : str, optional
+        name of the model, by default "GrowingContainer"
+    """
+
+    def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, x: torch.Tensor, mask: dict = {}
+    ) -> torch.Tensor:
+        """Extended forward pass through the network"""
+        raise NotImplementedError
