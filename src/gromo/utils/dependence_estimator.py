@@ -124,4 +124,6 @@ def calculate_dependency(
         if normalize:
             hsic[name] = hsic[name] / torch.sqrt(hsicX * hsicY)
 
+    if not all([torch.isfinite(val) for val in hsic.values()]):
+        print(f"hsic contains non-finite values {hsic.values()}")
     return hsic
