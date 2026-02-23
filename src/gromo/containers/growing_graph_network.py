@@ -238,8 +238,15 @@ class GrowingGraphNetwork(GrowingContainer):
         # If activity has extra trailing singleton dims like (b, c, 1, 1)
         if activity.dim() == bottleneck.dim() + 2 and activity.shape[2:] == (1, 1):
             activity = activity.squeeze(-1).squeeze(-1)
-        loss = activity - bottleneck  # + 0.001 * torch.sum(activity**2)
-        return (loss**2).sum() / loss.numel()
+        # loss = activity - bottleneck  # + 0.001 * torch.sum(activity**2)
+        # return (loss**2).sum() / loss.numel()
+        eps = 1e-8
+        scalar_product = torch.einsum("b...,b...->b", activity, bottleneck)
+        act_norm = torch.einsum("b...,b...->b", activity, activity)
+        bott_norm = torch.einsum("b...,b...->b", bottleneck, bottleneck)
+        return scalar_product.mean() / torch.sqrt(
+            (act_norm.mean() + eps) * (bott_norm.mean() + eps)
+        )
 
     def bi_level_bottleneck_optimization(
         self,
