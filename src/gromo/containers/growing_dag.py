@@ -215,6 +215,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 "size": self.in_features,
                 "shape": self.input_shape,
                 "kernel_size": (3, 3),
+                "use_layer_norm": False,
             },
             self.end: {
                 "type": self.layer_type,
