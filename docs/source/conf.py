@@ -10,9 +10,9 @@ from datetime import datetime
 import matplotlib
 import sphinx_gallery  # noqa
 from numpydoc import docscrape, numpydoc  # noqa
-from sphinx_gallery.sorting import FileNameSortKey
+from sphinx_gallery.sorting import FileNameSortKey  # noqa
 
-import gromo
+import gromo  # noqa
 
 
 sys.path.insert(0, os.path.abspath("../"))
@@ -68,7 +68,7 @@ extensions = [
 ]
 
 
-def linkcode_resolve(domain, info):
+def linkcode_resolve(domain, info):  # noqa: C901
     """Determine the URL corresponding to a Python object.
 
     Parameters
