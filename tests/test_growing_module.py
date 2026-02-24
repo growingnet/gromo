@@ -950,6 +950,100 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         # Verify no extended layers were created
         self.assertIsNone(second_layer.extended_input_layer)
 
+    def test_compute_optimal_updates_no_previous_module_projection_without_delta(self):
+        """No-previous-module path should not require tensor stats when compute_delta=False."""
+        layer = LinearGrowingModule(in_features=2, out_features=5, device=global_device())
+        layer.previous_module = None
+
+        result = layer.compute_optimal_updates(
+            compute_delta=False,
+            use_covariance=True,
+            alpha_zero=False,
+            use_projection=True,
+        )
+
+        self.assertIsNone(result[0])
+        self.assertIsNone(result[1])
+        self.assertIsInstance(layer.parameter_update_decrease, torch.Tensor)
+        assert layer.parameter_update_decrease is not None
+        self.assertAllClose(
+            layer.parameter_update_decrease,
+            torch.zeros_like(layer.parameter_update_decrease),
+            atol=1e-8,
+        )
+
+    def test_compute_optimal_updates_gradmax_keeps_side_effects_available(self):
+        """Ensure GradMax-style options still make side-effect properties usable."""
+        previous_layer = LinearGrowingModule(
+            in_features=3, out_features=2, device=global_device()
+        )
+        current_layer = LinearGrowingModule(
+            in_features=2,
+            out_features=5,
+            device=global_device(),
+            previous_module=previous_layer,
+        )
+
+        previous_layer.init_computation()
+        current_layer.init_computation()
+
+        input_batch = torch.randn(4, 3, device=global_device())
+        output_batch = current_layer(previous_layer(input_batch))
+        loss = torch.norm(output_batch)
+        loss.backward()
+        previous_layer.update_computation()
+        current_layer.update_computation()
+
+        current_layer.compute_optimal_updates(
+            compute_delta=False,
+            use_covariance=False,
+            alpha_zero=True,
+            use_projection=False,
+        )
+
+        self.assertIsNone(current_layer.optimal_delta_layer)
+        self.assertIsInstance(current_layer.parameter_update_decrease, torch.Tensor)
+        assert current_layer.parameter_update_decrease is not None
+        self.assertAllClose(
+            current_layer.parameter_update_decrease,
+            torch.zeros_like(current_layer.parameter_update_decrease),
+            atol=1e-8,
+        )
+        self.assertIsInstance(current_layer.first_order_improvement, torch.Tensor)
+
+    def test_compute_optimal_updates_projection_without_delta_is_supported(self):
+        """Ensure use_projection=True works even when compute_delta=False."""
+        previous_layer = LinearGrowingModule(
+            in_features=3, out_features=2, device=global_device()
+        )
+        current_layer = LinearGrowingModule(
+            in_features=2,
+            out_features=5,
+            device=global_device(),
+            previous_module=previous_layer,
+        )
+
+        previous_layer.init_computation()
+        current_layer.init_computation()
+
+        input_batch = torch.randn(4, 3, device=global_device())
+        output_batch = current_layer(previous_layer(input_batch))
+        loss = torch.norm(output_batch)
+        loss.backward()
+        previous_layer.update_computation()
+        current_layer.update_computation()
+
+        current_layer.compute_optimal_updates(
+            compute_delta=False,
+            use_covariance=True,
+            alpha_zero=False,
+            use_projection=True,
+        )
+
+        self.assertIsNone(current_layer.optimal_delta_layer)
+        self.assertIsInstance(current_layer.parameter_update_decrease, torch.Tensor)
+        self.assertIsInstance(current_layer.first_order_improvement, torch.Tensor)
+
 
 class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
     """Test the update_computation method for differential coverage improvement."""

@@ -552,7 +552,8 @@ class MergeGrowingModule(torch.nn.Module):
         return 0
 
     def parameters(
-        self, recurse: bool = True  # noqa: ARG002
+        self,
+        recurse: bool = True,  # noqa: ARG002
     ) -> Iterator[torch.nn.Parameter]:
         """Parameter iterator
 
@@ -2222,9 +2223,25 @@ class GrowingModule(torch.nn.Module):
         NotImplementedError
             If the previous module is not of type GrowingModule.
         """
-        # Compute optimal delta if required
+        # Keep side effects coherent across configurations:
+        # - compute_delta=True: compute and store full delta update.
+        # - compute_delta=False/use_projection=True: compute delta statistics only
+        #   (needed for tensor_n), but do not create optimal_delta_layer.
+        # - compute_delta=False/use_projection=False: no natural-gradient step,
+        #   so set the corresponding first-order term to zero.
         if compute_delta:
-            self.compute_optimal_delta(dtype=dtype)
+            self.compute_optimal_delta(update=True, dtype=dtype)
+        else:
+            self.optimal_delta_layer = None
+            if use_projection and self.previous_module is not None:
+                self.compute_optimal_delta(update=False, dtype=dtype)
+            else:
+                self.delta_raw = None
+                self.parameter_update_decrease = torch.tensor(
+                    0.0,
+                    device=self.device,
+                    dtype=self.weight.dtype,
+                )
 
         if self.previous_module is None:
             return None, None

@@ -1259,16 +1259,22 @@ class TestLinearGrowingBlock(TorchTestCase):
             )
             self.assertIsInstance(block.parameter_update_decrease, torch.Tensor)
         else:
-            # GradMax-specific checks: optimal_delta_layer and parameter_update_decrease should NOT be set
+            # GradMax-specific checks: no optimal_delta_layer but side-effect tensor is still available
             self.assertFalse(
                 hasattr(block.second_layer, "optimal_delta_layer")
                 and block.second_layer.optimal_delta_layer is not None,
                 "GradMax configuration should not compute optimal_delta_layer",
             )
-            self.assertFalse(
-                hasattr(block, "parameter_update_decrease")
-                and block.parameter_update_decrease is not None,
-                "GradMax configuration should not compute parameter_update_decrease",
+            self.assertIsInstance(
+                block.parameter_update_decrease,
+                torch.Tensor,
+                "GradMax configuration should still set parameter_update_decrease",
+            )
+            assert block.parameter_update_decrease is not None
+            self.assertAllClose(
+                block.parameter_update_decrease,
+                torch.zeros_like(block.parameter_update_decrease),
+                atol=1e-8,
             )
 
         # Step 8: Common checks for all configurations
@@ -1289,6 +1295,11 @@ class TestLinearGrowingBlock(TorchTestCase):
             f"{method_name} should compute eigenvalues_extension",
         )
         self.assertIsInstance(block.eigenvalues_extension, torch.Tensor)
+        self.assertIsInstance(
+            block.first_order_improvement,
+            torch.Tensor,
+            f"{method_name} configuration should provide first_order_improvement",
+        )
 
     def test_compute_optimal_updates_empty_block_gradmax(self):
         """Test compute_optimal_updates with empty block (hidden_neurons == 0) using GradMax method.
@@ -1336,16 +1347,22 @@ class TestLinearGrowingBlock(TorchTestCase):
         )
 
         # Step 6: Verify GradMax-specific behavior
-        # GradMax should NOT compute optimal_delta_layer or parameter_update_decrease
+        # GradMax should not compute optimal_delta_layer but should keep side effects usable
         self.assertFalse(
             hasattr(block.second_layer, "optimal_delta_layer")
             and block.second_layer.optimal_delta_layer is not None,
             "GradMax should not compute optimal_delta_layer even for empty block",
         )
-        self.assertFalse(
-            hasattr(block, "parameter_update_decrease")
-            and block.parameter_update_decrease is not None,
-            "GradMax should not compute parameter_update_decrease even for empty block",
+        self.assertIsInstance(
+            block.parameter_update_decrease,
+            torch.Tensor,
+            "GradMax should set parameter_update_decrease even for empty block",
+        )
+        assert block.parameter_update_decrease is not None
+        self.assertAllClose(
+            block.parameter_update_decrease,
+            torch.zeros_like(block.parameter_update_decrease),
+            atol=1e-8,
         )
 
         # Step 7: Verify that neurons can still be added
@@ -1370,6 +1387,7 @@ class TestLinearGrowingBlock(TorchTestCase):
             0,
             "GradMax should propose neurons for empty block",
         )
+        self.assertIsInstance(block.first_order_improvement, torch.Tensor)
 
     def test_compute_optimal_updates_empty_block_no_projection_warning(self):
         """Test that empty-block path does not emit projection warnings.

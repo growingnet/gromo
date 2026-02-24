@@ -443,10 +443,16 @@ class GrowingBlock(GrowingContainer):
         # Note: use_projection must be False when hidden_neurons == 0 because tensor_n
         # requires delta_raw which is only set by compute_optimal_delta()
         if self.hidden_neurons == 0:
-            if compute_delta:
-                self.second_layer.parameter_update_decrease = torch.tensor(
-                    0.0, device=self.device
-                )
+            # In the empty-block path there is no natural-gradient update term.
+            # We explicitly set side-effect attributes so first_order_improvement
+            # remains available for all configurations.
+            self.second_layer.optimal_delta_layer = None
+            self.second_layer.delta_raw = None
+            self.second_layer.parameter_update_decrease = torch.tensor(
+                0.0,
+                device=self.device,
+                dtype=self.second_layer.weight.dtype,
+            )
 
             # Call private method directly to avoid compute_optimal_delta() call
             # With hidden_neurons == 0 we cannot compute tensor_n (delta_raw from

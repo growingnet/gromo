@@ -264,12 +264,15 @@ class TestGrowingContainer(unittest.TestCase):
                     and layer.optimal_delta_layer is not None,
                     "GradMax configuration should not compute optimal_delta_layer",
                 )
-                # parameter_update_decrease should not be set (may not exist or be None)
-                self.assertFalse(
-                    hasattr(layer, "parameter_update_decrease")
-                    and layer.parameter_update_decrease is not None,
-                    "GradMax configuration should not compute parameter_update_decrease",
+                # parameter_update_decrease should still be set so first_order_improvement is usable
+                self.assertIsInstance(
+                    layer.parameter_update_decrease,
+                    torch.Tensor,
+                    "GradMax configuration should still set parameter_update_decrease",
                 )
+                assert layer.parameter_update_decrease is not None
+                self.assertTrue(torch.isfinite(layer.parameter_update_decrease))
+                self.assertIsInstance(layer.first_order_improvement, torch.Tensor)
 
             # Common checks for all methods
             if layer.previous_module is not None:

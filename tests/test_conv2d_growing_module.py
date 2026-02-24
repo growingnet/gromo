@@ -1286,14 +1286,21 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 and demo_layer_2.optimal_delta_layer is not None,
                 "GradMax configuration should not compute optimal_delta_layer",
             )
-            # parameter_update_decrease should not be set (may not exist or be None)
-            self.assertFalse(
-                hasattr(demo_layer_2, "parameter_update_decrease")
-                and demo_layer_2.parameter_update_decrease is not None,
-                "GradMax configuration should not compute parameter_update_decrease",
+            # parameter_update_decrease should still be set so first_order_improvement is usable
+            self.assertIsInstance(
+                demo_layer_2.parameter_update_decrease,
+                torch.Tensor,
+                "GradMax configuration should still set parameter_update_decrease",
+            )
+            assert demo_layer_2.parameter_update_decrease is not None
+            self.assertAllClose(
+                demo_layer_2.parameter_update_decrease,
+                torch.zeros_like(demo_layer_2.parameter_update_decrease),
+                atol=1e-8,
             )
             # Verify eigenvalues are computed
             assert isinstance(demo_layer_2.eigenvalues_extension, torch.Tensor)
+            self.assertIsInstance(demo_layer_2.first_order_improvement, torch.Tensor)
 
     def test_compute_m_prev_without_intermediate_input(self):
         """Check that the batch size is computed using stored variables for FullConv2d"""
@@ -1817,14 +1824,21 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
                 and demo_layer_2.optimal_delta_layer is not None,
                 "GradMax configuration should not compute optimal_delta_layer",
             )
-            # parameter_update_decrease should not be set (may not exist or be None)
-            self.assertFalse(
-                hasattr(demo_layer_2, "parameter_update_decrease")
-                and demo_layer_2.parameter_update_decrease is not None,
-                "GradMax configuration should not compute parameter_update_decrease",
+            # parameter_update_decrease should still be set so first_order_improvement is usable
+            self.assertIsInstance(
+                demo_layer_2.parameter_update_decrease,
+                torch.Tensor,
+                "GradMax configuration should still set parameter_update_decrease",
+            )
+            assert demo_layer_2.parameter_update_decrease is not None
+            self.assertAllClose(
+                demo_layer_2.parameter_update_decrease,
+                torch.zeros_like(demo_layer_2.parameter_update_decrease),
+                atol=1e-8,
             )
             # Verify eigenvalues are computed
             assert isinstance(demo_layer_2.eigenvalues_extension, torch.Tensor)
+            self.assertIsInstance(demo_layer_2.first_order_improvement, torch.Tensor)
 
     def test_compute_m_prev_without_intermediate_input_restricted(self):
         """Check that the batch size is computed using stored variables
