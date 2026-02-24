@@ -1,15 +1,10 @@
-from typing import TYPE_CHECKING
-
 import torch
 import torch.nn as nn
 import torch.utils.data
 from tqdm import tqdm
 
+from gromo.containers.growing_mlp import GrowingMLP
 from gromo.utils.utils import global_device
-
-
-if TYPE_CHECKING:
-    from gromo.containers.growing_mlp import GrowingMLP  # noqa: TC004
 
 
 class Accuracy(nn.Module):
