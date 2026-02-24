@@ -272,7 +272,7 @@ def extended_evaluate_model(
     growing_model.eval()
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
-    for n_batch, (x, y) in enumerate(dataloader):
+    for n_batch, (x, y) in enumerate(dataloader, start=1):
         growing_model.zero_grad()
         x, y = x.to(device), y.to(device)
         z, z_ext = growing_model[0].extended_forward(x)
