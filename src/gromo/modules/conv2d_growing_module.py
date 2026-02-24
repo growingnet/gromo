@@ -1694,8 +1694,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             if True, set alpha (incoming weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
-        **kwargs : Any
-            Additional keyword arguments passed to the parent method.
+        **kwargs: Any
+            Additional keyword arguments propagated by nested parent calls for
+            specific sub-function call compatibility.
 
         Returns
         -------
@@ -2127,8 +2128,9 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             if True, set alpha (incoming weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
-        **kwargs : Any
-            Additional keyword arguments passed to the parent method.
+        **kwargs: Any
+            Additional keyword arguments propagated by nested parent calls for
+            specific sub-function call compatibility.
 
         Returns
         -------

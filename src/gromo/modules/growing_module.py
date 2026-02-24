@@ -2128,7 +2128,8 @@ class GrowingModule(torch.nn.Module):
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
         **kwargs: Any
-            Additional keyword arguments (currently unused, reserved for future extensions).
+            Additional keyword arguments propagated through nested call paths.
+            Subclasses can consume these for specific sub-function calls.
 
         Returns
         -------

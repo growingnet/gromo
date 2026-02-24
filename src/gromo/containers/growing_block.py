@@ -414,7 +414,8 @@ class GrowingBlock(GrowingContainer):
             If True, use projection-based gradient for added parameters.
             Default is True (TINY behavior).
         **kwargs: Any
-            Additional keyword arguments (currently unused, reserved for future extensions).
+            Additional keyword arguments propagated to the second layer during
+            nested sub-function calls.
 
         Note
         ----
