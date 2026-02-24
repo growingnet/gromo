@@ -71,11 +71,10 @@ def evaluate_model(
         aux_loss_function is None or aux_loss_function.reduction == "sum"
     ), "The aux loss function should not be averaged over the batch"
     model.eval()
-    n_batch = 0
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
     aux_total_loss = torch.tensor(0.0, device=device)
-    for x, y in dataloader:
+    for n_batch, (x, y) in enumerate(dataloader):
         x, y = x.to(device), y.to(device)
 
         y_pred = model(x)
@@ -88,7 +87,6 @@ def evaluate_model(
             aux_total_loss += aux_loss
 
         nb_sample += x.size(0)
-        n_batch += 1
         if 0 <= batch_limit <= n_batch:
             break
     total_loss /= nb_sample
@@ -97,7 +95,7 @@ def evaluate_model(
 
 
 def extended_evaluate_model(
-    growing_model: "GrowingMLP",
+    growing_model: "GrowingMLP",  # noqa F821
     dataloader: torch.utils.data.DataLoader,
     loss_function: nn.Module = AxisMSELoss(),
     batch_limit: int = -1,
@@ -110,14 +108,13 @@ def extended_evaluate_model(
     n_batch = 0
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
-    for x, y in dataloader:
+    for n_batch, (x, y) in enumerate(dataloader):
         growing_model.zero_grad()
         x, y = x.to(device), y.to(device)
         y_pred = growing_model.extended_forward(x)
         loss = loss_function(y_pred, y)
         total_loss += loss
         nb_sample += x.size(0)
-        n_batch += 1
         if 0 <= batch_limit <= n_batch:
             break
     return total_loss.item() / nb_sample
