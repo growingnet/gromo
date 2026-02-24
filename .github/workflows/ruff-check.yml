@@ -13,7 +13,7 @@ jobs:
   ruff-check:
     name: Ruff Linting
     runs-on: ubuntu-latest
-    continue-on-error: true  # Makes this check non-blocking
+    continue-on-error: false  # Makes this check blocking
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +29,8 @@ jobs:
 
       - name: Run ruff linting
         run: |
-          ruff check --output-format=github .
+          ruff check --output-format=github src
 
       - name: Run ruff formatting check
         run: |
-          ruff format --check .
+          ruff format --check src
