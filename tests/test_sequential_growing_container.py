@@ -12,7 +12,7 @@ except ImportError:
 
 class DummySequentialGrowingContainer(SequentialGrowingModel):
     """
-    Dummy implementation of SequentialGrowingContainer for testing purposes.
+    Dummy implementation of SequentialGrowingModel for testing purposes.
     Uses two simple linear layers in sequence.
 
     Parameters

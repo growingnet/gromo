@@ -129,7 +129,7 @@ class GrowingMLP(GrowingModel):
     def extended_forward(
         self,
         x: Tensor,
-        mask: dict | None = None,  # noqa: ARG002
+        mask: dict = {},  # noqa: ARG002
     ) -> Tensor:
         """
         Forward pass of the growing MLP with the current modifications.
@@ -138,7 +138,7 @@ class GrowingMLP(GrowingModel):
         ----------
         x : Tensor
             Input tensor.
-        mask : dict | None, optional
+        mask : dict, optional
             Not used in this implementation.
 
         Returns
