@@ -691,10 +691,9 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.assertIsNone(layer_omega.bias)
 
         output = layer_omega(flatten(pooling(activation(layer_alpha(x)))))
-        # The 1.5e-2 tolerance is intentional for this conv->pooling->flatten path:
-        # with unified defaults (numerical_threshold=1e-6, statistical_threshold=1e-3)
-        # expansion is slightly more sensitive to estimation noise than the previous
-        # 1e-2 bound in this specific integration scenario.
+        # Keep atol at 1.5e-2 for this conv->pooling->flatten integration path.
+        # Empirically, 1e-2 is flaky under repeated runs in this setup, while 1.5e-2
+        # remains stable for the observed stochastic optimization variability.
         self.assertAllClose(desired_output, output, atol=1.5e-2)
 
 
