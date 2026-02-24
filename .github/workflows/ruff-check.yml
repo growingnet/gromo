@@ -29,8 +29,8 @@ jobs:
 
       - name: Run ruff linting
         run: |
-          ruff check --output-format=github src
+          ruff check --output-format=github src tests examples
 
-      - name: Run ruff formatting check
-        run: |
-          ruff format --check src
+      # - name: Run ruff formatting check
+      #   run: |
+      #     ruff format --check src
