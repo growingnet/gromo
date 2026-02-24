@@ -6,7 +6,6 @@ import torch
 def sqrt_inverse_matrix_semi_positive(
     matrix: torch.Tensor,
     threshold: float = 1e-5,
-    preferred_linalg_library: None | str = None,
 ) -> torch.Tensor:
     """
     Compute the square root of the inverse of a semi-positive definite matrix.
@@ -17,38 +16,33 @@ def sqrt_inverse_matrix_semi_positive(
         input matrix, square and semi-positive definite
     threshold: float
         threshold to consider an eigenvalue as zero
-    preferred_linalg_library: None | str
-        linalg library to use, should be one of ("magma", "cusolver"), "cusolver" may fail
-        for non-positive definite matrix if CUDA < 12.1 is used
-        see: https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html
 
     Returns
     -------
     torch.Tensor
         square root of the inverse of the input matrix
-
-    Raises
-    ------
-    ValueError
-        if preferred_linalg_library is "cusolver" this is probably a CUDA error
-    torch.linalg.LinAlgError
     """
     assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
     assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
     assert torch.isnan(matrix).sum() == 0, "The input matrix must not contain NaN values."
 
-    if preferred_linalg_library is not None:
-        torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
-    except torch.linalg.LinAlgError as e:
-        if preferred_linalg_library == "cusolver":
-            raise ValueError(
-                "This is probably a bug from CUDA < 12.1"
-                "Try torch.backends.cuda.preferred_linalg_library('magma')"
-            )
-        else:
-            raise e
+    except torch.linalg.LinAlgError:
+        # Sometimes, due to numerical issues, we get an error:
+        # The algorithm failed to converge because the input matrix is
+        # ill-conditioned or has too many repeated eigenvalues
+        matrix += torch.finfo(matrix.dtype).resolution * torch.eye(
+            matrix.shape[0],
+            device=matrix.device,
+            dtype=matrix.dtype,
+        )
+        warn(
+            message="Adding a small identity matrix to make the input matrix positive definite.",
+            category=RuntimeWarning,
+        )
+        eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
+
     selected_eigenvalues = eigenvalues > threshold
     eigenvalues = torch.rsqrt(eigenvalues[selected_eigenvalues])  # inverse square root
     eigenvectors = eigenvectors[:, selected_eigenvalues]
