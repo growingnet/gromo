@@ -549,7 +549,8 @@ class MergeGrowingModule(torch.nn.Module):
         return 0
 
     def parameters(
-        self, recurse: bool = True  # noqa: ARG002
+        self,
+        recurse: bool = True,  # noqa: ARG002
     ) -> Iterator[torch.nn.Parameter]:
         """Parameter iterator
 
@@ -2902,13 +2903,13 @@ class GrowingModule(torch.nn.Module):
         else:
             raise ValueError(f"Unknown method: {method}.")
 
-    def complete_growth(self, extension_kwargs: dict) -> None:
+    def complete_growth(self, extension_kwargs: Any) -> None:
         """
         Complete the growth to the target size.
 
         Parameters
         ----------
-        extension_kwargs : dict
+        extension_kwargs : Any
             Additional arguments for creating layer extensions.
         """
         neurons_to_add = self.missing_neurons()
