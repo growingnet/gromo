@@ -1,8 +1,15 @@
+from typing import TYPE_CHECKING
+
 import torch
 import torch.nn as nn
+import torch.utils.data
 from tqdm import tqdm
 
 from gromo.utils.utils import global_device
+
+
+if TYPE_CHECKING:
+    from gromo.containers.growing_mlp import GrowingMLP  # noqa: TC004
 
 
 class Accuracy(nn.Module):
@@ -74,7 +81,7 @@ def evaluate_model(
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
     aux_total_loss = torch.tensor(0.0, device=device)
-    for n_batch, (x, y) in enumerate(dataloader):
+    for n_batch, (x, y) in enumerate(dataloader, start=1):
         x, y = x.to(device), y.to(device)
 
         y_pred = model(x)
@@ -95,7 +102,7 @@ def evaluate_model(
 
 
 def extended_evaluate_model(
-    growing_model: "GrowingMLP",  # noqa F821
+    growing_model: GrowingMLP,
     dataloader: torch.utils.data.DataLoader,
     loss_function: nn.Module = AxisMSELoss(),
     batch_limit: int = -1,
@@ -105,10 +112,9 @@ def extended_evaluate_model(
         loss_function.reduction == "sum"
     ), "The loss function should not be averaged over the batch"
     growing_model.eval()
-    n_batch = 0
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
-    for n_batch, (x, y) in enumerate(dataloader):
+    for n_batch, (x, y) in enumerate(dataloader, start=1):
         growing_model.zero_grad()
         x, y = x.to(device), y.to(device)
         y_pred = growing_model.extended_forward(x)
