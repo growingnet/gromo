@@ -1,13 +1,20 @@
+import inspect
 import unittest.mock
 
 import torch
 
+from gromo.containers.growing_block import GrowingBlock
+from gromo.modules.conv2d_growing_module import (
+    FullConv2dGrowingModule,
+    RestrictedConv2dGrowingModule,
+)
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tools import compute_optimal_added_parameters
 from gromo.utils.utils import global_device
 from tests.torch_unittest import SizedIdentity, TorchTestCase
 from tests.unittest_tools import unittest_parametrize
@@ -107,6 +114,35 @@ class TestGrowingModule(TorchTestCase):
             )
         model.extended_output_layer = self.first_layer_ext
         model.extended_forward(self.x)
+
+    def test_threshold_defaults_are_consistent_in_growth_apis(self):
+        """Check that growth APIs use consistent threshold defaults."""
+        expected_numerical_threshold = 1e-6
+        expected_statistical_threshold = 1e-3
+
+        functions_to_check = [
+            GrowingModule._auxiliary_compute_alpha_omega,
+            GrowingModule._compute_optimal_added_parameters,
+            GrowingModule.compute_optimal_updates,
+            LinearGrowingModule._compute_optimal_added_parameters,
+            RestrictedConv2dGrowingModule._compute_optimal_added_parameters,
+            FullConv2dGrowingModule._compute_optimal_added_parameters,
+            GrowingBlock.compute_optimal_updates,
+            compute_optimal_added_parameters,
+        ]
+
+        for function_to_check in functions_to_check:
+            signature = inspect.signature(function_to_check)
+            self.assertEqual(
+                signature.parameters["numerical_threshold"].default,
+                expected_numerical_threshold,
+                f"{function_to_check.__qualname__} has unexpected numerical_threshold default",
+            )
+            self.assertEqual(
+                signature.parameters["statistical_threshold"].default,
+                expected_statistical_threshold,
+                f"{function_to_check.__qualname__} has unexpected statistical_threshold default",
+            )
 
     def test_weight(self):
         self.assertTrue(torch.equal(self.model.weight, self.layer.weight))

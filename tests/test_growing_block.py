@@ -939,8 +939,8 @@ class TestLinearGrowingBlock(TorchTestCase):
         with torch.no_grad():
             extended_output = block.extended_forward(x_batch)
             self.assertShapeEqual(extended_output, x_batch.shape)
-            # Note: Tolerance slightly increased to account for threshold default changes
-            # (statistical_threshold changed from 1e-3 to 1e-5)
+            # Note: Tolerance slightly increased to account for numerical sensitivity
+            # in this optimization path.
             self.assertAllClose(extended_output, torch.zeros_like(x_batch), atol=1e-4)
 
         # Step 8: Check that `first_order_improvement` returns a value
