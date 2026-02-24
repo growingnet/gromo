@@ -424,8 +424,7 @@ class GrowingBlock(GrowingContainer):
         ``tensor_n`` (required for projection) cannot be computed. In this case,
         ``use_projection`` is automatically set to ``False`` regardless of the
         parameter value, and the raw gradient (``-tensor_m_prev()``) is used
-        instead of the projected gradient. A warning will be issued if
-        ``use_projection=True`` is requested.
+        instead of the projected gradient.
 
         Returns
         -------
@@ -445,19 +444,10 @@ class GrowingBlock(GrowingContainer):
                     0.0, device=self.device
                 )
 
-            # Warn if projection is requested but we can't use it
-            if use_projection:
-                warn(
-                    "GrowingBlock with hidden_neurons=0 cannot use projection "
-                    "(tensor_n requires delta_raw from compute_optimal_delta()). "
-                    "Falling back to use_projection=False.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-
             # Call private method directly to avoid compute_optimal_delta() call
-            # Force use_projection=False when hidden_neurons == 0
-            # (can't compute tensor_n without delta_raw)
+            # With hidden_neurons == 0 we cannot compute tensor_n (delta_raw from
+            # compute_optimal_delta() is unavailable). We force use_projection=False
+            # here; the gradient is the correct direction in this case (null-space manifold).
             alpha_weight, alpha_bias, _, _ = (
                 self.second_layer._compute_optimal_added_parameters(
                     numerical_threshold=numerical_threshold,

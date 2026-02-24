@@ -1,3 +1,5 @@
+import warnings
+
 import torch
 
 from gromo.containers.growing_block import GrowingBlock, LinearGrowingBlock
@@ -1390,6 +1392,51 @@ class TestLinearGrowingBlock(TorchTestCase):
             block.eigenvalues_extension.shape[0],
             0,
             "GradMax should propose neurons for empty block",
+        )
+
+    def test_compute_optimal_updates_empty_block_no_projection_warning(self):
+        """Test that empty-block path does not emit projection warnings.
+
+        With ``hidden_neurons == 0``, ``tensor_n`` is not available because
+        ``delta_raw`` is not computed. The implementation forces
+        ``use_projection=False`` internally and should not emit a user warning.
+        """
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            activation=torch.nn.Identity(),
+            device=self.device,
+            name="empty_block_no_warning",
+        )
+        block.init_computation()
+
+        input_batch = indicator_batch((self.in_features,), device=self.device)
+        block.zero_grad()
+        output = block(input_batch)
+        loss = (output**2).sum() / 2
+        loss.backward()
+        block.update_computation()
+
+        with warnings.catch_warnings(record=True) as warning_records:
+            warnings.simplefilter("always")
+            block.compute_optimal_updates(
+                compute_delta=True,
+                use_covariance=True,
+                alpha_zero=False,
+                use_projection=True,
+                maximum_added_neurons=self.in_features,
+            )
+
+        projection_warnings = [
+            warning_record
+            for warning_record in warning_records
+            if "cannot use projection" in str(warning_record.message)
+        ]
+        self.assertEqual(
+            len(projection_warnings),
+            0,
+            "Empty-block compute_optimal_updates should not emit projection fallback warnings",
         )
 
     def test_apply_change(self):
