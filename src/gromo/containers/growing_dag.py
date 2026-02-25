@@ -641,10 +641,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 raise KeyError(
                     'The size of the node should be specified at initialization. Example: key "size" in node_attributes[new_node]'
                 )
-            if "shape" not in attributes:
-                raise KeyError(
-                    'The shape of the input (h,w) should be specified at initialization. Example: key "shape" in node_attributes[new_node]'
-                )
 
             self.nodes[node].update(attributes)
 
@@ -683,6 +679,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 )
 
                 if attributes.get("use_layer_norm", self.use_layer_norm):
+                    if "shape" not in attributes:
+                        raise KeyError(
+                            'The shape of the input (h,w) should be specified at initialization when using LayerNorm. Example: key "shape" in node_attributes[new_node]'
+                        )
                     layer_norm = GrowingLayerNorm(
                         [in_channels, *input_size],
                         elementwise_affine=False,

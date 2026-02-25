@@ -27,7 +27,7 @@ class TestGrowingDAG(TorchTestCase):
         self.hidden_size = 5
         self.out_features = 2
         self.use_bias = True
-        self.use_batch_norm = False
+        self.use_layer_norm = False
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.init_node_attributes = {"type": "linear", "size": self.hidden_size}
         self.default_node_attributes = {
@@ -49,7 +49,7 @@ class TestGrowingDAG(TorchTestCase):
             out_features=self.out_features,
             neurons=self.hidden_size,
             use_bias=self.use_bias,
-            use_batch_norm=self.use_batch_norm,
+            use_layer_norm=self.use_layer_norm,
             default_layer_type="linear",
             name="dag-linear",
         )
@@ -59,7 +59,7 @@ class TestGrowingDAG(TorchTestCase):
             out_features=self.out_features,
             neurons=self.hidden_size,
             use_bias=self.use_bias,
-            use_batch_norm=self.use_batch_norm,
+            use_layer_norm=self.use_layer_norm,
             default_layer_type="convolution",
             input_shape=(3, 3),
             name="dag-conv",
@@ -87,7 +87,7 @@ class TestGrowingDAG(TorchTestCase):
                 out_features=self.out_features,
                 neurons=self.hidden_size,
                 use_bias=self.use_bias,
-                use_batch_norm=self.use_batch_norm,
+                use_layer_norm=self.use_layer_norm,
                 name="test_name",
             )
         dag = GrowingDAG(
@@ -95,7 +95,7 @@ class TestGrowingDAG(TorchTestCase):
             out_features=self.out_features,
             neurons=self.hidden_size,
             use_bias=self.use_bias,
-            use_batch_norm=self.use_batch_norm,
+            use_layer_norm=self.use_layer_norm,
             DAG_parameters={},
         )
         self.assertEqual(len(dag.nodes), 0)
@@ -297,15 +297,15 @@ class TestGrowingDAG(TorchTestCase):
         self.assertEqual(len(self.dag.get_node_module(new_node).previous_modules), 0)
         self.assertEqual(len(self.dag.get_node_module(new_node).next_modules), 0)
 
-        node_attributes[new_node]["use_batch_norm"] = True
+        node_attributes[new_node]["use_layer_norm"] = True
         self.dag.update_nodes(nodes=[new_node], node_attributes=node_attributes)
         self.assertIsInstance(
             self.dag.get_node_module(new_node).post_merge_function[0],
-            torch.nn.BatchNorm1d,
+            torch.nn.LayerNorm,
         )
         self.assertEqual(
-            self.dag.get_node_module(new_node).post_merge_function[0].num_features,
-            self.hidden_size,
+            self.dag.get_node_module(new_node).post_merge_function[0].normalized_shape,
+            (self.hidden_size,),
         )
 
     def test_update_edges(self) -> None:
@@ -1020,7 +1020,7 @@ class TestGrowingDAG(TorchTestCase):
             out_features=1,
             neurons=self.hidden_size,
             use_bias=self.use_bias,
-            use_batch_norm=self.use_batch_norm,
+            use_layer_norm=self.use_layer_norm,
             default_layer_type="linear",
         )
         start, end = dag.root, dag.end
@@ -1077,7 +1077,7 @@ class TestGrowingDAG(TorchTestCase):
             out_features=1,
             neurons=self.hidden_size,
             use_bias=self.use_bias,
-            use_batch_norm=self.use_batch_norm,
+            use_layer_norm=self.use_layer_norm,
             default_layer_type="linear",
         )
         start, end = dag.root, dag.end
@@ -1248,7 +1248,7 @@ class TestGrowingDAG(TorchTestCase):
             out_features=self.out_features,
             neurons=self.hidden_size,
             use_bias=self.use_bias,
-            use_batch_norm=self.use_batch_norm,
+            use_layer_norm=self.use_layer_norm,
             default_layer_type="linear",
             name="dag-linear",
         )
