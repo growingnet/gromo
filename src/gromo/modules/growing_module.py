@@ -1999,7 +1999,7 @@ class GrowingModule(torch.nn.Module):
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
 
-        self.delta_raw, self.parameter_update_decrease = optimal_delta(
+        self.delta_raw, parameter_update_decrease = optimal_delta(
             tensor_s, tensor_m, dtype=dtype, force_pseudo_inverse=force_pseudo_inverse
         )
 
@@ -2014,7 +2014,8 @@ class GrowingModule(torch.nn.Module):
 
         if update:
             self.optimal_delta_layer = self.layer_of_tensor(delta_weight, delta_bias)
-        return delta_weight, delta_bias, self.parameter_update_decrease
+            self.parameter_update_decrease = parameter_update_decrease
+        return delta_weight, delta_bias, parameter_update_decrease
 
     def _auxiliary_compute_alpha_omega(
         self,
@@ -2226,6 +2227,11 @@ class GrowingModule(torch.nn.Module):
             self.compute_optimal_delta(update=True, dtype=dtype)
         else:
             self.optimal_delta_layer = None
+            self.parameter_update_decrease = torch.tensor(
+                0.0,
+                device=self.device,
+                dtype=self.weight.dtype,
+            )
             if use_projection and self.previous_module is not None:
                 self.compute_optimal_delta(update=False, dtype=dtype)
             else:

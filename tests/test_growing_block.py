@@ -1200,6 +1200,12 @@ class TestLinearGrowingBlock(TorchTestCase):
                 "alpha_zero": True,
                 "use_projection": False,
             },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": True,
+            },
         )
     )
     def test_compute_optimal_updates_with_methods(
