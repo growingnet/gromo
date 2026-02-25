@@ -23,6 +23,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.disk_dataset import MemMapDataset
 from gromo.utils.utils import (
     line_search,
     mini_batch_gradient_descent,

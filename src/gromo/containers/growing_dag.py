@@ -233,6 +233,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return DAG_parameters
 
     def export_dag_parameters(self) -> dict:
+        """Export dictionary with GrowingDAG parameter details
+        including edges, node attributes and edge attributes.
+
+        Returns
+        -------
+        dict
+            dag parameter details
+        """
         kernel_size = (3, 3)
         node_attributes = {
             node: {
@@ -254,7 +262,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         }
         DAG_parameters = {}
         DAG_parameters["edges"] = list(self.edges)
-        # DAG_parameters["nodes"] = self.nodes
         DAG_parameters["node_attributes"] = node_attributes
         DAG_parameters["edge_attributes"] = edge_attributes
         return DAG_parameters
