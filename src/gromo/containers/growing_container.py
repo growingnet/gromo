@@ -249,7 +249,7 @@ class GrowingModel(GrowingContainer):
     """
 
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, x: torch.Tensor, mask: dict = {}
+        self, x: torch.Tensor, mask: dict | None = None
     ) -> torch.Tensor:
         """Extended forward pass through the network"""
         raise NotImplementedError

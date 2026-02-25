@@ -399,7 +399,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
     def extended_forward(
         self,
         x: torch.Tensor,
-        mask: dict = {},  # noqa: ARG002
+        mask: dict | None = None,  # noqa: ARG002
     ) -> torch.Tensor:
         """Extended forward function including extensions of the modules
 
