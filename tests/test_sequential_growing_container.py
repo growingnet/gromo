@@ -10,7 +10,7 @@ except ImportError:
     from torch_unittest import TorchTestCase
 
 
-class DummySequentialGrowingContainer(SequentialGrowingModel):
+class DummySequentialGrowingModel(SequentialGrowingModel):
     """
     Dummy implementation of SequentialGrowingModel for testing purposes.
     Uses two simple linear layers in sequence.
