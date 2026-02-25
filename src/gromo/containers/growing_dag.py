@@ -655,7 +655,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 in_features = self.nodes[node]["size"]
 
                 if attributes.get("use_layer_norm", self.use_layer_norm):
-                    layer_norm = GrowingLayerNorm(in_features, device=self.device)
+                    layer_norm = GrowingLayerNorm(
+                        in_features, elementwise_affine=False, device=self.device
+                    )
 
                 self.__set_node_module(
                     node,
@@ -672,7 +674,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 )
             elif self.nodes[node]["type"] == "convolution":
                 in_channels = self.nodes[node]["size"]
-                input_size = self.nodes[node].get("shape")
+                input_size = self.nodes[node].get("shape", (1, 1))
                 kernel_size = self.nodes[node]["kernel_size"]
                 input_volume = (
                     in_channels * input_size[0] * input_size[1]
@@ -681,7 +683,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 )
 
                 if attributes.get("use_layer_norm", self.use_layer_norm):
-                    layer_norm = GrowingLayerNorm([in_channels, *input_size])
+                    layer_norm = GrowingLayerNorm(
+                        [in_channels, *input_size],
+                        elementwise_affine=False,
+                        device=self.device,
+                    )
 
                 self.__set_node_module(
                     node,
