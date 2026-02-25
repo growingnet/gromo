@@ -1074,7 +1074,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         if constant_module:
             # Remove constant module if needed
-            self.remove_direct_edge(self.root, self.end)
+            self.remove_edge(self.root, self.end)
 
         return bottleneck, input_B
 

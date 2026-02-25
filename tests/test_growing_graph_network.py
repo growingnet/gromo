@@ -104,9 +104,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
             },
             edge_attributes={"kernel_size": self.kernel_size},
         )
-        self.net_conv.dag.remove_direct_edge(
-            self.net_conv.dag.root, self.net_conv.dag.end
-        )
+        self.net_conv.dag.remove_edge(self.net_conv.dag.root, self.net_conv.dag.end)
 
         self.bottleneck_conv = {
             self.net_conv.dag.end: torch.rand(
