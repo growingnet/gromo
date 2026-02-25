@@ -2100,7 +2100,6 @@ class GrowingModule(torch.nn.Module):
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
-        **kwargs: Any,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2127,9 +2126,6 @@ class GrowingModule(torch.nn.Module):
             if True, set alpha (incoming weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
-        **kwargs: Any
-            Additional keyword arguments propagated through nested call paths.
-            Subclasses can consume these for specific sub-function calls.
 
         Returns
         -------
@@ -2176,7 +2172,6 @@ class GrowingModule(torch.nn.Module):
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
-        **kwargs: Any,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update and additional neurons.
@@ -2209,8 +2204,6 @@ class GrowingModule(torch.nn.Module):
         use_projection: bool
             Whether to use projected gradient (tensor_n) versus raw gradient
             (-tensor_m_prev) for computing new neuron parameters.
-        **kwargs: Any
-            Additional keyword arguments passed to `_compute_optimal_added_parameters`.
 
         Returns
         -------
@@ -2255,7 +2248,6 @@ class GrowingModule(torch.nn.Module):
                 use_covariance=use_covariance,
                 alpha_zero=alpha_zero,
                 use_projection=use_projection,
-                **kwargs,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):

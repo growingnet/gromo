@@ -1301,6 +1301,42 @@ class TestLinearGrowingBlock(TorchTestCase):
             f"{method_name} configuration should provide first_order_improvement",
         )
 
+    def test_compute_optimal_updates_update_previous_false(self):
+        """update_previous=False should avoid modifying the first layer extension."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            activation=torch.nn.ReLU(),
+            device=self.device,
+            name="test_block_update_previous_false",
+        )
+
+        block.init_computation()
+        input_batch = indicator_batch((self.in_features,), device=self.device)
+
+        block.zero_grad()
+        output = block(input_batch)
+        loss = (output**2).sum() / 2
+        loss.backward()
+        block.update_computation()
+        block.delete_update()
+
+        alpha_weight, _ = block.compute_optimal_updates(
+            update_previous=False,
+            maximum_added_neurons=self.in_features,
+        )
+
+        self.assertIsInstance(alpha_weight, torch.Tensor)
+        self.assertIsNone(
+            block.first_layer.extended_output_layer,
+            "update_previous=False should keep first_layer.extended_output_layer unset",
+        )
+        self.assertIsNotNone(
+            block.second_layer.extended_input_layer,
+            "second_layer.extended_input_layer should still be computed",
+        )
+
     def test_compute_optimal_updates_empty_block_gradmax(self):
         """Test compute_optimal_updates with empty block (hidden_neurons == 0) using GradMax method.
 

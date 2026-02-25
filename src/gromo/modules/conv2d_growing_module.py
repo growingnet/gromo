@@ -1,6 +1,5 @@
 import types
 from math import prod
-from typing import Any
 from warnings import warn
 
 import torch
@@ -1668,7 +1667,6 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
-        **kwargs: Any,  # noqa: ARG002
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1694,9 +1692,6 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             if True, set alpha (incoming weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
-        **kwargs: Any
-            Additional keyword arguments propagated by nested parent calls for
-            specific sub-function call compatibility.
 
         Returns
         -------
@@ -2102,7 +2097,6 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
-        **kwargs: Any,  # noqa: ARG002
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2128,9 +2122,6 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             if True, set alpha (incoming weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
-        **kwargs: Any
-            Additional keyword arguments propagated by nested parent calls for
-            specific sub-function call compatibility.
 
         Returns
         -------

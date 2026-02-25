@@ -1268,32 +1268,20 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             )
         self.assertIn("No previous module", str(context.exception))
 
-    def test_compute_optimal_updates_accepts_extra_kwargs(self):
-        """Ensure nested kwargs are accepted and ignored by linear implementations."""
-        first_layer, second_layer = self.demo_layers[False]
-        network = torch.nn.Sequential(first_layer, second_layer)
+    def test_compute_optimal_updates_rejects_extra_kwargs(self):
+        """Unexpected kwargs should be rejected instead of ignored."""
+        _, second_layer = self.demo_layers[False]
 
-        first_layer.init_computation()
-        second_layer.init_computation()
+        with self.assertRaises(TypeError) as context:
+            second_layer.compute_optimal_updates(
+                compute_delta=False,
+                use_covariance=False,
+                alpha_zero=True,
+                use_projection=False,
+                nested_call_option=True,
+            )
 
-        input_batch = indicator_batch((first_layer.in_features,), device=global_device())
-        output = network(input_batch)
-        loss = torch.norm(output) ** 2 / 2
-        loss.backward()
-        first_layer.update_computation()
-        second_layer.update_computation()
-
-        alpha_weight, alpha_bias = second_layer.compute_optimal_updates(
-            compute_delta=False,
-            use_covariance=False,
-            alpha_zero=True,
-            use_projection=False,
-            maximum_added_neurons=first_layer.in_features,
-            nested_call_option=True,
-        )
-
-        self.assertIsInstance(alpha_weight, torch.Tensor)
-        self.assertIsNone(alpha_bias)
+        self.assertIn("nested_call_option", str(context.exception))
 
     def test_multiple_successors_warning(self):
         """Test warning for multiple successors"""

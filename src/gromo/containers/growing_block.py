@@ -381,12 +381,12 @@ class GrowingBlock(GrowingContainer):
         numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
+        update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
         compute_delta: bool = True,
         use_covariance: bool = True,
         alpha_zero: bool = False,
         use_projection: bool = True,
-        **kwargs: Any,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -403,6 +403,8 @@ class GrowingBlock(GrowingContainer):
             threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
+        update_previous: bool
+            Whether to update the previous layer's extension side effects.
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
         compute_delta: bool
@@ -417,9 +419,6 @@ class GrowingBlock(GrowingContainer):
         use_projection: bool
             If True, use projection-based gradient for added parameters.
             Default is True (TINY behavior).
-        **kwargs: Any
-            Additional keyword arguments propagated to the second layer during
-            nested sub-function calls.
 
         Note
         ----
@@ -463,12 +462,11 @@ class GrowingBlock(GrowingContainer):
                     numerical_threshold=numerical_threshold,
                     statistical_threshold=statistical_threshold,
                     maximum_added_neurons=maximum_added_neurons,
-                    update_previous=True,
+                    update_previous=update_previous,
                     dtype=dtype,
                     use_covariance=use_covariance,
                     alpha_zero=alpha_zero,
                     use_projection=False,  # Must be False when hidden_neurons == 0
-                    **kwargs,
                 )
             )
             # Return the same tuple format as GrowingModule for consistency
@@ -481,13 +479,12 @@ class GrowingBlock(GrowingContainer):
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
-            update_previous=True,
+            update_previous=update_previous,
             dtype=dtype,
             compute_delta=compute_delta,
             use_covariance=use_covariance,
             alpha_zero=alpha_zero,
             use_projection=use_projection,
-            **kwargs,
         )
 
     def apply_change(
