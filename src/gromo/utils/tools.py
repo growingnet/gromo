@@ -137,6 +137,8 @@ def compute_optimal_added_parameters(
     statistical_threshold: float = 1e-3,
     maximum_added_neurons: int | None = None,
     alpha_zero: bool = False,
+    omega_zero: bool = False,
+    ignore_singular_values: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
@@ -159,6 +161,11 @@ def compute_optimal_added_parameters(
         If True, set alpha (incoming weights) to zero, else compute from SVD.
         When True, omega uses orthonormal singular vectors (GradMax-style).
         When False, both alpha and omega are scaled by sqrt(s) (TINY-style).
+    omega_zero : bool
+        If True, set omega (outgoing weights) to zero, else compute from SVD.
+    ignore_singular_values : bool
+        If True, ignore the actual singular values and treat them as 1 for computing alpha and
+        omega, effectively only using the singular vectors for the update direction.
 
     Returns
     -------
@@ -171,8 +178,6 @@ def compute_optimal_added_parameters(
 
     Raises
     ------
-    ValueError
-        If ``alpha_zero`` is False and ``matrix_s`` is None (S required for TINY).
     torch.linalg.LinAlgError
         If SVD of S^{-1/2} N fails.
     """
@@ -206,7 +211,9 @@ def compute_optimal_added_parameters(
     else:
         # GradMax path: S = Identity, so S^{-1/2} = Identity
         matrix_p = matrix_n
-        matrix_s_inverse_sqrt = None
+        matrix_s_inverse_sqrt = torch.eye(
+            n_1, device=matrix_n.device, dtype=matrix_n.dtype
+        )
 
     # Compute the SVD of the product
     try:
@@ -234,27 +241,19 @@ def compute_optimal_added_parameters(
     u = u[:, selected_singular_values]
     v = v[selected_singular_values, :]
 
-    # Compute output based on alpha_zero option
-    if alpha_zero:
-        # GradMax-style: alpha = 0, omega = orthonormal singular vectors
-        k_selected = len(s)
-        alpha = torch.zeros(
-            (n_1, k_selected),
-            device=matrix_n.device,
-            dtype=matrix_n.dtype,
-        )
-        omega = v  # Orthonormal right singular vectors
+    # Compute output based on ignore_singular_values option
+    if ignore_singular_values:
+        sqrt_s = torch.ones_like(s)
     else:
-        # TINY-style: alpha and omega both depend on sqrt(s) and S^{-1/2}
-        if matrix_s_inverse_sqrt is None:
-            raise ValueError(
-                "alpha_zero=False requires a covariance matrix S (matrix_s) so that "
-                "its inverse square root matrix_s_inverse_sqrt is defined. "
-                "Got matrix_s=None which implies matrix_s_inverse_sqrt=None."
-            )
         sqrt_s = torch.sqrt(torch.abs(s))
-        alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
-        omega = sqrt_s[:, None] * v
+    alpha = sqrt_s * (matrix_s_inverse_sqrt @ u)
+    omega = sqrt_s[:, None] * v
+
+    if alpha_zero:
+        alpha = torch.zeros_like(alpha)
+
+    if omega_zero:
+        omega = torch.zeros_like(omega)
 
     return alpha.t(), omega.t(), s
 

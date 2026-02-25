@@ -398,23 +398,6 @@ class TestTools(TorchTestCase):
         with self.assertRaises(AssertionError):
             compute_optimal_added_parameters(matrix_s, matrix_n)
 
-    def test_compute_optimal_added_parameters_alpha_zero_false_requires_matrix_s(self):
-        """Test that ValueError is raised when alpha_zero=False but matrix_s=None"""
-        # This is an invalid combination: alpha_zero=False requires matrix_s to compute
-        # matrix_s_inverse_sqrt, but matrix_s=None means no covariance matrix
-        matrix_n = torch.randn(3, 2)
-
-        with self.assertRaises(ValueError) as context:
-            compute_optimal_added_parameters(
-                matrix_s=None,  # No covariance matrix
-                matrix_n=matrix_n,
-                alpha_zero=False,  # But we need matrix_s for this path
-            )
-
-        error_msg = str(context.exception)
-        self.assertIn("alpha_zero=False requires a covariance matrix S", error_msg)
-        self.assertIn("matrix_s_inverse_sqrt", error_msg)
-
     def test_create_bordering_effect_convolution(self):
         """Test create_bordering_effect_convolution function"""
         # Test basic functionality
