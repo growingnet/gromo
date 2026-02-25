@@ -875,7 +875,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
     # Remove existing modules
 
-    def remove_direct_edge(self, prev_node: str, next_node: str) -> None:
+    def remove_edge(self, prev_node: str, next_node: str) -> None:
         """Remove direct edge from graph
         Delete module instances from the connected nodes and update their size
 
@@ -890,7 +890,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         if edge in self.edges:
             edge_module = self.get_edge_module(*edge)
             edge_module.__del__()
-            self.remove_edge(*edge)
+            super().remove_edge(*edge)
             self._get_ancestors(self.root)
             self.set_growing_layers()
             if str(edge) in self._modules:
