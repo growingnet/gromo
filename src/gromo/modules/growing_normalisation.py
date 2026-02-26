@@ -27,10 +27,10 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         Whether to learn affine parameters (weight and bias), by default=True
     track_running_stats : bool, optional
         Whether to track running statistics, by default=True
-    device : torch.device | None, optional
-        Device to place the layer on
+    device : torch.device | str | None, optional
+        Device to place the layer on, by default None
     dtype : torch.dtype | None, optional
-        Data type for the parameters
+        Data type for the parameters, by default None
     name : str, optional
         Name of the layer for debugging, by default="growing_batch_norm"
     """
@@ -242,13 +242,28 @@ class GrowingBatchNorm1d(GrowingBatchNorm, nn.BatchNorm1d):
 
 
 class GrowingLayerNorm(nn.LayerNorm):
-    """
-    Growable LayerNorm implemented by subclassing nn.LayerNorm and using super().__init__.
+    """Growing LayerNorm module.
 
-    Growth extends the last dimension of normalized_shape:
-        (..., D) -> (..., D + additional_last_dim)
+    This class provides the common functionality for growing LayerNorm
+    modules by growing its normalized dimensions.
+    LayerNorm has no running stats.
 
-    Note: LayerNorm has no running stats.
+    Parameters
+    ----------
+    normalized_shape : int | list[int] | torch.Size
+        input shape from an expected input of size
+    eps : float, optional
+        a value added to the denominator for numerical stability, by default 1e-5
+    elementwise_affine : bool, optional
+        a boolean value that when set to True, this module has learnable per-element affine parameters initialized to ones (for weights) and zeros (for biases), by default True
+    bias : bool, optional
+        if set to False, the layer will not learn an additive bias (only relevant if elementwise_affine is True), by default True
+    device : torch.device | str | None, optional
+        expected device, by default None
+    dtype : torch.dtype | None, optional
+        data type for parameters, by default None
+    name : str, optional
+        name of the layer, by default "growing_layer_norm"
     """
 
     def __init__(
@@ -325,7 +340,7 @@ class GrowingLayerNorm(nn.LayerNorm):
             if isinstance(self.normalized_shape, int)
             else tuple(int(v) for v in self.normalized_shape)
         )
-        self.normalized_shape = tuple(old[:-1]) + (old[-1] + additional_last_dim,)
+        self.normalized_shape = (*tuple(old[:-1]), old[-1] + additional_last_dim)
 
         # Extend affine parameters if enabled
         if getattr(self, "elementwise_affine", False):
@@ -362,13 +377,28 @@ class GrowingLayerNorm(nn.LayerNorm):
 
 
 class GrowingGroupNorm(nn.GroupNorm):
-    """
-    Growable GroupNorm implemented by subclassing nn.GroupNorm and using super().__init__.
+    """Growing GroupNorm module.
 
-    Growth extends num_channels:
-        C -> C + additional_channels
+    This class provides the common functionality for growing GroupNorm
+    modules by growing the number of channels.
+    GroupNorm has no running stats.
 
-    Note: GroupNorm has no running stats.
+    Parameters
+    ----------
+    num_groups : int
+        number of groups to separate the channels into
+    num_channels : int
+        number of channels expected in input
+    eps : float, optional
+        a value added to the denominator for numerical stability, by default 1e-5
+    affine : bool, optional
+        a boolean value that when set to True, this module has learnable per-channel affine parameters initialized to ones (for weights) and zeros (for biases), by default True
+    device : torch.device | str | None, optional
+        expected device, by default None
+    dtype : torch.dtype | None, optional
+        data type for parameters, by default None
+    name : str, optional
+        name of the layer, by default "growing_group_norm"
     """
 
     def __init__(
