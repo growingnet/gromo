@@ -381,6 +381,22 @@ class TestTools(TorchTestCase):
         self.assertFalse(torch.any(torch.isnan(omega)))
         self.assertFalse(torch.any(torch.isnan(eigenvalues)))
 
+        # Test case 6: Alpha zero
+        matrix_s = torch.eye(3) * 2.0
+        matrix_n = torch.randn(3, 2)
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=0.0, alpha_zero=True
+        )
+
+        # Check that alpha is zero (since S is full rank and N is not full rank)
+        self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
+
+        # Test case 7: Omega zero
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=0.0, omega_zero=True
+        )
+        self.assertTrue(torch.allclose(omega, torch.zeros_like(omega)))
+
     def test_compute_optimal_added_parameters_error_cases(self):
         """Test error handling in compute_optimal_added_parameters"""
 
@@ -725,6 +741,151 @@ class TestTools(TorchTestCase):
                     self.assertFalse(torch.isnan(decrease).any())
                 else:
                     self.assertFalse(torch.isnan(torch.tensor(decrease)))
+
+
+class TestComputeOptimalAddedParametersTheory(TorchTestCase):
+    """
+    Theoretical tests for compute_optimal_added_parameters using simple
+    diagonal matrices.
+
+    Setup:
+        X = Diag(1, 2, 3, 4, 5)
+        Y = Diag(4, 4, 4, 4, 4)
+        N = X^T @ Y
+        S = X^T @ X
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.x = torch.diag(torch.arange(1.0, 6.0))
+        self.y = 4.0 * torch.eye(5)
+        self.n = self.x.T @ self.y
+        self.s = self.x.T @ self.x
+
+    def _reconstruction(self, alpha: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
+        """Compute X @ Alpha.T @ Omega.T, the reconstructed output."""
+        return self.x @ alpha.T @ omega.T
+
+    def test_s_xtx_exact_reconstruction(self) -> None:
+        """S=X^T X, ignore_singular_values=False:
+        X @ Alpha.T @ Omega.T == Y
+
+        With the correct covariance S, the full SVD reconstruction
+        exactly recovers Y.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            self.s,
+            self.n,
+            numerical_threshold=1e-10,
+            statistical_threshold=1e-6,
+        )
+        result = self._reconstruction(alpha, omega)
+        self.assertAllClose(
+            result,
+            self.y,
+            atol=1e-5,
+            message="With S=X^TX, reconstruction should exactly equal Y",
+        )
+
+    def test_s_xtx_ignore_sv_nonzero_pattern(self) -> None:
+        """S=X^T X, ignore_singular_values=True:
+        X @ Alpha.T @ Omega.T is non-zero iff Y is non-zero
+
+        When singular values are ignored (treated as 1), the reconstruction
+        preserves the non-zero structure of Y but not its exact values.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            self.s,
+            self.n,
+            numerical_threshold=1e-10,
+            statistical_threshold=0,
+            ignore_singular_values=True,
+        )
+        result = self._reconstruction(alpha, omega)
+        self.assertTrue(
+            torch.equal(result != 0, self.y != 0),
+            "With ignore_singular_values, non-zero pattern should match Y",
+        )
+
+    def test_s_none_max_neurons_2_structure(self) -> None:
+        """S=None, ignore_singular_values=False, maximum_added_neurons=2:
+        X @ Alpha.T @ Omega.T is equal to Y on the last 2 features,
+        and the first 3 features are zero.
+
+        Without S (GradMax path), the top-2 singular values of N correspond
+        to the last 2 features (largest entries of diagonal N). The first 3
+        features are exactly zero and the last 2 preserve Y's non-zero pattern.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            None,
+            self.n,
+            statistical_threshold=0,
+            maximum_added_neurons=2,
+        )
+        result = self._reconstruction(alpha, omega)
+
+        # First 3 row-features and column-features are zero
+        self.assertAllClose(
+            result[:3],
+            torch.zeros(3, 5),
+            atol=1e-6,
+            message="First 3 row-features should be zero",
+        )
+        self.assertAllClose(
+            result[:, :3],
+            torch.zeros(5, 3),
+            atol=1e-6,
+            message="First 3 column-features should be zero",
+        )
+
+        # Last 2 features have same non-zero pattern as Y
+        self.assertTrue(
+            torch.equal(result[3:] != 0, self.y[3:] != 0),
+            "Last 2 features should be non-zero where Y is non-zero",
+        )
+        self.assertAllClose(
+            result[3:],
+            (self.y * self.x**2)[3:],
+            atol=1e-5,
+            message="Last 2 features should match Y scaled by X^2",
+        )
+
+    def test_s_none_ignore_sv_max_neurons_2_pattern(self) -> None:
+        """S=None, ignore_singular_values=True, maximum_added_neurons=2:
+        For the last 2 features: non-zero iff Y is non-zero.
+        For the first 3 features: zero.
+
+        Same truncation as above, but with unit singular values the
+        reconstruction only preserves the directional (non-zero) pattern.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            None,
+            self.n,
+            statistical_threshold=0,
+            maximum_added_neurons=2,
+            ignore_singular_values=True,
+        )
+        result = self._reconstruction(alpha, omega)
+
+        # First 3 features are zero
+        self.assertAllClose(
+            result[:3],
+            torch.zeros(3, 5),
+            atol=1e-6,
+            message="First 3 row-features should be zero",
+        )
+        self.assertAllClose(
+            result[:, :3],
+            torch.zeros(5, 3),
+            atol=1e-6,
+            message="First 3 column-features should be zero",
+        )
+
+        # Last 2 features: non-zero iff Y is non-zero
+        self.assertTrue(
+            torch.equal(result[3:] != 0, self.y[3:] != 0),
+            "Last 2 features: non-zero iff Y is non-zero",
+        )
 
 
 if __name__ == "__main__":
