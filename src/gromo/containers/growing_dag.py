@@ -50,6 +50,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         the type of layer operations, to choose between "linear" and "convolution", by default "linear"
     activation : str, optional
         the default activation function, by default "selu"
+    kernel_size : tuple[int, int], optional
+        the default kernel size for convolution, by default (3, 3)
     name : str, optional
         name of the dag, by default ""
     root : str, optional
@@ -80,6 +82,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         use_batch_norm: bool,
         default_layer_type: str = "linear",
         activation: str = "selu",
+        kernel_size: tuple[int, int] = (3, 3),
         name: str = "",
         root: str = "start",
         end: str = "end",
@@ -98,6 +101,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.use_bias = use_bias
         self.use_batch_norm = use_batch_norm
         self.activation = activation
+        self.kernel_size = kernel_size
         if "_" in name:
             raise ValueError(
                 f"The character '_' is not allowed in the name of a GrowingDAG. Found {name}."
@@ -211,19 +215,19 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 "type": self.layer_type,  # shows what follows
                 "size": self.in_features,
                 "shape": self.input_shape,
-                "kernel_size": (3, 3),
+                "kernel_size": self.kernel_size,
             },
             self.end: {
                 "type": self.layer_type,
                 "size": self.out_features,
-                "kernel_size": (3, 3),
+                "kernel_size": self.kernel_size,
                 "use_batch_norm": self.use_batch_norm,
             },
         }
         edge_attributes = {
             "type": self.layer_type,
             "use_bias": self.use_bias,
-            "kernel_size": (3, 3),
+            "kernel_size": self.kernel_size,
         }
 
         DAG_parameters = {}
@@ -239,15 +243,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Returns
         -------
         dict
-            DAG elements description 
+            DAG elements description
         """
-        kernel_size = (3, 3)
         node_attributes = {
             node: {
                 "type": self.layer_type,
                 "size": value["size"],
                 "shape": value.get("shape"),
-                "kernel_size": kernel_size,
+                "kernel_size": self.kernel_size,
                 "activation": self.activation if node != self.root else "id",
             }
             for node, value in self.nodes.items()
@@ -256,7 +259,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             str(edge): {
                 "type": self.layer_type,
                 "use_bias": self.get_edge_module(*edge).use_bias,
-                "kernel_size": kernel_size,
+                "kernel_size": self.kernel_size,
             }
             for edge in self.edges
         }
@@ -1152,7 +1155,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     {
                         "previous_node": prev_node,
                         "next_node": next_node,
-                        "edge_attributes": {"kernel_size": (3, 3)},
+                        "edge_attributes": {"kernel_size": self.kernel_size},
                     }
                 )
 
@@ -1194,11 +1197,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                                 "type": self.nodes[prev_node]["type"],
                                 "size": size,
                                 "activation": self.activation,
-                                "kernel_size": (3, 3),
+                                "kernel_size": self.kernel_size,
                                 "shape": self.input_shape,
                             },
                             "edge_attributes": {
-                                "kernel_size": (3, 3),
+                                "kernel_size": self.kernel_size,
                             },
                         }
                     )
