@@ -93,6 +93,7 @@ def optimal_delta(
     if tensor_m.dtype != dtype:
         tensor_m = tensor_m.to(dtype=dtype)
 
+    delta_raw = None
     if not force_pseudo_inverse:
         try:
             delta_raw = torch.linalg.solve(tensor_s, tensor_m).t()
