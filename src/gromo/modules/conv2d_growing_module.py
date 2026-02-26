@@ -493,7 +493,6 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         full_activity = self.construct_full_activity()
         if not torch.isfinite(full_activity).all():
             print(f"full activity contains non-finite values in {self._name}")
-            breakpoint()
         return (
             torch.einsum(
                 "iam, ibm -> ab",
@@ -522,13 +521,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         desired_activation = self.pre_activity.grad.flatten(start_dim=-2)
         if not torch.isfinite(full_activity).all():
             print(f"full activity contains non-finite values in {self._name}")
-            breakpoint()
         if not torch.isfinite(desired_activation).all():
             print(f"desired activation contains non-finite values in {self._name}")
-            breakpoint()
         if not torch.isfinite(self.pre_activity).all():
             print(f"pre-activity contains non-finite values in {self._name}")
-            breakpoint()
         return (
             torch.einsum("iam, icm -> ac", full_activity, desired_activation),
             self.input.shape[0],
