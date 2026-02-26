@@ -385,7 +385,9 @@ class GrowingBlock(GrowingContainer):
         compute_delta: bool = True,
         use_covariance: bool = True,
         alpha_zero: bool = False,
+        omega_zero: bool = False,
         use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -413,9 +415,15 @@ class GrowingBlock(GrowingContainer):
         alpha_zero: bool
             If True, initialize alpha (added neuron weights) to zero.
             Default is False (TINY behavior).
+        omega_zero: bool
+            If True, initialize omega (outgoing weights) to zero.
+            Default is False (TINY behavior).
         use_projection: bool
             If True, use projection-based gradient for added parameters.
             Default is True (TINY behavior).
+        ignore_singular_values: bool
+            If True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction. Default is False.
 
         Note
         ----
@@ -457,7 +465,9 @@ class GrowingBlock(GrowingContainer):
                 dtype=dtype,
                 use_covariance=use_covariance,
                 alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
                 use_projection=False,  # Must be False when hidden_neurons == 0
+                ignore_singular_values=ignore_singular_values,
             )
         else:
             # When hidden_neurons > 0, delegate to second layer's
@@ -472,7 +482,9 @@ class GrowingBlock(GrowingContainer):
                 compute_delta=compute_delta,
                 use_covariance=use_covariance,
                 alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
                 use_projection=use_projection,
+                ignore_singular_values=ignore_singular_values,
             )
 
     def apply_change(

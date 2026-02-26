@@ -1666,7 +1666,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         dtype: torch.dtype = torch.float32,
         use_covariance: bool = True,
         alpha_zero: bool = False,
+        omega_zero: bool = False,
         use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1690,8 +1692,13 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             if True, use S matrix (covariance preconditioning), else use Identity
         alpha_zero: bool
             if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
@@ -1711,7 +1718,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             dtype=dtype,
             use_covariance=use_covariance,
             alpha_zero=alpha_zero,
+            omega_zero=omega_zero,
             use_projection=use_projection,
+            ignore_singular_values=ignore_singular_values,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -2096,7 +2105,9 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         dtype: torch.dtype = torch.float32,
         use_covariance: bool = True,
         alpha_zero: bool = False,
+        omega_zero: bool = False,
         use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2120,8 +2131,13 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             if True, use S matrix (covariance preconditioning), else use Identity
         alpha_zero: bool
             if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
@@ -2141,7 +2157,9 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             dtype=dtype,
             use_covariance=use_covariance,
             alpha_zero=alpha_zero,
+            omega_zero=omega_zero,
             use_projection=use_projection,
+            ignore_singular_values=ignore_singular_values,
         )
 
         k = self.eigenvalues_extension.shape[0]

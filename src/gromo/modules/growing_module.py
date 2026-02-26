@@ -2025,7 +2025,9 @@ class GrowingModule(torch.nn.Module):
         dtype: torch.dtype = torch.float32,
         use_covariance: bool = True,
         alpha_zero: bool = False,
+        omega_zero: bool = False,
         use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Auxiliary function to compute the optimal added parameters (alpha, omega, k)
@@ -2047,8 +2049,13 @@ class GrowingModule(torch.nn.Module):
             if True, use S matrix (covariance preconditioning), else use Identity
         alpha_zero: bool
             if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
@@ -2083,6 +2090,8 @@ class GrowingModule(torch.nn.Module):
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
             alpha_zero=alpha_zero,
+            omega_zero=omega_zero,
+            ignore_singular_values=ignore_singular_values,
         )
 
         alpha = alpha.to(dtype=saved_dtype)
@@ -2100,7 +2109,9 @@ class GrowingModule(torch.nn.Module):
         dtype: torch.dtype = torch.float32,
         use_covariance: bool = True,
         alpha_zero: bool = False,
+        omega_zero: bool = False,
         use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2125,8 +2136,13 @@ class GrowingModule(torch.nn.Module):
             if True, use S matrix (covariance preconditioning), else use Identity
         alpha_zero: bool
             if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
         use_projection: bool
             if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
@@ -2172,7 +2188,9 @@ class GrowingModule(torch.nn.Module):
         compute_delta: bool = True,
         use_covariance: bool = True,
         alpha_zero: bool = False,
+        omega_zero: bool = False,
         use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update and additional neurons.
@@ -2202,9 +2220,15 @@ class GrowingModule(torch.nn.Module):
         alpha_zero: bool
             Whether to set alpha (incoming weights to new neurons) to zero. When True,
             new neurons start with zero incoming weights.
+        omega_zero: bool
+            Whether to set omega (outgoing weights from new neurons) to zero. When True,
+            new neurons start with zero outgoing weights.
         use_projection: bool
             Whether to use projected gradient (tensor_n) versus raw gradient
             (-tensor_m_prev) for computing new neuron parameters.
+        ignore_singular_values: bool
+            Whether to ignore singular values and treat them as 1. When True, only the
+            singular vectors are used for the update direction.
 
         Returns
         -------
@@ -2253,7 +2277,9 @@ class GrowingModule(torch.nn.Module):
                 dtype=dtype,
                 use_covariance=use_covariance,
                 alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
                 use_projection=use_projection,
+                ignore_singular_values=ignore_singular_values,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):
