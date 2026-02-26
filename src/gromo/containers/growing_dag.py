@@ -239,7 +239,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Returns
         -------
         dict
-            dag parameter details
+            DAG elements description 
         """
         kernel_size = (3, 3)
         node_attributes = {
