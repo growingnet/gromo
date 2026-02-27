@@ -1,8 +1,80 @@
 import torch
 import torch.utils.data
+from torch import nn
+from torchmetrics import Metric
 
-from gromo.utils.trainning_utils import AverageMeter, enumerate_dataloader
+from gromo.containers.growing_container import GrowingContainer, GrowingModel
+from gromo.utils.trainning_utils import (
+    AverageMeter,
+    enumerate_dataloader,
+    evaluate_model,
+)
 from tests.torch_unittest import TorchTestCase
+
+
+# ---------------------------------------------------------------------------
+# Minimal test doubles for evaluate_model
+# ---------------------------------------------------------------------------
+class _SimpleModel(nn.Module):
+    """A trivial linear model for testing evaluate_model."""
+
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__()
+        self.linear = nn.Linear(in_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        return self.linear(x)
+
+
+class _SimpleGrowingModel(GrowingModel):
+    """Minimal GrowingModel whose extended_forward returns a Tensor."""
+
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__(in_features=in_features, out_features=out_features)
+        self.linear = nn.Linear(in_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        return self.linear(x)
+
+    def extended_forward(self, x: torch.Tensor, mask: dict | None = None) -> torch.Tensor:
+        """Extended forward returns a plain Tensor."""
+        return self.forward(x)
+
+
+class _SimpleGrowingContainer(GrowingContainer):
+    """Minimal GrowingContainer whose extended_forward returns a tuple."""
+
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__(in_features=in_features, out_features=out_features)
+        self.linear = nn.Linear(in_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        return self.linear(x)
+
+    def extended_forward(
+        self, x: torch.Tensor, mask: dict | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Extended forward returns (output, None)."""
+        return self.forward(x), None
+
+
+class _SumMetric(Metric):
+    """Accumulates the sum of first predictions — just enough to test the metrics path."""
+
+    def __init__(self):
+        super().__init__()
+        self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
+
+    def update(self, preds: torch.Tensor, _target: torch.Tensor):
+        """Accumulate prediction sums."""
+        self.total += preds.sum()
+
+    def compute(self) -> torch.Tensor:
+        """Return accumulated total."""
+        return self.total
 
 
 class TestAverageMeter(TorchTestCase):
@@ -11,43 +83,29 @@ class TestAverageMeter(TorchTestCase):
     def test_empty_meter_returns_zero(self):
         """Empty meter returns 0.0."""
         meter = AverageMeter()
-        self.assertEqual(meter.compute(), 0.0)
+        self.assertEqual(meter.compute().item(), 0.0)
 
     def test_float_updates(self):
         """Average of float updates is correct."""
         meter = AverageMeter()
-        meter.update(4.0, n=2)
-        meter.update(6.0, n=3)
+        meter.update(torch.tensor(4.0), n=2)
+        meter.update(torch.tensor(6.0), n=3)
         # sum = 4*2 + 6*3 = 26, count = 5
-        self.assertAlmostEqual(meter.compute(), 26.0 / 5)
+        self.assertAlmostEqual(meter.compute().item(), 26.0 / 5, places=6)
 
     def test_inf_is_skipped(self):
         """Inf values are ignored."""
         meter = AverageMeter()
-        meter.update(3.0)
-        meter.update(float("inf"))
-        self.assertEqual(meter.compute(), 3.0)
-
-    def test_tensor_sum(self):
-        """Tensor sum is handled via .item()."""
-        meter = AverageMeter()
-        meter.update(torch.tensor(10.0))  # pyright: ignore[reportArgumentType]
-        self.assertAlmostEqual(meter.compute(), 10.0)
-
-    def test_unsupported_sum_type_raises(self):
-        """TypeError when sum has unsupported type."""
-        meter = AverageMeter()
-        meter.sum = "bad"  # type: ignore[assignment]
-        meter.count = 1
-        with self.assertRaises(TypeError):
-            meter.compute()
+        meter.update(torch.tensor(3.0))
+        meter.update(torch.tensor(float("inf")))
+        self.assertEqual(meter.compute().item(), 3.0)
 
     def test_reset(self):
         """Reset brings meter back to initial state."""
         meter = AverageMeter()
-        meter.update(10.0)
+        meter.update(torch.tensor(10.0))
         meter.reset()
-        self.assertEqual(meter.compute(), 0.0)
+        self.assertEqual(meter.compute().item(), 0.0)
 
 
 class TestEnumerateDataloader(TorchTestCase):
@@ -105,3 +163,76 @@ class TestEnumerateDataloader(TorchTestCase):
         dl = self._make_dataloader(with_generator=False)
         with self.assertRaises(AttributeError):
             list(enumerate_dataloader(dl, dataloader_seed=42))
+
+
+class TestEvaluateModel(TorchTestCase):
+    """Tests for evaluate_model."""
+
+    @staticmethod
+    def _make_dataloader(
+        n_samples: int = 8,
+        in_features: int = 4,
+        out_features: int = 2,
+        batch_size: int = 4,
+    ) -> torch.utils.data.DataLoader:
+        """Create a simple regression dataloader."""
+        x = torch.randn(n_samples, in_features)
+        y = torch.randn(n_samples, out_features)
+        return torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y), batch_size=batch_size
+        )
+
+    def test_basic_evaluation(self):
+        """Evaluate a plain nn.Module without metrics."""
+        model = _SimpleModel(4, 2)
+        dl = self._make_dataloader()
+        loss, metric_val = evaluate_model(model, dl, nn.MSELoss(reduction="mean"))
+        self.assertIsInstance(loss, float)
+        self.assertEqual(metric_val, 0.0)  # DummyMetric
+
+    def test_with_metrics(self):
+        """Evaluate with a custom metric (exercises the metrics branch)."""
+        model = _SimpleModel(4, 2)
+        dl = self._make_dataloader()
+        metric = _SumMetric()
+        loss, metric_val = evaluate_model(
+            model, dl, nn.MSELoss(reduction="mean"), metrics=metric
+        )
+        self.assertIsInstance(loss, float)
+        self.assertIsInstance(metric_val, float)
+
+    def test_extended_growing_model(self):
+        """use_extended_model=True with a GrowingModel."""
+        model = _SimpleGrowingModel(4, 2)
+        dl = self._make_dataloader()
+        loss, _ = evaluate_model(
+            model,
+            dl,
+            nn.MSELoss(reduction="mean"),
+            use_extended_model=True,
+        )
+        self.assertIsInstance(loss, float)
+
+    def test_extended_growing_container(self):
+        """use_extended_model=True with a GrowingContainer."""
+        model = _SimpleGrowingContainer(4, 2)
+        dl = self._make_dataloader()
+        loss, _ = evaluate_model(
+            model,
+            dl,
+            nn.MSELoss(reduction="mean"),
+            use_extended_model=True,
+        )
+        self.assertIsInstance(loss, float)
+
+    def test_extended_invalid_model_raises(self):
+        """use_extended_model=True with a plain nn.Module raises TypeError."""
+        model = _SimpleModel(4, 2)
+        dl = self._make_dataloader()
+        with self.assertRaises(TypeError):
+            evaluate_model(
+                model,
+                dl,
+                nn.MSELoss(reduction="mean"),
+                use_extended_model=True,
+            )

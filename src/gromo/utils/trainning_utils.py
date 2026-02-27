@@ -18,48 +18,44 @@ class AverageMeter(object):
 
     def reset(self):
         """Resets the meter to initial state."""
-        self.sum: float = 0.0
+        self.sum: torch.Tensor | None = None
         self.count = 0
 
-    def update(self, val: float, n: int = 1):
+    def update(self, val: torch.Tensor, n: int = 1):
         """
         Updates the average with a new value.
 
         Parameters
         ----------
-        val : float
+        val : torch.Tensor
             The new value to include in the average.
         n : int, optional
-            The number of samples that the value represents. Default is 1.
+            The number of samples that `val` represents. Default is 1.
         """
-        if val != torch.nan and val != torch.inf:
-            self.sum += val * n
+        if val.item() != torch.nan and val.item() != torch.inf:
+            if self.sum is None:
+                self.sum = val * n
+            else:
+                self.sum += val * n
             self.count += n
 
-    def compute(self) -> float:
+    def compute(self) -> torch.Tensor:
         """Returns the current average.
 
         Returns
         -------
-        float
+        torch.Tensor
             The average of the values seen so far. Returns 0.0 if no values have been
             added.
-
-        Raises
-        ------
-        TypeError
-            If the type of `sum` is not supported for division.
         """
         if self.count == 0:
-            return 0.0
+            return torch.tensor(0.0)
             # raise ValueError("AverageMeter has no values to compute average")
         else:
-            if isinstance(self.sum, torch.Tensor):
-                return (self.sum / self.count).item()  # type: ignore
-            elif isinstance(self.sum, (float, int)):
-                return self.sum / self.count
-            else:
-                raise TypeError(f"Unsupported type for sum: {type(self.sum)}")
+            assert (
+                self.sum is not None
+            ), "Sum should not be None when count is greater than 0"
+            return self.sum / self.count
 
 
 class DummyMetric(Metric):
@@ -69,15 +65,15 @@ class DummyMetric(Metric):
         """No-op for updating the metric."""
         return
 
-    def compute(self) -> float:
+    def compute(self) -> torch.Tensor:
         """Returns the computed metric value.
 
         Returns
         -------
-        float
-            Always returns 0.0.
+        torch.Tensor
+            Always returns a tensor with value 0.0 on the device of the metric.
         """
-        return 0.0
+        return torch.tensor(0.0, device=self.device)
 
 
 def enumerate_dataloader(
@@ -228,10 +224,10 @@ def evaluate_model(
         x, y = x.to(device), y.to(device)
         y_pred: torch.Tensor = predict_fn(x)
         loss = loss_function(y_pred, y)
-        loss_meter.update(loss.item(), x.size(0))
+        loss_meter.update(loss, x.size(0))
         metrics.update(y_pred, y)
 
-    return loss_meter.compute(), metrics.compute()
+    return loss_meter.compute().item(), metrics.compute().item()
 
 
 def gradient_descent(
@@ -310,13 +306,13 @@ def gradient_descent(
             scheduler.step()
 
         # update metrics
-        loss_meter.update(loss.item(), x.size(0))
+        loss_meter.update(loss.detach(), x.size(0))
         metrics.update(y_pred.detach(), y)
 
     if scheduler is not None:
         scheduler.epoch_step()
 
-    return loss_meter.compute(), metrics.compute()
+    return loss_meter.compute().item(), metrics.compute().item()
 
 
 def compute_statistics(
@@ -378,10 +374,10 @@ def compute_statistics(
         loss = loss_function(y_pred, y)
         loss.backward()
         model.update_computation()
-        loss_meter.update(loss.item() / x.size(0), x.size(0))
+        loss_meter.update(loss.detach() / x.size(0), x.size(0))
         metrics.update(y_pred.detach(), y)
 
-    return loss_meter.compute(), metrics.compute()
+    return loss_meter.compute().item(), metrics.compute().item()
 
 
 # backward compatibility
