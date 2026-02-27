@@ -2198,6 +2198,25 @@ class GrowingModule(torch.nn.Module):
         This method computes optimal weight updates for growing neural networks
         by analyzing gradient statistics and covariance information.
 
+        Hyper-parameters to reproduce papers:
+        -------------------------------------
+
+        - TINY (Growing Tiny Networks: Spotting Expressivity Bottlenecks and Fixing Them Optimally)
+        compute_delta: bool = False,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
+
+        - GradMax (GradMax: Growing Neural Networks using Gradient Information)
+        compute_delta: bool = False,
+        use_covariance: bool = False,
+        alpha_zero: bool = True,
+        omega_zero: bool = False,
+        use_projection: bool = False,
+        ignore_singular_values: bool = True,
+
         Parameters
         ----------
         numerical_threshold: float
