@@ -25,6 +25,7 @@ dependencies = [
     "numpy",
     "tomli",
     "deprecated",
+    "torchmetrics",
 ]
 [project.optional-dependencies]
 test = ["coverage"]

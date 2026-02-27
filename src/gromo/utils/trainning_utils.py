@@ -1,15 +1,12 @@
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import torch
 import torch.utils.data
 from torch import nn
+from torchmetrics import Metric
 
-
-if TYPE_CHECKING:
-    from torchmetrics import Metric
-
-    from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.growing_container import GrowingContainer, GrowingModel
 
 
 class AverageMeter(object):
@@ -148,13 +145,14 @@ def enumerate_dataloader(
 
 @torch.no_grad()
 def evaluate_model(
-    model: nn.Module | GrowingContainer,
+    model: nn.Module | GrowingContainer | GrowingModel,
     dataloader: torch.utils.data.DataLoader,
     loss_function: nn.Module,
     use_extended_model: bool = False,
     metrics: Metric | None = None,
     batch_limit: int | None = None,
     dataloader_seed: int | None = None,
+    mask: dict | None = None,
     device: torch.device = torch.device("cpu"),
 ) -> tuple[float, float]:
     """
@@ -162,7 +160,7 @@ def evaluate_model(
 
     Parameters
     ----------
-    model : nn.Module | GrowingContainer
+    model : nn.Module | GrowingContainer | GrowingModel
         The model to evaluate.
     dataloader : torch.utils.data.DataLoader
         The dataloader for evaluation data.
@@ -179,6 +177,9 @@ def evaluate_model(
         An optional seed to set for the dataloader's random number generator (if it has
         one). This can be used to ensure reproducibility when shuffling is involved.
         Default is None.
+    mask : dict | None, optional
+        The mask to use for the extended model. Only used if `use_extended_model` is True.
+        Default is None.
     device : torch.device, optional
         Device to use. Default is torch.device("cpu").
 
@@ -190,7 +191,7 @@ def evaluate_model(
     Raises
     ------
     TypeError
-        If the model is not an instance of GrowingContainer when
+        If the model is not an instance of GrowingContainer or GrowingModel when
         `use_extended_model` is True.
     """
     assert (
@@ -206,11 +207,14 @@ def evaluate_model(
 
     # prediction function
     if use_extended_model:
-        if not isinstance(model, GrowingContainer):
+        if isinstance(model, GrowingModel):
+            predict_fn = lambda x: model.extended_forward(x, mask=mask)
+        elif isinstance(model, GrowingContainer):
+            predict_fn = lambda x: model.extended_forward(x, mask=mask)[0]
+        else:
             raise TypeError(
-                "Model must be an instance of GrowingContainer when use_extended_model is True"
+                "Model must be an instance of GrowingModel or GrowingContainer when use_extended_model is True"
             )
-        predict_fn = lambda x: model.extended_forward(x)
     else:
         predict_fn = lambda x: model(x)
 
@@ -227,7 +231,7 @@ def evaluate_model(
     return loss_meter(), metrics()
 
 
-def train(
+def gradient_descent(
     model: nn.Module,
     train_dataloader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
@@ -239,7 +243,7 @@ def train(
     device: torch.device = torch.device("cpu"),
 ) -> tuple[float, float]:
     """
-    Train the model on the train_dataloader
+    Train the model on the train_dataloader using classic gradient descent.
 
     Parameters
     ----------
