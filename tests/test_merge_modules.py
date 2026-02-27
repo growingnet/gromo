@@ -675,7 +675,10 @@ class TestMergeGrowingModules(TorchTestCase):
         self.assertIsNone(start_of_dag1.previous_tensor_m)
 
         self.assertEqual(
-            end_of_dag1.total_in_features, self.conv_in_features + 1 + node_in_features
+            end_of_dag1.total_in_features,
+            self.conv_in_features
+            + int(dag1.dag.get_edge_module("1", dag1.dag.end).use_bias)
+            + node_in_features,
         )
         self.assertEqual(
             end_of_dag1.tensor_s._shape,
@@ -707,7 +710,7 @@ class TestMergeGrowingModules(TorchTestCase):
         self.assertEqual(
             end_of_dag2.total_in_features,
             hidden_channels * self.kernel_size[0] * self.kernel_size[1]
-            + 1
+            + int(dag2.dag.get_edge_module("1", dag2.dag.end).use_bias)
             + node_in_features,
         )
         self.assertEqual(

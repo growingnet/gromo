@@ -1,5 +1,4 @@
 import copy
-import string
 import warnings
 from collections import deque
 from enum import Enum
@@ -20,8 +19,10 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.tools import lecun_normal_
 from gromo.utils.utils import (
     activation_fn,
+    alphabetic_index,
     compute_BIC,
     evaluate_extended_dataset,
     f1_micro,
@@ -189,6 +190,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 return_deltas=return_deltas,
                 force_pseudo_inverse=force_pseudo_inverse,
             )
+            assert node_module.parameter_update_decrease is not None
 
     def delete_update(self):
         """Delete tensor updates for all nodes"""
@@ -228,6 +230,37 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         DAG_parameters = {}
         DAG_parameters["edges"] = edges
+        DAG_parameters["node_attributes"] = node_attributes
+        DAG_parameters["edge_attributes"] = edge_attributes
+        return DAG_parameters
+
+    def export_dag_parameters(self) -> dict:
+        """Export detailed parameters of the dag in dictionary format
+
+        Returns
+        -------
+        dict
+            dictionary with parameters sizes and attributes
+        """
+        kernel_size = (3, 3)
+        node_attributes = {
+            node: {
+                "type": self.layer_type,
+                "size": value["size"],
+                "shape": value.get("shape"),
+                "kernel_size": kernel_size,
+                "activation": self.activation if node != self.root else "id",
+            }
+            for node, value in self.nodes.items()
+        }
+        edge_attributes = {
+            "type": self.layer_type,
+            "use_bias": self.use_bias,
+            "kernel_size": kernel_size,
+        }
+        DAG_parameters = {}
+        DAG_parameters["edges"] = list(self.edges)
+        # DAG_parameters["nodes"] = self.nodes
         DAG_parameters["node_attributes"] = node_attributes
         DAG_parameters["edge_attributes"] = edge_attributes
         return DAG_parameters
@@ -603,8 +636,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # TODO: separate functions for different modules, no need to check the type of node
         # self.nodes[new_node].update(node_attributes)
         self.update_nodes([new_node], node_attributes={new_node: node_attributes})
+
+        _edge_attributes = {edge: copy.copy(edge_attributes) for edge in new_edges}
+        _edge_attributes[new_edges[1]]["use_bias"] = False
         self.update_edges(
-            new_edges, edge_attributes=edge_attributes, zero_weights=zero_weights
+            new_edges, edge_attributes=_edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(new_edges)
         self.set_growing_layers()
@@ -715,8 +751,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         for prev_node, next_node in edges:
             name = f"{prev_node.split('_')[0]}_{next_node.split('_')[0]}"
+            if any(isinstance(v, dict) for v in edge_attributes.values()):
+                _attributes = edge_attributes[(prev_node, next_node)]
+            else:
+                _attributes = edge_attributes
 
-            if edge_attributes.get("constant"):
+            if _attributes.get("constant"):
                 self.__set_edge_module(
                     prev_node,
                     next_node,
@@ -736,7 +776,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 new_module = LinearGrowingModule(
                     in_features=self.nodes[prev_node]["size"],
                     out_features=self.nodes[next_node]["size"],
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     device=self.device,
                     name=f"L{name}",
                 )
@@ -744,11 +784,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 self.nodes[prev_node]["type"] == "convolution"
                 and self.nodes[next_node]["type"] == "convolution"
             ):
-                if "kernel_size" not in edge_attributes:
+                if "kernel_size" not in _attributes:
                     raise KeyError(
-                        'The kernel size of the edge should be specified at initialization. Example: key "kernel_size" in edge_attributes'
+                        'The kernel size of the edge should be specified at initialization. Example: key "kernel_size" in edge_attributes[edge]'
                     )
-                kernel_size = edge_attributes["kernel_size"]
+                kernel_size = _attributes["kernel_size"]
                 input_size = self.get_node_module(prev_node).output_size
                 default_padding = ((kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2)
                 new_module = FullConv2dGrowingModule(
@@ -756,10 +796,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     out_channels=self.nodes[next_node]["size"],
                     kernel_size=kernel_size,
                     input_size=input_size,
-                    stride=edge_attributes.get("stride", 1),
-                    padding=edge_attributes.get("padding", default_padding),
-                    dilation=edge_attributes.get("dilation", 1),
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    stride=_attributes.get("stride", 1),
+                    padding=_attributes.get("padding", default_padding),
+                    dilation=_attributes.get("dilation", 1),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     # allow_growing=True,
                     device=self.device,
                     name=f"C{name}",
@@ -772,7 +812,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 new_module = LinearGrowingModule(
                     in_features=in_features,
                     out_features=self.nodes[next_node]["size"],
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     device=self.device,
                     name=f"L{name}",
                 )
@@ -780,9 +820,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 raise NotImplementedError
 
             if zero_weights:
-                new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
-                if new_module.use_bias:
-                    new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
+                nn.init.zeros_(new_module.weight)
+            else:
+                lecun_normal_(new_module.weight)
+            if new_module.use_bias:
+                nn.init.zeros_(new_module.bias)
 
             self.__set_edge_module(
                 prev_node,
@@ -1235,7 +1277,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # All possible one-hop connections
         for i, attr in enumerate(one_hop_edges):
             previous_node = attr.get("previous_node")
-            new_node = f"{attr.get('new_node')}_{string.ascii_lowercase[i]}"
+            new_node = f"{attr.get('new_node')}_{alphabetic_index(i)}"
             next_node = attr.get("next_node")
             node_attributes = attr.get("node_attributes", {})
             edge_attributes = attr.get("edge_attributes", {})
@@ -1344,6 +1386,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             merge_module = self.get_node_module(node)
             if verbose:
                 print("\t-->", merge_module)
+
             output[node] = merge_module(output[node])
         if verbose:
             print()
@@ -1431,10 +1474,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             merge_module = self.get_node_module(node)
             if verbose:
                 print("\t-->", merge_module)
+
             output[node] = (
                 merge_module(output[node][0]),
                 merge_module(output[node][1]),
-            )  # TODO: simplify
+            )
         if verbose:
             print()
         return output[self.end]

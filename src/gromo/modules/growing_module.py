@@ -444,7 +444,7 @@ class MergeGrowingModule(torch.nn.Module):
             f"The tensor M should have shape ({self.total_in_features}, {self.in_features}). "
             f"Got {previous_tensor_m.shape}."
         )
-        delta, _ = optimal_delta(
+        delta, self.parameter_update_decrease = optimal_delta(
             previous_tensor_s,
             previous_tensor_m,
             dtype=dtype,
@@ -486,6 +486,21 @@ class MergeGrowingModule(torch.nn.Module):
             return deltas
         else:
             return None
+
+    def _grow_post_merge_function(self, extension_size: int) -> None:
+        """Apply growth to sized activation functions
+
+        Parameters
+        ----------
+        extension_size : int
+            size of extension
+        """
+        if isinstance(self.post_merge_function, torch.nn.Sequential):
+            for module in self.post_merge_function:
+                if hasattr(module, "grow"):
+                    module.grow(extension_size)  # type: ignore
+        elif hasattr(self.post_merge_function, "grow"):
+            self.post_merge_function.grow(extension_size)  # type: ignore
 
     def update_size(self) -> None:
         """
@@ -1847,16 +1862,28 @@ class GrowingModule(torch.nn.Module):
                 ),
             )
 
-            if isinstance(self.post_layer_function, torch.nn.Sequential):
-                for module in self.post_layer_function:
-                    if hasattr(module, "grow"):
-                        module.grow(extension_size)
-            elif hasattr(self.post_layer_function, "grow"):
-                self.post_layer_function.grow(extension_size)
+            # Grow potential BatchNorm parameters
+            self._grow_post_layer_function(extension_size=extension_size)
 
             # Update the size of the next module
             if isinstance(self.next_module, MergeGrowingModule):
                 self.next_module.update_size()
+                self.next_module._grow_post_merge_function(extension_size=extension_size)
+
+    def _grow_post_layer_function(self, extension_size: int) -> None:
+        """Apply growth to sized activation functions
+
+        Parameters
+        ----------
+        extension_size : int
+            size of extension
+        """
+        if isinstance(self.post_layer_function, torch.nn.Sequential):
+            for module in self.post_layer_function:
+                if hasattr(module, "grow"):
+                    module.grow(extension_size)  # type: ignore
+        elif hasattr(self.post_layer_function, "grow"):
+            self.post_layer_function.grow(extension_size)  # type: ignore
 
     def apply_change(
         self,
