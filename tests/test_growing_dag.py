@@ -53,7 +53,7 @@ class TestGrowingDAG(TorchTestCase):
             default_layer_type="linear",
             name="dag-linear",
         )
-        self.dag.remove_direct_edge(self.dag.root, self.dag.end)
+        self.dag.remove_edge(self.dag.root, self.dag.end)
         self.dag_conv = GrowingDAG(
             in_features=self.in_features,
             out_features=self.out_features,
@@ -64,7 +64,7 @@ class TestGrowingDAG(TorchTestCase):
             input_shape=(3, 3),
             name="dag-conv",
         )
-        self.dag_conv.remove_direct_edge(self.dag_conv.root, self.dag_conv.end)
+        self.dag_conv.remove_edge(self.dag_conv.root, self.dag_conv.end)
 
     def tearDown(self) -> None:
         del self.dag
@@ -261,12 +261,12 @@ class TestGrowingDAG(TorchTestCase):
 
     def test_remove_direct_edge(self) -> None:
         self.dag.add_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
-        self.dag.remove_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
+        self.dag.remove_edge(prev_node=self.dag.root, next_node=self.dag.end)
         self.assertEqual(len(list(self.dag.edges)), 0)
         self.assertEqual(self.dag.out_degree(self.dag.root), 0)
         self.assertEqual(self.dag.in_degree(self.dag.end), 0)
 
-        self.dag.remove_direct_edge(prev_node=self.dag.root, next_node=self.dag.end)
+        self.dag.remove_edge(prev_node=self.dag.root, next_node=self.dag.end)
         self.assertEqual(len(list(self.dag.edges)), 0)
         self.assertEqual(self.dag.out_degree(self.dag.root), 0)
         self.assertEqual(self.dag.in_degree(self.dag.end), 0)
