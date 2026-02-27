@@ -16,6 +16,7 @@ from gromo.modules.conv2d_growing_module import (
     FullConv2dGrowingModule,
 )
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
+from gromo.modules.growing_normalisation import GrowingLayerNorm
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -44,8 +45,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         number of neurons to add on each growth step
     use_bias : bool
         use bias
-    use_batch_norm : bool
-        use Batch Normalization
+    use_layer_norm : bool
+        use Layer Normalization
     default_layer_type : str, optional
         the type of layer operations, to choose between "linear" and "convolution", by default "linear"
     activation : str, optional
@@ -77,7 +78,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         out_features: int,
         neurons: int,
         use_bias: bool,
-        use_batch_norm: bool,
+        use_layer_norm: bool,
         default_layer_type: str = "linear",
         activation: str = "selu",
         name: str = "",
@@ -96,7 +97,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         )
         self.neurons = neurons
         self.use_bias = use_bias
-        self.use_batch_norm = use_batch_norm
+        self.use_layer_norm = use_layer_norm
         self.activation = activation
         if "_" in name:
             raise ValueError(
@@ -212,12 +213,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 "size": self.in_features,
                 "shape": self.input_shape,
                 "kernel_size": (3, 3),
+                "use_layer_norm": False,
             },
             self.end: {
                 "type": self.layer_type,
                 "size": self.out_features,
+                "shape": self.input_shape,
                 "kernel_size": (3, 3),
-                "use_batch_norm": self.use_batch_norm,
+                "use_layer_norm": self.use_layer_norm,
             },
         }
         edge_attributes = {
@@ -638,22 +641,26 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 raise KeyError(
                     'The size of the node should be specified at initialization. Example: key "size" in node_attributes[new_node]'
                 )
+
             self.nodes[node].update(attributes)
-            if attributes.get("use_batch_norm", self.use_batch_norm):
-                batch_norm = nn.BatchNorm1d(
-                    self.nodes[node]["size"], affine=False, device=self.device
-                )
-            else:
-                batch_norm = nn.Identity()
+
+            layer_norm = nn.Identity()
+
             name = node.split("_")[0]
             if self.nodes[node]["type"] == "linear":
                 in_features = self.nodes[node]["size"]
+
+                if attributes.get("use_layer_norm", self.use_layer_norm):
+                    layer_norm = GrowingLayerNorm(
+                        in_features, elementwise_affine=False, device=self.device
+                    )
+
                 self.__set_node_module(
                     node,
                     LinearMergeGrowingModule(
                         in_features=in_features,
                         post_merge_function=torch.nn.Sequential(
-                            batch_norm,
+                            layer_norm,
                             activation_fn(self.nodes[node].get("activation")),
                         ),
                         allow_growing=True,
@@ -663,13 +670,25 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 )
             elif self.nodes[node]["type"] == "convolution":
                 in_channels = self.nodes[node]["size"]
-                input_size = self.nodes[node].get("shape")
+                input_size = self.nodes[node].get("shape", (1, 1))
                 kernel_size = self.nodes[node]["kernel_size"]
                 input_volume = (
                     in_channels * input_size[0] * input_size[1]
                     if input_size is not None
                     else None
                 )
+
+                if attributes.get("use_layer_norm", self.use_layer_norm):
+                    if "shape" not in attributes:
+                        raise KeyError(
+                            'The shape of the input (h,w) should be specified at initialization when using LayerNorm. Example: key "shape" in node_attributes[new_node]'
+                        )
+                    layer_norm = GrowingLayerNorm(
+                        [in_channels, *input_size],
+                        elementwise_affine=False,
+                        device=self.device,
+                    )
+
                 self.__set_node_module(
                     node,
                     Conv2dMergeGrowingModule(
@@ -678,7 +697,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                         next_kernel_size=kernel_size,
                         input_volume=input_volume,
                         post_merge_function=torch.nn.Sequential(
-                            batch_norm,
+                            layer_norm,
                             activation_fn(self.nodes[node].get("activation")),
                         ),
                         allow_growing=True,

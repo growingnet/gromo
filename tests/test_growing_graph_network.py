@@ -142,7 +142,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.assertEqual(self.net.dag.nodes[self.net.dag.end]["size"], self.out_features)
         self.assertEqual(self.net.dag.nodes[self.net.dag.root]["type"], "linear")
         self.assertEqual(self.net.dag.nodes[self.net.dag.end]["type"], "linear")
-        self.assertFalse(self.net.dag.nodes[self.net.dag.end]["use_batch_norm"])
+        self.assertFalse(self.net.dag.nodes[self.net.dag.end]["use_layer_norm"])
 
     def test_expand_node(self) -> None:
         node = "1"
