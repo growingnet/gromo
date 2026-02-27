@@ -20,7 +20,11 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+<<<<<<< load_state_dict
 - Allow reconstruction of the computational graph of GrowingDAG to reload state_dict (:gh:`209` by `Stella Douka`_)
+=======
+- Introduces a new GrowingModel class to have a fixed output size model. (:gh:`206` by `Théo Rudkiewicz`_)
+>>>>>>> main
 - Improve flexibility in `growing_block` and `resnet` to allow creating more complex structures and to support more use cases (:gh:`194` by `Théo Rudkiewicz`_)
 - Change the behavior for negative scaling factor. Now use a positive scaling factor for the parameter update independently of the sign of the scaling factor. (:gh:`195` by `Théo Rudkiewicz`_)
 - Fix a convergence problem in `sqrt_inverse_matrix_semi_positive` (:gh:`192` by `Théo Rudkiewicz`_)
