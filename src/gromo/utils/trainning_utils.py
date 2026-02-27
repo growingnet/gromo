@@ -36,7 +36,7 @@ class AverageMeter(object):
             self.sum += val * n
             self.count += n
 
-    def __call__(self) -> float:
+    def compute(self) -> float:
         """Returns the current average.
 
         Returns
@@ -231,7 +231,7 @@ def evaluate_model(
         loss_meter.update(loss.item(), x.size(0))
         metrics.update(y_pred, y)
 
-    return loss_meter(), metrics.compute()
+    return loss_meter.compute(), metrics.compute()
 
 
 def gradient_descent(
@@ -316,7 +316,7 @@ def gradient_descent(
     if scheduler is not None:
         scheduler.epoch_step()
 
-    return loss_meter(), metrics.compute()
+    return loss_meter.compute(), metrics.compute()
 
 
 def compute_statistics(
@@ -381,7 +381,7 @@ def compute_statistics(
         loss_meter.update(loss.item() / x.size(0), x.size(0))
         metrics.update(y_pred.detach(), y)
 
-    return loss_meter(), metrics.compute()
+    return loss_meter.compute(), metrics.compute()
 
 
 # backward compatibility
