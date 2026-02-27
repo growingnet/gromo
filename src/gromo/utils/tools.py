@@ -160,8 +160,6 @@ def compute_optimal_added_parameters(
         Maximum number of added neurons, if None all significant neurons are kept
     alpha_zero : bool
         If True, set alpha (incoming weights) to zero, else compute from SVD.
-        When True, omega uses orthonormal singular vectors (GradMax-style).
-        When False, both alpha and omega are scaled by sqrt(s) (TINY-style).
     omega_zero : bool
         If True, set omega (outgoing weights) to zero, else compute from SVD.
     ignore_singular_values : bool
@@ -186,7 +184,7 @@ def compute_optimal_added_parameters(
     n_1, _ = matrix_n.shape
 
     if matrix_s is not None:
-        # TINY path: validate S matrix
+        # validate S matrix
         s_1, s_2 = matrix_s.shape
         assert s_1 == s_2, "The input matrix S must be square."
         assert s_2 == n_1, (

@@ -408,19 +408,19 @@ class GrowingBlock(GrowingContainer):
             dtype for the computation of the optimal delta and added parameters
         compute_delta: bool
             If True, compute and store parameter_update_decrease (delta).
-            Default is True (TINY behavior).
+            Default is True.
         use_covariance: bool
             If True, use covariance-based computation for added parameters.
-            Default is True (TINY behavior).
+            Default is True.
         alpha_zero: bool
             If True, initialize alpha (added neuron weights) to zero.
-            Default is False (TINY behavior).
+            Default is False.
         omega_zero: bool
             If True, initialize omega (outgoing weights) to zero.
-            Default is False (TINY behavior).
+            Default is False.
         use_projection: bool
             If True, use projection-based gradient for added parameters.
-            Default is True (TINY behavior).
+            Default is True.
         ignore_singular_values: bool
             If True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction. Default is False.

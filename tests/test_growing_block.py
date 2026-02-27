@@ -1215,7 +1215,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         alpha_zero: bool = False,
         use_projection: bool = True,
     ):
-        """Test compute_optimal_updates with both TINY and GradMax configurations.
+        """Test compute_optimal_updates with different configurations.
 
         Verifies that both initialization configurations work correctly for GrowingBlock
         with existing neurons (hidden_features > 0).
