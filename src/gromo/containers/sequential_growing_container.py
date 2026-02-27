@@ -2,11 +2,11 @@ from typing import Any
 
 import torch
 
-from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.growing_container import GrowingContainer, GrowingModel
 from gromo.modules.growing_module import GrowingModule
 
 
-class SequentialGrowingContainer(GrowingContainer):
+class SequentialGrowingModel(GrowingModel):
     """Container for sequential model architectures
 
     Parameters
@@ -25,9 +25,7 @@ class SequentialGrowingContainer(GrowingContainer):
         out_features: int,
         device: torch.device | str | None = None,
     ) -> None:
-        super(SequentialGrowingContainer, self).__init__(
-            in_features, out_features, device
-        )
+        super(SequentialGrowingModel, self).__init__(in_features, out_features, device)
         assert all(
             isinstance(layer, (GrowingModule, GrowingContainer))
             for layer in self._growing_layers
@@ -83,7 +81,7 @@ class SequentialGrowingContainer(GrowingContainer):
                 self._growable_layers
             )
             # The above ignore is needed because we do not allow MergeGrowingModule in
-            # SequentialGrowingContainer, but it is allowed in GrowingContainer.
+            # SequentialGrowingModel, but it is allowed in GrowingContainer.
         else:
             raise ValueError(
                 f"Invalid scheduling method: {scheduling_method}. Supported methods are "

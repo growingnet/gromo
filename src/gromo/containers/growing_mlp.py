@@ -3,11 +3,11 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.growing_container import GrowingModel
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-class GrowingMLP(GrowingContainer):
+class GrowingMLP(GrowingModel):
     """
     Represents a growing MLP network.
 
@@ -126,7 +126,11 @@ class GrowingMLP(GrowingContainer):
             x = layer(x)
         return x
 
-    def extended_forward(self, x: Tensor) -> Tensor:  # type: ignore
+    def extended_forward(
+        self,
+        x: Tensor,
+        mask: dict | None = None,  # noqa: ARG002
+    ) -> Tensor:
         """
         Forward pass of the growing MLP with the current modifications.
 
@@ -134,6 +138,8 @@ class GrowingMLP(GrowingContainer):
         ----------
         x : Tensor
             Input tensor.
+        mask : dict | None, optional
+            Not used in this implementation.
 
         Returns
         -------
