@@ -692,8 +692,8 @@ class TestGrowingGraphNetwork(TorchTestCase):
 
         output = layer_omega(flatten(pooling(activation(layer_alpha(x)))))
         # Keep atol at 1.5e-2 for this conv->pooling->flatten integration path.
-        # Empirically, 1e-2 is flaky under repeated runs in this setup, while 1.5e-2
-        # remains stable for the observed stochastic optimization variability.
+        # Empirically, this assertion is flaky at 1e-2 across repeated runs here.
+        # 1.5e-2 is the smallest stable bound observed for this integration path.
         self.assertAllClose(desired_output, output, atol=1.5e-2)
 
 

@@ -813,29 +813,18 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         # Test that the isinstance check works
         self.assertIsInstance(growing_module.previous_module, MergeGrowingModule)
 
-    def test_compute_optimal_updates_invalid_method(self):
-        """Test that invalid initialization method names are rejected (validation test)."""
-        # Setup: Create a module with previous_module
-        first_layer = LinearGrowingModule(
-            in_features=3, out_features=2, device=global_device()
+    def test_compute_optimal_updates_rejects_legacy_method_kwarg(self):
+        """Test that the removed initialization_method kwarg is rejected."""
+        layer = LinearGrowingModule(
+            in_features=2,
+            out_features=3,
+            device=global_device(),
         )
-        second_layer = LinearGrowingModule(
-            in_features=2, out_features=5, device=global_device()
-        )
-        second_layer.previous_module = first_layer
 
-        # Initialize and gather statistics
-        first_layer.init_computation()
-        second_layer.init_computation()
-
-        # Forward/backward pass to gather statistics
-        x = torch.randn(2, 3, device=global_device())
-        y = first_layer(x)
-        y = second_layer(y)
-        loss = torch.norm(y)
-        loss.backward()
-        first_layer.update_computation()
-        second_layer.update_computation()
+        with self.assertRaisesRegex(
+            TypeError, "unexpected keyword argument 'initialization_method'"
+        ):
+            layer.compute_optimal_updates(initialization_method="tiny")  # type: ignore[call-arg]
 
     def test_compute_optimal_updates_merge_previous_module_error(self):
         """Test that compute_optimal_updates raises NotImplementedError when previous_module is MergeGrowingModule."""
