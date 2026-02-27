@@ -1,12 +1,13 @@
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 import torch
 import torch.utils.data
 from torch import nn
-from torchmetrics import Metric
+from torchmetrics import Metric, classification
 
 from gromo.containers.growing_container import GrowingContainer, GrowingModel
+from gromo.utils.utils import global_device
 
 
 class AverageMeter(object):
@@ -114,11 +115,10 @@ def enumerate_dataloader(
         If `dataloader_seed` is provided but the dataloader does not have a random
         number generator attribute.
     TypeError
-        If `epochs` and `batch_limit` are both None or
-        if they are both provided.
+        If `epochs` and `batch_limit` are both provided.
     """
-    if not (epochs is None) ^ (batch_limit is None):
-        msg = f"Exactly one of `epochs` and `batch_limit` must be provided, but got {epochs=} and {batch_limit=}"
+    if (epochs is not None) and (batch_limit is not None):
+        msg = f"Only one  of `epochs` and `batch_limit` can be provided, but got {epochs=} and {batch_limit=}"
         raise TypeError(msg)
     assert (epochs is None) or (epochs >= 0), "Epochs must be non-negative"
     assert (batch_limit is None) or (
@@ -135,8 +135,10 @@ def enumerate_dataloader(
                 "so the seed cannot be set."
             )
     if batch_limit is None:
-        assert isinstance(epochs, float)
-        batch_limit = int(len(dataloader) * epochs)
+        if epochs is None:
+            batch_limit = len(dataloader) + 1
+        else:
+            batch_limit = int(len(dataloader) * epochs)
     for i, batch in enumerate(dataloader):
         if i >= batch_limit:
             break
@@ -147,7 +149,7 @@ def enumerate_dataloader(
 def evaluate_model(
     model: nn.Module | GrowingContainer | GrowingModel,
     dataloader: torch.utils.data.DataLoader,
-    loss_function: nn.Module,
+    loss_function: nn.Module | Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
     use_extended_model: bool = False,
     metrics: Metric | None = None,
     batch_limit: int | None = None,
@@ -164,7 +166,7 @@ def evaluate_model(
         The model to evaluate.
     dataloader : torch.utils.data.DataLoader
         The dataloader for evaluation data.
-    loss_function : nn.Module
+    loss_function : nn.Module | Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
         The loss function to use. Must have reduction="mean".
     use_extended_model : bool, optional
         Whether to use the extended model for evaluation. Default is False.
@@ -195,7 +197,7 @@ def evaluate_model(
         `use_extended_model` is True.
     """
     assert (
-        loss_function.reduction == "mean"
+        not isinstance(loss_function, nn.Module) or loss_function.reduction == "mean"
     ), "The loss function should be averaged over the batch"
 
     # metrics meters
@@ -204,6 +206,7 @@ def evaluate_model(
         metrics = DummyMetric()
     else:
         metrics.reset()
+        metrics = metrics.to(device)
 
     # prediction function
     if use_extended_model:
@@ -228,7 +231,7 @@ def evaluate_model(
         loss_meter.update(loss.item(), x.size(0))
         metrics.update(y_pred, y)
 
-    return loss_meter(), metrics()
+    return loss_meter(), metrics.compute()
 
 
 def gradient_descent(
@@ -275,7 +278,7 @@ def gradient_descent(
         A tuple containing (average_loss, aux_loss_function_value).
     """
     assert (
-        loss_function.reduction == "mean"
+        not isinstance(loss_function, nn.Module) or loss_function.reduction == "mean"
     ), "The loss function should be averaged over the batch"
 
     # metrics meters
@@ -284,6 +287,7 @@ def gradient_descent(
         metrics = DummyMetric()
     else:
         metrics.reset()
+        metrics = metrics.to(device)
 
     model.train()
     for i, (x, y) in enumerate_dataloader(
@@ -312,7 +316,7 @@ def gradient_descent(
     if scheduler is not None:
         scheduler.epoch_step()
 
-    return loss_meter(), metrics()
+    return loss_meter(), metrics.compute()
 
 
 def compute_statistics(
@@ -354,13 +358,14 @@ def compute_statistics(
         A tuple containing (average_loss, metrics_value).
     """
     assert (
-        loss_function.reduction == "sum"
+        not isinstance(loss_function, nn.Module) or loss_function.reduction == "sum"
     ), "The loss function should not be averaged over the batch"
     loss_meter = AverageMeter()
     if metrics is None:
         metrics = DummyMetric()
     else:
         metrics.reset()
+        metrics = metrics.to(device)
 
     model.init_computation()
     model.eval()
@@ -376,4 +381,92 @@ def compute_statistics(
         loss_meter.update(loss.item() / x.size(0), x.size(0))
         metrics.update(y_pred.detach(), y)
 
-    return loss_meter(), metrics()
+    return loss_meter(), metrics.compute()
+
+
+# backward compatibility
+# I could not keep it in utils.py because of circular imports,
+# with `global_device` being defined in utils.py and used
+# in `growing_container.py`
+def evaluate_extended_dataset(
+    model: nn.Module,
+    dataloader: torch.utils.data.DataLoader,
+    loss_fn: Callable,
+    mask: dict = {},
+) -> tuple[float, float]:
+    """Evaluate extended network on dataset
+
+    Parameters
+    ----------
+    model : nn.Module
+        network to evaluate
+    dataloader : torch.utils.data.DataLoader
+        dataloader containing the data
+    loss_fn : Callable
+        loss function for bottleneck calculation
+    mask : dict, optional
+        extension mask for specific nodes and edges, by default {}
+        example: mask["edges"] for edges and mask["nodes"] for nodes
+
+    Returns
+    -------
+    tuple[float, float]
+        accuracy and loss
+    """
+    device = global_device()
+    _, y = next(iter(dataloader))
+    if y.dim() == 1:
+        nb_classes = model.out_features
+    else:
+        nb_classes = None
+    metric = None
+    if nb_classes is not None:
+        metric = classification.MulticlassAccuracy(model.out_features, average="micro")
+    loss, accuracy = evaluate_model(
+        model,
+        dataloader,
+        loss_fn,
+        metrics=metric,
+        device=device,
+        use_extended_model=True,
+        mask=mask,
+    )
+    if metric is None:
+        accuracy = -1
+    return accuracy, loss
+
+
+def evaluate_dataset(
+    model: nn.Module, dataloader: torch.utils.data.DataLoader, loss_fn: Callable
+) -> tuple[float, float]:
+    """Evaluate network on dataset
+
+    Parameters
+    ----------
+    model : nn.Module
+        network to evaluate
+    dataloader : torch.utils.data.DataLoader
+        dataloader containing the data
+    loss_fn : Callable
+        loss function for bottleneck calculation
+
+    Returns
+    -------
+    tuple[float, float]
+        accuracy and loss
+    """
+    device = global_device()
+    _, y = next(iter(dataloader))
+    if y.dim() == 1:
+        nb_classes = model.out_features
+    else:
+        nb_classes = None
+    metric = None
+    if nb_classes is not None:
+        metric = classification.MulticlassAccuracy(model.out_features, average="micro")
+    loss, accuracy = evaluate_model(
+        model, dataloader, loss_fn, metrics=metric, device=device
+    )
+    if metric is None:
+        accuracy = -1
+    return accuracy, loss
