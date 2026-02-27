@@ -6,6 +6,7 @@ from torchmetrics import Metric
 from gromo.containers.growing_container import GrowingContainer, GrowingModel
 from gromo.utils.trainning_utils import (
     AverageMeter,
+    compute_statistics,
     enumerate_dataloader,
     evaluate_model,
     gradient_descent,
@@ -337,3 +338,46 @@ class TestGradientDescent(TorchTestCase):
             )
         loss_after, _ = evaluate_model(model, dl, loss_fn)
         self.assertLess(loss_after, loss_before)
+
+
+class TestComputeStatistics(TorchTestCase):
+    """Tests for compute_statistics."""
+
+    @staticmethod
+    def _make_dataloader(
+        n_samples: int = 8,
+        in_features: int = 4,
+        out_features: int = 2,
+        batch_size: int = 4,
+    ) -> torch.utils.data.DataLoader:
+        """Create a simple regression dataloader."""
+        x = torch.randn(n_samples, in_features)
+        y = torch.randn(n_samples, out_features)
+        return torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y), batch_size=batch_size
+        )
+
+    def test_basic_compute(self):
+        """Compute statistics without metrics."""
+        model = _SimpleGrowingContainer(4, 2)
+        dl = self._make_dataloader()
+        loss, metric_val = compute_statistics(
+            model, dl, loss_function=nn.MSELoss(reduction="sum")
+        )
+        self.assertIsInstance(loss, float)
+        self.assertGreater(loss, 0.0)
+        self.assertEqual(metric_val, 0.0)  # DummyMetric
+
+    def test_with_metrics(self):
+        """Compute statistics with a custom metric."""
+        model = _SimpleGrowingContainer(4, 2)
+        dl = self._make_dataloader()
+        metric = _SumMetric()
+        loss, metric_val = compute_statistics(
+            model,
+            dl,
+            loss_function=nn.MSELoss(reduction="sum"),
+            metrics=metric,
+        )
+        self.assertIsInstance(loss, float)
+        self.assertIsInstance(metric_val, float)
