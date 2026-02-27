@@ -8,6 +8,7 @@ from gromo.utils.trainning_utils import (
     AverageMeter,
     enumerate_dataloader,
     evaluate_model,
+    gradient_descent,
 )
 from tests.torch_unittest import TorchTestCase
 
@@ -236,3 +237,103 @@ class TestEvaluateModel(TorchTestCase):
                 nn.MSELoss(reduction="mean"),
                 use_extended_model=True,
             )
+
+
+class _FakeScheduler:
+    """Minimal scheduler double that records step/epoch_step calls."""
+
+    def __init__(self):
+        self.step_count = 0
+        self.epoch_step_count = 0
+
+    def step(self):
+        """Record a step call."""
+        self.step_count += 1
+
+    def epoch_step(self):
+        """Record an epoch_step call."""
+        self.epoch_step_count += 1
+
+
+class TestGradientDescent(TorchTestCase):
+    """Tests for gradient_descent."""
+
+    @staticmethod
+    def _make_dataloader(
+        n_samples: int = 8,
+        in_features: int = 4,
+        out_features: int = 2,
+        batch_size: int = 4,
+    ) -> torch.utils.data.DataLoader:
+        """Create a simple regression dataloader."""
+        x = torch.randn(n_samples, in_features)
+        y = torch.randn(n_samples, out_features)
+        return torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y), batch_size=batch_size
+        )
+
+    def test_basic_training(self):
+        """One round of gradient descent without scheduler or metrics."""
+        model = _SimpleModel(4, 2)
+        dl = self._make_dataloader()
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        loss, metric_val = gradient_descent(
+            model,
+            dl,
+            optimizer,
+            scheduler=None,
+            loss_function=nn.MSELoss(reduction="mean"),
+        )
+        self.assertIsInstance(loss, float)
+        self.assertEqual(metric_val, 0.0)  # DummyMetric
+
+    def test_with_metrics(self):
+        """Gradient descent with a custom metric."""
+        model = _SimpleModel(4, 2)
+        dl = self._make_dataloader()
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        metric = _SumMetric()
+        loss, metric_val = gradient_descent(
+            model,
+            dl,
+            optimizer,
+            scheduler=None,
+            loss_function=nn.MSELoss(reduction="mean"),
+            metrics=metric,
+        )
+        self.assertIsInstance(loss, float)
+        self.assertIsInstance(metric_val, float)
+
+    def test_with_scheduler(self):
+        """Scheduler.step() called per batch, epoch_step() called once."""
+        model = _SimpleModel(4, 2)
+        dl = self._make_dataloader(n_samples=8, batch_size=4)  # 2 batches
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        scheduler = _FakeScheduler()
+        gradient_descent(
+            model,
+            dl,
+            optimizer,
+            scheduler=scheduler,
+            loss_function=nn.MSELoss(reduction="mean"),
+        )
+        self.assertEqual(scheduler.step_count, 2)
+        self.assertEqual(scheduler.epoch_step_count, 1)
+
+    def test_loss_decreases(self):
+        """Loss after training is lower than before."""
+        model = _SimpleModel(4, 2)
+        dl = self._make_dataloader(n_samples=16, batch_size=4)
+        loss_fn = nn.MSELoss(reduction="mean")
+        loss_before, _ = evaluate_model(model, dl, loss_fn)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        for _ in range(5):
+            gradient_descent(
+                model,
+                dl,
+                optimizer,
+                scheduler=None,
+                loss_function=loss_fn,
+            )
+        loss_after, _ = evaluate_model(model, dl, loss_fn)
+        self.assertLess(loss_after, loss_before)
