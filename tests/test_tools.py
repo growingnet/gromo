@@ -388,7 +388,7 @@ class TestTools(TorchTestCase):
             matrix_s, matrix_n, statistical_threshold=0.0, alpha_zero=True
         )
 
-        # Check that alpha is zero (since S is full rank and N is not full rank)
+        # Check that alpha is zero when forced via the alpha_zero=True flag
         self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
 
         # Test case 7: Omega zero
