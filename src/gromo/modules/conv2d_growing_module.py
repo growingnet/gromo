@@ -1657,17 +1657,23 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             "ab, cb -> ac", self.cross_covariance(), self.delta_raw
         )
 
-    def compute_optimal_added_parameters(
+    def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-15,
+        numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
+
+        This is a private method that operates on primitive options.
 
         Parameters
         ----------
@@ -1682,8 +1688,17 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        use_covariance: bool
+            if True, use S matrix (covariance preconditioning), else use Identity
+        alpha_zero: bool
+            if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
+        use_projection: bool
+            if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
@@ -1701,7 +1716,11 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
             dtype=dtype,
-            use_projected_gradient=use_projected_gradient,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            omega_zero=omega_zero,
+            use_projection=use_projection,
+            ignore_singular_values=ignore_singular_values,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -2077,17 +2096,23 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             "abe, ce -> bca", self.cross_covariance(), self.delta_raw
         ).flatten(start_dim=-2)
 
-    def compute_optimal_added_parameters(
+    def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-15,
+        numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
+
+        This is a private method that operates on primitive options.
 
         Parameters
         ----------
@@ -2102,8 +2127,17 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        use_covariance: bool
+            if True, use S matrix (covariance preconditioning), else use Identity
+        alpha_zero: bool
+            if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
+        use_projection: bool
+            if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
@@ -2121,7 +2155,11 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
             dtype=dtype,
-            use_projected_gradient=use_projected_gradient,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            omega_zero=omega_zero,
+            use_projection=use_projection,
+            ignore_singular_values=ignore_singular_values,
         )
 
         k = self.eigenvalues_extension.shape[0]

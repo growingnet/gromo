@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Refactor ``compute_optimal_updates`` in ``GrowingModule`` and ``GrowingBlock`` to accept primitive boolean options (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``). This enables composable configurations for neuron initialization methods. Threshold defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` across the affected growth APIs: ``1e-6`` flags numerical-conditioning issues close to float32 precision and ``1e-3`` defines the acceptable statistical noise level for singular-value filtering. For GradMax behavior, use ``compute_delta=False, use_covariance=False, alpha_zero=True, use_projection=False`` (:gh:`193` by `Stéphane Rivaud`_)
 - Introduces a new GrowingModel class to have a fixed output size model. (:gh:`206` by `Théo Rudkiewicz`_)
 - Improve flexibility in `growing_block` and `resnet` to allow creating more complex structures and to support more use cases (:gh:`194` by `Théo Rudkiewicz`_)
 - Change the behavior for negative scaling factor. Now use a positive scaling factor for the parameter update independently of the sign of the scaling factor. (:gh:`195` by `Théo Rudkiewicz`_)
@@ -105,6 +106,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- ``compute_optimal_updates()`` now exposes primitive boolean controls (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``) and growth-related defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` for consistency across modules. Migration for direct internal calls: ``compute_optimal_added_parameters()`` is now ``_compute_optimal_added_parameters()``; external users should prefer ``compute_optimal_updates()`` (:gh:`193` by `Stéphane Rivaud`_)
 - Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
 - Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)

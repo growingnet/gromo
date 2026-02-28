@@ -378,14 +378,22 @@ class GrowingBlock(GrowingContainer):
 
     def compute_optimal_updates(
         self,
-        numerical_threshold: float = 1e-15,
+        numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
+
+        This method delegates to the second layer's compute_optimal_updates method,
+        using the specified primitive options.
 
         Parameters
         ----------
@@ -398,23 +406,86 @@ class GrowingBlock(GrowingContainer):
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        compute_delta: bool
+            If True, compute and store parameter_update_decrease (delta).
+            Default is True.
+        use_covariance: bool
+            If True, use covariance-based computation for added parameters.
+            Default is True.
+        alpha_zero: bool
+            If True, initialize alpha (added neuron weights) to zero.
+            Default is False.
+        omega_zero: bool
+            If True, initialize omega (outgoing weights) to zero.
+            Default is False.
+        use_projection: bool
+            If True, use projection-based gradient for added parameters.
+            Default is True.
+        ignore_singular_values: bool
+            If True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction. Default is False.
+
+        Note
+        ----
+        When ``hidden_neurons == 0``, tensor statistics are not initialized,
+        so ``compute_optimal_delta()`` cannot be called. This means that
+        ``tensor_n`` (required for projection) cannot be computed. In this case,
+        ``use_projection`` is automatically set to ``False`` regardless of the
+        parameter value, and the raw gradient (``-tensor_m_prev()``) is used
+        instead of the projected gradient.
+
         """
-        if self.hidden_neurons > 0:
-            _, _, _ = self.second_layer.compute_optimal_delta()
-        else:
+        # When hidden_neurons == 0, tensor statistics aren't initialized, so we need
+        # special handling: set parameter_update_decrease and call
+        # _compute_optimal_added_parameters directly to avoid compute_optimal_delta()
+        # call in compute_optimal_updates()
+        # Note: use_projection must be False when hidden_neurons == 0 because tensor_n
+        # requires delta_raw which is only set by compute_optimal_delta()
+        if self.hidden_neurons == 0:
+            # In the empty-block path there is no natural-gradient update term.
+            # We explicitly set side-effect attributes so first_order_improvement
+            # remains available for all configurations.
+            self.second_layer.optimal_delta_layer = None
+            self.second_layer.delta_raw = None
             self.second_layer.parameter_update_decrease = torch.tensor(
-                0.0, device=self.device
+                0.0,
+                device=self.device,
+                dtype=self.second_layer.weight.dtype,
             )
-        self.second_layer.compute_optimal_added_parameters(
-            numerical_threshold=numerical_threshold,
-            statistical_threshold=statistical_threshold,
-            maximum_added_neurons=maximum_added_neurons,
-            use_projected_gradient=self.hidden_neurons > 0 and use_projected_gradient,
-            dtype=dtype,
-            update_previous=True,
-        )
+
+            # Call private method directly to avoid compute_optimal_delta() call
+            # With hidden_neurons == 0 we cannot compute tensor_n (delta_raw from
+            # compute_optimal_delta() is unavailable). We force use_projection=False
+            # here; the gradient is the correct direction in this case (null-space manifold).
+            self.second_layer._compute_optimal_added_parameters(
+                numerical_threshold=numerical_threshold,
+                statistical_threshold=statistical_threshold,
+                maximum_added_neurons=maximum_added_neurons,
+                update_previous=True,
+                dtype=dtype,
+                use_covariance=use_covariance,
+                alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
+                use_projection=False,  # Must be False when hidden_neurons == 0
+                ignore_singular_values=ignore_singular_values,
+            )
+        else:
+            # When hidden_neurons > 0, delegate to second layer's
+            # compute_optimal_updates method. This will handle compute_optimal_delta()
+            # internally if needed
+            self.second_layer.compute_optimal_updates(
+                numerical_threshold=numerical_threshold,
+                statistical_threshold=statistical_threshold,
+                maximum_added_neurons=maximum_added_neurons,
+                update_previous=True,
+                dtype=dtype,
+                compute_delta=compute_delta,
+                use_covariance=use_covariance,
+                alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
+                use_projection=use_projection,
+                ignore_singular_values=ignore_singular_values,
+            )
 
     def apply_change(
         self,
