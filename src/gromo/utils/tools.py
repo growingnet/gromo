@@ -222,11 +222,10 @@ def compute_optimal_added_parameters(
         if matrix_s is not None:
             print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
         print(f"matrix_n: {matrix_n.min()=}, {matrix_n.max()=}, {matrix_n.shape=}")
-        if matrix_s_inverse_sqrt is not None:
-            print(
-                f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, "
-                f"{matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
-            )
+        print(
+            f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, "
+            f"{matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
+        )
         print(f"matrix_p: {matrix_p.min()=}, {matrix_p.max()=}, {matrix_p.shape=}")
         raise e
 
