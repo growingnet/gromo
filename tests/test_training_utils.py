@@ -4,7 +4,7 @@ from torch import nn
 from torchmetrics import Metric
 
 from gromo.containers.growing_container import GrowingContainer, GrowingModel
-from gromo.utils.trainning_utils import (
+from gromo.utils.training_utils import (
     AverageMeter,
     compute_statistics,
     enumerate_dataloader,

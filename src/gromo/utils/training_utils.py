@@ -32,7 +32,7 @@ class AverageMeter(object):
         n : int, optional
             The number of samples that `val` represents. Default is 1.
         """
-        if val.item() != torch.nan and val.item() != torch.inf:
+        if torch.isfinite(val).all():
             if self.sum is None:
                 self.sum = val * n
             else:
@@ -60,6 +60,9 @@ class AverageMeter(object):
 
 class DummyMetric(Metric):
     """A dummy metric that always returns 0.0."""
+
+    def __init__(self):
+        super().__init__()
 
     def update(self, *_, **__):
         """No-op for updating the metric."""
@@ -309,7 +312,7 @@ def gradient_descent(
         loss_meter.update(loss.detach(), x.size(0))
         metrics.update(y_pred.detach(), y)
 
-    if scheduler is not None:
+    if scheduler is not None and hasattr(scheduler, "epoch_step"):
         scheduler.epoch_step()
 
     return loss_meter.compute().item(), metrics.compute().item()
@@ -388,7 +391,7 @@ def evaluate_extended_dataset(
     model: nn.Module,
     dataloader: torch.utils.data.DataLoader,
     loss_fn: Callable,
-    mask: dict = {},
+    mask: dict | None = None,
 ) -> tuple[float, float]:
     """Evaluate extended network on dataset
 
@@ -400,8 +403,8 @@ def evaluate_extended_dataset(
         dataloader containing the data
     loss_fn : Callable
         loss function for bottleneck calculation
-    mask : dict, optional
-        extension mask for specific nodes and edges, by default {}
+    mask : dict | None, optional
+        extension mask for specific nodes and edges, by default None
         example: mask["edges"] for edges and mask["nodes"] for nodes
 
     Returns

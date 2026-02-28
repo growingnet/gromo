@@ -20,7 +20,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
-from gromo.utils.trainning_utils import evaluate_extended_dataset
+from gromo.utils.training_utils import evaluate_extended_dataset
 from gromo.utils.utils import (
     activation_fn,
     compute_BIC,
