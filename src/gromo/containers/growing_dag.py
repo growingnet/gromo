@@ -20,10 +20,10 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.training_utils import evaluate_extended_dataset
 from gromo.utils.utils import (
     activation_fn,
     compute_BIC,
-    evaluate_extended_dataset,
     f1_micro,
 )
 
@@ -1668,7 +1668,7 @@ class Expansion:
     ) -> None:
         if not isinstance(exp_type, ExpansionType):
             raise ValueError(
-                f"The expansion type should be one of {['ExpansionType.'+m.name for m in ExpansionType]}. Found '{exp_type}'."
+                f"The expansion type should be one of {['ExpansionType.' + m.name for m in ExpansionType]}. Found '{exp_type}'."
             )
         self.type = exp_type
         self.dag = dag  # reference to the original dag
@@ -1829,12 +1829,24 @@ class Expansion:
     def expand(self) -> None:
         """Create new edge or node on the enclosed GrowingDAG"""
         if self.type == ExpansionType.NEW_EDGE:
-            self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
+            self.dag.add_direct_edge(
+                self.previous_node,
+                self.next_node,
+                self.edge_attributes,
+                zero_weights=True,
+            )  # type: ignore
             self.dag.toggle_edge_candidate(
                 self.previous_node, self.next_node, candidate=True
             )
         elif self.type == ExpansionType.NEW_NODE:
-            self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes, zero_weights=True)  # type: ignore
+            self.dag.add_node_with_two_edges(
+                self.previous_node,
+                self.expanding_node,
+                self.next_node,
+                self.node_attributes,
+                self.edge_attributes,
+                zero_weights=True,
+            )  # type: ignore
             self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
 
     def __update_growth_history(
