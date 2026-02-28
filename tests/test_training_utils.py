@@ -124,7 +124,9 @@ class TestEnumerateDataloader(TorchTestCase):
         y = torch.randint(0, 2, (n_samples,))
         dataset = torch.utils.data.TensorDataset(x, y)
         gen = torch.Generator() if with_generator else None
-        return torch.utils.data.DataLoader(dataset, batch_size=batch_size, generator=gen)
+        return torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, generator=gen, shuffle=True
+        )
 
     def test_default_yields_all_batches(self):
         """Without limits, all batches are yielded."""

@@ -135,11 +135,13 @@ def enumerate_dataloader(
             )
     if batch_limit is None:
         if epochs is None:
-            batch_limit = len(dataloader) + 1
+            batch_limit = None
         else:
             batch_limit = int(len(dataloader) * epochs)
+    elif batch_limit == -1:
+        batch_limit = None
     for i, batch in enumerate(dataloader):
-        if i >= batch_limit:
+        if batch_limit is not None and i >= batch_limit:
             break
         yield i, batch
 
@@ -414,7 +416,7 @@ def evaluate_extended_dataset(
     """
     device = global_device()
     _, y = next(iter(dataloader))
-    if y.dim() == 1:
+    if y.dim() == 1 and model.out_features > 1:
         nb_classes = model.out_features
     else:
         nb_classes = None
@@ -456,7 +458,7 @@ def evaluate_dataset(
     """
     device = global_device()
     _, y = next(iter(dataloader))
-    if y.dim() == 1:
+    if y.dim() == 1 and model.out_features > 1:
         nb_classes = model.out_features
     else:
         nb_classes = None
