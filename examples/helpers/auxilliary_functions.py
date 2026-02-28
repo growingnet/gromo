@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
+import torch.utils.data
 from tqdm import tqdm
 
+from gromo.containers.growing_mlp import GrowingMLP
 from gromo.utils.utils import global_device
 
 
@@ -71,11 +73,10 @@ def evaluate_model(
         aux_loss_function is None or aux_loss_function.reduction == "sum"
     ), "The aux loss function should not be averaged over the batch"
     model.eval()
-    n_batch = 0
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
     aux_total_loss = torch.tensor(0.0, device=device)
-    for x, y in dataloader:
+    for n_batch, (x, y) in enumerate(dataloader, start=1):
         x, y = x.to(device), y.to(device)
 
         y_pred = model(x)
@@ -88,7 +89,6 @@ def evaluate_model(
             aux_total_loss += aux_loss
 
         nb_sample += x.size(0)
-        n_batch += 1
         if 0 <= batch_limit <= n_batch:
             break
     total_loss /= nb_sample
@@ -97,7 +97,7 @@ def evaluate_model(
 
 
 def extended_evaluate_model(
-    growing_model: "GrowingMLP",
+    growing_model: GrowingMLP,
     dataloader: torch.utils.data.DataLoader,
     loss_function: nn.Module = AxisMSELoss(),
     batch_limit: int = -1,
@@ -107,17 +107,15 @@ def extended_evaluate_model(
         loss_function.reduction == "sum"
     ), "The loss function should not be averaged over the batch"
     growing_model.eval()
-    n_batch = 0
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
-    for x, y in dataloader:
+    for n_batch, (x, y) in enumerate(dataloader, start=1):
         growing_model.zero_grad()
         x, y = x.to(device), y.to(device)
         y_pred = growing_model.extended_forward(x)
         loss = loss_function(y_pred, y)
         total_loss += loss
         nb_sample += x.size(0)
-        n_batch += 1
         if 0 <= batch_limit <= n_batch:
             break
     return total_loss.item() / nb_sample
