@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add a new `evaluate_model`,  `gradient_descent` and `compute_statistics` functions (:gh:`203` by `Théo Rudkiewicz`_)
 - Introduces a new GrowingModel class to have a fixed output size model. (:gh:`206` by `Théo Rudkiewicz`_)
 - Improve flexibility in `growing_block` and `resnet` to allow creating more complex structures and to support more use cases (:gh:`194` by `Théo Rudkiewicz`_)
 - Change the behavior for negative scaling factor. Now use a positive scaling factor for the parameter update independently of the sign of the scaling factor. (:gh:`195` by `Théo Rudkiewicz`_)
