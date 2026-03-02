@@ -134,6 +134,12 @@ class TestEnumerateDataloader(TorchTestCase):
         batches = list(enumerate_dataloader(dl))
         self.assertEqual(len(batches), 3)
 
+    def test_negative_bl_yields_all_batches(self):
+        """Without limits, all batches are yielded."""
+        dl = self._make_dataloader(n_samples=6, batch_size=2)
+        batches = list(enumerate_dataloader(dl, batch_limit=-1))
+        self.assertEqual(len(batches), 3)
+
     def test_batch_limit(self):
         """Batch limit truncates output."""
         dl = self._make_dataloader(n_samples=10, batch_size=2)
