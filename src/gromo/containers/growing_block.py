@@ -619,13 +619,13 @@ class GrowingBlock(GrowingContainer):
 
     def number_of_neurons_to_add(
         self,
-        **kwargs: str | int,
+        **kwargs: Any,
     ) -> int:
         """Get the number of neurons to add in the next growth step.
 
         Parameters
         ----------
-        **kwargs : str | int
+        **kwargs : Any
             method : str
                 Method to use for determining the number of neurons to add.
                 Options are "fixed_proportional".
@@ -639,12 +639,12 @@ class GrowingBlock(GrowingContainer):
         """
         return self.second_layer.number_of_neurons_to_add(**kwargs)
 
-    def complete_growth(self, **extension_kwargs: dict) -> None:
+    def complete_growth(self, **extension_kwargs: Any) -> None:
         """Complete the growth procedure for the block.
 
         Parameters
         ----------
-        **extension_kwargs : dict
+        **extension_kwargs : Any
             Keyword arguments for the extension procedure.
         """
         self.second_layer.complete_growth(**extension_kwargs)

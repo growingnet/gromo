@@ -270,10 +270,9 @@ def extended_evaluate_model(
         loss_function.reduction == "sum"
     ), "The loss function should not be averaged over the batch"
     growing_model.eval()
-    n_batch = 0
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
-    for x, y in dataloader:
+    for n_batch, (x, y) in enumerate(dataloader, start=1):
         growing_model.zero_grad()
         x, y = x.to(device), y.to(device)
         z, z_ext = growing_model[0].extended_forward(x)
@@ -281,7 +280,6 @@ def extended_evaluate_model(
         loss = loss_function(y_pred, y)
         total_loss += loss
         nb_sample += x.size(0)
-        n_batch += 1
         if 0 <= batch_limit <= n_batch:
             break
     return total_loss.item() / nb_sample
