@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Reduce `ruff check` scope and make it blocking in CI/CD (:gh:`207` by `Théo Rudkiewicz`_)
 - Refactor ``compute_optimal_updates`` in ``GrowingModule`` and ``GrowingBlock`` to accept primitive boolean options (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``). This enables composable configurations for neuron initialization methods. Threshold defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` across the affected growth APIs: ``1e-6`` flags numerical-conditioning issues close to float32 precision and ``1e-3`` defines the acceptable statistical noise level for singular-value filtering. For GradMax behavior, use ``compute_delta=False, use_covariance=False, alpha_zero=True, use_projection=False`` (:gh:`193` by `Stéphane Rivaud`_)
 - Introduces a new GrowingModel class to have a fixed output size model. (:gh:`206` by `Théo Rudkiewicz`_)
 - Improve flexibility in `growing_block` and `resnet` to allow creating more complex structures and to support more use cases (:gh:`194` by `Théo Rudkiewicz`_)
