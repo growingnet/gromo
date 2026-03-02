@@ -150,6 +150,8 @@ ignore = [
 "examples/**/*.py" = ["ANN", "D"]
 # Init files can ignore unused imports
 "**/__init__.py" = ["F401"]
+# Docs can ignore various linting rules
+"docs/**/*.py" = ["ANN", "ARG", "D", "A", "BLE", "ICN"]
 
 [tool.ruff.format]
 # Use same formatting as black

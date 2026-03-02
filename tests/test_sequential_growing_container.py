@@ -1,6 +1,6 @@
 import torch
 
-from gromo.containers.sequential_growing_container import SequentialGrowingContainer
+from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
@@ -10,9 +10,9 @@ except ImportError:
     from torch_unittest import TorchTestCase
 
 
-class DummySequentialGrowingContainer(SequentialGrowingContainer):
+class DummySequentialGrowingModel(SequentialGrowingModel):
     """
-    Dummy implementation of SequentialGrowingContainer for testing purposes.
+    Dummy implementation of SequentialGrowingModel for testing purposes.
     Uses two simple linear layers in sequence.
 
     Parameters
@@ -80,8 +80,8 @@ class DummySequentialGrowingContainer(SequentialGrowingContainer):
         return torch.tensor(0.0)
 
 
-class TestSequentialGrowingContainer(TorchTestCase):
-    """Test SequentialGrowingContainer implementation."""
+class TestSequentialGrowingModel(TorchTestCase):
+    """Test SequentialGrowingModel implementation."""
 
     def setUp(self):
         """Set up test fixtures."""
@@ -92,7 +92,7 @@ class TestSequentialGrowingContainer(TorchTestCase):
 
     def test_set_growing_layers_all(self):
         """Test set_growing_layers with 'all' scheduling method."""
-        container = DummySequentialGrowingContainer(
+        container = DummySequentialGrowingModel(
             in_features=self.in_features,
             out_features=self.out_features,
             hidden_features=self.hidden_features,
@@ -113,7 +113,7 @@ class TestSequentialGrowingContainer(TorchTestCase):
 
     def test_set_growing_layers_sequential(self):
         """Test set_growing_layers with 'sequential' scheduling method."""
-        container = DummySequentialGrowingContainer(
+        container = DummySequentialGrowingModel(
             in_features=self.in_features,
             out_features=self.out_features,
             hidden_features=self.hidden_features,
@@ -143,7 +143,7 @@ class TestSequentialGrowingContainer(TorchTestCase):
 
     def test_set_growing_layers_with_index(self):
         """Test set_growing_layers with explicit index parameter."""
-        container = DummySequentialGrowingContainer(
+        container = DummySequentialGrowingModel(
             in_features=self.in_features,
             out_features=self.out_features,
             hidden_features=self.hidden_features,
@@ -171,7 +171,7 @@ class TestSequentialGrowingContainer(TorchTestCase):
 
     def test_set_growing_layers_invalid_method(self):
         """Test set_growing_layers with invalid scheduling method."""
-        container = DummySequentialGrowingContainer(
+        container = DummySequentialGrowingModel(
             in_features=self.in_features,
             out_features=self.out_features,
             hidden_features=self.hidden_features,
@@ -183,7 +183,7 @@ class TestSequentialGrowingContainer(TorchTestCase):
 
     def test_number_of_neurons_to_add(self):
         """Test that number_of_neurons_to_add returns an int."""
-        container = DummySequentialGrowingContainer(
+        container = DummySequentialGrowingModel(
             in_features=self.in_features,
             out_features=self.out_features,
             hidden_features=self.hidden_features,
@@ -205,7 +205,7 @@ class TestSequentialGrowingContainer(TorchTestCase):
         Test update_information returns expected dictionary structure with
         at least two growing layers.
         """
-        container = DummySequentialGrowingContainer(
+        container = DummySequentialGrowingModel(
             in_features=self.in_features,
             out_features=self.out_features,
             hidden_features=self.hidden_features,

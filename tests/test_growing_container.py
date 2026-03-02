@@ -10,6 +10,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from tests.unittest_tools import unittest_parametrize
 
 
 # Create synthetic data
@@ -209,20 +210,71 @@ class TestGrowingContainer(unittest.TestCase):
                 "compute_optimal_updates was not called on the growing layer",
             )
 
-    def test_compute_optimal_updates(self):
+    @unittest_parametrize(
+        (
+            {
+                "compute_delta": True,
+                "use_covariance": True,
+                "alpha_zero": False,
+                "use_projection": True,
+            },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": False,
+            },
+        )
+    )
+    def test_compute_optimal_updates(
+        self,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+    ):
         gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
+        # Clear any previous updates to ensure clean state for each test case
+        for layer in self.model._growing_layers:
+            layer.delete_update()
+        self.model.compute_optimal_updates(
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
+        )
 
         for layer in self.model._growing_layers:
-            # Check if the optimal updates are computed
-            self.assertTrue(
-                hasattr(layer, "optimal_delta_layer"),
-                "compute_optimal_updates was not called on the growing layer",
-            )
-            self.assertTrue(
-                hasattr(layer, "parameter_update_decrease"),
-                "compute_optimal_updates was not called on the growing layer",
-            )
+            # Use explicit checks for configuration-specific behavior
+            if not alpha_zero:
+                # TINY-specific checks
+                self.assertTrue(
+                    hasattr(layer, "optimal_delta_layer"),
+                    "compute_optimal_updates was not called on the growing layer",
+                )
+                self.assertTrue(
+                    hasattr(layer, "parameter_update_decrease"),
+                    "compute_optimal_updates was not called on the growing layer",
+                )
+            else:
+                # GradMax-specific checks
+                # optimal_delta_layer should not be set (may not exist or be None)
+                self.assertFalse(
+                    hasattr(layer, "optimal_delta_layer")
+                    and layer.optimal_delta_layer is not None,
+                    "GradMax configuration should not compute optimal_delta_layer",
+                )
+                # parameter_update_decrease should still be set so first_order_improvement is usable
+                self.assertIsInstance(
+                    layer.parameter_update_decrease,
+                    torch.Tensor,
+                    "GradMax configuration should still set parameter_update_decrease",
+                )
+                assert layer.parameter_update_decrease is not None
+                self.assertTrue(torch.isfinite(layer.parameter_update_decrease))
+                self.assertIsInstance(layer.first_order_improvement, torch.Tensor)
+
+            # Common checks for all methods
             if layer.previous_module is not None:
                 self.assertTrue(
                     hasattr(layer, "extended_input_layer"),

@@ -381,6 +381,22 @@ class TestTools(TorchTestCase):
         self.assertFalse(torch.any(torch.isnan(omega)))
         self.assertFalse(torch.any(torch.isnan(eigenvalues)))
 
+        # Test case 6: Alpha zero
+        matrix_s = torch.eye(3) * 2.0
+        matrix_n = torch.randn(3, 2)
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=0.0, alpha_zero=True
+        )
+
+        # Check that alpha is zero when forced via the alpha_zero=True flag
+        self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
+
+        # Test case 7: Omega zero
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=0.0, omega_zero=True
+        )
+        self.assertTrue(torch.allclose(omega, torch.zeros_like(omega)))
+
     def test_compute_optimal_added_parameters_error_cases(self):
         """Test error handling in compute_optimal_added_parameters"""
 
@@ -464,27 +480,16 @@ class TestTools(TorchTestCase):
         matrix_s = torch.eye(3) * 2.0
         matrix_n = torch.randn(3, 2)
 
-        # Mock the SVD to trigger LinAlgError on first call, succeed on second
-        # Create a proper successful result with correct values by computing SVD on the actual matrix_p
-        # Replicate the computation of matrix_p as in compute_optimal_added_parameters
-        matrix_s_inverse_sqrt = torch.linalg.inv(torch.linalg.cholesky(matrix_s))
-        matrix_p = matrix_s_inverse_sqrt @ matrix_n
-        u_real, s_real, vt_real = torch.linalg.svd(matrix_p, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
-        # Capture stdout to verify debug prints
+        # Mock the SVD to trigger LinAlgError
+        # The function now prints diagnostics and re-raises the error (no retry)
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
-                successful_result,  # Second call succeeds
-            ]
-
+            mock_svd.side_effect = torch.linalg.LinAlgError("Mocked SVD error")
             with unittest.mock.patch("sys.stdout", captured_output):
-                alpha, omega, eigenvalues = compute_optimal_added_parameters(
-                    matrix_s, matrix_n
-                )
+                with self.assertRaises(torch.linalg.LinAlgError) as context:
+                    # Function should raise the error after printing diagnostics
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             # Verify debug output was printed
             output = captured_output.getvalue()
@@ -494,35 +499,25 @@ class TestTools(TorchTestCase):
             self.assertIn("matrix_s_inverse_sqrt:", output)
             self.assertIn("matrix_p:", output)
 
-            # Verify the function still succeeded after retry
-            self.assertIsNotNone(alpha)
-            self.assertIsNotNone(omega)
-            self.assertIsNotNone(eigenvalues)
+            # Verify the error was re-raised
+            self.assertIn("Mocked SVD error", str(context.exception))
 
-            # Verify SVD was called twice (first failed, second succeeded)
-            self.assertEqual(mock_svd.call_count, 2)
+            # Verify SVD was called once (no retry)
+            self.assertEqual(mock_svd.call_count, 1)
 
     def test_compute_optimal_added_parameters_matrix_shapes_in_error(self):
         """Test that matrix information is correctly printed in SVD error scenario"""
         matrix_s = torch.eye(2) * 3.0
         matrix_n = torch.randn(2, 4)
 
-        # Create successful result BEFORE mocking
-        dummy_matrix = torch.randn(2, 4)  # Same shape as matrix_p would be
-        u_real, s_real, vt_real = torch.linalg.svd(dummy_matrix, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
         # Capture stdout to verify matrix information is printed
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Test error"),
-                successful_result,
-            ]
-
+            mock_svd.side_effect = torch.linalg.LinAlgError("Test error")
             with contextlib.redirect_stdout(captured_output):
-                compute_optimal_added_parameters(matrix_s, matrix_n)
+                with self.assertRaises(torch.linalg.LinAlgError):
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             output = captured_output.getvalue()
 
@@ -746,6 +741,151 @@ class TestTools(TorchTestCase):
                     self.assertFalse(torch.isnan(decrease).any())
                 else:
                     self.assertFalse(torch.isnan(torch.tensor(decrease)))
+
+
+class TestComputeOptimalAddedParametersTheory(TorchTestCase):
+    """
+    Theoretical tests for compute_optimal_added_parameters using simple
+    diagonal matrices.
+
+    Setup:
+        X = Diag(1, 2, 3, 4, 5)
+        Y = Diag(4, 4, 4, 4, 4)
+        N = X^T @ Y
+        S = X^T @ X
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.x = torch.diag(torch.arange(1.0, 6.0))
+        self.y = 4.0 * torch.eye(5)
+        self.n = self.x.T @ self.y
+        self.s = self.x.T @ self.x
+
+    def _reconstruction(self, alpha: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
+        """Compute X @ Alpha.T @ Omega.T, the reconstructed output."""
+        return self.x @ alpha.T @ omega.T
+
+    def test_s_xtx_exact_reconstruction(self) -> None:
+        """S=X^T X, ignore_singular_values=False:
+        X @ Alpha.T @ Omega.T == Y
+
+        With the correct covariance S, the full SVD reconstruction
+        exactly recovers Y.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            self.s,
+            self.n,
+            numerical_threshold=1e-10,
+            statistical_threshold=1e-6,
+        )
+        result = self._reconstruction(alpha, omega)
+        self.assertAllClose(
+            result,
+            self.y,
+            atol=1e-5,
+            message="With S=X^TX, reconstruction should exactly equal Y",
+        )
+
+    def test_s_xtx_ignore_sv_nonzero_pattern(self) -> None:
+        """S=X^T X, ignore_singular_values=True:
+        X @ Alpha.T @ Omega.T is non-zero iff Y is non-zero
+
+        When singular values are ignored (treated as 1), the reconstruction
+        preserves the non-zero structure of Y but not its exact values.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            self.s,
+            self.n,
+            numerical_threshold=1e-10,
+            statistical_threshold=0,
+            ignore_singular_values=True,
+        )
+        result = self._reconstruction(alpha, omega)
+        self.assertTrue(
+            torch.equal(result != 0, self.y != 0),
+            "With ignore_singular_values, non-zero pattern should match Y",
+        )
+
+    def test_s_none_max_neurons_2_structure(self) -> None:
+        """S=None, ignore_singular_values=False, maximum_added_neurons=2:
+        X @ Alpha.T @ Omega.T is equal to Y on the last 2 features,
+        and the first 3 features are zero.
+
+        Without S (GradMax path), the top-2 singular values of N correspond
+        to the last 2 features (largest entries of diagonal N). The first 3
+        features are exactly zero and the last 2 preserve Y's non-zero pattern.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            None,
+            self.n,
+            statistical_threshold=0,
+            maximum_added_neurons=2,
+        )
+        result = self._reconstruction(alpha, omega)
+
+        # First 3 row-features and column-features are zero
+        self.assertAllClose(
+            result[:3],
+            torch.zeros(3, 5),
+            atol=1e-6,
+            message="First 3 row-features should be zero",
+        )
+        self.assertAllClose(
+            result[:, :3],
+            torch.zeros(5, 3),
+            atol=1e-6,
+            message="First 3 column-features should be zero",
+        )
+
+        # Last 2 features have same non-zero pattern as Y
+        self.assertTrue(
+            torch.equal(result[3:] != 0, self.y[3:] != 0),
+            "Last 2 features should be non-zero where Y is non-zero",
+        )
+        self.assertAllClose(
+            result[3:],
+            (self.y * self.x**2)[3:],
+            atol=1e-5,
+            message="Last 2 features should match Y scaled by X^2",
+        )
+
+    def test_s_none_ignore_sv_max_neurons_2_pattern(self) -> None:
+        """S=None, ignore_singular_values=True, maximum_added_neurons=2:
+        For the last 2 features: non-zero iff Y is non-zero.
+        For the first 3 features: zero.
+
+        Same truncation as above, but with unit singular values the
+        reconstruction only preserves the directional (non-zero) pattern.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            None,
+            self.n,
+            statistical_threshold=0,
+            maximum_added_neurons=2,
+            ignore_singular_values=True,
+        )
+        result = self._reconstruction(alpha, omega)
+
+        # First 3 features are zero
+        self.assertAllClose(
+            result[:3],
+            torch.zeros(3, 5),
+            atol=1e-6,
+            message="First 3 row-features should be zero",
+        )
+        self.assertAllClose(
+            result[:, :3],
+            torch.zeros(5, 3),
+            atol=1e-6,
+            message="First 3 column-features should be zero",
+        )
+
+        # Last 2 features: non-zero iff Y is non-zero
+        self.assertTrue(
+            torch.equal(result[3:] != 0, self.y[3:] != 0),
+            "Last 2 features: non-zero iff Y is non-zero",
+        )
 
 
 if __name__ == "__main__":
