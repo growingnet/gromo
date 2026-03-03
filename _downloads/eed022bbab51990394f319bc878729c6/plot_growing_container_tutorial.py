@@ -41,8 +41,12 @@ import torch
 import torch.utils.data
 from helpers.synthetic_data import MultiSinDataloader
 
-from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_mlp import GrowingMLP
+from gromo.utils.training_utils import (
+    compute_statistics,
+    evaluate_model,
+    gradient_descent,
+)
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -116,133 +120,42 @@ test_data_loader = MultiSinDataloader(
 #
 
 ###############################################################################
-# Step 3: Define Helper Functions
-# --------------------------------
+# Step 3: Helper Functions
+# -------------------------
 #
-# We need three key functions to work with our growing network:
+# We need three key operations to work with our growing network:
 #
-# 1. **Training function**: Standard training loop using SGD
-# 2. **Evaluation function**: Compute loss, with support for extended mode
-# 3. **Growth function**: The core GroMo logic to add new neurons intelligently
+# 1. **Training**: Standard gradient descent — we use ``gradient_descent``
+#    from ``gromo.utils.training_utils``
+# 2. **Evaluation**: Compute loss on a dataset — we use ``evaluate_model``
+#    from ``gromo.utils.training_utils``, which also supports extended
+#    evaluation (previewing the effect of proposed new neurons via
+#    ``use_extended_model=True``)
+# 3. **Growth**: The core GroMo logic — we use ``compute_statistics`` to
+#    accumulate gradient information, then perform a line search locally
+#
+# Only the growth function needs to be defined here, as it combines
+# statistics accumulation with a line search for the best scaling factor.
 
 ###############################################################################
-# 3.1 Training Function
-# ^^^^^^^^^^^^^^^^^^^^^
-#
-# A standard PyTorch training loop that performs one epoch of training using
-# SGD optimizer with MSE loss.
-
-
-###############################################################################
-def train(
-    model: torch.nn.Module,
-    device: torch.device,
-    train_loader: torch.utils.data.DataLoader,
-) -> None:
-    """
-    Train the model for one epoch using SGD optimizer.
-
-    Parameters
-    ----------
-    model : torch.nn.Module
-        The neural network model to train.
-    device : torch.device
-        The device (CPU or CUDA) to run computations on.
-    train_loader : torch.utils.data.DataLoader
-        DataLoader providing batches of (input, target) pairs.
-    """
-    model.train()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    criterion = torch.nn.MSELoss()
-
-    for data, target in train_loader:
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
-
-
-###############################################################################
-# 3.2 Evaluation Function
-# ^^^^^^^^^^^^^^^^^^^^^^^
-#
-# The evaluation function computes the loss on a dataset. It supports two
-# modes:
-#
-# - **Standard mode** (``extended=False``): Uses the current model weights
-# - **Extended mode** (``extended=True``): Evaluates the model *as if* the
-#   proposed new neurons were added
-#
-# This allows us to preview the effect of growth before committing to it.
-
-
-###############################################################################
-@torch.no_grad()
-def evaluate(
-    model: GrowingContainer,
-    device: torch.device,
-    test_loader: torch.utils.data.DataLoader,
-    extended: bool = False,
-) -> float:
-    """
-    Evaluate the model on a dataset.
-
-    Parameters
-    ----------
-    model : GrowingContainer
-        The neural network model to evaluate.
-    device : torch.device
-        The device (CPU or CUDA) to run computations on.
-    test_loader : torch.utils.data.DataLoader
-        DataLoader providing batches of (input, target) pairs.
-    extended : bool, optional
-        If True, use extended_forward which includes proposed new neurons.
-        If False, use standard forward pass. Default is False.
-
-    Returns
-    -------
-    loss : float
-        The average mean squared error loss per sample.
-    """
-    model.eval()
-    criterion = torch.nn.MSELoss(reduction="mean")
-    loss = 0.0
-
-    for data, target in test_loader:
-        data, target = data.to(device), target.to(device)
-        if extended:
-            output = model.extended_forward(data)
-        else:
-            output = model(data)
-        loss += criterion(output, target).item()
-
-    loss /= len(test_loader)
-    return loss
-
-
-###############################################################################
-# 3.3 Growth Function
-# ^^^^^^^^^^^^^^^^^^^
+# Growth Function
+# ^^^^^^^^^^^^^^^
 #
 # This is the **core of GroMo** - the function that intelligently grows the
 # network. Here's what happens step by step:
 #
 # 1. **set_growing_layers(layer_to_grow)**: Specify which layer(s) will be grown
-# 2. **init_computation()**: Initialize internal buffers to accumulate gradient
-#    statistics
-# 3. **Forward/backward pass loop**: Process the entire dataset, accumulating
-#    information about optimal growth directions via ``update_computation()``
-# 4. **compute_optimal_updates()**: Solve for the optimal new neuron weights
+# 2. **compute_statistics()**: Initialize internal buffers and process the
+#    entire dataset, accumulating information about optimal growth directions
+# 3. **compute_optimal_updates()**: Solve for the optimal new neuron weights
 #    based on accumulated statistics
-# 5. **dummy_select_update()**: Here it's trivial as we selected the layer
+# 4. **dummy_select_update()**: Here it's trivial as we selected the layer
 #    before computing the statistics but we could have done it the other way
 #    around and select the layer to grow by looking at the different proposed
 #    updates
-# 6. **Line search**: Try different scaling factors to find the best magnitude
+# 5. **Line search**: Try different scaling factors to find the best magnitude
 #    for the new neurons
-# 7. **apply_change()**: Permanently add the new neurons to the network
+# 6. **apply_change()**: Permanently add the new neurons to the network
 #
 # The **line search** is crucial: it determines how much to "trust" the
 # computed optimal neurons. A scaling factor of 0 means no growth, while
@@ -278,21 +191,18 @@ def grow(
     3. Find the best scaling factor via line search
     4. Apply the growth to the model
     """
-    model.eval()
     # /!/ We use the reduction="sum" as the averaging is already
     # done in the GrowingMLP methods
-    criterion = torch.nn.MSELoss(reduction="sum")
+    criterion_sum = torch.nn.MSELoss(reduction="sum")
+    criterion_mean = torch.nn.MSELoss(reduction="mean")
 
     model.set_growing_layers(layer_to_grow)
-    model.init_computation()
-
-    for data, target in train_loader:
-        data, target = data.to(device), target.to(device)
-        model.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        model.update_computation()
+    compute_statistics(
+        model,
+        train_loader,
+        loss_function=criterion_sum,
+        device=device,
+    )
 
     model.compute_optimal_updates()
     model.reset_computation()
@@ -304,7 +214,13 @@ def grow(
     best_value = 0.0
     for value in [0.0, 0.1, 0.5, 1.0]:
         model.set_scaling_factor(value)
-        loss = evaluate(model, device, train_loader, extended=True)
+        loss, _ = evaluate_model(
+            model,
+            train_loader,
+            criterion_mean,
+            use_extended_model=True,
+            device=device,
+        )
         print(f"Scaling factor: {value}, Loss: {loss:.4f}")
         if loss < best_loss:
             best_loss = loss
@@ -384,7 +300,9 @@ def count_parameters(model: torch.nn.Module) -> int:
 print("Original model:")
 print(model)
 
-last_test_loss = test_loss = evaluate(model, device, test_data_loader)
+criterion = torch.nn.MSELoss()
+test_loss, _ = evaluate_model(model, test_data_loader, criterion, device=device)
+last_test_loss = test_loss
 print(f"[N/A] Step {0}, Test Loss: {test_loss:.4f}")
 
 # Record initial state
@@ -394,9 +312,22 @@ history["num_params"].append(count_parameters(model))
 history["step_type"].append("SGD")
 
 for step in range(growth_steps):
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
     for epoch in range(1, intermediate_epochs + 1):
-        train(model, device, train_data_loader)
-        test_loss = evaluate(model, device, test_data_loader)
+        gradient_descent(
+            model,
+            train_data_loader,
+            optimizer,
+            scheduler=None,
+            loss_function=criterion,
+            device=device,
+        )
+        test_loss, _ = evaluate_model(
+            model,
+            test_data_loader,
+            criterion,
+            device=device,
+        )
         current_step = epoch + step * (intermediate_epochs + 1)
         print(
             f"[SGD] Step {current_step}, "
@@ -415,7 +346,7 @@ for step in range(growth_steps):
     grow(model, device, train_data_loader, layer_to_grow=layer_to_grow)
     print("Model after growing:")
     print(model)
-    test_loss = evaluate(model, device, test_data_loader)
+    test_loss, _ = evaluate_model(model, test_data_loader, criterion, device=device)
     current_step = (step + 1) * (intermediate_epochs + 1)
     print(
         f"[GRO], Step {current_step}, "

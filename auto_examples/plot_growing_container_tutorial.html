@@ -403,8 +403,12 @@ generalized to other structures like a ResNet, a MLP Mixer, etc.</p>
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch.utils.data</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">helpers.synthetic_data</span><span class="w"> </span><span class="kn">import</span> <a href="https://docs.python.org/3/library/typing.html#typing.Generic" title="typing.Generic" class="sphx-glr-backref-module-typing sphx-glr-backref-type-py-class"><span class="n">MultiSinDataloader</span></a>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">gromo.containers.growing_container</span><span class="w"> </span><span class="kn">import</span> <span class="n">GrowingContainer</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">gromo.containers.growing_mlp</span><span class="w"> </span><span class="kn">import</span> <span class="n">GrowingMLP</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gromo.utils.training_utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">compute_statistics</span><span class="p">,</span>
+    <span class="n">evaluate_model</span><span class="p">,</span>
+    <span class="n">gradient_descent</span><span class="p">,</span>
+<span class="p">)</span>
 
 
 <span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cuda&quot;</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="s2">&quot;cpu&quot;</span><span class="p">)</span>
@@ -486,113 +490,29 @@ new neurons</p></td>
 </section>
 </section>
 </section>
-<section id="step-3-define-helper-functions">
-<h2>Step 3: Define Helper Functions<a class="headerlink" href="#step-3-define-helper-functions" title="Link to this heading">#</a></h2>
-<p>We need three key functions to work with our growing network:</p>
+<section id="step-3-helper-functions">
+<h2>Step 3: Helper Functions<a class="headerlink" href="#step-3-helper-functions" title="Link to this heading">#</a></h2>
+<p>We need three key operations to work with our growing network:</p>
 <ol class="arabic simple">
-<li><p><strong>Training function</strong>: Standard training loop using SGD</p></li>
-<li><p><strong>Evaluation function</strong>: Compute loss, with support for extended mode</p></li>
-<li><p><strong>Growth function</strong>: The core GroMo logic to add new neurons intelligently</p></li>
+<li><p><strong>Training</strong>: Standard gradient descent — we use <code class="docutils literal notranslate"><span class="pre">gradient_descent</span></code>
+from <code class="docutils literal notranslate"><span class="pre">gromo.utils.training_utils</span></code></p></li>
+<li><p><strong>Evaluation</strong>: Compute loss on a dataset — we use <code class="docutils literal notranslate"><span class="pre">evaluate_model</span></code>
+from <code class="docutils literal notranslate"><span class="pre">gromo.utils.training_utils</span></code>, which also supports extended
+evaluation (previewing the effect of proposed new neurons via
+<code class="docutils literal notranslate"><span class="pre">use_extended_model=True</span></code>)</p></li>
+<li><p><strong>Growth</strong>: The core GroMo logic — we use <code class="docutils literal notranslate"><span class="pre">compute_statistics</span></code> to
+accumulate gradient information, then perform a line search locally</p></li>
 </ol>
-<section id="training-function">
-<h3>3.1 Training Function<a class="headerlink" href="#training-function" title="Link to this heading">#</a></h3>
-<p>A standard PyTorch training loop that performs one epoch of training using
-SGD optimizer with MSE loss.</p>
-<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">train</span><span class="p">(</span>
-    <span class="n">model</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
-    <span class="n">device</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
-    <span class="n">train_loader</span><span class="p">:</span> <a href="https://docs.python.org/3/library/typing.html#typing.Generic" title="typing.Generic" class="sphx-glr-backref-module-typing sphx-glr-backref-type-py-class"><span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span></a><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Train the model for one epoch using SGD optimizer.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    model : torch.nn.Module</span>
-<span class="sd">        The neural network model to train.</span>
-<span class="sd">    device : torch.device</span>
-<span class="sd">        The device (CPU or CUDA) to run computations on.</span>
-<span class="sd">    train_loader : torch.utils.data.DataLoader</span>
-<span class="sd">        DataLoader providing batches of (input, target) pairs.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">model</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
-    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">SGD</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">0.01</span><span class="p">)</span>
-    <span class="n">criterion</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">()</span>
-
-    <span class="k">for</span> <span class="n">data</span><span class="p">,</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="p">:</span>
-        <span class="n">data</span><span class="p">,</span> <span class="n">target</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">target</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-        <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-        <span class="n">output</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="n">loss</span> <span class="o">=</span> <span class="n">criterion</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
-        <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-        <span class="n">optimizer</span><span class="o">.</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">step</span></a><span class="p">()</span>
-</pre></div>
-</div>
-</section>
-<section id="evaluation-function">
-<h3>3.2 Evaluation Function<a class="headerlink" href="#evaluation-function" title="Link to this heading">#</a></h3>
-<p>The evaluation function computes the loss on a dataset. It supports two
-modes:</p>
-<ul class="simple">
-<li><p><strong>Standard mode</strong> (<code class="docutils literal notranslate"><span class="pre">extended=False</span></code>): Uses the current model weights</p></li>
-<li><p><strong>Extended mode</strong> (<code class="docutils literal notranslate"><span class="pre">extended=True</span></code>): Evaluates the model <em>as if</em> the
-proposed new neurons were added</p></li>
-</ul>
-<p>This allows us to preview the effect of growth before committing to it.</p>
-<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">evaluate</span><span class="p">(</span>
-    <span class="n">model</span><span class="p">:</span> <span class="n">GrowingContainer</span><span class="p">,</span>
-    <span class="n">device</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
-    <span class="n">test_loader</span><span class="p">:</span> <a href="https://docs.python.org/3/library/typing.html#typing.Generic" title="typing.Generic" class="sphx-glr-backref-module-typing sphx-glr-backref-type-py-class"><span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span></a><span class="p">,</span>
-    <span class="n">extended</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Evaluate the model on a dataset.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    model : GrowingContainer</span>
-<span class="sd">        The neural network model to evaluate.</span>
-<span class="sd">    device : torch.device</span>
-<span class="sd">        The device (CPU or CUDA) to run computations on.</span>
-<span class="sd">    test_loader : torch.utils.data.DataLoader</span>
-<span class="sd">        DataLoader providing batches of (input, target) pairs.</span>
-<span class="sd">    extended : bool, optional</span>
-<span class="sd">        If True, use extended_forward which includes proposed new neurons.</span>
-<span class="sd">        If False, use standard forward pass. Default is False.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    loss : float</span>
-<span class="sd">        The average mean squared error loss per sample.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
-    <span class="n">criterion</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(</span><span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;mean&quot;</span><span class="p">)</span>
-    <span class="n">loss</span> <span class="o">=</span> <span class="mf">0.0</span>
-
-    <span class="k">for</span> <span class="n">data</span><span class="p">,</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">test_loader</span><span class="p">:</span>
-        <span class="n">data</span><span class="p">,</span> <span class="n">target</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">target</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">extended</span><span class="p">:</span>
-            <span class="n">output</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">extended_forward</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">output</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="n">loss</span> <span class="o">+=</span> <span class="n">criterion</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-
-    <span class="n">loss</span> <span class="o">/=</span> <span class="nb">len</span><span class="p">(</span><span class="n">test_loader</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">loss</span>
-</pre></div>
-</div>
-</section>
+<p>Only the growth function needs to be defined here, as it combines
+statistics accumulation with a line search for the best scaling factor.</p>
 <section id="growth-function">
-<h3>3.3 Growth Function<a class="headerlink" href="#growth-function" title="Link to this heading">#</a></h3>
+<h3>Growth Function<a class="headerlink" href="#growth-function" title="Link to this heading">#</a></h3>
 <p>This is the <strong>core of GroMo</strong> - the function that intelligently grows the
 network. Here’s what happens step by step:</p>
 <ol class="arabic simple">
 <li><p><strong>set_growing_layers(layer_to_grow)</strong>: Specify which layer(s) will be grown</p></li>
-<li><p><strong>init_computation()</strong>: Initialize internal buffers to accumulate gradient
-statistics</p></li>
-<li><p><strong>Forward/backward pass loop</strong>: Process the entire dataset, accumulating
-information about optimal growth directions via <code class="docutils literal notranslate"><span class="pre">update_computation()</span></code></p></li>
+<li><p><strong>compute_statistics()</strong>: Initialize internal buffers and process the
+entire dataset, accumulating information about optimal growth directions</p></li>
 <li><p><strong>compute_optimal_updates()</strong>: Solve for the optimal new neuron weights
 based on accumulated statistics</p></li>
 <li><p><strong>dummy_select_update()</strong>: Here it’s trivial as we selected the layer
@@ -634,21 +554,18 @@ larger values add stronger contributions from new neurons.</p>
 <span class="sd">    3. Find the best scaling factor via line search</span>
 <span class="sd">    4. Apply the growth to the model</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
     <span class="c1"># /!/ We use the reduction=&quot;sum&quot; as the averaging is already</span>
     <span class="c1"># done in the GrowingMLP methods</span>
-    <span class="n">criterion</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(</span><span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;sum&quot;</span><span class="p">)</span>
+    <span class="n">criterion_sum</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(</span><span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;sum&quot;</span><span class="p">)</span>
+    <span class="n">criterion_mean</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(</span><span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;mean&quot;</span><span class="p">)</span>
 
     <span class="n">model</span><span class="o">.</span><span class="n">set_growing_layers</span><span class="p">(</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="p">)</span>
-    <span class="n">model</span><span class="o">.</span><span class="n">init_computation</span><span class="p">()</span>
-
-    <span class="k">for</span> <span class="n">data</span><span class="p">,</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="p">:</span>
-        <span class="n">data</span><span class="p">,</span> <span class="n">target</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">target</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-        <span class="n">model</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-        <span class="n">output</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="n">loss</span> <span class="o">=</span> <span class="n">criterion</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
-        <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-        <span class="n">model</span><span class="o">.</span><span class="n">update_computation</span><span class="p">()</span>
+    <span class="n">compute_statistics</span><span class="p">(</span>
+        <span class="n">model</span><span class="p">,</span>
+        <span class="n">train_loader</span><span class="p">,</span>
+        <span class="n">loss_function</span><span class="o">=</span><span class="n">criterion_sum</span><span class="p">,</span>
+        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+    <span class="p">)</span>
 
     <span class="n">model</span><span class="o">.</span><span class="n">compute_optimal_updates</span><span class="p">()</span>
     <span class="n">model</span><span class="o">.</span><span class="n">reset_computation</span><span class="p">()</span>
@@ -660,7 +577,13 @@ larger values add stronger contributions from new neurons.</p>
     <span class="n">best_value</span> <span class="o">=</span> <span class="mf">0.0</span>
     <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]:</span>
         <span class="n">model</span><span class="o">.</span><span class="n">set_scaling_factor</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-        <span class="n">loss</span> <span class="o">=</span> <span class="n">evaluate</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">train_loader</span><span class="p">,</span> <span class="n">extended</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">loss</span><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">_</span></a> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span>
+            <span class="n">train_loader</span><span class="p">,</span>
+            <span class="n">criterion_mean</span><span class="p">,</span>
+            <span class="n">use_extended_model</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+        <span class="p">)</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Scaling factor: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">, Loss: </span><span class="si">{</span><span class="n">loss</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">loss</span> <span class="o">&lt;</span> <span class="n">best_loss</span><span class="p">:</span>
             <span class="n">best_loss</span> <span class="o">=</span> <span class="n">loss</span>
@@ -739,7 +662,9 @@ performance</p></li>
 <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Original model:&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 
-<a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">last_test_loss</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a> <span class="o">=</span> <span class="n">evaluate</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">test_data_loader</span><span class="p">)</span>
+<span class="n">criterion</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">()</span>
+<a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">_</span></a> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">test_data_loader</span><span class="p">,</span> <span class="n">criterion</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">last_test_loss</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[N/A] Step </span><span class="si">{</span><span class="mi">0</span><span class="si">}</span><span class="s2">, Test Loss: </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
 <span class="c1"># Record initial state</span>
@@ -749,9 +674,22 @@ performance</p></li>
 <a href="https://docs.python.org/3/library/stdtypes.html#dict" title="builtins.dict" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">history</span></a><span class="p">[</span><span class="s2">&quot;step_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;SGD&quot;</span><span class="p">)</span>
 
 <span class="k">for</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">step</span></a> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">growth_steps</span></a><span class="p">):</span>
+    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">SGD</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">0.01</span><span class="p">)</span>
     <span class="k">for</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">epoch</span></a> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">intermediate_epochs</span></a> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-        <span class="n">train</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">train_data_loader</span><span class="p">)</span>
-        <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a> <span class="o">=</span> <span class="n">evaluate</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">test_data_loader</span><span class="p">)</span>
+        <span class="n">gradient_descent</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span>
+            <span class="n">train_data_loader</span><span class="p">,</span>
+            <span class="n">optimizer</span><span class="p">,</span>
+            <span class="n">scheduler</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">loss_function</span><span class="o">=</span><span class="n">criterion</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+        <span class="p">)</span>
+        <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">_</span></a> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span>
+            <span class="n">test_data_loader</span><span class="p">,</span>
+            <span class="n">criterion</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+        <span class="p">)</span>
         <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">current_step</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">epoch</span></a> <span class="o">+</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">step</span></a> <span class="o">*</span> <span class="p">(</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">intermediate_epochs</span></a> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
         <span class="nb">print</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">&quot;[SGD] Step </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">current_step</span></a><span class="si">}</span><span class="s2">, &quot;</span>
@@ -770,7 +708,7 @@ performance</p></li>
     <span class="n">grow</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">train_data_loader</span><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="o">=</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Model after growing:&quot;</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
-    <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a> <span class="o">=</span> <span class="n">evaluate</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">test_data_loader</span><span class="p">)</span>
+    <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">test_loss</span></a><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">_</span></a> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">test_data_loader</span><span class="p">,</span> <span class="n">criterion</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
     <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">current_step</span></a> <span class="o">=</span> <span class="p">(</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">step</span></a> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">intermediate_epochs</span></a> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span>
         <span class="sa">f</span><span class="s2">&quot;[GRO], Step </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">current_step</span></a><span class="si">}</span><span class="s2">, &quot;</span>
@@ -923,7 +861,7 @@ LinearGrowingModule(LinearGrowingModule(Layer 2))(in_features=6, out_features=3,
 <a href="https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.show.html#matplotlib.pyplot.show" title="matplotlib.pyplot.show" class="sphx-glr-backref-module-matplotlib-pyplot sphx-glr-backref-type-py-function"><span class="n">plt</span><span class="o">.</span><span class="n">show</span></a><span class="p">()</span>
 </pre></div>
 </div>
-<img src="../_images/sphx_glr_plot_growing_container_tutorial_001.png" srcset="../_images/sphx_glr_plot_growing_container_tutorial_001.png" alt="Model Performance and Capacity Evolution" class = "sphx-glr-single-img"/><p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 1.618 seconds)</p>
+<img src="../_images/sphx_glr_plot_growing_container_tutorial_001.png" srcset="../_images/sphx_glr_plot_growing_container_tutorial_001.png" alt="Model Performance and Capacity Evolution" class = "sphx-glr-single-img"/><p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 1.919 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-growing-container-tutorial-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/8a90e3a12e6c28e6701ab553191db473/plot_growing_container_tutorial.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_growing_container_tutorial.ipynb</span></code></a></p>
@@ -999,10 +937,8 @@ LinearGrowingModule(LinearGrowingModule(Layer 2))(in_features=6, out_features=3,
 </li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#step-3-define-helper-functions">Step 3: Define Helper Functions</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#training-function">3.1 Training Function</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#evaluation-function">3.2 Evaluation Function</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#growth-function">3.3 Growth Function</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#step-3-helper-functions">Step 3: Helper Functions</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#growth-function">Growth Function</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-4-create-the-initial-model">Step 4: Create the Initial Model</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-5-training-loop-with-growth">Step 5: Training Loop with Growth</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-6-visualize-training-progress">Step 6: Visualize Training Progress</a></li>
