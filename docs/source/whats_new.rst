@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Compute first order improvement for `GrowingDAG` (:gh:`210` by `Stella Douka`_)
 - Add a new `evaluate_model`,  `gradient_descent` and `compute_statistics` functions (:gh:`203` by `Théo Rudkiewicz`_)
 - Reduce `ruff check` scope and make it blocking in CI/CD (:gh:`207` by `Théo Rudkiewicz`_)
 - Allow reconstruction of the computational graph of GrowingDAG to reload state_dict (:gh:`209` by `Stella Douka`_)
@@ -88,6 +89,8 @@ Enhancements
 Bugs
 ~~~~
 
+- Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
+- Fix lingering modules that were not properly deleted (:gh:`210` by `Stella Douka`_)
 - Fix sub-modules that are not registered in pytorch (:gh:`179` by `Stella Douka`_)
 - Fix persistent value of input volume (:gh:`174` by `Stella Douka`_)
 - Fix memory leak in tensor updates (:gh:`138` by `Stella Douka`_)

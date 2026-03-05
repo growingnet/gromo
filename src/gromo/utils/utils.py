@@ -1,3 +1,4 @@
+import string
 from typing import Any, Callable, Iterable
 
 import numpy as np
@@ -597,3 +598,38 @@ def compute_BIC(nb_params: int, loss: float, n: int) -> float:
         BIC score
     """
     return nb_params * np.log2(n) - 2 * np.log2(loss)
+
+
+def alphabetic_index(i: int, alphabet: str = string.ascii_lowercase) -> str:
+    """Give an alphabetic based on an index
+
+    Parameters
+    ----------
+    i : int
+        index
+    alphabet : str, optional
+        alphabet to index and repeat, by default string.ascii_lowercase
+
+    Returns
+    -------
+    str
+        alphabetic index
+
+    Raises
+    ------
+    ValueError
+        if the index is negative
+    """
+    if i < 0:
+        raise ValueError("index must be non-negative")
+
+    base = len(alphabet)
+    out = []
+    i += 1  # switch to 1-based to get 'a'..'z' then 'aa'...
+
+    while i > 0:
+        i -= 1
+        i, r = divmod(i, base)
+        out.append(alphabet[r])
+
+    return "".join(reversed(out))
