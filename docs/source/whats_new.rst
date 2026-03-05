@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Implement `GrowingLayerNorm` and `GrowingGroupNorm` (:gh:`211` by `Stella Douka`_)
 - Add a new `evaluate_model`,  `gradient_descent` and `compute_statistics` functions (:gh:`203` by `Théo Rudkiewicz`_)
 - Reduce `ruff check` scope and make it blocking in CI/CD (:gh:`207` by `Théo Rudkiewicz`_)
 - Allow reconstruction of the computational graph of GrowingDAG to reload state_dict (:gh:`209` by `Stella Douka`_)
