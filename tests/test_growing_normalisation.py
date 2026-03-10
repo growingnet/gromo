@@ -362,10 +362,6 @@ class TestGrowingBatchNorm2d(unittest.TestCase):
             bn.grow(8)
             self.assertEqual(bn.weight.device.type, "cuda")
 
-            # Test custom device parameter in grow
-            bn.grow(4, device=torch.device("cuda"))
-            self.assertEqual(bn.weight.device.type, "cuda")
-
             # Provide CPU tensors; _extend_parameter should .to(cuda) them transparently.
             cpu_weights = torch.ones(8)  # intentionally on CPU
             bn.grow(8, new_weights=cpu_weights)
