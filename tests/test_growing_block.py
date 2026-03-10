@@ -104,7 +104,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.batch_size = 4
         self.in_features = 3
         self.out_features = 5
-        self.hidden_features = 2
+        self.hidden_neurons = 2
         self.added_features = 7
         self.scaling_factor = 0.9
         self.downsample = torch.nn.Linear(
@@ -157,7 +157,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
             name="positive_block",
         )
@@ -165,12 +165,12 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Check basic properties
         self.assertEqual(block.in_features, self.in_features)
         self.assertEqual(block.out_features, self.in_features)
-        self.assertEqual(block.hidden_neurons, self.hidden_features)
+        self.assertEqual(block.hidden_neurons, self.hidden_neurons)
 
         # Check layer configurations
         self.assertEqual(block.first_layer.in_features, self.in_features)
-        self.assertEqual(block.first_layer.out_features, self.hidden_features)
-        self.assertEqual(block.second_layer.in_features, self.hidden_features)
+        self.assertEqual(block.first_layer.out_features, self.hidden_neurons)
+        self.assertEqual(block.second_layer.in_features, self.hidden_neurons)
         self.assertEqual(block.second_layer.out_features, self.in_features)
 
     def test_init_with_custom_activations(self):
@@ -182,7 +182,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             activation=activation,
             pre_activation=pre_activation,
             mid_activation=mid_activation,
@@ -237,7 +237,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -266,7 +266,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.out_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             downsample=downsample,
             device=self.device,
         )
@@ -339,7 +339,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -367,7 +367,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.out_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             downsample=downsample,
             device=self.device,
         )
@@ -464,7 +464,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -517,7 +517,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.out_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             downsample=self.downsample,
             device=self.device,
         )
@@ -638,7 +638,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -681,7 +681,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.out_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             downsample=self.downsample,
             device=self.device,
         )
@@ -723,7 +723,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -742,7 +742,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -773,7 +773,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -818,7 +818,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             kwargs_layer=kwargs_layer,
             kwargs_first_layer=kwargs_first_layer,
             device=self.device,
@@ -834,7 +834,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -852,7 +852,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.out_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
             downsample=self.downsample,
         )
@@ -1224,7 +1224,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             activation=torch.nn.ReLU(),
             device=self.device,
             name="test_block_methods",
@@ -1607,7 +1607,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -1639,7 +1639,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
         block.first_layer.weight.data *= 2.0
@@ -1667,7 +1667,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -1683,7 +1683,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
 
@@ -1692,7 +1692,7 @@ class TestLinearGrowingBlock(TorchTestCase):
 
         # Test setter by calling the property setter directly
         # (nn.Module.__setattr__ intercepts normal assignments)
-        delta_layer = torch.nn.Linear(self.hidden_features, self.in_features)
+        delta_layer = torch.nn.Linear(self.hidden_neurons, self.in_features)
         block.optimal_delta_layer = delta_layer
         self.assertIs(block.optimal_delta_layer, delta_layer)
         self.assertIs(block.second_layer.optimal_delta_layer, delta_layer)
