@@ -369,6 +369,7 @@
 <section id="enhancements">
 <h3>Enhancements<a class="headerlink" href="#enhancements" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Compute first order improvement for <cite>GrowingDAG</cite> (<a class="reference external" href="https://github.com/growingnet/gromo/issues/210">#210</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Implement <cite>GrowingLayerNorm</cite> and <cite>GrowingGroupNorm</cite> (<a class="reference external" href="https://github.com/growingnet/gromo/issues/211">#211</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Add a new <cite>evaluate_model</cite>,  <cite>gradient_descent</cite> and <cite>compute_statistics</cite> functions (<a class="reference external" href="https://github.com/growingnet/gromo/issues/203">#203</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Reduce <cite>ruff check</cite> scope and make it blocking in CI/CD (<a class="reference external" href="https://github.com/growingnet/gromo/issues/207">#207</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
@@ -439,6 +440,8 @@
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Address training instability in <cite>GrowingDAG</cite> (<a class="reference external" href="https://github.com/growingnet/gromo/issues/210">#210</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
+<li><p>Fix lingering modules that were not properly deleted (<a class="reference external" href="https://github.com/growingnet/gromo/issues/210">#210</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix sub-modules that are not registered in pytorch (<a class="reference external" href="https://github.com/growingnet/gromo/issues/179">#179</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix persistent value of input volume (<a class="reference external" href="https://github.com/growingnet/gromo/issues/174">#174</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix memory leak in tensor updates (<a class="reference external" href="https://github.com/growingnet/gromo/issues/138">#138</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
