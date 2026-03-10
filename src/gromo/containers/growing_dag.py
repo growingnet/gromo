@@ -1931,6 +1931,7 @@ class Expansion:
             self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
 
     def delete(self) -> None:
+        """Delete edges and nodes introduced by this expansion"""
         if self.type == ExpansionType.NEW_EDGE:
             self.dag.remove_edge(self.previous_node, self.next_node)
         elif self.type == ExpansionType.NEW_NODE:
