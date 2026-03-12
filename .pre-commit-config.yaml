@@ -7,6 +7,11 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      - name: Don't commit on `main` branch
+        id: no-commit-to-branch
+        args:
+          - --branch
+          - main
       - id: check-executables-have-shebangs
       - id: check-toml
       - id: check-docstring-first
