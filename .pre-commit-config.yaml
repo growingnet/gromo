@@ -20,8 +20,6 @@ repos:
       - id: trailing-whitespace
       - id: check-case-conflict
       - id: mixed-line-ending
-      - id: end-of-file-fixer
-      - id: check-case-conflict
       - id: forbid-new-submodules
 
 
