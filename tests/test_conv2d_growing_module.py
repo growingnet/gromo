@@ -1,7 +1,7 @@
 import random
 import types
 from copy import deepcopy
-from unittest import main
+from unittest import main, mock
 
 import torch
 
@@ -2196,17 +2196,22 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
                 )
 
             # When out_channels=0, the layer has no weights
-            # So copy_uniform should fallback to 1/sqrt(fan_in)
-            extension_size = 3
+            # So copy_uniform should fallback to sqrt(2/fan_in)
+            extension_size = 13
 
-            with self.assertWarns(UserWarning):
-                # UserWarning: std(): degrees of freedom is <= 0.
-                # This happens because the layer has no weights to compute std from.
+            # Check that kaiming_initialization fallback is called
+            with mock.patch.object(
+                layer_out,
+                "kaiming_initialization",
+                wraps=layer_out.kaiming_initialization,
+            ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,
                     output_extension_init="copy_uniform",
                     input_extension_init="copy_uniform",
                 )
+
+            self.assertEqual(kaiming_mock.call_count, 2)
 
             # Verify extensions were created
             self.assertIsInstance(
@@ -2224,26 +2229,24 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
             assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
 
-            # When there are no hidden channels, the std should be 1/sqrt(fan_in)
+            # When there are no hidden channels, the std should be sqrt(2/fan_in)
             # For Conv2d: fan_in = in_channels * kernel_h * kernel_w
             # For extended_output_layer:
             # fan_in = layer_in.in_channels * kernel_h * kernel_w
             expected_output_ext_std = (
-                1.0
+                2
                 / (
                     layer_in.in_channels
                     * layer_in.kernel_size[0]
                     * layer_in.kernel_size[1]
                 )
-                ** 0.5
-            )
+            ) ** 0.5
+
             # For extended_input_layer:
             # fan_in = extension_size * kernel_h * kernel_w
             expected_input_ext_std = (
-                1.0
-                / (extension_size * layer_out.kernel_size[0] * layer_out.kernel_size[1])
-                ** 0.5
-            )
+                2 / (extension_size * layer_out.kernel_size[0] * layer_out.kernel_size[1])
+            ) ** 0.5
 
             # Verify std matches expected values
             # Allow tolerance for small sample statistics
@@ -2256,11 +2259,60 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             self.assertAlmostEqual(
                 layer_out.extended_input_layer.weight.std().item(),
                 expected_input_ext_std,
-                delta=expected_input_ext_std * 0.5,
+                delta=expected_input_ext_std * 0.1,
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
 
             layer_out.apply_change(extension_size=extension_size)
+
+    def test_create_layer_extensions_with_kaiming_matches_pytorch(self) -> None:
+        """Test Kaiming extension init matches PyTorch fan-in behavior."""
+        extension_size = 18
+
+        for test_case, channels in (("with_features", 15), ("without_features", 0)):
+            with self.subTest(case=test_case):
+                layer_in, layer_out = self.create_demo_layers(
+                    bias=False,
+                    hidden_channels=channels,
+                )
+
+                layer_out.create_layer_extensions(
+                    extension_size=extension_size,
+                    output_extension_init="kaiming",
+                    input_extension_init="kaiming",
+                )
+
+                ref_in_weight = torch.empty(
+                    (
+                        layer_out.out_channels,
+                        layer_out.in_channels + extension_size,
+                        layer_out.kernel_size[0],
+                        layer_out.kernel_size[1],
+                    ),
+                    device=global_device(),
+                )
+
+                torch.nn.init.kaiming_uniform_(ref_in_weight)
+                ref_in_weight = ref_in_weight[:, -extension_size:]
+
+                assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
+                self.assertAlmostEqual(
+                    layer_out.extended_input_layer.weight.std().item(),
+                    ref_in_weight.std().item(),
+                    delta=ref_in_weight.std().item() * 0.1,
+                    msg="extended_input_layer weight std should match PyTorch Kaiming",
+                )
+
+                ref_out_weight = torch.empty_like(layer_in.extended_output_layer.weight)
+                torch.nn.init.kaiming_uniform_(ref_out_weight)
+
+                assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
+                self.assertAlmostEqual(
+                    layer_in.extended_output_layer.weight.std().item(),
+                    ref_out_weight.std().item(),
+                    delta=ref_out_weight.std().item() * 0.1,
+                    msg="extended_output_layer weight std should match PyTorch Kaiming",
+                )
 
 
 class TestNeuronCountingConv2d(TestConv2dGrowingModuleBase):

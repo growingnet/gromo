@@ -2840,7 +2840,10 @@ class GrowingModule(torch.nn.Module):
 
     @torch.no_grad()
     def copy_uniform_initialization(
-        self, tensor: torch.Tensor, reference_tensor: torch.Tensor, fan_in: int
+        self,
+        tensor: torch.Tensor,
+        reference_tensor: torch.Tensor | None,
+        fan_in: int,
     ) -> None:
         """
         Initialize tensor with uniform law aligned on reference
@@ -2850,32 +2853,51 @@ class GrowingModule(torch.nn.Module):
         where std(W) is the empirical standard deviation of the reference_tensor
         if the reference_tensor has a non-zero variance.
         Otherwise, use bounds
-        -1 / sqrt(fan_in), 1 / sqrt(fan_in)
-        where fan_in is the number of input features of the
-        extension.
+        -sqrt(6 / fan_in), sqrt(6 / fan_in)
+        where fan_in is the number of input features of the reference tensor + extension.
 
         Parameters
         ----------
         tensor: torch.Tensor
             tensor to initialize
-        reference_tensor: torch.Tensor
-            tensor to get the standard deviation from
+        reference_tensor: torch.Tensor | None
+            tensor to get the standard deviation from or None to use Kaiming init
         fan_in: int
-            number of input features of the extension
+            number of input features of the base tensor + extension
         """
-        # Get the standard deviation from the reference_tensor
+        # Fallback to Kaiming uniform initialization bounds
         if (
-            reference_tensor is not None
-            and (std_dev := reference_tensor.std().item()) > 0
+            reference_tensor is None
+            or reference_tensor.numel() < 2
+            or (std_dev := reference_tensor.std().item()) == 0
         ):
-            std_dev = std_dev
-        else:
-            # Fallback to Kaiming uniform initialization bounds
-            std_dev = 1.0 / (fan_in**0.5)
+            return self.kaiming_initialization(tensor, reference_tensor, fan_in)
 
         # Initialize with uniform distribution
-        # bound = std_dev**0.5
         bound = 3.0**0.5 * std_dev
+        torch.nn.init.uniform_(tensor, -bound, bound)
+
+    @torch.no_grad()
+    def kaiming_initialization(
+        self,
+        tensor: torch.Tensor,
+        reference_tensor: torch.Tensor | None,
+        fan_in: int,
+    ) -> None:
+        """
+        Initialize tensor with Kaiming.
+
+        Parameters
+        ----------
+        tensor: torch.Tensor
+            tensor to initialize
+        reference_tensor: torch.Tensor | None
+            Unused
+        fan_in: int
+            number of input features of the base tensor + extension
+        """
+        del reference_tensor
+        bound = (2.0 * 3.0 / fan_in) ** 0.5
         torch.nn.init.uniform_(tensor, -bound, bound)
 
     @torch.no_grad()
@@ -2904,11 +2926,11 @@ class GrowingModule(torch.nn.Module):
         input_extension_size: int | None
             size of the input extension to create, if None use extension_size
         output_extension_init: str
-            Initialization method for the output extension. Must be one of the keys
-            in `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+            Initialization method for the output extension. Must be one of the keys in
+            `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
         input_extension_init: str
             Initialization method for the input extension. Must be one of the keys in
-            `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+            `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
 
         Raises
         ------
@@ -2928,6 +2950,7 @@ class GrowingModule(torch.nn.Module):
 
         known_inits = {
             "copy_uniform": self.copy_uniform_initialization,
+            "kaiming": self.kaiming_initialization,
             "zeros": lambda tensor, _, __: torch.nn.init.zeros_(tensor),
             # Future initializations can be added here
         }
@@ -2945,15 +2968,13 @@ class GrowingModule(torch.nn.Module):
             f"The layer {self.name} has no input extension."
             "Therefore, it can't be initialized."
         )
-        init = input_extension_init
+        init_fn = known_inits[input_extension_init]
+        base_fan_in = self.get_fan_in_from_layer(layer_to_init)
+        ext_fan_in = self.get_fan_in_from_layer(self.layer)
 
-        known_inits[init](
-            layer_to_init.weight, self.weight, self.get_fan_in_from_layer(layer_to_init)
-        )
+        init_fn(layer_to_init.weight, self.weight, base_fan_in + ext_fan_in)
         if layer_to_init.bias is not None:
-            known_inits[init](
-                layer_to_init.bias, self.bias, self.get_fan_in_from_layer(layer_to_init)
-            )
+            init_fn(layer_to_init.bias, self.bias, base_fan_in + ext_fan_in)
 
         # Initialize output extension
         layer_to_init = self.previous_module.extended_output_layer
@@ -2961,18 +2982,15 @@ class GrowingModule(torch.nn.Module):
             f"The previous layer {self.previous_module.name} has no output extension."
             "Therefore, it can't be initialized."
         )
-        init = output_extension_init
-        known_inits[init](
-            layer_to_init.weight,
-            self.previous_module.weight,
-            self.previous_module.get_fan_in_from_layer(layer_to_init),
+
+        init_fn = known_inits[output_extension_init]
+        prev_fan_in = self.previous_module.get_fan_in_from_layer(
+            self.previous_module.layer
         )
+
+        init_fn(layer_to_init.weight, self.previous_module.weight, prev_fan_in)
         if layer_to_init.bias is not None:
-            known_inits[init](
-                layer_to_init.bias,
-                self.previous_module.bias,
-                self.previous_module.get_fan_in_from_layer(layer_to_init),
-            )
+            init_fn(layer_to_init.bias, self.previous_module.bias, prev_fan_in)
 
     def missing_neurons(self) -> int:
         """

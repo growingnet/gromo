@@ -3843,16 +3843,20 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             # Note: This test verifies the fallback behavior works correctly
             extension_size = 2
 
-            with self.assertWarns(UserWarning):
-                # UserWarning: std(): degrees of freedom is <= 0. Correction should
-                # be strictly less than the reduction factor (input numel divided by
-                # output numel).
-                # This happens because the layer has no weights to compute std from.
+            # Check that kaiming_initialization fallback is called
+            with mock.patch.object(
+                layer_out,
+                "kaiming_initialization",
+                wraps=layer_out.kaiming_initialization,
+            ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,
                     output_extension_init="copy_uniform",
                     input_extension_init="copy_uniform",
                 )
+
+            # For layer sizes 5 -> 0 -> 7, use Kaiming fallback for all but output bias
+            self.assertEqual(kaiming_mock.call_count, 3)
 
             # Verify extensions were created
             self.assertIsInstance(
@@ -3873,10 +3877,10 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             # Initialize manually with fallback behavior
             # For extended_output_layer:
             # fan_in = self.config.LAYER_DIMS["demo_1"][0] (== 5)
-            expected_output_ext_std = 1.0 / (self.config.LAYER_DIMS["demo_1"][0] ** 0.5)
+            expected_output_ext_std = (2.0 / self.config.LAYER_DIMS["demo_1"][0]) ** 0.5
             # For extended_input_layer:
             # fan_in = extension_size (== 2)
-            expected_input_ext_std = 1.0 / (extension_size**0.5)
+            expected_input_ext_std = (2.0 / extension_size) ** 0.5
 
             # Verify std matches expected values
             # Allow tolerance for small sample statistics
@@ -3894,6 +3898,53 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             )
 
             layer_out.apply_change(extension_size=extension_size)
+
+    def test_create_layer_extensions_with_kaiming_matches_pytorch(self) -> None:
+        """Test Kaiming extension init matches PyTorch fan-in behavior."""
+        extension_size = 18
+
+        for test_case, features in (("with_features", 15), ("without_features", 0)):
+            with self.subTest(case=test_case):
+                layer_in, layer_out = self.create_demo_layers(
+                    bias=False,
+                    hidden_features=features,
+                )
+
+                layer_out.create_layer_extensions(
+                    extension_size=extension_size,
+                    output_extension_init="kaiming",
+                    input_extension_init="kaiming",
+                )
+
+                ref_in_weight = torch.empty(
+                    (
+                        layer_out.out_features,
+                        layer_out.in_features + extension_size,
+                    ),
+                    device=global_device(),
+                )
+
+                torch.nn.init.kaiming_uniform_(ref_in_weight)
+                ref_in_weight = ref_in_weight[:, -extension_size:]
+
+                assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+                self.assertAlmostEqual(
+                    layer_out.extended_input_layer.weight.std().item(),
+                    ref_in_weight.std().item(),
+                    delta=ref_in_weight.std().item() * 0.1,
+                    msg="extended_input_layer weight std should match PyTorch Kaiming",
+                )
+
+                assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+                ref_out_weight = torch.empty_like(layer_in.extended_output_layer.weight)
+                torch.nn.init.kaiming_uniform_(ref_out_weight)
+
+                self.assertAlmostEqual(
+                    layer_in.extended_output_layer.weight.std().item(),
+                    ref_out_weight.std().item(),
+                    delta=ref_out_weight.std().item() * 0.1,
+                    msg="extended_output_layer weight std should match PyTorch Kaiming",
+                )
 
     def test_create_layer_extensions_mixed_initializations(self) -> None:
         """Test create_layer_extensions with mixed initializations."""
