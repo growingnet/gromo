@@ -516,10 +516,12 @@ class GrowingBlock(GrowingContainer):
             size of the input extension to create, if None use extension_size
         output_extension_init: str
             Initialization method for the output extension. Possible values include
-            "copy_uniform", "zeros", or other supported initialization strategies.
+            "copy_uniform", "kaiming", "zeros", or other supported initialization
+            strategies.
         input_extension_init: str
             Initialization method for the input extension. Possible values include
-            "copy_uniform", "zeros", or other supported initialization strategies.
+            "copy_uniform", "kaiming", "zeros", or other supported initialization
+            strategies.
         """
         self.second_layer.create_layer_extensions(
             extension_size=extension_size,
