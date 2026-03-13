@@ -67,7 +67,8 @@ repos:
     rev: v0.13.3
     hooks:
     -   id: ruff-check
-        args: ["--fix", "--output-format=full", "--exit-zero"]
+        args: ["--fix", "--output-format=full"]
+        files: ^(src|tests|examples)/
         verbose: true
     # - id: ruff-format conflict with black
 
