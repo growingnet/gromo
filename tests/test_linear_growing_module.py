@@ -3895,6 +3895,7 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                 delta=expected_input_ext_std * 0.5,
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
+
             layer_out.apply_change(extension_size=extension_size)
 
     def test_create_layer_extensions_with_kaiming_matches_pytorch(self) -> None:
