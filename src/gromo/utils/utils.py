@@ -1,8 +1,10 @@
+import string
 from typing import Any, Callable, Iterable
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.utils.data
 
 from gromo.utils.disk_dataset import MemMapDataset
 
@@ -598,99 +600,36 @@ def compute_BIC(nb_params: int, loss: float, n: int) -> float:
     return nb_params * np.log2(n) - 2 * np.log2(loss)
 
 
-def evaluate_dataset(
-    model: nn.Module, dataloader: torch.utils.data.DataLoader, loss_fn: Callable
-) -> tuple[float, float]:
-    """Evaluate network on dataset
+def alphabetic_index(i: int, alphabet: str = string.ascii_lowercase) -> str:
+    """Give an alphabetic based on an index
 
     Parameters
     ----------
-    model : nn.Module
-        network to evaluate
-    dataloader : torch.utils.data.DataLoader
-        dataloader containing the data
-    loss_fn : Callable
-        loss function for bottleneck calculation
+    i : int
+        index
+    alphabet : str, optional
+        alphabet to index and repeat, by default string.ascii_lowercase
 
     Returns
     -------
-    tuple[float, float]
-        accuracy and loss
+    str
+        alphabetic index
+
+    Raises
+    ------
+    ValueError
+        if the index is negative
     """
-    model.eval()
-    correct, total = 0, 0
+    if i < 0:
+        raise ValueError("index must be non-negative")
 
-    loss = []
-    for x, y in dataloader:
-        x = x.to(global_device())
-        y = y.to(global_device())
-        with torch.no_grad():
-            pred = model(x)
-            loss.append(loss_fn(pred, y).item())
+    base = len(alphabet)
+    out = []
+    i += 1  # switch to 1-based to get 'a'..'z' then 'aa'...
 
-        if model.out_features > 1 and y.dim() == 1:
-            final_pred = pred.argmax(axis=1)
-            count_this = final_pred == y
-            count_this = count_this.sum()
+    while i > 0:
+        i -= 1
+        i, r = divmod(i, base)
+        out.append(alphabet[r])
 
-            correct += count_this.item()
-            total += len(pred)
-
-    if total > 0:
-        accuracy = correct / total
-    else:
-        accuracy = -1
-
-    return accuracy, np.mean(loss).item()
-
-
-def evaluate_extended_dataset(
-    model: nn.Module,
-    dataloader: torch.utils.data.DataLoader,
-    loss_fn: Callable,
-    mask: dict = {},
-) -> tuple[float, float]:
-    """Evaluate extended network on dataset
-
-    Parameters
-    ----------
-    model : nn.Module
-        network to evaluate
-    dataloader : torch.utils.data.DataLoader
-        dataloader containing the data
-    loss_fn : Callable
-        loss function for bottleneck calculation
-    mask : dict, optional
-        extension mask for specific nodes and edges, by default {}
-        example: mask["edges"] for edges and mask["nodes"] for nodes
-
-    Returns
-    -------
-    tuple[float, float]
-        accuracy and loss
-    """
-    model.eval()
-    correct, total = 0, 0
-
-    loss = []
-    for x, y in dataloader:
-        x = x.to(global_device())
-        y = y.to(global_device())
-        with torch.no_grad():
-            pred, _ = model.extended_forward(x, mask=mask)
-            loss.append(loss_fn(pred, y).item())
-
-        if model.out_features > 1 and y.dim() == 1:
-            final_pred = pred.argmax(axis=1)
-            count_this = final_pred == y
-            count_this = count_this.sum()
-
-            correct += count_this.item()
-            total += len(pred)
-
-    if total > 0:
-        accuracy = correct / total
-    else:
-        accuracy = -1
-
-    return accuracy, np.mean(loss).item()
+    return "".join(reversed(out))

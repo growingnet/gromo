@@ -6,12 +6,12 @@ import torch.nn as nn
 
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.training_utils import evaluate_dataset
 from gromo.utils.utils import (
     activation_fn,
     batch_gradient_descent,
     calculate_true_positives,
     compute_tensor_stats,
-    evaluate_dataset,
     f1,
     f1_macro,
     f1_micro,

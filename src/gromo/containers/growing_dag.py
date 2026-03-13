@@ -1,5 +1,4 @@
 import copy
-import string
 import warnings
 from collections import deque
 from enum import Enum
@@ -16,14 +15,17 @@ from gromo.modules.conv2d_growing_module import (
     FullConv2dGrowingModule,
 )
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
+from gromo.modules.growing_normalisation import GrowingLayerNorm
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.tools import lecun_normal_
+from gromo.utils.training_utils import evaluate_extended_dataset
 from gromo.utils.utils import (
     activation_fn,
+    alphabetic_index,
     compute_BIC,
-    evaluate_extended_dataset,
     f1_micro,
 )
 
@@ -44,12 +46,14 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         number of neurons to add on each growth step
     use_bias : bool
         use bias
-    use_batch_norm : bool
-        use Batch Normalization
+    use_layer_norm : bool
+        use Layer Normalization
     default_layer_type : str, optional
         the type of layer operations, to choose between "linear" and "convolution", by default "linear"
     activation : str, optional
         the default activation function, by default "selu"
+    kernel_size : tuple[int, int], optional
+        the default kernel size for convolution, by default (3, 3)
     name : str, optional
         name of the dag, by default ""
     root : str, optional
@@ -77,9 +81,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         out_features: int,
         neurons: int,
         use_bias: bool,
-        use_batch_norm: bool,
+        use_layer_norm: bool,
         default_layer_type: str = "linear",
         activation: str = "selu",
+        kernel_size: tuple[int, int] = (3, 3),
         name: str = "",
         root: str = "start",
         end: str = "end",
@@ -96,8 +101,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         )
         self.neurons = neurons
         self.use_bias = use_bias
-        self.use_batch_norm = use_batch_norm
+        self.use_layer_norm = use_layer_norm
         self.activation = activation
+        self.kernel_size = kernel_size
         if "_" in name:
             raise ValueError(
                 f"The character '_' is not allowed in the name of a GrowingDAG. Found {name}."
@@ -189,6 +195,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 return_deltas=return_deltas,
                 force_pseudo_inverse=force_pseudo_inverse,
             )
+            assert node_module.parameter_update_decrease is not None
 
     def delete_update(self):
         """Delete tensor updates for all nodes"""
@@ -211,23 +218,58 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 "type": self.layer_type,  # shows what follows
                 "size": self.in_features,
                 "shape": self.input_shape,
-                "kernel_size": (3, 3),
+                "kernel_size": self.kernel_size,
+                "use_layer_norm": False,
             },
             self.end: {
                 "type": self.layer_type,
                 "size": self.out_features,
-                "kernel_size": (3, 3),
-                "use_batch_norm": self.use_batch_norm,
+                "shape": self.input_shape,
+                "kernel_size": self.kernel_size,
+                "use_layer_norm": self.use_layer_norm,
             },
         }
         edge_attributes = {
             "type": self.layer_type,
             "use_bias": self.use_bias,
-            "kernel_size": (3, 3),
+            "kernel_size": self.kernel_size,
         }
 
         DAG_parameters = {}
         DAG_parameters["edges"] = edges
+        DAG_parameters["node_attributes"] = node_attributes
+        DAG_parameters["edge_attributes"] = edge_attributes
+        return DAG_parameters
+
+    def export_dag_parameters(self) -> dict:
+        """Export dictionary with GrowingDAG parameter details
+        including edges, node attributes and edge attributes.
+
+        Returns
+        -------
+        dict
+            dictionary with nodes and edges parameters
+        """
+        node_attributes = {
+            node: {
+                "type": self.layer_type,
+                "size": value["size"],
+                "shape": value.get("shape"),
+                "kernel_size": self.kernel_size,
+                "activation": self.activation if node != self.root else "id",
+            }
+            for node, value in self.nodes.items()
+        }
+        edge_attributes = {
+            str(edge): {
+                "type": self.layer_type,
+                "use_bias": self.get_edge_module(*edge).use_bias,
+                "kernel_size": self.kernel_size,
+            }
+            for edge in self.edges
+        }
+        DAG_parameters = {}
+        DAG_parameters["edges"] = list(self.edges)
         DAG_parameters["node_attributes"] = node_attributes
         DAG_parameters["edge_attributes"] = edge_attributes
         return DAG_parameters
@@ -603,8 +645,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # TODO: separate functions for different modules, no need to check the type of node
         # self.nodes[new_node].update(node_attributes)
         self.update_nodes([new_node], node_attributes={new_node: node_attributes})
+
+        _edge_attributes = {str(edge): copy.copy(edge_attributes) for edge in new_edges}
+        _edge_attributes[str(new_edges[1])]["use_bias"] = False
         self.update_edges(
-            new_edges, edge_attributes=edge_attributes, zero_weights=zero_weights
+            new_edges, edge_attributes=_edge_attributes, zero_weights=zero_weights
         )
         self.update_connections(new_edges)
         self.set_growing_layers()
@@ -638,22 +683,26 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 raise KeyError(
                     'The size of the node should be specified at initialization. Example: key "size" in node_attributes[new_node]'
                 )
+
             self.nodes[node].update(attributes)
-            if attributes.get("use_batch_norm", self.use_batch_norm):
-                batch_norm = nn.BatchNorm1d(
-                    self.nodes[node]["size"], affine=False, device=self.device
-                )
-            else:
-                batch_norm = nn.Identity()
+
+            layer_norm = nn.Identity()
+
             name = node.split("_")[0]
             if self.nodes[node]["type"] == "linear":
                 in_features = self.nodes[node]["size"]
+
+                if attributes.get("use_layer_norm", self.use_layer_norm):
+                    layer_norm = GrowingLayerNorm(
+                        in_features, elementwise_affine=False, device=self.device
+                    )
+
                 self.__set_node_module(
                     node,
                     LinearMergeGrowingModule(
                         in_features=in_features,
                         post_merge_function=torch.nn.Sequential(
-                            batch_norm,
+                            layer_norm,
                             activation_fn(self.nodes[node].get("activation")),
                         ),
                         allow_growing=True,
@@ -663,13 +712,25 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 )
             elif self.nodes[node]["type"] == "convolution":
                 in_channels = self.nodes[node]["size"]
-                input_size = self.nodes[node].get("shape")
+                input_size = self.nodes[node].get("shape", (1, 1))
                 kernel_size = self.nodes[node]["kernel_size"]
                 input_volume = (
                     in_channels * input_size[0] * input_size[1]
                     if input_size is not None
                     else None
                 )
+
+                if attributes.get("use_layer_norm", self.use_layer_norm):
+                    if "shape" not in attributes:
+                        raise KeyError(
+                            'The shape of the input (h,w) should be specified at initialization when using LayerNorm. Example: key "shape" in node_attributes[new_node]'
+                        )
+                    layer_norm = GrowingLayerNorm(
+                        [in_channels, *input_size],
+                        elementwise_affine=False,
+                        device=self.device,
+                    )
+
                 self.__set_node_module(
                     node,
                     Conv2dMergeGrowingModule(
@@ -678,7 +739,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                         next_kernel_size=kernel_size,
                         input_volume=input_volume,
                         post_merge_function=torch.nn.Sequential(
-                            batch_norm,
+                            layer_norm,
                             activation_fn(self.nodes[node].get("activation")),
                         ),
                         allow_growing=True,
@@ -715,8 +776,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         for prev_node, next_node in edges:
             name = f"{prev_node.split('_')[0]}_{next_node.split('_')[0]}"
+            if any(isinstance(v, dict) for v in edge_attributes.values()):
+                _attributes = edge_attributes[str((prev_node, next_node))]
+            else:
+                _attributes = edge_attributes
 
-            if edge_attributes.get("constant"):
+            if _attributes.get("constant"):
                 self.__set_edge_module(
                     prev_node,
                     next_node,
@@ -736,7 +801,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 new_module = LinearGrowingModule(
                     in_features=self.nodes[prev_node]["size"],
                     out_features=self.nodes[next_node]["size"],
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     device=self.device,
                     name=f"L{name}",
                 )
@@ -744,11 +809,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 self.nodes[prev_node]["type"] == "convolution"
                 and self.nodes[next_node]["type"] == "convolution"
             ):
-                if "kernel_size" not in edge_attributes:
+                if "kernel_size" not in _attributes:
                     raise KeyError(
-                        'The kernel size of the edge should be specified at initialization. Example: key "kernel_size" in edge_attributes'
+                        'The kernel size of the edge should be specified at initialization. Example: key "kernel_size" in edge_attributes[edge]'
                     )
-                kernel_size = edge_attributes["kernel_size"]
+                kernel_size = _attributes["kernel_size"]
                 input_size = self.get_node_module(prev_node).output_size
                 default_padding = ((kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2)
                 new_module = FullConv2dGrowingModule(
@@ -756,10 +821,10 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     out_channels=self.nodes[next_node]["size"],
                     kernel_size=kernel_size,
                     input_size=input_size,
-                    stride=edge_attributes.get("stride", 1),
-                    padding=edge_attributes.get("padding", default_padding),
-                    dilation=edge_attributes.get("dilation", 1),
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    stride=_attributes.get("stride", 1),
+                    padding=_attributes.get("padding", default_padding),
+                    dilation=_attributes.get("dilation", 1),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     # allow_growing=True,
                     device=self.device,
                     name=f"C{name}",
@@ -772,7 +837,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 new_module = LinearGrowingModule(
                     in_features=in_features,
                     out_features=self.nodes[next_node]["size"],
-                    use_bias=edge_attributes.get("use_bias", self.use_bias),
+                    use_bias=_attributes.get("use_bias", self.use_bias),
                     device=self.device,
                     name=f"L{name}",
                 )
@@ -780,9 +845,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 raise NotImplementedError
 
             if zero_weights:
-                new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
-                if new_module.use_bias:
-                    new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
+                nn.init.zeros_(new_module.weight)
+            else:
+                lecun_normal_(new_module.weight)
+            if new_module.use_bias:
+                nn.init.zeros_(new_module.bias)
 
             self.__set_edge_module(
                 prev_node,
@@ -841,7 +908,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
     # Remove existing modules
 
-    def remove_direct_edge(self, prev_node: str, next_node: str) -> None:
+    def remove_edge(self, prev_node: str, next_node: str) -> None:
         """Remove direct edge from graph
         Delete module instances from the connected nodes and update their size
 
@@ -856,9 +923,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         if edge in self.edges:
             edge_module = self.get_edge_module(*edge)
             edge_module.__del__()
-            self.remove_edge(*edge)
+            super().remove_edge(*edge)
             self._get_ancestors(self.root)
             self.set_growing_layers()
+            if str(edge) in self._modules:
+                del self._modules[str(edge)]
 
     def remove_node(self, node: str) -> None:
         """Remove node from dag
@@ -870,10 +939,18 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         if node in self.nodes:
             node_module = self.get_node_module(node)
+            for prev_edge in self.in_edges(node):
+                if str(prev_edge) in self._modules:
+                    del self._modules[str(prev_edge)]
+            for next_edge in self.out_edges(node):
+                if str(next_edge) in self._modules:
+                    del self._modules[str(next_edge)]
             node_module.__del__()
             super().remove_node(node)
             self._get_ancestors(self.root)
             self.set_growing_layers()
+            if node in self._modules:
+                del self._modules[node]
 
     def rename_nodes(self, mapping: dict) -> None:
         """Rename nodes in the graph.
@@ -1036,7 +1113,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         if constant_module:
             # Remove constant module if needed
-            self.remove_direct_edge(self.root, self.end)
+            self.remove_edge(self.root, self.end)
 
         return bottleneck, input_B
 
@@ -1107,7 +1184,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     {
                         "previous_node": prev_node,
                         "next_node": next_node,
-                        "edge_attributes": {"kernel_size": (3, 3)},
+                        "edge_attributes": {"kernel_size": self.kernel_size},
                     }
                 )
 
@@ -1149,11 +1226,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                                 "type": self.nodes[prev_node]["type"],
                                 "size": size,
                                 "activation": self.activation,
-                                "kernel_size": (3, 3),
+                                "kernel_size": self.kernel_size,
                                 "shape": self.input_shape,
                             },
                             "edge_attributes": {
-                                "kernel_size": (3, 3),
+                                "kernel_size": self.kernel_size,
                             },
                         }
                     )
@@ -1235,7 +1312,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # All possible one-hop connections
         for i, attr in enumerate(one_hop_edges):
             previous_node = attr.get("previous_node")
-            new_node = f"{attr.get('new_node')}_{string.ascii_lowercase[i]}"
+            new_node = f"{attr.get('new_node')}_{alphabetic_index(i)}"
             next_node = attr.get("next_node")
             node_attributes = attr.get("node_attributes", {})
             edge_attributes = attr.get("edge_attributes", {})
@@ -1334,7 +1411,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 module_input = output[previous_node]
                 activity = module(module_input)
 
-                assert activity.shape[1] == self.nodes[node]["size"]
+                assert (
+                    activity.shape[1] == self.nodes[node]["size"]
+                ), f"{activity.shape[1]=} != {self.nodes[node]['size']=} for {node=}"
 
                 if node in output:
                     output[node] = output[node].add(activity)
@@ -1344,6 +1423,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             merge_module = self.get_node_module(node)
             if verbose:
                 print("\t-->", merge_module)
+
             output[node] = merge_module(output[node])
         if verbose:
             print()
@@ -1431,10 +1511,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             merge_module = self.get_node_module(node)
             if verbose:
                 print("\t-->", merge_module)
+
             output[node] = (
                 merge_module(output[node][0]),
                 merge_module(output[node][1]),
-            )  # TODO: simplify
+            )
         if verbose:
             print()
         return output[self.end]
@@ -1668,7 +1749,7 @@ class Expansion:
     ) -> None:
         if not isinstance(exp_type, ExpansionType):
             raise ValueError(
-                f"The expansion type should be one of {['ExpansionType.'+m.name for m in ExpansionType]}. Found '{exp_type}'."
+                f"The expansion type should be one of {['ExpansionType.' + m.name for m in ExpansionType]}. Found '{exp_type}'."
             )
         self.type = exp_type
         self.dag = dag  # reference to the original dag
@@ -1829,13 +1910,52 @@ class Expansion:
     def expand(self) -> None:
         """Create new edge or node on the enclosed GrowingDAG"""
         if self.type == ExpansionType.NEW_EDGE:
-            self.dag.add_direct_edge(self.previous_node, self.next_node, self.edge_attributes, zero_weights=True)  # type: ignore
+            self.dag.add_direct_edge(
+                self.previous_node,
+                self.next_node,
+                self.edge_attributes,
+                zero_weights=True,
+            )  # type: ignore
             self.dag.toggle_edge_candidate(
                 self.previous_node, self.next_node, candidate=True
             )
         elif self.type == ExpansionType.NEW_NODE:
-            self.dag.add_node_with_two_edges(self.previous_node, self.expanding_node, self.next_node, self.node_attributes, self.edge_attributes, zero_weights=True)  # type: ignore
+            self.dag.add_node_with_two_edges(
+                self.previous_node,
+                self.expanding_node,
+                self.next_node,
+                self.node_attributes,
+                self.edge_attributes,
+                zero_weights=True,
+            )  # type: ignore
             self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
+
+    def delete(self) -> None:
+        """Delete edges and nodes introduced by this expansion"""
+        if self.type == ExpansionType.NEW_EDGE:
+            self.dag.remove_edge(self.previous_node, self.next_node)
+        elif self.type == ExpansionType.NEW_NODE:
+            self.dag.remove_node(self.expanding_node)
+
+        # Delete updates based on mask
+        for prev_node, next_node in self.dag.edges:
+            if prev_node == self.expanding_node:
+                delete_input = True
+                delete_output = False
+            elif next_node == self.expanding_node:
+                delete_input = False
+                delete_output = True
+            else:
+                delete_input = False
+                delete_output = False
+
+            edge_module = self.dag.get_edge_module(prev_node, next_node)
+            edge_module.delete_update(
+                include_previous=False,
+                delete_delta=False,
+                delete_input=delete_input,
+                delete_output=delete_output,
+            )
 
     def __update_growth_history(
         self,

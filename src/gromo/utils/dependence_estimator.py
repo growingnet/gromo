@@ -34,7 +34,7 @@ def gaussian_kernel(X: torch.Tensor, sigma: float | None = None) -> torch.Tensor
     """
     dist = torch.cdist(X, X) ** 2
     if sigma is None:
-        var = torch.median(dist)
+        var = torch.median(dist) + 1e-7
     else:
         var = sigma**2
     return torch.exp(-dist / (2 * var))

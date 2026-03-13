@@ -48,12 +48,19 @@ You may also clone with SSH if you have set up your SSH keys with GitHub: `git c
 
 ### For developers
 
-To set up a development environment, first ensure that you have an ssh key set up with GitHub. Then, you can use the following commands:
+To set up a development environment:
+1. Ensure that you have an SSH key set up with GitHub.
+2. Fork the repository.
+3. Use the following commands, replacing `$USER` with your GitHub username:
 
 ```bash
 pip install build
-git clone git@github.com:growingnet/gromo.git
+git clone git@github.com:$USER/gromo.git --origin origin
 cd gromo
+git remote add upstream git@github.com:growingnet/gromo.git
+git remote set-url --push upstream no-pushing
+git fetch upstream
+git branch --set-upstream-to=upstream/main main
 python -m build
 pip install -e .[dev,test]
 pre-commit install

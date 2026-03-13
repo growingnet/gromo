@@ -6,7 +6,10 @@ import torch
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
+from gromo.utils.tools import (
+    compute_optimal_added_parameters,
+    optimal_delta,
+)
 from gromo.utils.utils import (
     compute_tensor_stats,
     get_correct_device,
@@ -444,7 +447,7 @@ class MergeGrowingModule(torch.nn.Module):
             f"The tensor M should have shape ({self.total_in_features}, {self.in_features}). "
             f"Got {previous_tensor_m.shape}."
         )
-        delta, _ = optimal_delta(
+        delta, self.parameter_update_decrease = optimal_delta(
             previous_tensor_s,
             previous_tensor_m,
             dtype=dtype,
@@ -486,6 +489,21 @@ class MergeGrowingModule(torch.nn.Module):
             return deltas
         else:
             return None
+
+    def _grow_post_merge_function(self, extension_size: int) -> None:
+        """Apply growth to sized activation functions
+
+        Parameters
+        ----------
+        extension_size : int
+            size of extension
+        """
+        if isinstance(self.post_merge_function, torch.nn.Sequential):
+            for module in self.post_merge_function:
+                if hasattr(module, "grow"):
+                    module.grow(extension_size)  # type: ignore
+        elif hasattr(self.post_merge_function, "grow"):
+            self.post_merge_function.grow(extension_size)  # type: ignore
 
     def update_size(self) -> None:
         """
@@ -549,7 +567,8 @@ class MergeGrowingModule(torch.nn.Module):
         return 0
 
     def parameters(
-        self, recurse: bool = True  # noqa: ARG002
+        self,
+        recurse: bool = True,  # noqa: ARG002
     ) -> Iterator[torch.nn.Parameter]:
         """Parameter iterator
 
@@ -635,7 +654,7 @@ class MergeGrowingModule(torch.nn.Module):
 
     def __del__(self) -> None:
         # Delete previous GrowingModules
-        for prev_module in self.previous_modules:
+        for prev_module in list(self.previous_modules):
             if isinstance(prev_module, GrowingModule):
                 prev_module.__del__()
             elif isinstance(prev_module, MergeGrowingModule):
@@ -644,7 +663,7 @@ class MergeGrowingModule(torch.nn.Module):
                     prev_module.update_size()
         self.previous_modules = []
         # Delete next GrowingModules
-        for next_module in self.next_modules:
+        for next_module in list(self.next_modules):
             if isinstance(next_module, GrowingModule):
                 next_module.__del__()
             elif isinstance(next_module, MergeGrowingModule):
@@ -1847,16 +1866,28 @@ class GrowingModule(torch.nn.Module):
                 ),
             )
 
-            if isinstance(self.post_layer_function, torch.nn.Sequential):
-                for module in self.post_layer_function:
-                    if hasattr(module, "grow"):
-                        module.grow(extension_size)
-            elif hasattr(self.post_layer_function, "grow"):
-                self.post_layer_function.grow(extension_size)
+            # Grow potential BatchNorm parameters
+            self._grow_post_layer_function(extension_size=extension_size)
 
             # Update the size of the next module
             if isinstance(self.next_module, MergeGrowingModule):
                 self.next_module.update_size()
+                self.next_module._grow_post_merge_function(extension_size=extension_size)
+
+    def _grow_post_layer_function(self, extension_size: int) -> None:
+        """Apply growth to sized activation functions
+
+        Parameters
+        ----------
+        extension_size : int
+            size of extension
+        """
+        if isinstance(self.post_layer_function, torch.nn.Sequential):
+            for module in self.post_layer_function:
+                if hasattr(module, "grow"):
+                    module.grow(extension_size)  # type: ignore
+        elif hasattr(self.post_layer_function, "grow"):
+            self.post_layer_function.grow(extension_size)  # type: ignore
 
     def apply_change(
         self,
@@ -1995,7 +2026,7 @@ class GrowingModule(torch.nn.Module):
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
 
-        self.delta_raw, self.parameter_update_decrease = optimal_delta(
+        self.delta_raw, parameter_update_decrease = optimal_delta(
             tensor_s, tensor_m, dtype=dtype, force_pseudo_inverse=force_pseudo_inverse
         )
 
@@ -2010,18 +2041,25 @@ class GrowingModule(torch.nn.Module):
 
         if update:
             self.optimal_delta_layer = self.layer_of_tensor(delta_weight, delta_bias)
-        return delta_weight, delta_bias, self.parameter_update_decrease
+            self.parameter_update_decrease = parameter_update_decrease
+        return delta_weight, delta_bias, parameter_update_decrease
 
     def _auxiliary_compute_alpha_omega(
         self,
-        numerical_threshold: float = 1e-15,
+        numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Auxiliary function to compute the optimal added parameters (alpha, omega, k)
+
+        This function operates on primitive options, not method names.
 
         Parameters
         ----------
@@ -2034,38 +2072,53 @@ class GrowingModule(torch.nn.Module):
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
             dtype for S and N during the computation
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        use_covariance: bool
+            if True, use S matrix (covariance preconditioning), else use Identity
+        alpha_zero: bool
+            if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
+        use_projection: bool
+            if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
             optimal added weights alpha, omega and eigenvalues lambda
         """
-        if use_projected_gradient:
-            matrix_n = self.tensor_n
-        else:
-            matrix_n = -self.tensor_m_prev()
-        # It seems that sometimes the tensor N is not accessible.
-        # I have no idea why this occurs sometimes.
-
         assert self.previous_module, (
             f"No previous module for {self.name}."
             "Therefore neuron addition is not possible."
         )
-        matrix_s = self.tensor_s_growth()
 
-        saved_dtype = matrix_s.dtype
+        # Determine matrix_n based on use_projection
+        if use_projection:
+            matrix_n = self.tensor_n
+        else:
+            matrix_n = -self.tensor_m_prev()
+
+        # Determine matrix_s based on use_covariance
+        matrix_s = self.tensor_s_growth() if use_covariance else None
+
+        saved_dtype = matrix_n.dtype
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)
-        if matrix_s.dtype != dtype:
+        if matrix_s is not None and matrix_s.dtype != dtype:
             matrix_s = matrix_s.to(dtype=dtype)
+
+        # Call tools function with primitive options
         alpha, omega, eigenvalues_extension = compute_optimal_added_parameters(
             matrix_s=matrix_s,
             matrix_n=matrix_n,
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
             maximum_added_neurons=maximum_added_neurons,
+            alpha_zero=alpha_zero,
+            omega_zero=omega_zero,
+            ignore_singular_values=ignore_singular_values,
         )
 
         alpha = alpha.to(dtype=saved_dtype)
@@ -2074,18 +2127,24 @@ class GrowingModule(torch.nn.Module):
 
         return alpha, omega, eigenvalues_extension
 
-    def compute_optimal_added_parameters(
+    def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-15,
+        numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
         Update the extended_input_layer and the eigenvalues_extension.
+
+        This is a private method that operates on primitive options, not method names.
 
         Parameters
         ----------
@@ -2100,8 +2159,17 @@ class GrowingModule(torch.nn.Module):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        use_covariance: bool
+            if True, use S matrix (covariance preconditioning), else use Identity
+        alpha_zero: bool
+            if True, set alpha (incoming weights) to zero, else compute from SVD
+        omega_zero: bool
+            if True, set omega (outgoing weights) to zero, else compute from SVD
+        use_projection: bool
+            if True, use projected gradient (tensor_n), else use raw gradient (-tensor_m_prev)
+        ignore_singular_values: bool
+            if True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction
 
         Returns
         -------
@@ -2139,54 +2207,125 @@ class GrowingModule(torch.nn.Module):
 
     def compute_optimal_updates(
         self,
-        numerical_threshold: float = 1e-10,
-        statistical_threshold: float = 1e-5,
+        numerical_threshold: float = 1e-6,
+        statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
-        Compute the optimal update  and additional neurons.
+        Compute the optimal update and additional neurons.
+
+        This method computes optimal weight updates for growing neural networks
+        by analyzing gradient statistics and covariance information.
+
+        Hyper-parameters to reproduce papers:
+        -------------------------------------
+
+        - TINY (Growing Tiny Networks: Spotting Expressivity Bottlenecks and Fixing Them Optimally)
+        compute_delta: bool = False,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
+
+        - GradMax (GradMax: Growing Neural Networks using Gradient Information)
+        compute_delta: bool = False,
+        use_covariance: bool = False,
+        alpha_zero: bool = True,
+        omega_zero: bool = False,
+        use_projection: bool = False,
+        ignore_singular_values: bool = True,
 
         Parameters
         ----------
         numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of
-            the inverse of S
+            Threshold to consider an eigenvalue as zero in the square root of
+            the inverse of S (covariance matrix).
         statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+            Threshold to consider an eigenvalue as zero in the SVD of S^{-1/2} N.
         maximum_added_neurons: int | None
-            maximum number of added neurons, if None all significant neurons are kept
+            Maximum number of added neurons. If None, all significant neurons are kept.
         update_previous: bool
-            whether to change the previous layer extended_output_layer
+            Whether to change the previous layer's extended_output_layer.
         dtype: torch.dtype
-            dtype for the computation of the optimal delta and added parameters
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+            Data type for the computation of the optimal delta and added parameters.
+        compute_delta: bool
+            Whether to compute optimal delta for existing weights. When True, updates
+            existing parameters before computing new neuron additions.
+        use_covariance: bool
+            Whether to use the S matrix (covariance preconditioning). When False,
+            S is treated as the identity matrix.
+        alpha_zero: bool
+            Whether to set alpha (incoming weights to new neurons) to zero. When True,
+            new neurons start with zero incoming weights.
+        omega_zero: bool
+            Whether to set omega (outgoing weights from new neurons) to zero. When True,
+            new neurons start with zero outgoing weights.
+        use_projection: bool
+            Whether to use projected gradient (tensor_n) versus raw gradient
+            (-tensor_m_prev) for computing new neuron parameters.
+        ignore_singular_values: bool
+            Whether to ignore singular values and treat them as 1. When True, only the
+            singular vectors are used for the update direction.
 
         Returns
         -------
-        tuple[torch.Tensor, torch.Tensor | None]
-            optimal extension for the previous layer (weights and biases)
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            Optimal extension for the previous layer (weights and biases).
+            Returns (None, None) when previous_module is None.
 
         Raises
         ------
         NotImplementedError
-            if the previous module is not of type GrowingModule
+            If the previous module is not of type GrowingModule.
         """
-        self.compute_optimal_delta(dtype=dtype)
+        # Keep side effects coherent across configurations:
+        # - compute_delta=True: compute and store full delta update.
+        # - compute_delta=False/use_projection=True: compute delta statistics only
+        #   (needed for tensor_n), but do not create optimal_delta_layer.
+        # - compute_delta=False/use_projection=False: no natural-gradient step,
+        #   so set the corresponding first-order term to zero.
+        if compute_delta:
+            self.compute_optimal_delta(update=True, dtype=dtype)
+        else:
+            self.optimal_delta_layer = None
+            self.parameter_update_decrease = torch.tensor(
+                0.0,
+                device=self.device,
+                dtype=self.weight.dtype,
+            )
+            if use_projection and self.previous_module is not None:
+                self.compute_optimal_delta(update=False, dtype=dtype)
+            else:
+                self.delta_raw = None
+                self.parameter_update_decrease = torch.tensor(
+                    0.0,
+                    device=self.device,
+                    dtype=self.weight.dtype,
+                )
 
         if self.previous_module is None:
-            return  # FIXME: change the definition of the function
+            return None, None
         elif isinstance(self.previous_module, GrowingModule):
-            alpha_weight, alpha_bias, _, _ = self.compute_optimal_added_parameters(
+            alpha_weight, alpha_bias, _, _ = self._compute_optimal_added_parameters(
                 numerical_threshold=numerical_threshold,
                 statistical_threshold=statistical_threshold,
                 maximum_added_neurons=maximum_added_neurons,
                 update_previous=update_previous,
                 dtype=dtype,
-                use_projected_gradient=use_projected_gradient,
+                use_covariance=use_covariance,
+                alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
+                use_projection=use_projection,
+                ignore_singular_values=ignore_singular_values,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):
@@ -2918,13 +3057,13 @@ class GrowingModule(torch.nn.Module):
         else:
             raise ValueError(f"Unknown method: {method}.")
 
-    def complete_growth(self, extension_kwargs: dict) -> None:
+    def complete_growth(self, extension_kwargs: Any) -> None:
         """
         Complete the growth to the target size.
 
         Parameters
         ----------
-        extension_kwargs : dict
+        extension_kwargs : Any
             Additional arguments for creating layer extensions.
         """
         neurons_to_add = self.missing_neurons()
