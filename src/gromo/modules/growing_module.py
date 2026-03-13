@@ -2853,7 +2853,7 @@ class GrowingModule(torch.nn.Module):
         where std(W) is the empirical standard deviation of the reference_tensor
         if the reference_tensor has a non-zero variance.
         Otherwise, use bounds
-        -1 / sqrt(fan_in), 1 / sqrt(fan_in)
+        -sqrt(6 / fan_in), sqrt(6 / fan_in)
         where fan_in is the number of input features of the reference tensor + extension.
 
         Parameters
@@ -2891,7 +2891,8 @@ class GrowingModule(torch.nn.Module):
         ----------
         tensor: torch.Tensor
             tensor to initialize
-        reference_tensor: torch.Tensor | None (unused)
+        reference_tensor: torch.Tensor | None
+            Unused
         fan_in: int
             number of input features of the base tensor + extension
         """
@@ -2926,7 +2927,7 @@ class GrowingModule(torch.nn.Module):
             size of the input extension to create, if None use extension_size
         output_extension_init: str
             Initialization method for the output extension. Must be one of the keys in
-            `known_inits` ("copy_uniform", "kaiming" "zeros"), default "copy_uniform".
+            `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
         input_extension_init: str
             Initialization method for the input extension. Must be one of the keys in
             `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
