@@ -741,7 +741,7 @@ class LinearGrowingModule(GrowingModule):
             new_layer.bias = torch.nn.Parameter(bias)
         return new_layer
 
-    def add_parameters(
+    def add_parameters(  # type: ignore
         self,
         matrix_extension: torch.Tensor | None,
         bias_extension: torch.Tensor | None,
@@ -1008,7 +1008,7 @@ class LinearGrowingModule(GrowingModule):
         return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
 
     @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Linear) -> int:
+    def get_fan_in_from_layer(layer: torch.nn.Linear) -> int:  # type: ignore
         """
         Get the fan_in (number of input features) from a given layer.
 
