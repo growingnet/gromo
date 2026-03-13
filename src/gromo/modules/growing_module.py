@@ -2895,6 +2895,7 @@ class GrowingModule(torch.nn.Module):
         fan_in: int
             number of input features of the base tensor + extension
         """
+        del reference_tensor
         bound = (2.0 * 3.0 / fan_in) ** 0.5
         torch.nn.init.uniform_(tensor, -bound, bound)
 

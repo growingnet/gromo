@@ -3855,7 +3855,8 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                     input_extension_init="copy_uniform",
                 )
 
-            self.assertEqual(kaiming_mock.call_count, 4)
+            # For layer sizes 5 -> 0 -> 7, use Kaiming fallback for all but output bias
+            self.assertEqual(kaiming_mock.call_count, 3)
 
             # Verify extensions were created
             self.assertIsInstance(
