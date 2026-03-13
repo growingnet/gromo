@@ -2196,8 +2196,8 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
                 )
 
             # When out_channels=0, the layer has no weights
-            # So copy_uniform should fallback to 1/sqrt(fan_in)
-            extension_size = 3
+            # So copy_uniform should fallback to sqrt(2/fan_in)
+            extension_size = 13
 
             # Check that kaiming_initialization fallback is called
             with mock.patch.object(
@@ -2229,26 +2229,24 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
             assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
 
-            # When there are no hidden channels, the std should be 1/sqrt(fan_in)
+            # When there are no hidden channels, the std should be sqrt(2/fan_in)
             # For Conv2d: fan_in = in_channels * kernel_h * kernel_w
             # For extended_output_layer:
             # fan_in = layer_in.in_channels * kernel_h * kernel_w
             expected_output_ext_std = (
-                1.0
+                2
                 / (
                     layer_in.in_channels
                     * layer_in.kernel_size[0]
                     * layer_in.kernel_size[1]
                 )
-                ** 0.5
-            )
+            ) ** 0.5
+
             # For extended_input_layer:
             # fan_in = extension_size * kernel_h * kernel_w
             expected_input_ext_std = (
-                1.0
-                / (extension_size * layer_out.kernel_size[0] * layer_out.kernel_size[1])
-                ** 0.5
-            )
+                2 / (extension_size * layer_out.kernel_size[0] * layer_out.kernel_size[1])
+            ) ** 0.5
 
             # Verify std matches expected values
             # Allow tolerance for small sample statistics
@@ -2261,7 +2259,7 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             self.assertAlmostEqual(
                 layer_out.extended_input_layer.weight.std().item(),
                 expected_input_ext_std,
-                delta=expected_input_ext_std * 0.5,
+                delta=expected_input_ext_std * 0.1,
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
 
