@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Change how size-dependent post_layer_function modules handle extended activities in the growing module framework (:gh:`224` by `Théo Rudkiewicz`_)
 - Compute first order improvement for `GrowingDAG` (:gh:`210` by `Stella Douka`_)
 - Implement `GrowingLayerNorm` and `GrowingGroupNorm` (:gh:`211` by `Stella Douka`_)
 - Add a new `evaluate_model`,  `gradient_descent` and `compute_statistics` functions (:gh:`203` by `Théo Rudkiewicz`_)
