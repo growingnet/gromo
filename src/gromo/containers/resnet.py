@@ -307,7 +307,6 @@ class ResNetBasicBlock(SequentialGrowingModel):
             kwargs_second_layer=kwargs_second_layer,
             pre_activation=pre_activation,
             mid_activation=mid_activation,
-            extended_mid_activation=self.activation,
             pre_addition_function=pre_addition_function,
             name=name,
             target_hidden_channels=out_channels,

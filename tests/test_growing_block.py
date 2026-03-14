@@ -414,7 +414,7 @@ class TestLinearGrowingBlock(TorchTestCase):
                     block.pre_activation,
                     self.first_layer_extension,
                     ScalingModule(self.scaling_factor),
-                    block.first_layer.extended_post_layer_function,
+                    block.first_layer.post_layer_function,
                     self.second_layer_extension_no_downsample,
                     ScalingModule(self.scaling_factor),
                 )(x)
@@ -452,7 +452,7 @@ class TestLinearGrowingBlock(TorchTestCase):
                 block.pre_activation,
                 self.first_layer_extension,
                 ScalingModule(self.scaling_factor),
-                block.first_layer.extended_post_layer_function,
+                block.first_layer.post_layer_function,
                 self.second_layer_extension,
                 ScalingModule(self.scaling_factor),
             )(x) + self.downsample(x)

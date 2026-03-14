@@ -79,8 +79,8 @@ class TestConv2dGrowingBlock(TorchTestCase):
         sized_activation = SizedIdentity(self.hidden_channels)
 
         with self.assertWarns(UserWarning):
-            # Warns because no extended_mid_activation is provided
-            # and mid_activation is fixed size
+            # Warns because mid_activation has num_features but does not
+            # implement SupportsExtendedForward
             block = Conv2dGrowingBlock(
                 in_channels=self.in_channels,
                 out_channels=self.out_channels,
@@ -119,7 +119,6 @@ class TestConv2dGrowingBlock(TorchTestCase):
             kernel_size=3,
             hidden_channels=self.hidden_channels,
             mid_activation=growable_activation,
-            extended_mid_activation=torch.nn.Identity(),
             device=self.device,
             kwargs_layer={"padding": 1},
             growing_conv_type=RestrictedConv2dGrowingModule,
