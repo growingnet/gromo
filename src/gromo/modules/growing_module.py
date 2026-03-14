@@ -805,9 +805,6 @@ class GrowingModule(torch.nn.Module):
             self._has_explicit_extended_post_layer_function = False
             self.extended_post_layer_function = self.post_layer_function
 
-        if not self._has_explicit_extended_post_layer_function:
-            self._warn_if_missing_extended_forward(self.post_layer_function)
-
         self._allow_growing = allow_growing
         assert not self._allow_growing or isinstance(
             previous_module, (GrowingModule, MergeGrowingModule)
@@ -1219,43 +1216,6 @@ class GrowingModule(torch.nn.Module):
             self._pre_activity.retain_grad()
 
         return self.post_layer_function(pre_activity)
-
-    @staticmethod
-    def _warn_if_missing_extended_forward(fn: torch.nn.Module) -> None:
-        """Warn when a fixed-size module in *fn* lacks ``extended_forward``.
-
-        If ``post_layer_function`` (or any of its children in a
-        ``nn.Sequential``) exposes a fixed-size attribute such as
-        ``num_features`` but does **not** implement
-        :class:`SupportsExtendedForward`, the extended forward pass will fail
-        at runtime.  This helper produces a :class:`UserWarning` early so the
-        issue is visible at construction time.
-
-        Once the module implements :class:`SupportsExtendedForward` (e.g. after
-        adding ``extended_forward`` to a growing normalisation class), the
-        warning will stop firing automatically.
-
-        Parameters
-        ----------
-        fn: torch.nn.Module
-            The ``post_layer_function`` to inspect.
-        """
-        if isinstance(fn, torch.nn.Sequential):
-            modules: list[torch.nn.Module] = list(fn)
-        else:
-            modules = [fn]
-        for module in modules:
-            if hasattr(module, "num_features") and not isinstance(
-                module, SupportsExtendedForward
-            ):
-                warnings.warn(
-                    f"{type(module).__name__} in post_layer_function has a fixed "
-                    f"size (num_features) but does not implement `extended_forward`. "
-                    f"The extended forward pass may fail. Implement "
-                    f"`SupportsExtendedForward` on this module.",
-                    UserWarning,
-                    stacklevel=4,
-                )
 
     def _apply_extended_post_layer_function(
         self,
