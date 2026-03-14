@@ -277,7 +277,7 @@ class GrowingBlock(GrowingContainer):
             assert ext_1 is not None  # supplementary_pre_activity_1 is always a Tensor
             assert self.second_layer.extended_input_layer is not None, (
                 f"Second layer {self.second_layer.name} should have an "
-                f"extended output layer."
+                f"extended input layer."
             )
             supplementary_pre_activity_2 = (
                 self.scaling_factor * self.second_layer.extended_input_layer(ext_1)
