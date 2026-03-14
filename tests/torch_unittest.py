@@ -34,6 +34,12 @@ class GrowableIdentity(SizedIdentity):
     def grow(self, extension_size: int) -> None:
         self.num_features += extension_size
 
+    def extended_forward(
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply identity to x (sized correctly) and pass x_ext unchanged."""
+        return self(x) if x is not None else None, x_ext
+
 
 def indicator_batch(
     tensor_shape: tuple[int, ...],

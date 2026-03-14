@@ -689,22 +689,25 @@ class SupportsExtendedForward(Protocol):
     """
 
     def extended_forward(
-        self, x: torch.Tensor, x_ext: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """Apply the module to both the main and extension pre-activations.
 
         Parameters
         ----------
-        x: torch.Tensor
-            Main pre-activation tensor (N channels / features).
-        x_ext: torch.Tensor
-            Extension pre-activation tensor (M channels / features).
+        x: torch.Tensor | None
+            Main pre-activation tensor (N channels / features), or ``None``
+            when the main path is irrelevant.
+        x_ext: torch.Tensor | None
+            Extension pre-activation tensor (M channels / features), or ``None``
+            when there is no extension.
 
         Returns
         -------
-        tuple[torch.Tensor, torch.Tensor]
+        tuple[torch.Tensor | None, torch.Tensor | None]
             ``(processed_x, processed_x_ext)`` — both tensors after applying
-            the module, retaining their respective shapes.
+            the module, retaining their respective shapes.  ``None`` inputs
+            propagate as ``None`` outputs.
         """
         ...
 
@@ -1256,9 +1259,9 @@ class GrowingModule(torch.nn.Module):
 
     def _apply_extended_post_layer_function(
         self,
-        pre_activity: torch.Tensor,
-        supplementary_pre_activity: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        pre_activity: torch.Tensor | None,
+        supplementary_pre_activity: torch.Tensor | None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """Apply the post-layer function to both main and extension pre-activations.
 
         When ``extended_post_layer_function`` was provided explicitly (deprecated),
@@ -1267,48 +1270,67 @@ class GrowingModule(torch.nn.Module):
         Otherwise ``post_layer_function`` is queried:
 
         * If it implements :class:`SupportsExtendedForward`, its
-          ``extended_forward(x, x_ext)`` method is called and returns both
-          processed tensors.
+          ``extended_forward(x, x_ext)`` method is called unconditionally;
+          ``None`` handling is delegated to the implementation.
         * If it is a ``nn.Sequential``, each sub-module is applied in turn,
           threading ``(x, x_ext)`` through.  Sub-modules that implement
           :class:`SupportsExtendedForward` use ``extended_forward``; the rest
-          are applied independently to each tensor (valid for stateless modules
-          such as ``nn.ReLU``).
-        * Fallback: the module is applied independently to both tensors.
+          are applied independently to each non-``None`` tensor (valid for
+          stateless modules such as ``nn.ReLU``).
+        * Fallback: the module is applied independently to each non-``None``
+          tensor.
+
+        ``None`` inputs propagate as ``None`` outputs for the corresponding
+        element of the returned tuple.
 
         Parameters
         ----------
-        pre_activity: torch.Tensor
-            Main pre-activation tensor (N channels / features).
-        supplementary_pre_activity: torch.Tensor
+        pre_activity: torch.Tensor | None
+            Main pre-activation tensor (N channels / features), or ``None``
+            when the main path is irrelevant (e.g. zero hidden neurons).
+        supplementary_pre_activity: torch.Tensor | None
             Extension pre-activation tensor (M channels / features) produced by
-            ``extended_output_layer``.
+            ``extended_output_layer``, or ``None`` when there is no extension.
 
         Returns
         -------
-        tuple[torch.Tensor, torch.Tensor]
-            ``(activity, supplementary_activity)``.
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(activity, supplementary_activity)``.  Each element is ``None``
+            when the corresponding input was ``None``.
         """
         fn = self.post_layer_function
         if self._has_explicit_extended_post_layer_function:
             return (
-                fn(pre_activity),
-                self.extended_post_layer_function(supplementary_pre_activity),
+                fn(pre_activity) if pre_activity is not None else None,
+                (
+                    self.extended_post_layer_function(supplementary_pre_activity)
+                    if supplementary_pre_activity is not None
+                    else None
+                ),
             )
         elif isinstance(fn, SupportsExtendedForward):
             return fn.extended_forward(pre_activity, supplementary_pre_activity)
         elif isinstance(fn, torch.nn.Sequential):
-            x: torch.Tensor = pre_activity
-            x_ext: torch.Tensor = supplementary_pre_activity
+            x: torch.Tensor | None = pre_activity
+            x_ext: torch.Tensor | None = supplementary_pre_activity
             for module in fn:
                 if isinstance(module, SupportsExtendedForward):
                     x, x_ext = module.extended_forward(x, x_ext)
                 else:
-                    x = module(x)
-                    x_ext = module(x_ext)
+                    if x is not None:
+                        x = module(x)
+                    if x_ext is not None:
+                        x_ext = module(x_ext)
             return x, x_ext
         else:
-            return fn(pre_activity), fn(supplementary_pre_activity)
+            return (
+                fn(pre_activity) if pre_activity is not None else None,
+                (
+                    fn(supplementary_pre_activity)
+                    if supplementary_pre_activity is not None
+                    else None
+                ),
+            )
 
     def extended_forward(
         self,
@@ -1380,6 +1402,7 @@ class GrowingModule(torch.nn.Module):
             activity, supplementary_activity = self._apply_extended_post_layer_function(
                 pre_activity, supplementary_pre_activity
             )
+            assert activity is not None  # pre_activity is always a Tensor here
         else:
             activity = self.post_layer_function(pre_activity)
             supplementary_activity = None
