@@ -268,16 +268,25 @@ class GrowingBlock(GrowingContainer):
 
             return x + identity
         elif self.first_layer.extended_output_layer is not None:
-            x = self.scaling_factor * self.first_layer.extended_output_layer(x)
-            x = self.first_layer.extended_post_layer_function(x)
+            supplementary_pre_activity_1 = (
+                self.scaling_factor * self.first_layer.extended_output_layer(x)
+            )
+            _, ext_1 = self.first_layer._apply_extended_post_layer_function(
+                None, supplementary_pre_activity_1
+            )
+            assert ext_1 is not None  # supplementary_pre_activity_1 is always a Tensor
             assert self.second_layer.extended_input_layer is not None, (
                 f"Second layer {self.second_layer.name} should have an "
-                f"extended output layer."
+                f"extended input layer."
             )
-            x = self.scaling_factor * self.second_layer.extended_input_layer(x)
-            x = self.second_layer.extended_post_layer_function(x)
-
-            return x + identity
+            supplementary_pre_activity_2 = (
+                self.scaling_factor * self.second_layer.extended_input_layer(ext_1)
+            )
+            _, ext_2 = self.second_layer._apply_extended_post_layer_function(
+                None, supplementary_pre_activity_2
+            )
+            assert ext_2 is not None  # supplementary_pre_activity_2 is always a Tensor
+            return ext_2 + identity
         else:
             return identity
 
@@ -672,9 +681,6 @@ class LinearGrowingBlock(GrowingBlock):
     mid_activation : torch.nn.Module | None
         activation function to use between the two layers,
         if None use the activation function
-    extended_mid_activation : torch.nn.Module | None
-        activation function to use between the two layers in the extended forward,
-        if None use the mid_activation
     pre_addition_function : torch.nn.Module
         activation function to use before the addition with the identity,
         if None use the identity function
@@ -701,7 +707,6 @@ class LinearGrowingBlock(GrowingBlock):
         activation: torch.nn.Module | None = torch.nn.Identity(),
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
-        extended_mid_activation: torch.nn.Module | None = None,
         pre_addition_function: torch.nn.Module = torch.nn.Identity(),
         name: str = "block",
         kwargs_layer: dict | None = None,
@@ -733,7 +738,6 @@ class LinearGrowingBlock(GrowingBlock):
                 out_features=hidden_features,
                 name=f"{name}(first_layer)",
                 post_layer_function=mid_activation,
-                extended_post_layer_function=extended_mid_activation,
                 **kwargs_first_layer,
             )
             second_layer = LinearGrowingModule(
@@ -785,9 +789,6 @@ class Conv2dGrowingBlock(GrowingBlock):
     mid_activation : torch.nn.Module | None
         activation function to use between the two layers,
         if None use the activation function
-    extended_mid_activation : torch.nn.Module | None
-        extended activation function to use between the two layers,
-        if None use the extended activation function
     pre_addition_function : torch.nn.Module
         activation function to use before the addition with the identity,
         if None use the identity function
@@ -822,7 +823,6 @@ class Conv2dGrowingBlock(GrowingBlock):
         activation: torch.nn.Module | None = None,
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
-        extended_mid_activation: torch.nn.Module | None = None,
         pre_addition_function: torch.nn.Module = torch.nn.Identity(),
         name: str = "conv_block",
         kwargs_layer: dict | None = None,
@@ -866,7 +866,6 @@ class Conv2dGrowingBlock(GrowingBlock):
                 out_channels=hidden_channels,
                 name=f"{name}(first_layer)",
                 post_layer_function=mid_activation,
-                extended_post_layer_function=extended_mid_activation,
                 device=device,
                 **kwargs_first_layer,
             )

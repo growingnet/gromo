@@ -211,6 +211,34 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
 
         # Note: num_batches_tracked is just a counter, so no need to extend
 
+    def extended_forward(
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply batch normalisation to the main tensor; pass the extension through unchanged.
+
+        Batch normalisation is tied to ``num_features = N`` and cannot process
+        the extension tensor, which has ``M`` channels.  The correct behaviour
+        for the extension part is the identity: the next layer's input will see
+        the raw extension pre-activation, consistent with what stateless
+        activation functions do to it.
+
+        Parameters
+        ----------
+        x: torch.Tensor | None
+            Main pre-activation tensor (N channels / features), or ``None``
+            when the main path is irrelevant.
+        x_ext: torch.Tensor | None
+            Extension pre-activation tensor (M channels / features), or ``None``
+            when there is no extension.
+
+        Returns
+        -------
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(self(x), x_ext)`` — batch-normalised main tensor and unmodified
+            extension tensor.  ``None`` inputs propagate as ``None`` outputs.
+        """
+        return self(x) if x is not None else None, x_ext
+
     def get_growth_info(self) -> dict:
         """
         Get information about the growth of this layer.
@@ -416,6 +444,32 @@ class GrowingLayerNorm(nn.LayerNorm):
                     as_parameter=True,
                 )
 
+    def extended_forward(
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply layer normalisation to the main tensor; pass the extension through unchanged.
+
+        Layer normalisation is tied to ``normalized_shape`` and cannot process
+        the extension tensor, which has a different last dimension.  The correct
+        behaviour for the extension part is the identity.
+
+        Parameters
+        ----------
+        x: torch.Tensor | None
+            Main pre-activation tensor (normalised shape N), or ``None``
+            when the main path is irrelevant.
+        x_ext: torch.Tensor | None
+            Extension pre-activation tensor (M features in the last dimension),
+            or ``None`` when there is no extension.
+
+        Returns
+        -------
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(self(x), x_ext)`` — layer-normalised main tensor and unmodified
+            extension tensor.  ``None`` inputs propagate as ``None`` outputs.
+        """
+        return self(x) if x is not None else None, x_ext
+
     def get_growth_info(self) -> dict:
         """
         Get information about the growth of this layer.
@@ -585,6 +639,32 @@ class GrowingGroupNorm(nn.GroupNorm):
                 device,
                 as_parameter=True,
             )
+
+    def extended_forward(
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply group normalisation to the main tensor; pass the extension through unchanged.
+
+        Group normalisation is tied to ``num_channels`` and cannot process the
+        extension tensor, which has a different number of channels.  The correct
+        behaviour for the extension part is the identity.
+
+        Parameters
+        ----------
+        x: torch.Tensor | None
+            Main pre-activation tensor (num_channels channels), or ``None``
+            when the main path is irrelevant.
+        x_ext: torch.Tensor | None
+            Extension pre-activation tensor (M channels), or ``None`` when
+            there is no extension.
+
+        Returns
+        -------
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(self(x), x_ext)`` — group-normalised main tensor and unmodified
+            extension tensor.  ``None`` inputs propagate as ``None`` outputs.
+        """
+        return self(x) if x is not None else None, x_ext
 
     def get_growth_info(self) -> dict:
         """

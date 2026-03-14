@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Iterator
+from typing import Any, Iterator, Protocol, runtime_checkable
 
 import numpy as np
 import torch
@@ -673,6 +673,45 @@ class MergeGrowingModule(torch.nn.Module):
         self.next_modules = []
 
 
+@runtime_checkable
+class SupportsExtendedForward(Protocol):
+    """Protocol for modules that provide an extended_forward method.
+
+    Modules implementing this protocol can be used inside ``post_layer_function``
+    of a :class:`GrowingModule` without requiring a separate
+    ``extended_post_layer_function``.
+
+    :meth:`extended_forward` receives both the *main* pre-activation ``x`` (N
+    channels / features) and the *extension* pre-activation ``x_ext`` (M channels
+    / features), and must return both processed tensors.  This mirrors the
+    ``(activity, supplementary_activity)`` convention of
+    :meth:`GrowingModule.extended_forward`.
+    """
+
+    def extended_forward(
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply the module to both the main and extension pre-activations.
+
+        Parameters
+        ----------
+        x: torch.Tensor | None
+            Main pre-activation tensor (N channels / features), or ``None``
+            when the main path is irrelevant.
+        x_ext: torch.Tensor | None
+            Extension pre-activation tensor (M channels / features), or ``None``
+            when there is no extension.
+
+        Returns
+        -------
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(processed_x, processed_x_ext)`` — both tensors after applying
+            the module, retaining their respective shapes.  ``None`` inputs
+            propagate as ``None`` outputs.
+        """
+        ...
+
+
 class GrowingModule(torch.nn.Module):
     """
     Abstract class for a Module of dynamic size
@@ -750,24 +789,21 @@ class GrowingModule(torch.nn.Module):
         self.layer: torch.nn.Module = layer.to(self.device)
         # TODO: don't allow non-linearity if prev module is merge
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
-        if extended_post_layer_function is None:
-            self.extended_post_layer_function = self.post_layer_function
-        else:
-            self.extended_post_layer_function = extended_post_layer_function.to(
-                self.device
-            )
-        if isinstance(self.extended_post_layer_function, torch.nn.Sequential):
-            for module in self.extended_post_layer_function:
-                if hasattr(module, "num_features"):
-                    warnings.warn(
-                        f"Warning in {self.name}: The extended post layer "
-                        f"function may get a variable input size."
-                    )
-        elif hasattr(self.extended_post_layer_function, "num_features"):
+        if extended_post_layer_function is not None:
+            self._has_explicit_extended_post_layer_function: bool = True
             warnings.warn(
-                f"Warning in {self.name}: The extended post layer "
-                f"function may get a variable input size."
+                "The `extended_post_layer_function` parameter is deprecated and will be "
+                "removed in a future version. Implement `extended_forward` on the modules "
+                "used in `post_layer_function` instead (see `SupportsExtendedForward`).",
+                DeprecationWarning,
+                stacklevel=2,
             )
+            self.extended_post_layer_function: torch.nn.Module = (
+                extended_post_layer_function.to(self.device)
+            )
+        else:
+            self._has_explicit_extended_post_layer_function = False
+            self.extended_post_layer_function = self.post_layer_function
 
         self._allow_growing = allow_growing
         assert not self._allow_growing or isinstance(
@@ -1181,6 +1217,81 @@ class GrowingModule(torch.nn.Module):
 
         return self.post_layer_function(pre_activity)
 
+    def _apply_extended_post_layer_function(
+        self,
+        pre_activity: torch.Tensor | None,
+        supplementary_pre_activity: torch.Tensor | None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply the post-layer function to both main and extension pre-activations.
+
+        When ``extended_post_layer_function`` was provided explicitly (deprecated),
+        the two functions are applied separately for backward compatibility.
+
+        Otherwise ``post_layer_function`` is queried:
+
+        * If it implements :class:`SupportsExtendedForward`, its
+          ``extended_forward(x, x_ext)`` method is called unconditionally;
+          ``None`` handling is delegated to the implementation.
+        * If it is a ``nn.Sequential``, each sub-module is applied in turn,
+          threading ``(x, x_ext)`` through.  Sub-modules that implement
+          :class:`SupportsExtendedForward` use ``extended_forward``; the rest
+          are applied independently to each non-``None`` tensor (valid for
+          stateless modules such as ``nn.ReLU``).
+        * Fallback: the module is applied independently to each non-``None``
+          tensor.
+
+        ``None`` inputs propagate as ``None`` outputs for the corresponding
+        element of the returned tuple.
+
+        Parameters
+        ----------
+        pre_activity: torch.Tensor | None
+            Main pre-activation tensor (N channels / features), or ``None``
+            when the main path is irrelevant (e.g. zero hidden neurons).
+        supplementary_pre_activity: torch.Tensor | None
+            Extension pre-activation tensor (M channels / features) produced by
+            ``extended_output_layer``, or ``None`` when there is no extension.
+
+        Returns
+        -------
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(activity, supplementary_activity)``.  Each element is ``None``
+            when the corresponding input was ``None``.
+        """
+        fn = self.post_layer_function
+        if self._has_explicit_extended_post_layer_function:
+            return (
+                fn(pre_activity) if pre_activity is not None else None,
+                (
+                    self.extended_post_layer_function(supplementary_pre_activity)
+                    if supplementary_pre_activity is not None
+                    else None
+                ),
+            )
+        elif isinstance(fn, SupportsExtendedForward):
+            return fn.extended_forward(pre_activity, supplementary_pre_activity)
+        elif isinstance(fn, torch.nn.Sequential):
+            x: torch.Tensor | None = pre_activity
+            x_ext: torch.Tensor | None = supplementary_pre_activity
+            for module in fn:
+                if isinstance(module, SupportsExtendedForward):
+                    x, x_ext = module.extended_forward(x, x_ext)
+                else:
+                    if x is not None:
+                        x = module(x)
+                    if x_ext is not None:
+                        x_ext = module(x_ext)
+            return x, x_ext
+        else:
+            return (
+                fn(pre_activity) if pre_activity is not None else None,
+                (
+                    fn(supplementary_pre_activity)
+                    if supplementary_pre_activity is not None
+                    else None
+                ),
+            )
+
     def extended_forward(
         self,
         x: torch.Tensor,
@@ -1248,13 +1359,13 @@ class GrowingModule(torch.nn.Module):
             supplementary_pre_activity = (
                 self._scaling_factor_next_module * self.extended_output_layer(x)
             )
-            supplementary_activity = self.extended_post_layer_function(
-                supplementary_pre_activity
+            activity, supplementary_activity = self._apply_extended_post_layer_function(
+                pre_activity, supplementary_pre_activity
             )
+            assert activity is not None  # pre_activity is always a Tensor here
         else:
+            activity = self.post_layer_function(pre_activity)
             supplementary_activity = None
-
-        activity = self.post_layer_function(pre_activity)
 
         return activity, supplementary_activity
 
