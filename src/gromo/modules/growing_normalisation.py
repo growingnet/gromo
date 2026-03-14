@@ -211,6 +211,32 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
 
         # Note: num_batches_tracked is just a counter, so no need to extend
 
+    def extended_forward(
+        self, x: torch.Tensor, x_ext: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply batch normalisation to the main tensor; pass the extension through unchanged.
+
+        Batch normalisation is tied to ``num_features = N`` and cannot process
+        the extension tensor, which has ``M`` channels.  The correct behaviour
+        for the extension part is the identity: the next layer's input will see
+        the raw extension pre-activation, consistent with what stateless
+        activation functions do to it.
+
+        Parameters
+        ----------
+        x: torch.Tensor
+            Main pre-activation tensor (N channels / features).
+        x_ext: torch.Tensor
+            Extension pre-activation tensor (M channels / features).
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            ``(self(x), x_ext)`` — batch-normalised main tensor and unmodified
+            extension tensor.
+        """
+        return self(x), x_ext
+
     def get_growth_info(self) -> dict:
         """
         Get information about the growth of this layer.
@@ -416,6 +442,30 @@ class GrowingLayerNorm(nn.LayerNorm):
                     as_parameter=True,
                 )
 
+    def extended_forward(
+        self, x: torch.Tensor, x_ext: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply layer normalisation to the main tensor; pass the extension through unchanged.
+
+        Layer normalisation is tied to ``normalized_shape`` and cannot process
+        the extension tensor, which has a different last dimension.  The correct
+        behaviour for the extension part is the identity.
+
+        Parameters
+        ----------
+        x: torch.Tensor
+            Main pre-activation tensor (normalised shape N).
+        x_ext: torch.Tensor
+            Extension pre-activation tensor (M features in the last dimension).
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            ``(self(x), x_ext)`` — layer-normalised main tensor and unmodified
+            extension tensor.
+        """
+        return self(x), x_ext
+
     def get_growth_info(self) -> dict:
         """
         Get information about the growth of this layer.
@@ -585,6 +635,30 @@ class GrowingGroupNorm(nn.GroupNorm):
                 device,
                 as_parameter=True,
             )
+
+    def extended_forward(
+        self, x: torch.Tensor, x_ext: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply group normalisation to the main tensor; pass the extension through unchanged.
+
+        Group normalisation is tied to ``num_channels`` and cannot process the
+        extension tensor, which has a different number of channels.  The correct
+        behaviour for the extension part is the identity.
+
+        Parameters
+        ----------
+        x: torch.Tensor
+            Main pre-activation tensor (num_channels channels).
+        x_ext: torch.Tensor
+            Extension pre-activation tensor (M channels).
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            ``(self(x), x_ext)`` — group-normalised main tensor and unmodified
+            extension tensor.
+        """
+        return self(x), x_ext
 
     def get_growth_info(self) -> dict:
         """
