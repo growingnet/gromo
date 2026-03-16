@@ -32,7 +32,8 @@ jobs:
 
       - uses: pre-commit/action@v3.0.1
         env:
-          SKIP: ruff-check  # ,ruff-format
+          # Skip no-commit-to-branch in CI (push and pull_request); enforce it only in local dev.
+          SKIP: no-commit-to-branch  # ,ruff-format
 
       - name: Install dependencies
         run: |
