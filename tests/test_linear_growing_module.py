@@ -3900,7 +3900,10 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
 
             layer_out.apply_change(extension_size=extension_size)
 
-    def test_create_layer_extensions_with_kaiming_matches_pytorch(self) -> None:
+    @unittest_parametrize(({"bias": False}, {"bias": True}))
+    def test_create_layer_extensions_with_kaiming_matches_pytorch(
+        self, bias: bool
+    ) -> None:
         """Test Kaiming extension init matches PyTorch fan-in behavior."""
         extension_size = 18
 
@@ -3913,7 +3916,7 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                         UserWarning,
                     )
                     layer_in, layer_out = self.create_demo_layers(
-                        bias=False,
+                        bias=bias,
                         hidden_features=features,
                     )
 
