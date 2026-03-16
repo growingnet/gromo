@@ -268,25 +268,30 @@ class GrowingBlock(GrowingContainer):
 
             return x + identity
         elif self.first_layer.extended_output_layer is not None:
-            supplementary_pre_activity_1 = (
+            suppl_pre_activity_first_layer = (
                 self.scaling_factor * self.first_layer.extended_output_layer(x)
             )
-            _, ext_1 = self.first_layer._apply_extended_post_layer_function(
-                None, supplementary_pre_activity_1
+            _, ext_first_layer = self.first_layer._apply_extended_post_layer_function(
+                None, suppl_pre_activity_first_layer
             )
-            assert ext_1 is not None  # supplementary_pre_activity_1 is always a Tensor
+            assert (
+                ext_first_layer is not None
+            )  # suppl_pre_activity_first_layer is always a Tensor
             assert self.second_layer.extended_input_layer is not None, (
                 f"Second layer {self.second_layer.name} should have an "
                 f"extended input layer."
             )
-            supplementary_pre_activity_2 = (
-                self.scaling_factor * self.second_layer.extended_input_layer(ext_1)
+            suppl_pre_activity_second_layer = (
+                self.scaling_factor
+                * self.second_layer.extended_input_layer(ext_first_layer)
             )
-            _, ext_2 = self.second_layer._apply_extended_post_layer_function(
-                None, supplementary_pre_activity_2
+            _, ext_second_layer = self.second_layer._apply_extended_post_layer_function(
+                None, suppl_pre_activity_second_layer
             )
-            assert ext_2 is not None  # supplementary_pre_activity_2 is always a Tensor
-            return ext_2 + identity
+            assert (
+                ext_second_layer is not None
+            )  # suppl_pre_activity_second_layer is always a Tensor
+            return ext_second_layer + identity
         else:
             return identity
 
