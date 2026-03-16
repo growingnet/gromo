@@ -1559,7 +1559,7 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def compute_n_update(self) -> torch.Tensor:
+    def compute_n_update(self) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor N. Should be added to the type of layer.
 
@@ -1567,6 +1567,8 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             update of the tensor N
+        int
+            number of samples used to compute the update
 
         Raises
         ------
