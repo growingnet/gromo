@@ -2871,11 +2871,11 @@ class GrowingModule(torch.nn.Module):
             or reference_tensor.numel() < 2
             or (std_dev := reference_tensor.std().item()) == 0
         ):
-            return self.kaiming_initialization(tensor, reference_tensor, fan_in)
-
-        # Initialize with uniform distribution
-        bound = 3.0**0.5 * std_dev
-        torch.nn.init.uniform_(tensor, -bound, bound)
+            self.kaiming_initialization(tensor, reference_tensor, fan_in)
+        else:
+            # Initialize with uniform distribution
+            bound = 3.0**0.5 * std_dev
+            torch.nn.init.uniform_(tensor, -bound, bound)
 
     @torch.no_grad()
     def kaiming_initialization(
@@ -2931,6 +2931,25 @@ class GrowingModule(torch.nn.Module):
         input_extension_init: str
             Initialization method for the input extension. Must be one of the keys in
             `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
+
+        Notes
+        -----
+        Additional initialization methods can be added by registering them in the
+        local `known_inits` dictionary of this method. Each initialization callable is
+        applied to the extension weight tensor and to the extension bias tensor, if the
+        layer has a bias.
+
+        The callable must accept the following arguments:
+
+        tensor: torch.Tensor
+            Tensor of the weight/bias extension, to initialize.
+        reference_tensor: torch.Tensor | None
+            Weight/bias tensor from the layer before extension.
+        fan_in: int
+            The fan_in of the layer, after including the extension.
+
+        An initialization callable may also modify the existing weights/biases, by
+        mutating `reference_tensor`.
 
         Raises
         ------

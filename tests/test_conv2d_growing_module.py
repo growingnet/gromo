@@ -1,5 +1,6 @@
 import random
 import types
+import warnings
 from copy import deepcopy
 from unittest import main, mock
 
@@ -2271,10 +2272,16 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
 
         for test_case, channels in (("with_features", 15), ("without_features", 0)):
             with self.subTest(case=test_case):
-                layer_in, layer_out = self.create_demo_layers(
-                    bias=False,
-                    hidden_channels=channels,
-                )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        ".*Initializing zero-element tensors is a no-op.*",
+                        UserWarning,
+                    )
+                    layer_in, layer_out = self.create_demo_layers(
+                        bias=False,
+                        hidden_channels=channels,
+                    )
 
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,

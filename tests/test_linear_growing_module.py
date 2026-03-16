@@ -481,60 +481,61 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         - without extension_size and without self.eigenvalues_extension
         (error on apply change)
         """
-        warnings.filterwarnings(
-            "ignore",
-            ".*The extended post layer function may get a variable input size.*",
-            UserWarning,
-        )
-
-        with self.subTest("Growable post layer function"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                ".*The extended post layer function may get a variable input size.*",
+                UserWarning,
             )
-            second_module.apply_change(apply_previous=True, extension_size=2)
-            y = second_module(first_module(self.input_x))
-            self.assertIsInstance(y, torch.Tensor)
 
-        with self.subTest("Growable post layer function in a Sequential"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=torch.nn.Sequential(
-                    torch.nn.Identity(), GrowableIdentity(3)
+            with self.subTest("Growable post layer function"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3)
                 )
-            )
-            second_module.apply_change(apply_previous=True, extension_size=2)
-            y = second_module(first_module(self.input_x))
-            self.assertIsInstance(y, torch.Tensor)
+                second_module.apply_change(apply_previous=True, extension_size=2)
+                y = second_module(first_module(self.input_x))
+                self.assertIsInstance(y, torch.Tensor)
 
-        with self.subTest("Non-growable post layer function"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=SizedIdentity(3)
-            )
-            second_module.apply_change(apply_previous=True, extension_size=2)
-            with self.assertRaises(ValueError):
-                first_module(self.input_x)
+            with self.subTest("Growable post layer function in a Sequential"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=torch.nn.Sequential(
+                        torch.nn.Identity(), GrowableIdentity(3)
+                    )
+                )
+                second_module.apply_change(apply_previous=True, extension_size=2)
+                y = second_module(first_module(self.input_x))
+                self.assertIsInstance(y, torch.Tensor)
 
-        with self.subTest("Incorrect extension size"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3)
-            )
-            second_module.apply_change(apply_previous=True, extension_size=3)
-            with self.assertRaises(ValueError):
-                first_module(self.input_x)
+            with self.subTest("Non-growable post layer function"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=SizedIdentity(3)
+                )
+                second_module.apply_change(apply_previous=True, extension_size=2)
+                with self.assertRaises(ValueError):
+                    first_module(self.input_x)
 
-        with self.subTest("No extension size but eigenvalues_extension set"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3), include_eigenvalues=True
-            )
-            second_module.apply_change(apply_previous=True)
-            y = second_module(first_module(self.input_x))
-            self.assertIsInstance(y, torch.Tensor)
+            with self.subTest("Incorrect extension size"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3)
+                )
+                second_module.apply_change(apply_previous=True, extension_size=3)
+                with self.assertRaises(ValueError):
+                    first_module(self.input_x)
 
-        with self.subTest("No extension size and no eigenvalues_extension"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3)
-            )
-            with self.assertRaises(AssertionError):
+            with self.subTest("No extension size but eigenvalues_extension set"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3), include_eigenvalues=True
+                )
                 second_module.apply_change(apply_previous=True)
+                y = second_module(first_module(self.input_x))
+                self.assertIsInstance(y, torch.Tensor)
+
+            with self.subTest("No extension size and no eigenvalues_extension"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3)
+                )
+                with self.assertRaises(AssertionError):
+                    second_module.apply_change(apply_previous=True)
 
     def test_compute_s(self):
         """Test S tensor computation with optimized setup and helper methods."""
@@ -3905,10 +3906,16 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
 
         for test_case, features in (("with_features", 15), ("without_features", 0)):
             with self.subTest(case=test_case):
-                layer_in, layer_out = self.create_demo_layers(
-                    bias=False,
-                    hidden_features=features,
-                )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        ".*Initializing zero-element tensors is a no-op.*",
+                        UserWarning,
+                    )
+                    layer_in, layer_out = self.create_demo_layers(
+                        bias=False,
+                        hidden_features=features,
+                    )
 
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,
