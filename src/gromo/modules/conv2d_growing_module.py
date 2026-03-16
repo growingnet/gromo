@@ -1182,6 +1182,9 @@ class Conv2dGrowingModule(GrowingModule):
             assert (
                 bias is not None
             ), "The bias of the extension should be provided because the layer has a bias"
+            assert (
+                self.layer.bias is not None
+            ), "The bias of the current layer should not be None because the layer has a bias"
             self.layer = self.layer_of_tensor(
                 weight=torch.cat((self.weight, weight), dim=0),
                 bias=torch.cat((self.layer.bias, bias), dim=0),
@@ -1193,7 +1196,7 @@ class Conv2dGrowingModule(GrowingModule):
                     "because the layer has no bias.",
                     UserWarning,
                 )
-            self.layer = self.layer_of_tensor(
+            self.layer = self.layer_of_tensor(  # type: ignore
                 weight=torch.cat((self.weight, weight), dim=0), bias=None
             )
 
@@ -1203,7 +1206,7 @@ class Conv2dGrowingModule(GrowingModule):
             name=self.tensor_m.name,
         )
 
-    def update_input_size(
+    def update_input_size(  # type: ignore
         self,
         input_size: tuple[int, int] | torch.Size | None = None,
         compute_from_previous: bool = False,
@@ -1731,6 +1734,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             omega.shape[0] == self.out_channels
         ), "omega should have the same number of output features as the layer."
+        assert isinstance(self.previous_module, GrowingModule)
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]
@@ -1890,7 +1894,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         """
         self.layer: torch.nn.Conv2d  # CHECK: why do we need to specify the type here?
         if self._mask_tensor_t is None:
-            self._mask_tensor_t = compute_mask_tensor_t(self.input_size, self.layer).to(
+            self._mask_tensor_t = compute_mask_tensor_t(self.input_size, self.layer).to(  # type: ignore
                 self.device
             )
         return self._mask_tensor_t
@@ -2065,7 +2069,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             )
 
     @property
-    def tensor_s_growth(self) -> TensorStatistic:
+    def tensor_s_growth(self) -> TensorStatistic:  # type: ignore
         """
         Override `tensor_s_growth` to redirect to `self._tensor_s_growth` instead
         of `self.previous_module.tensor_s`.
@@ -2171,6 +2175,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             omega.shape[0]
             == self.out_channels * self.kernel_size[0] * self.kernel_size[1]
         ), "omega should have the same number of output features as the layer."
+        assert isinstance(self.previous_module, GrowingModule)
 
         if self.previous_module.use_bias:
             alpha_weight = alpha[:, :-1]
