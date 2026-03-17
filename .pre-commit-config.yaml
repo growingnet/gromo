@@ -27,17 +27,18 @@ repos:
     hooks:
       - id: blacken-docs
         additional_dependencies: [ black==23.3.0 ]
+        args: ["-l", "90"]
         exclude: ^.github/
 
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: 0.8.1
+    rev: 0.8.3
     hooks:
       - id: pydoclint
         exclude: ^docs/ |  ^setup\.py$ | ^tests/ |
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.3
+    rev: v0.15.6
     hooks:
       - id: ruff-check
         args: ["--fix", "--output-format=full"]
@@ -48,7 +49,7 @@ repos:
         verbose: true
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
         args:

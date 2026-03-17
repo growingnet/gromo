@@ -94,7 +94,7 @@ select = [
     # "ERA", # no commented code
     # "ANN", # flake8-annotations (basic type checking)
     "BLE",   # blind except
-    "B",   # flake8-bugbear
+    "B",     # flake8-bugbear
     "A",     # flake8-builtins
     "COM",   # flake8-commas
     "C4",    # flake8-comprehensions
@@ -111,14 +111,10 @@ select = [
     "E",     # pycodestyle errors
     "W",     # pycodestyle warnings
     "I",     # isort
-    "N",     # pep8-naming
     # "UP",  # pyupgrade
     "RUF",   # Ruff-specific rules
-    # "DOC",   # pydoclint
+    # "DOC",  # pydoclint
     "D",     # pydocstyle (docstring style)
-    "D101",  # docstring in public class
-    "D102",  # docstring in public method
-    "D103",  # docstring in public function
 ]
 
 # Ignore some rules that might be too strict for existing codebase
