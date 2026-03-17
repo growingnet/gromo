@@ -54,15 +54,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/gromo"]
 
-[tool.black]
-line-length = 90
-target-version = ["py311", "py312"]
-
-[tool.isort]
-profile = "black"
-line_length = 90
-lines_after_imports = 2
-
 [tool.coverage.run]
 branch = true
 include = [
@@ -103,7 +94,7 @@ select = [
     # "ERA", # no commented code
     # "ANN", # flake8-annotations (basic type checking)
     "BLE",   # blind except
-    # "B",   # flake8-bugbear
+    "B",   # flake8-bugbear
     "A",     # flake8-builtins
     "COM",   # flake8-commas
     "C4",    # flake8-comprehensions
@@ -123,6 +114,8 @@ select = [
     "N",     # pep8-naming
     # "UP",  # pyupgrade
     "RUF",   # Ruff-specific rules
+    # "DOC",   # pydoclint
+    "D",     # pydocstyle (docstring style)
     "D101",  # docstring in public class
     "D102",  # docstring in public method
     "D103",  # docstring in public function
@@ -142,6 +135,12 @@ ignore = [
     "N806",    # argument name should be lowercase
     "E731",    # do not assign a lambda expression, use a def
     "E501",    # line too long
+    "B007",    # flake8-bugbear: loop control variable used in closure
+    "B008",    # flake8-bugbear: call in default argument
+    "B028",    # flake8-bugbear: no explicit stacklevel
+    "B006",    # flake8-bugbear: mutable argument as default
+    "B018",    # flake8-bugbear: useless expression
+    "D100", "D105", "D200", "D205", "D400", "D401",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -161,3 +160,6 @@ indent-style = "space"
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"

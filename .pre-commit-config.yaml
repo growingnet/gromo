@@ -22,14 +22,6 @@ repos:
       - id: mixed-line-ending
       - id: forbid-new-submodules
 
-
-  - repo: https://github.com/psf/black
-    rev: 25.9.0
-    hooks:
-      - id: black
-        language_version: python3
-        args: [ --line-length=90, --target-version=py311, --target-version=py312 ]
-
   - repo: https://github.com/asottile/blacken-docs
     rev: 1.20.0
     hooks:
@@ -37,25 +29,6 @@ repos:
         additional_dependencies: [ black==23.3.0 ]
         exclude: ^.github/
 
-  - repo: https://github.com/PyCQA/isort
-    rev: 6.1.0
-    hooks:
-      - id: isort
-
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-        additional_dependencies: [
-          'flake8-blind-except',
-          'flake8-docstrings',
-          'flake8-bugbear',
-          'flake8-comprehensions',
-          'flake8-docstrings',
-          'flake8-implicit-str-concat',
-          'pydocstyle>=5.0.0',
-        ]
-        exclude: ^docs/ | ^setup\.py$ |
 
   - repo: https://github.com/jsh9/pydoclint
     rev: 0.8.1
@@ -66,11 +39,13 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.3
     hooks:
-    -   id: ruff-check
+      - id: ruff-check
         args: ["--fix", "--output-format=full"]
         files: ^(src|tests|examples)/
         verbose: true
-    # - id: ruff-format conflict with black
+      - id: ruff-format
+        files: ^(src|tests|examples)/
+        verbose: true
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
@@ -82,12 +57,3 @@ repos:
           - --quiet-level=2
         exclude_types: [ csv, json, svg ]
         exclude: ^tests/|generated/
-
-#  - repo: local
-#    hooks:
-#      - id: run-unit-tests-coverage
-#        name: Run Unit Tests with Coverage
-#        entry: bash bash/test_coverage.sh
-#        language: system
-#        always_run: true
-#        pass_filenames: false

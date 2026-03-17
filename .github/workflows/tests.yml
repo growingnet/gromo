@@ -33,7 +33,7 @@ jobs:
       - uses: pre-commit/action@v3.0.1
         env:
           # Skip no-commit-to-branch in CI (push and pull_request); enforce it only in local dev.
-          SKIP: no-commit-to-branch  # ,ruff-format
+          SKIP: no-commit-to-branch
 
       - name: Install dependencies
         run: |
