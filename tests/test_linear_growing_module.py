@@ -93,18 +93,19 @@ def theoretical_s_1(n: int, c: int) -> tuple[torch.Tensor, ...]:
 
     Returns
     -------
-    x1:
-        input tensor 1
-    x2:
-        input tensor 2
-    is1:
-        theoretical value of the tensor nS for x1
-    is2:
-        theoretical value of the tensor 2nS for (x1, x2)
-    os1:
-        theoretical value of the tensor nS for the output of W(x1)
-    os2:
-        theoretical value of the tensor 2nS for the output of W((x1, x2))
+    tuple[torch.Tensor, ...]
+        x1:
+            input tensor 1
+        x2:
+            input tensor 2
+        is1:
+            theoretical value of the tensor nS for x1
+        is2:
+            theoretical value of the tensor 2nS for (x1, x2)
+        os1:
+            theoretical value of the tensor nS for the output of W(x1)
+        os2:
+            theoretical value of the tensor 2nS for the output of W((x1, x2))
     """
     # Pre-compute common values to avoid redundant calculations
     device = global_device()
@@ -3091,12 +3092,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
 
         # Test input feature addition
         try:
-            layer.add_parameters(
-                matrix_extension=torch.randn(3, 2, device=global_device()),
-                bias_extension=None,
-                added_in_features=2,
-                added_out_features=0,
-            )
+            with self.assertWarns(UserWarning):
+                # The size has been changed but it is up to the user to change the connected layers.
+                layer.add_parameters(
+                    matrix_extension=torch.randn(3, 2, device=global_device()),
+                    bias_extension=None,
+                    added_in_features=2,
+                    added_out_features=0,
+                )
             self.assertEqual(layer.weight.shape[1], original_weight_shape[1] + 2)
         except (AssertionError, ValueError, RuntimeError):
             pass  # Configs where addition may fail.
@@ -3106,12 +3109,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
 
         # Test output feature addition
         try:
-            layer.add_parameters(
-                matrix_extension=torch.randn(2, 4, device=global_device()),
-                bias_extension=torch.randn(2, device=global_device()),
-                added_in_features=0,
-                added_out_features=2,
-            )
+            with self.assertWarns(UserWarning):
+                # The size has been changed but it is up to the user to change the connected layers.
+                layer.add_parameters(
+                    matrix_extension=torch.randn(2, 4, device=global_device()),
+                    bias_extension=torch.randn(2, device=global_device()),
+                    added_in_features=0,
+                    added_out_features=2,
+                )
             self.assertEqual(layer.weight.shape[0], 3 + 2)
         except (AssertionError, ValueError, RuntimeError):
             pass  # Configs where addition may fail.
