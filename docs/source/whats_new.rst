@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add `uv` files, use `uv sync --extra dev --extra test --extra doc` to install the package with all dependencies (:gh:`226` by `Théo Rudkiewicz`_)
 - Change how size-dependent post_layer_function modules handle extended activities in the growing module framework (:gh:`224` by `Théo Rudkiewicz`_)
 - Compute first order improvement for `GrowingDAG` (:gh:`210` by `Stella Douka`_)
 - Implement `GrowingLayerNorm` and `GrowingGroupNorm` (:gh:`211` by `Stella Douka`_)
