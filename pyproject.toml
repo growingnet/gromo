@@ -31,12 +31,13 @@ dependencies = [
 test = ["coverage"]
 dev = ["ruff", "pre-commit"]
 doc = [
+    "pre-commit",
+    "ruff",
     "Sphinx",
     "sphinx-gallery",
     "sphinx-bootstrap-theme",
     "pydata-sphinx-theme",
     "numpydoc",
-    "pre-commit",
     # "m2r2",
     "sphinx-design",
     "sphinx-rtd-theme",
@@ -44,7 +45,6 @@ doc = [
     "sphinxcontrib-bibtex",
     "sphinx-favicon",
     "matplotlib",
-    "tqdm",
 ]
 
 [build-system]
