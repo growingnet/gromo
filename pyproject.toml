@@ -29,7 +29,7 @@ dependencies = [
 ]
 [project.optional-dependencies]
 test = ["coverage"]
-dev = ["ruff", "pre-commit"]
+dev = ["ruff", "pre-commit", "pydoclint"]
 doc = [
     "pre-commit",
     "ruff",
