@@ -56,7 +56,8 @@ class TensorStatistic:
         name: str | None = None,
     ) -> None:
         assert shape is None or all(
-            i >= 0 and isinstance(i, (int, np.int64)) for i in shape  # type: ignore
+            i >= 0 and isinstance(i, (int, np.int64))
+            for i in shape  # type: ignore
         ), f"The shape must be a tuple of positive integers. {type(shape)}, {shape}"
         self._shape = shape
         self._update_function = update_function
@@ -124,9 +125,9 @@ class TensorStatistic:
         if self.samples == 0:
             raise ValueError("The tensor statistic has not been computed.")
         else:
-            assert (
-                self._tensor is not None
-            ), "If the number of samples is not zero the tensor should not be None."
+            assert self._tensor is not None, (
+                "If the number of samples is not zero the tensor should not be None."
+            )
             return self._tensor / self.samples
 
 

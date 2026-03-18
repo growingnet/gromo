@@ -164,7 +164,7 @@ class TestEnumerateDataloader(TorchTestCase):
         batches = list(enumerate_dataloader(dl, dataloader_seed=0))
         self.assertGreater(len(batches), 0)
         batches_again = list(enumerate_dataloader(dl, dataloader_seed=0))
-        for (_, (x_1, y_1)), (_, (x_2, y_2)) in zip(batches, batches_again):
+        for (_, (x_1, y_1)), (_, (x_2, y_2)) in zip(batches, batches_again, strict=True):
             self.assertTrue(torch.equal(x_1, x_2))
             self.assertTrue(torch.equal(y_1, y_2))
 

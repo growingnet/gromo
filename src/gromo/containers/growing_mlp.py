@@ -216,9 +216,9 @@ class GrowingMLP(GrowingModel):
         return self.__str__()
 
     def __getitem__(self, item: int) -> LinearGrowingModule:
-        assert (
-            0 <= item < len(self.layers)
-        ), f"{item=} should be in [0, {len(self.layers)})"
+        assert 0 <= item < len(self.layers), (
+            f"{item=} should be in [0, {len(self.layers)})"
+        )
         return self.layers[item]  # type: ignore
 
 

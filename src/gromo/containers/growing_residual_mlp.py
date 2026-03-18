@@ -99,9 +99,9 @@ class GrowingResidualBlock(GrowingContainer):
             y = self.activation(x)
             y, y_ext = self.first_layer.extended_forward(y)
             y, _ = self.second_layer.extended_forward(y, y_ext)
-            assert (
-                _ is None
-            ), f"The output of layer 2 {self.second_layer.name} should not be extended."
+            assert _ is None, (
+                f"The output of layer 2 {self.second_layer.name} should not be extended."
+            )
             del y_ext
             x = y + x
         return x

@@ -107,9 +107,9 @@ def optimal_delta(
         delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
 
     assert delta_raw is not None, "delta_raw should be computed by now."
-    assert (
-        delta_raw.isnan().sum() == 0
-    ), "The optimal delta should not contain NaN values."
+    assert delta_raw.isnan().sum() == 0, (
+        "The optimal delta should not contain NaN values."
+    )
     parameter_update_decrease = torch.trace(tensor_m @ delta_raw)
     if parameter_update_decrease < 0:
         warn(
@@ -452,14 +452,14 @@ def apply_border_effect_on_unfolded(
     assert isinstance(border_effect_conv, torch.nn.Conv2d) or isinstance(
         identity_conv, torch.nn.Conv2d
     ), "Either 'border_effect_conv' or 'identity_conv' must be provided."
-    assert all(
-        isinstance(s, int) and s > 0 for s in original_size
-    ), "'original_size' must be a tuple of positive integers."
+    assert all(isinstance(s, int) and s > 0 for s in original_size), (
+        "'original_size' must be a tuple of positive integers."
+    )
 
     if identity_conv is None:
-        assert isinstance(
-            border_effect_conv, torch.nn.Conv2d
-        ), "'border_effect_conv' must be provided if 'identity_conv' is None."
+        assert isinstance(border_effect_conv, torch.nn.Conv2d), (
+            "'border_effect_conv' must be provided if 'identity_conv' is None."
+        )
         channels = unfolded_tensor.shape[1]
         identity_conv = create_bordering_effect_convolution(
             channels=channels,

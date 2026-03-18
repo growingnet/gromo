@@ -59,7 +59,7 @@ class DiskDataset(IterableDataset):
                 f"got {len(input_t)} and {len(target_t)}"
             )
 
-        for x, y in zip(input_t, target_t):
+        for x, y in zip(input_t, target_t, strict=True):
             yield x, y
 
     def __iter__(self) -> Iterator:

@@ -121,7 +121,7 @@ class TestUtils(TorchTestCase):
 
     def test_set_from_conf(self) -> None:
         obj = type("", (), {})()
-        setattr(obj, "_config_data", {"var": 1})
+        obj._config_data = {"var": 1}
         set_from_conf(obj, "variable", 0)
         self.assertTrue(hasattr(obj, "variable"))
         self.assertEqual(obj.variable, 0)  # type: ignore

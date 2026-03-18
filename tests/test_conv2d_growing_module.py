@@ -470,7 +470,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         )
 
         # Use setattr to bypass type checking for test purposes
-        setattr(m, "input_size", None)
+        m.input_size = None
 
         # Set previous modules - should auto-set input_size
         m.set_previous_modules([self.prev])
@@ -1375,7 +1375,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             self.demo.kernel_size[0] * self.demo.kernel_size[1],
             hin * win,
         )
-        for i, (t, t_th) in enumerate(zip(tensor_t.shape, size_theoretic)):
+        for i, (t, t_th) in enumerate(zip(tensor_t.shape, size_theoretic, strict=True)):
             self.assertEqual(t, t_th, f"Error for dim {i}: should be {t_th}, got {t}")
 
     def test_tensor_m_prev_update(self):

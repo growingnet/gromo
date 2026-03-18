@@ -149,7 +149,9 @@ class TestGrowingMLP(TorchTestCase):
         y_pred_normalised_list = [self.model(x) for x, _ in self.dataloader]
 
         # Predictions should remain the same after normalization
-        for y_pred, y_pred_normalised in zip(y_pred_list, y_pred_normalised_list):
+        for y_pred, y_pred_normalised in zip(
+            y_pred_list, y_pred_normalised_list, strict=True
+        ):
             self.assertAllClose(y_pred, y_pred_normalised, atol=1e-7)
 
     def test_normalise_verbose(self):

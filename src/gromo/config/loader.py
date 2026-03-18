@@ -40,7 +40,6 @@ def _find_project_root(srcs: Sequence[str]) -> tuple[Path, str]:
     tuple[Path, str]
         project root path and discovery method
     """
-
     if not srcs:
         srcs = [str(Path.cwd().resolve())]
 

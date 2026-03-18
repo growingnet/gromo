@@ -3553,9 +3553,9 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             half = d // 2
             flat[:half] = target_std
             flat[half:-1] = -target_std
-            assert (
-                abs(tensor.std().item() - target_std) < 1e-5
-            ), f"Tensor std {tensor.std().item()} does not match target {target_std}"
+            assert abs(tensor.std().item() - target_std) < 1e-5, (
+                f"Tensor std {tensor.std().item()} does not match target {target_std}"
+            )
             return tensor
 
         def setup_layers_with_known_stds(

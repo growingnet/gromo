@@ -415,6 +415,7 @@ class MergeGrowingModule(torch.nn.Module):
         Compute the optimal delta for each previous layer using current S and M tensors.
         dW* = M S[-1]^-1 (if needed we use the pseudo-inverse)
         Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
+
         Parameters
         ----------
         update: bool, optional
@@ -426,17 +427,18 @@ class MergeGrowingModule(torch.nn.Module):
             matrix is invertible
         dtype: torch.dtype
             dtype for S and M during the computation
+
         Returns
         -------
         list[tuple[torch.Tensor, torch.Tensor]] | None
             optimal delta for the weights and the biases if needed
         """
-        assert (
-            self.previous_tensor_s is not None
-        ), f"No previous tensor S for {self.name}."
-        assert (
-            self.previous_tensor_m is not None
-        ), f"No previous tensor M for {self.name}."
+        assert self.previous_tensor_s is not None, (
+            f"No previous tensor S for {self.name}."
+        )
+        assert self.previous_tensor_m is not None, (
+            f"No previous tensor M for {self.name}."
+        )
         previous_tensor_s = self.previous_tensor_s()
         previous_tensor_m = self.previous_tensor_m()
         assert previous_tensor_s.shape[0] == self.total_in_features, (
@@ -1034,15 +1036,9 @@ class GrowingModule(torch.nn.Module):
                             UserWarning,
                         )
 
-                        value *= (
-                            torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
-                                module
-                            )(
-                                torch.tensor(
-                                    GRADIENT_COMPUTATION_EPSILON, device=self.device
-                                )
-                            )
-                        )
+                        value *= torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
+                            module
+                        )(torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device))
                 self._activation_gradient_previous_module = value
 
             else:
@@ -1052,11 +1048,9 @@ class GrowingModule(torch.nn.Module):
                     f"We will try to compute it numerically.",
                     UserWarning,
                 )
-                self._activation_gradient_previous_module = (
-                    torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
-                        inspected_function
-                    )(torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device))
-                )
+                self._activation_gradient_previous_module = torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
+                    inspected_function
+                )(torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device))
         assert self._activation_gradient_previous_module is not None
         return self._activation_gradient_previous_module
 
@@ -1153,9 +1147,9 @@ class GrowingModule(torch.nn.Module):
                 assert value.shape == (1,), "The scaling factor must be a scalar."
                 torch.nn.Module.__setattr__(self, key, value)
             else:
-                assert isinstance(
-                    value, (int, float)
-                ), "The scaling factor must be a scalar."
+                assert isinstance(value, (int, float)), (
+                    "The scaling factor must be a scalar."
+                )
                 self.__dict__[key].data[0] = value
                 # FIXME: should we not recreate the tensor? (problem with the gradient)
             if self.previous_module is None:
@@ -1447,9 +1441,9 @@ class GrowingModule(torch.nn.Module):
         """
         if self.store_input:
             if self._internal_store_input:
-                assert (
-                    self._input is not None
-                ), "The input is not stored. Apparently it was not computed yet."
+                assert self._input is not None, (
+                    "The input is not stored. Apparently it was not computed yet."
+                )
                 return self._input
             else:
                 assert self.previous_module, (
@@ -1496,9 +1490,9 @@ class GrowingModule(torch.nn.Module):
         """
         if self.store_pre_activity:
             if self._internal_store_pre_activity:
-                assert (
-                    self._pre_activity is not None
-                ), "The pre-activity is not stored. Apparently it was not computed yet."
+                assert self._pre_activity is not None, (
+                    "The pre-activity is not stored. Apparently it was not computed yet."
+                )
                 return self._pre_activity
             else:
                 assert self.next_module, (
@@ -2720,9 +2714,9 @@ class GrowingModule(torch.nn.Module):
         scales: list[float | None] = [scale_output, scale_input]  # type: ignore
         for i, specific_scale in enumerate(scales):
             if specific_scale is None:
-                assert (
-                    scale is not None
-                ), "scale can't be None if scale_input or scale_output is None."
+                assert scale is not None, (
+                    "scale can't be None if scale_input or scale_output is None."
+                )
                 scales[i] = scale
         assert all(isinstance(s, float) for s in scales)
         scales: list[float]

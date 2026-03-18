@@ -52,9 +52,9 @@ class AverageMeter(object):
             return torch.tensor(0.0)
             # raise ValueError("AverageMeter has no values to compute average")
         else:
-            assert (
-                self.sum is not None
-            ), "Sum should not be None when count is greater than 0"
+            assert self.sum is not None, (
+                "Sum should not be None when count is greater than 0"
+            )
             return self.sum / self.count
 
 
@@ -120,9 +120,9 @@ def enumerate_dataloader(
         msg = f"Only one  of `epochs` and `batch_limit` can be provided, but got {epochs=} and {batch_limit=}"
         raise TypeError(msg)
     assert (epochs is None) or (epochs >= 0), "Epochs must be non-negative"
-    assert (batch_limit is None) or (
-        batch_limit == -1 or batch_limit >= 0
-    ), "Batch limit must be -1 or non-negative"
+    assert (batch_limit is None) or (batch_limit == -1 or batch_limit >= 0), (
+        "Batch limit must be -1 or non-negative"
+    )
     if dataloader_seed is not None:
         if hasattr(dataloader, "generator") and isinstance(
             dataloader.generator, torch.Generator
@@ -301,9 +301,9 @@ def gradient_descent(
 
         y_pred = model(x)
         loss = loss_function(y_pred, y)
-        assert (
-            loss.isnan().sum() == 0
-        ), f"During training of {model}, loss is NaN: {loss}, sample index: {i / len(train_dataloader)}"
+        assert loss.isnan().sum() == 0, (
+            f"During training of {model}, loss is NaN: {loss}, sample index: {i / len(train_dataloader)}"
+        )
 
         loss.backward()
         optimizer.step()
@@ -358,9 +358,9 @@ def compute_statistics(
     tuple[float, float]
         A tuple containing (average_loss, metrics_value).
     """
-    assert (
-        not isinstance(loss_function, nn.Module) or loss_function.reduction == "sum"
-    ), "The loss function should not be averaged over the batch"
+    assert not isinstance(loss_function, nn.Module) or loss_function.reduction == "sum", (
+        "The loss function should not be averaged over the batch"
+    )
     loss_meter = AverageMeter()
     if metrics is None:
         metrics = DummyMetric()

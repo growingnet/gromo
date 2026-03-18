@@ -262,9 +262,9 @@ class GrowingBlock(GrowingContainer):
         if self.hidden_neurons > 0:
             x, x_ext = self.first_layer.extended_forward(x)
             x, _ = self.second_layer.extended_forward(x, x_ext)
-            assert (
-                _ is None
-            ), f"The output of layer 2 {self.second_layer.name} should not be extended."
+            assert _ is None, (
+                f"The output of layer 2 {self.second_layer.name} should not be extended."
+            )
 
             return x + identity
         elif self.first_layer.extended_output_layer is not None:
@@ -552,9 +552,9 @@ class GrowingBlock(GrowingContainer):
             if True and zeros_if_not_enough is True, will set the non selected
             fan-out parameters to zero
         """
-        assert (
-            self.eigenvalues_extension is not None
-        ), "No optimal added parameters computed."
+        assert self.eigenvalues_extension is not None, (
+            "No optimal added parameters computed."
+        )
         self.second_layer.sub_select_optimal_added_parameters(
             keep_neurons=keep_neurons,
             threshold=threshold,

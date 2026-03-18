@@ -188,9 +188,9 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
 
         # Extend running statistics if enabled
         if getattr(self, "track_running_stats", False):
-            assert isinstance(
-                self.running_mean, torch.Tensor
-            ), "running_mean is not initialized while track_running_stats is True"
+            assert isinstance(self.running_mean, torch.Tensor), (
+                "running_mean is not initialized while track_running_stats is True"
+            )
             device = self.running_mean.device
             self._extend_parameter(
                 "running_mean",
