@@ -206,24 +206,26 @@ class TestResNet(TorchTestCase):
                 )
 
         with self.subTest(normalization="none"):
-            model_no_norm = init_full_resnet_structure(
-                input_shape=(3, 32, 32),
-                out_features=7,
-                number_of_blocks_per_stage=1,
-                reduction_factor=0.5,
-                inplanes=8,
-                nb_stages=2,
-                normalization=None,
-                device=device,
-            )
-            norm_layers = [
-                module
-                for module in model_no_norm.modules()
-                if isinstance(module, torch.nn.BatchNorm2d)
-            ]
-            self.assertEqual(norm_layers, [])
-            output = model_no_norm(x)
-            self.assertShapeEqual(output, (2, 7))
+            for preactivation in [True, False]:
+                model_no_norm = init_full_resnet_structure(
+                    input_shape=(3, 32, 32),
+                    out_features=7,
+                    number_of_blocks_per_stage=1,
+                    reduction_factor=0.5,
+                    inplanes=8,
+                    nb_stages=2,
+                    use_preactivation=preactivation,
+                    normalization=None,
+                    device=device,
+                )
+                norm_layers = [
+                    module
+                    for module in model_no_norm.modules()
+                    if isinstance(module, torch.nn.BatchNorm2d)
+                ]
+                self.assertEqual(norm_layers, [])
+                output = model_no_norm(x)
+                self.assertShapeEqual(output, (2, 7))
 
         with self.subTest(normalization="batch"):
             normalization_kwargs: NormKwargs = {
