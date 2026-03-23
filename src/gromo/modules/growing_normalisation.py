@@ -104,7 +104,7 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             if new_values.device != device:
                 new_values = new_values.to(device)
             if new_values.dtype != current_param.dtype:
-                new_values.to(dtype=current_param.dtype)
+                new_values = new_values.to(dtype=current_param.dtype)
 
         # Concatenate old and new values
         assert new_values is not None  # Type hint for mypy
@@ -352,7 +352,7 @@ class GrowingLayerNorm(nn.LayerNorm):
             if new_values.device != device:
                 new_values = new_values.to(device)
             if new_values.dtype != current_param.dtype:
-                new_values.to(dtype=current_param.dtype)
+                new_values = new_values.to(dtype=current_param.dtype)
 
         assert new_values is not None
         with torch.no_grad():
@@ -557,7 +557,7 @@ class GrowingGroupNorm(nn.GroupNorm):
             if new_values.device != device:
                 new_values = new_values.to(device)
             if new_values.dtype != current_param.dtype:
-                new_values.to(dtype=current_param.dtype)
+                new_values = new_values.to(dtype=current_param.dtype)
 
         assert new_values is not None
         with torch.no_grad():
