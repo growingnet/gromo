@@ -1,9 +1,13 @@
-from typing import Any, Callable
+from typing import Any, Callable, TypeAlias
 
 import numpy as np
 import torch
 
 from gromo.utils.utils import global_device
+
+
+StatisticUpdateResult: TypeAlias = tuple[torch.Tensor, int]
+StatisticUpdateFunction: TypeAlias = Callable[..., StatisticUpdateResult]
 
 
 class TensorStatistic:
@@ -37,10 +41,7 @@ class TensorStatistic:
     def __init__(
         self,
         shape: tuple[int, ...] | None,
-        update_function: (
-            Callable[[Any], tuple[torch.Tensor, int]]
-            | Callable[[], tuple[torch.Tensor, int]]
-        ),
+        update_function: StatisticUpdateFunction,
         device: torch.device | str | None = None,
         name: str | None = None,
     ) -> None:
@@ -51,7 +52,7 @@ class TensorStatistic:
         ----------
         shape: tuple[int, ...] | None
             shape of the tensor to compute, if None use the shape of the first update
-        update_function: Callable[[Any], tuple[torch.Tensor, int]]
+        update_function: StatisticUpdateFunction
             function to update the tensor
         name: str
             used for debugging
@@ -71,9 +72,9 @@ class TensorStatistic:
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
     @torch.no_grad()
-    def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
+    def update(self, **kwargs: Any) -> StatisticUpdateResult | None:
         if self.updated is False:
-            update, nb_sample = self._update_function(**kwargs)  # type: ignore
+            update, nb_sample = self._update_function(**kwargs)
             assert (self._shape is None or self._shape == update.size()) and (
                 self._tensor is None or self._tensor.size() == update.size()
             ), (
@@ -143,10 +144,7 @@ class TensorStatiticWithEstimationError(TensorStatistic):
     def __init__(
         self,
         shape: tuple[int, ...] | None,
-        update_function: (
-            Callable[[Any], tuple[torch.Tensor, int]]
-            | Callable[[], tuple[torch.Tensor, int]]
-        ),
+        update_function: StatisticUpdateFunction,
         device: torch.device | str | None = None,
         name: str | None = None,
         trace_precision: float = 1e-3,
@@ -158,7 +156,7 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         ----------
         shape: tuple[int, ...] | None
             shape of the tensor to compute, if None use the shape of the first update
-        update_function: Callable[[Any], tuple[torch.Tensor, int]]
+        update_function: StatisticUpdateFunction
             function to update the tensor and compute the batch covariance
         name: str
             used for debugging
@@ -201,7 +199,7 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         return self._trace / self._batches
 
     @torch.no_grad()
-    def update(self, **kwargs) -> tuple[torch.Tensor, int] | None:
+    def update(self, **kwargs: Any) -> StatisticUpdateResult | None:
         if self.updated is False:
             update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
             assert isinstance(
