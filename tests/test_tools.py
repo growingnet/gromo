@@ -1,8 +1,7 @@
 import contextlib
 import io
 import unittest.mock
-import warnings
-from unittest import TestCase, main
+from unittest import main, mock
 
 import torch
 
@@ -31,12 +30,8 @@ test_input_shapes = [
 class TestTools(TorchTestCase):
     def test_sqrt_inverse_matrix_semi_positive(self):
         matrix = 9 * torch.eye(5)
-        sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
-            matrix, preferred_linalg_library=None
-        )
-        self.assertTrue(
-            torch.allclose(sqrt_inverse_matrix @ sqrt_inverse_matrix, matrix.inverse())
-        )
+        sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(matrix)
+        self.assertAllClose(sqrt_inverse_matrix @ sqrt_inverse_matrix, matrix.inverse())
 
     def test_random_sqrt_inverse_matrix_semi_positive(self):
         """
@@ -44,34 +39,60 @@ class TestTools(TorchTestCase):
         with X in (5, 3)
         Test the function on cpu and cuda if available.
         """
-        torch.manual_seed(0)
         if torch.cuda.is_available():
             devices = (torch.device("cuda"), torch.device("cpu"))
         else:
             devices = (torch.device("cpu"),)
-            print(f"Warning: No cuda device available therefore only testing on cpu")
+            print("Warning: No cuda device available therefore only testing on cpu")
         for device in devices:
             matrix = torch.randn(5, 3, dtype=torch.float64, device=device)
             matrix = matrix.t() @ matrix
             sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
-                matrix, threshold=1e-7, preferred_linalg_library=None
+                matrix, threshold=1e-7
             )
             reconstructed_inverse = sqrt_inverse_matrix @ sqrt_inverse_matrix
             if torch.abs(torch.linalg.det(matrix)) > 1e-5:
-                correct = torch.allclose(reconstructed_inverse, torch.linalg.inv(matrix))
-                self.assertTrue(
-                    correct,
-                    f"Error of "
-                    f"{torch.abs(reconstructed_inverse - matrix.inverse()).max().item():.2e}"
-                    f"with device {device}",
+                self.assertAllClose(
+                    reconstructed_inverse,
+                    torch.linalg.inv(matrix),
+                    message=f"Error with device {device}",
                 )
+
+    @unittest_parametrize(
+        (
+            {"dtype": torch.float32},
+            {"dtype": torch.float64},
+        )
+    )
+    def test_sqrt_inverse_matrix_semi_positive_shrinkage(self, dtype=torch.float32):
+        """
+        Test that the sqrt_inverse_matrix_semi_positive function applies shrinkage correctly.
+        """
+        matrix = torch.zeros(5, 5, dtype=dtype)
+        with mock.patch(
+            "gromo.utils.tools.torch.linalg.eigh",
+            side_effect=[
+                torch.linalg.LinAlgError("forced"),
+                torch.linalg.eigh(
+                    torch.eye(5, dtype=dtype) * torch.finfo(dtype).resolution
+                ),
+            ],
+        ):
+            with self.assertWarns(RuntimeWarning):
+                sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
+                    matrix, threshold=torch.finfo(dtype).resolution
+                )
+            self.assertAllClose(
+                sqrt_inverse_matrix,
+                torch.zeros_like(matrix, dtype=dtype),
+                message="Shrinkage not applied correctly",
+            )
 
     def test_compute_output_shape_conv(self):
         """
         Test the compute_output_shape_conv function
         with various inputs shapes and conv kernel sizes.
         """
-        torch.manual_seed(0)
         kernel_sizes = [1, 2, 3, 5, 7]
         input_shapes = [2, 5, 11, 41]
         for k_h in kernel_sizes:
@@ -103,12 +124,9 @@ class TestTools(TorchTestCase):
         Test the compute_mask_tensor_t function.
         Check that it respects its property.
         """
-        torch.manual_seed(0)
-
         for k_h in (1, 2, 3):
             for k_w in (1, 2, 3):
                 with self.subTest(k_h=k_h, k_w=k_w):
-
                     conv = torch.nn.Conv2d(2, 3, (k_h, k_w), bias=False)
                     # TODO: add test for the case with bias activated
                     conv_kernel_flatten = conv.weight.data.flatten(start_dim=2)
@@ -122,10 +140,11 @@ class TestTools(TorchTestCase):
                         mask,
                         x_input_flatten,
                     )
-                    self.assertTrue(
-                        torch.allclose(y_th, y_via_mask, atol=1e-6),
-                        f"Error with {h=}, {w=}, {k_h=}, {k_w=} "
-                        f"Error: {torch.abs(y_th - y_via_mask).max().item():.2e}",
+                    self.assertAllClose(
+                        y_th,
+                        y_via_mask,
+                        atol=1e-6,
+                        message=f"Error with {h=}, {w=}, {k_h=}, {k_w=} ",
                     )
 
     @unittest_parametrize(test_input_shapes)
@@ -134,7 +153,6 @@ class TestTools(TorchTestCase):
         Test the compute_mask_tensor_t function with bias activated.
         Check that it respects its property.
         """
-        torch.manual_seed(0)
         for k_h in (1, 2, 3):
             for k_w in (1, 2, 3):
                 conv = torch.nn.Conv2d(2, 3, (k_h, k_w), bias=True)
@@ -151,11 +169,13 @@ class TestTools(TorchTestCase):
                         x_input_flatten,
                     )
                     self.assertTrue(conv.bias is not None, "Bias should be activated")
+                    assert conv.bias is not None
                     y_via_mask += conv.bias.data.view(1, -1, 1)
-                    self.assertTrue(
-                        torch.allclose(y_th, y_via_mask, atol=1e-6),
-                        f"Error with {h=}, {w=}, {k_h=}, {k_w=} "
-                        f"Error: {torch.abs(y_th - y_via_mask).max().item():.2e}",
+                    self.assertAllClose(
+                        y_th,
+                        y_via_mask,
+                        atol=1e-6,
+                        message=f"Error with {h=}, {w=}, {k_h=}, {k_w=} ",
                     )
 
     def test_apply_border_effect_on_unfolded_typing(self, bias: bool = False):
@@ -165,7 +185,7 @@ class TestTools(TorchTestCase):
         unfolded_x = torch.nn.functional.unfold(
             x,
             kernel_size=conv1.kernel_size,
-            padding=conv1.padding,
+            padding=conv1.padding,  # type: ignore
             stride=conv1.stride,
             dilation=conv1.dilation,
         )
@@ -204,7 +224,7 @@ class TestTools(TorchTestCase):
         unfolded_x = torch.nn.functional.unfold(
             x,
             kernel_size=conv1.kernel_size,
-            padding=conv1.padding,
+            padding=conv1.padding,  # type: ignore
             stride=conv1.stride,
             dilation=conv1.dilation,
         )
@@ -254,6 +274,7 @@ class TestTools(TorchTestCase):
         # )
         w_c1 = conv1.weight.flatten(start_dim=1)
         if bias:
+            assert conv1.bias is not None
             w_c1 = torch.cat([w_c1, conv1.bias[:, None]], dim=1)
 
         y_via_mask = torch.einsum(
@@ -338,7 +359,7 @@ class TestTools(TorchTestCase):
         matrix_s_nonsym = torch.tensor([[1.0, 0.5], [0.3, 1.0]])
         matrix_n = torch.tensor([[1.0], [1.0]])
 
-        with self.assertWarns(UserWarning):
+        with self.assertWarns(UserWarning):  # The input matrix S is not symmetric
             alpha, omega, eigenvalues = compute_optimal_added_parameters(
                 matrix_s_nonsym, matrix_n
             )
@@ -359,6 +380,22 @@ class TestTools(TorchTestCase):
         self.assertFalse(torch.any(torch.isnan(alpha)))
         self.assertFalse(torch.any(torch.isnan(omega)))
         self.assertFalse(torch.any(torch.isnan(eigenvalues)))
+
+        # Test case 6: Alpha zero
+        matrix_s = torch.eye(3) * 2.0
+        matrix_n = torch.randn(3, 2)
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=0.0, alpha_zero=True
+        )
+
+        # Check that alpha is zero when forced via the alpha_zero=True flag
+        self.assertTrue(torch.allclose(alpha, torch.zeros_like(alpha)))
+
+        # Test case 7: Omega zero
+        alpha, omega, eigenvalues = compute_optimal_added_parameters(
+            matrix_s, matrix_n, statistical_threshold=0.0, omega_zero=True
+        )
+        self.assertTrue(torch.allclose(omega, torch.zeros_like(omega)))
 
     def test_compute_optimal_added_parameters_error_cases(self):
         """Test error handling in compute_optimal_added_parameters"""
@@ -408,102 +445,51 @@ class TestTools(TorchTestCase):
             create_bordering_effect_convolution(0, conv)  # Invalid channels
 
         with self.assertRaises(TypeError):
-            create_bordering_effect_convolution(12, "not_a_conv")  # Wrong type
+            create_bordering_effect_convolution(
+                12,
+                "not_a_conv",  # type: ignore
+            )  # Wrong type
 
     def test_sqrt_inverse_matrix_semi_positive_preferred_linalg(self):
-        """Test sqrt_inverse_matrix_semi_positive with preferred_linalg_library parameter (Line 35)"""
+        """Test sqrt_inverse_matrix_semi_positive with `magama` preferred_linalg_library"""
         matrix = 4 * torch.eye(3)
 
-        # Test with preferred_linalg_library set to None (should work)
-        result = sqrt_inverse_matrix_semi_positive(matrix, preferred_linalg_library=None)
         expected = sqrt_inverse_matrix_semi_positive(matrix)
-        self.assertTrue(torch.allclose(result, expected))
 
         # Test with preferred_linalg_library set to "magma"
         if torch.cuda.is_available():
             matrix_cuda = matrix.cuda()
-            result_magma = sqrt_inverse_matrix_semi_positive(
-                matrix_cuda, preferred_linalg_library="magma"
-            )
-            # Should execute line: torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
+            torch.backends.cuda.preferred_linalg_library(
+                "magma"
+            )  # Set preferred library to magma
+            result_magma = sqrt_inverse_matrix_semi_positive(matrix_cuda)
             self.assertIsNotNone(result_magma)
             self.assertEqual(result_magma.device.type, "cuda")
-
-    def test_sqrt_inverse_matrix_semi_positive_linalg_error_cusolver(self):
-        """Test LinAlgError handling with cusolver (Lines 38-45)"""
-        # Create a simple test matrix
-        matrix = 2 * torch.eye(3)
-
-        # Mock the LinAlgError and the backend setting to test cusolver path
-        import unittest.mock
-
-        with unittest.mock.patch("torch.linalg.eigh") as mock_eigh:
-            with unittest.mock.patch.object(
-                torch.backends.cuda, "preferred_linalg_library"
-            ):
-                # Test cusolver specific error handling
-                mock_eigh.side_effect = torch.linalg.LinAlgError("Mocked error")
-
-                # Test cusolver specific error handling
-                with self.assertRaises(ValueError) as context:
-                    sqrt_inverse_matrix_semi_positive(
-                        matrix, preferred_linalg_library="cusolver"
-                    )
-
-                # Should trigger if cusolver, raise ValueError
-                error_msg = str(context.exception)
-                self.assertIn("CUDA < 12.1", error_msg)
-                self.assertIn("magma", error_msg)
-
-    def test_sqrt_inverse_matrix_semi_positive_linalg_error_fallback(self):
-        """Test LinAlgError handling fallback (Line 45)"""
-        # Create a matrix for testing
-        matrix = 2 * torch.eye(3)
-
-        # Mock the LinAlgError to test the fallback error handling path
-        import unittest.mock
-
-        with unittest.mock.patch("torch.linalg.eigh") as mock_eigh:
-            original_error = torch.linalg.LinAlgError("Mocked original error")
-            mock_eigh.side_effect = original_error
-
-            # Test the else branch in the exception handler
-            # We'll patch the preferred_linalg_library check to simulate non-cusolver
-            with unittest.mock.patch.object(
-                torch.backends.cuda, "preferred_linalg_library"
-            ):
-                with self.assertRaises(torch.linalg.LinAlgError) as context:
-                    sqrt_inverse_matrix_semi_positive(
-                        matrix, preferred_linalg_library="default"  # Not cusolver
-                    )
-                self.assertEqual(str(context.exception), "Mocked original error")
+            torch.backends.cuda.preferred_linalg_library(
+                "default"
+            )  # Reset to default after test
+            self.assertAllClose(
+                result_magma.cpu(),
+                expected,
+                atol=1e-6,
+                message="Error with magma preferred_linalg_library",
+            )
 
     def test_compute_optimal_added_parameters_svd_error_handling(self):
         """Test SVD LinAlgError handling and debug output"""
         matrix_s = torch.eye(3) * 2.0
         matrix_n = torch.randn(3, 2)
 
-        # Mock the SVD to trigger LinAlgError on first call, succeed on second
-        # Create a proper successful result with correct values by computing SVD on the actual matrix_p
-        # Replicate the computation of matrix_p as in compute_optimal_added_parameters
-        matrix_s_inverse_sqrt = torch.linalg.inv(torch.linalg.cholesky(matrix_s))
-        matrix_p = matrix_s_inverse_sqrt @ matrix_n
-        u_real, s_real, vt_real = torch.linalg.svd(matrix_p, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
-        # Capture stdout to verify debug prints
+        # Mock the SVD to trigger LinAlgError
+        # The function now prints diagnostics and re-raises the error (no retry)
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
-                successful_result,  # Second call succeeds
-            ]
-
+            mock_svd.side_effect = torch.linalg.LinAlgError("Mocked SVD error")
             with unittest.mock.patch("sys.stdout", captured_output):
-                alpha, omega, eigenvalues = compute_optimal_added_parameters(
-                    matrix_s, matrix_n
-                )
+                with self.assertRaises(torch.linalg.LinAlgError) as context:
+                    # Function should raise the error after printing diagnostics
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             # Verify debug output was printed
             output = captured_output.getvalue()
@@ -513,35 +499,25 @@ class TestTools(TorchTestCase):
             self.assertIn("matrix_s_inverse_sqrt:", output)
             self.assertIn("matrix_p:", output)
 
-            # Verify the function still succeeded after retry
-            self.assertIsNotNone(alpha)
-            self.assertIsNotNone(omega)
-            self.assertIsNotNone(eigenvalues)
+            # Verify the error was re-raised
+            self.assertIn("Mocked SVD error", str(context.exception))
 
-            # Verify SVD was called twice (first failed, second succeeded)
-            self.assertEqual(mock_svd.call_count, 2)
+            # Verify SVD was called once (no retry)
+            self.assertEqual(mock_svd.call_count, 1)
 
     def test_compute_optimal_added_parameters_matrix_shapes_in_error(self):
         """Test that matrix information is correctly printed in SVD error scenario"""
         matrix_s = torch.eye(2) * 3.0
         matrix_n = torch.randn(2, 4)
 
-        # Create successful result BEFORE mocking
-        dummy_matrix = torch.randn(2, 4)  # Same shape as matrix_p would be
-        u_real, s_real, vt_real = torch.linalg.svd(dummy_matrix, full_matrices=False)
-        successful_result = (u_real, s_real, vt_real)
-
         # Capture stdout to verify matrix information is printed
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
-            mock_svd.side_effect = [
-                torch.linalg.LinAlgError("Test error"),
-                successful_result,
-            ]
-
+            mock_svd.side_effect = torch.linalg.LinAlgError("Test error")
             with contextlib.redirect_stdout(captured_output):
-                compute_optimal_added_parameters(matrix_s, matrix_n)
+                with self.assertRaises(torch.linalg.LinAlgError):
+                    compute_optimal_added_parameters(matrix_s, matrix_n)
 
             output = captured_output.getvalue()
 
@@ -643,7 +619,7 @@ class TestTools(TorchTestCase):
             ),
             unittest.mock.patch("gromo.utils.tools.warn") as mock_warn,
         ):
-            delta, decrease = optimal_delta(tensor_s, tensor_m)
+            delta, _ = optimal_delta(tensor_s, tensor_m)
 
             # Should have called warning about pseudo-inverse
             mock_warn.assert_called()
@@ -668,7 +644,7 @@ class TestTools(TorchTestCase):
         # Mock torch.trace to return a negative value
         with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
             with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
-                delta, decrease = optimal_delta(tensor_s, tensor_m)
+                optimal_delta(tensor_s, tensor_m)
 
                 # The warning should be called
                 mock_warn.assert_called()
@@ -694,7 +670,7 @@ class TestTools(TorchTestCase):
         # Mock torch.trace to return negative value, triggering the retry mechanism
         with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
             with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
-                delta, decrease = optimal_delta(tensor_s, tensor_m)
+                optimal_delta(tensor_s, tensor_m)
 
                 # Should warn about negative decrease and trying float64
                 warn_calls = [str(call) for call in mock_warn.call_args_list]
@@ -718,9 +694,7 @@ class TestTools(TorchTestCase):
 
         with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
             with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
-                delta, decrease = optimal_delta(
-                    tensor_s, tensor_m, force_pseudo_inverse=True
-                )
+                delta, _ = optimal_delta(tensor_s, tensor_m, force_pseudo_inverse=True)
 
                 # Should warn about setting delta to zero
                 warn_calls = [str(call) for call in mock_warn.call_args_list]
@@ -767,6 +741,151 @@ class TestTools(TorchTestCase):
                     self.assertFalse(torch.isnan(decrease).any())
                 else:
                     self.assertFalse(torch.isnan(torch.tensor(decrease)))
+
+
+class TestComputeOptimalAddedParametersTheory(TorchTestCase):
+    """
+    Theoretical tests for compute_optimal_added_parameters using simple
+    diagonal matrices.
+
+    Setup:
+        X = Diag(1, 2, 3, 4, 5)
+        Y = Diag(4, 4, 4, 4, 4)
+        N = X^T @ Y
+        S = X^T @ X
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.x = torch.diag(torch.arange(1.0, 6.0))
+        self.y = 4.0 * torch.eye(5)
+        self.n = self.x.T @ self.y
+        self.s = self.x.T @ self.x
+
+    def _reconstruction(self, alpha: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
+        """Compute X @ Alpha.T @ Omega.T, the reconstructed output."""
+        return self.x @ alpha.T @ omega.T
+
+    def test_s_xtx_exact_reconstruction(self) -> None:
+        """S=X^T X, ignore_singular_values=False:
+        X @ Alpha.T @ Omega.T == Y
+
+        With the correct covariance S, the full SVD reconstruction
+        exactly recovers Y.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            self.s,
+            self.n,
+            numerical_threshold=1e-10,
+            statistical_threshold=1e-6,
+        )
+        result = self._reconstruction(alpha, omega)
+        self.assertAllClose(
+            result,
+            self.y,
+            atol=1e-5,
+            message="With S=X^TX, reconstruction should exactly equal Y",
+        )
+
+    def test_s_xtx_ignore_sv_nonzero_pattern(self) -> None:
+        """S=X^T X, ignore_singular_values=True:
+        X @ Alpha.T @ Omega.T is non-zero iff Y is non-zero
+
+        When singular values are ignored (treated as 1), the reconstruction
+        preserves the non-zero structure of Y but not its exact values.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            self.s,
+            self.n,
+            numerical_threshold=1e-10,
+            statistical_threshold=0,
+            ignore_singular_values=True,
+        )
+        result = self._reconstruction(alpha, omega)
+        self.assertTrue(
+            torch.equal(result != 0, self.y != 0),
+            "With ignore_singular_values, non-zero pattern should match Y",
+        )
+
+    def test_s_none_max_neurons_2_structure(self) -> None:
+        """S=None, ignore_singular_values=False, maximum_added_neurons=2:
+        X @ Alpha.T @ Omega.T is equal to Y on the last 2 features,
+        and the first 3 features are zero.
+
+        Without S (GradMax path), the top-2 singular values of N correspond
+        to the last 2 features (largest entries of diagonal N). The first 3
+        features are exactly zero and the last 2 preserve Y's non-zero pattern.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            None,
+            self.n,
+            statistical_threshold=0,
+            maximum_added_neurons=2,
+        )
+        result = self._reconstruction(alpha, omega)
+
+        # First 3 row-features and column-features are zero
+        self.assertAllClose(
+            result[:3],
+            torch.zeros(3, 5),
+            atol=1e-6,
+            message="First 3 row-features should be zero",
+        )
+        self.assertAllClose(
+            result[:, :3],
+            torch.zeros(5, 3),
+            atol=1e-6,
+            message="First 3 column-features should be zero",
+        )
+
+        # Last 2 features have same non-zero pattern as Y
+        self.assertTrue(
+            torch.equal(result[3:] != 0, self.y[3:] != 0),
+            "Last 2 features should be non-zero where Y is non-zero",
+        )
+        self.assertAllClose(
+            result[3:],
+            (self.y * self.x**2)[3:],
+            atol=1e-5,
+            message="Last 2 features should match Y scaled by X^2",
+        )
+
+    def test_s_none_ignore_sv_max_neurons_2_pattern(self) -> None:
+        """S=None, ignore_singular_values=True, maximum_added_neurons=2:
+        For the last 2 features: non-zero iff Y is non-zero.
+        For the first 3 features: zero.
+
+        Same truncation as above, but with unit singular values the
+        reconstruction only preserves the directional (non-zero) pattern.
+        """
+        alpha, omega, _ = compute_optimal_added_parameters(
+            None,
+            self.n,
+            statistical_threshold=0,
+            maximum_added_neurons=2,
+            ignore_singular_values=True,
+        )
+        result = self._reconstruction(alpha, omega)
+
+        # First 3 features are zero
+        self.assertAllClose(
+            result[:3],
+            torch.zeros(3, 5),
+            atol=1e-6,
+            message="First 3 row-features should be zero",
+        )
+        self.assertAllClose(
+            result[:, :3],
+            torch.zeros(5, 3),
+            atol=1e-6,
+            message="First 3 column-features should be zero",
+        )
+
+        # Last 2 features: non-zero iff Y is non-zero
+        self.assertTrue(
+            torch.equal(result[3:] != 0, self.y[3:] != 0),
+            "Last 2 features: non-zero iff Y is non-zero",
+        )
 
 
 if __name__ == "__main__":

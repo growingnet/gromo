@@ -27,3 +27,36 @@ contact us!
 .. [TMLR24] Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G.
         (2024). Growing tiny networks: Spotting expressivity bottlenecks and
         fixing them optimally. TMLR.
+
+.. [ESANN2025] Stella Douka, Manon Verbockhaven, Théo Rudkiewicz, Stéphane Rivaud,
+        François P. Landes, Sylvain Chevallier and Guillaume Charpiat.
+        Growth strategies for arbitrary DAG neural architectures. ESANN 2025 -
+        33th European Symposium on Artificial Neural Networks, 2025, Bruges, Belgium.
+
+
+Installation
+~~~~~~~~~~~~
+
+Simply run the following commands to install the package:
+
+.. code-block:: bash
+
+    pip install build
+    git clone https://github.com/growingnet/gromo.git
+    cd gromo
+    python -m build
+    pip install -e .
+
+You may also clone with SSH if you have set up your SSH keys with GitHub:
+
+.. code-block:: bash
+
+    git clone git@github.com:growingnet/gromo.git
+
+Getting started
+~~~~~~~~~~~~~~~
+
+To learn how to use Gromo, we recommend starting with the following tutorials:
+
+- `GrowingContainer Tutorial <auto_examples/plot_growing_container_tutorial.html>`_ that shows how to use a growing neural network and train it on a simple dataset.
+- `GrowingModule Tutorial <auto_examples/plot_growing_module_tutorial.html>`_ that gets a little bit deeper into the details of growing modules.

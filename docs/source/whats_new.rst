@@ -20,7 +20,25 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-<<<<<<< HEAD
+- Adds configurability to the ResNet container to allow using BatchNorm2d or disabling normalization entirely (:gh:`228` by `Théo Rudkiewicz`_)
+- Add ``uv`` files, use ``uv sync --extra dev --extra test --extra doc`` to install the package with all dependencies (:gh:`226` by `Théo Rudkiewicz`_)
+- Use ``ruff`` for formatting (:gh:`227` by `Théo Rudkiewicz`_)
+- Change how size-dependent post_layer_function modules handle extended activities in the growing module framework (:gh:`224` by `Théo Rudkiewicz`_)
+- Compute first order improvement for `GrowingDAG` (:gh:`210` by `Stella Douka`_)
+- Implement `GrowingLayerNorm` and `GrowingGroupNorm` (:gh:`211` by `Stella Douka`_)
+- Add a new `evaluate_model`,  `gradient_descent` and `compute_statistics` functions (:gh:`203` by `Théo Rudkiewicz`_)
+- Reduce `ruff check` scope and make it blocking in CI/CD (:gh:`207` by `Théo Rudkiewicz`_)
+- Allow reconstruction of the computational graph of GrowingDAG to reload state_dict (:gh:`209` by `Stella Douka`_)
+- Refactor ``compute_optimal_updates`` in ``GrowingModule`` and ``GrowingBlock`` to accept primitive boolean options (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``). This enables composable configurations for neuron initialization methods. Threshold defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` across the affected growth APIs: ``1e-6`` flags numerical-conditioning issues close to float32 precision and ``1e-3`` defines the acceptable statistical noise level for singular-value filtering. For GradMax behavior, use ``compute_delta=False, use_covariance=False, alpha_zero=True, use_projection=False`` (:gh:`193` by `Stéphane Rivaud`_)
+- Introduces a new GrowingModel class to have a fixed output size model. (:gh:`206` by `Théo Rudkiewicz`_)
+- Improve flexibility in `growing_block` and `resnet` to allow creating more complex structures and to support more use cases (:gh:`194` by `Théo Rudkiewicz`_)
+- Change the behavior for negative scaling factor. Now use a positive scaling factor for the parameter update independently of the sign of the scaling factor. (:gh:`195` by `Théo Rudkiewicz`_)
+- Fix a convergence problem in `sqrt_inverse_matrix_semi_positive` (:gh:`192` by `Théo Rudkiewicz`_)
+- Added documentation linting in CI/CD and reduced warnings in tests (:gh:`158` by `Stella Douka`_)
+- New tutorial for `GrowingContainer` (:gh:`188` by `Théo Rudkiewicz`_)
+- Update `GrowingBlock` to include recently added features in `GrowingModule` such as `in_neurons` property, `target_in_neurons` parameter, and methods for multi-step growth processes (:gh:`186` by `Théo Rudkiewicz`_)
+- Add `in_neurons` property and `target_in_neurons` parameter to `GrowingModule`, `LinearGrowingModule`, and `Conv2dGrowingModule` for tracking neuron counts during growth. Add `missing_neurons`, `number_of_neurons_to_add`, and `complete_growth` methods to simplify multi-step growth processes (:gh:`187` by `Théo Rudkiewicz`_)
+- Add new normalization methods (:gh:`185` by `Théo Rudkiewicz`_)
 - Update `output_volume` in `Conv2dMergeGrowingModule` based on post_merge_function and reshaping (:gh:`177` by `Stella Douka`_)
 - Implement lazy loading datasets that read directly from the disk (:gh:`169` by `Stella Douka`_)
 - Modify `in_channels` and `out_channels` as properties in `Conv2dGrowingModule` (:gh:`174` by `Stella Douka`_)
@@ -79,6 +97,8 @@ Enhancements
 Bugs
 ~~~~
 
+- Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
+- Fix lingering modules that were not properly deleted (:gh:`210` by `Stella Douka`_)
 - Fix sub-modules that are not registered in pytorch (:gh:`179` by `Stella Douka`_)
 - Fix persistent value of input volume (:gh:`174` by `Stella Douka`_)
 - Fix memory leak in tensor updates (:gh:`138` by `Stella Douka`_)
@@ -100,6 +120,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- ``compute_optimal_updates()`` now exposes primitive boolean controls (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``) and growth-related defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` for consistency across modules. Migration for direct internal calls: ``compute_optimal_added_parameters()`` is now ``_compute_optimal_added_parameters()``; external users should prefer ``compute_optimal_updates()`` (:gh:`193` by `Stéphane Rivaud`_)
 - Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
 - Moved `compute_optimal_delta` function from LinearMergeGrowingModuke to MergeGrowingModule (:gh:`94` by `Stella Douka`_)

@@ -63,7 +63,25 @@ class TestGrowingMLP(TorchTestCase):
 
         # Compute the optimal updates for growing functionality
         gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            self.model.compute_optimal_updates()
+
+    def test_set_growing_layers(self):
+        """Test setting growing layers in the GrowingMLP model."""
+        # Initially, all layers should be growing
+        self.assertEqual(len(self.model._growing_layers), self.number_hidden_layers)
+        # Set only the second layer to be growing
+        self.model.set_growing_layers(1)
+        self.assertEqual(len(self.model._growing_layers), 1)
+        # Set only the third layer to be growing
+        self.model.set_growing_layers(2)
+        self.assertEqual(len(self.model._growing_layers), 1)
+        # Set all layers to be growing again
+        self.model.set_growing_layers()
+        self.assertEqual(len(self.model._growing_layers), self.number_hidden_layers)
 
     def test_forward(self):
         """Test the forward pass of the GrowingMLP model."""
@@ -77,22 +95,6 @@ class TestGrowingMLP(TorchTestCase):
         y = self.model.extended_forward(x)
         self.assertShapeEqual(y, (1, self.out_features))
 
-    def test_tensor_statistics(self):
-        """Test computation of tensor statistics (min, max, mean, std)."""
-        tensor = torch.randn(10)
-        stats = self.model.tensor_statistics(tensor)
-
-        # Check that all required statistics are present
-        self.assertIn("min", stats)
-        self.assertIn("max", stats)
-        self.assertIn("mean", stats)
-        self.assertIn("std", stats)
-
-        # Test edge case with single element tensor (std should be -1)
-        single_tensor = torch.tensor([5.0])
-        single_stats = self.model.tensor_statistics(single_tensor)
-        self.assertEqual(single_stats["std"], -1)
-
     def test_weights_statistics(self):
         """Test computation of weight statistics for all layers."""
         stats = self.model.weights_statistics()
@@ -100,10 +102,8 @@ class TestGrowingMLP(TorchTestCase):
         self.assertGreater(len(stats), 0)
 
         # Check that each layer has the required statistics
-        for layer_idx, layer_stats in stats.items():
+        for _, layer_stats in stats.items():
             self.assertIn("weight", layer_stats)
-            self.assertIn("input_shape", layer_stats)
-            self.assertIn("output_shape", layer_stats)
             # Note: bias might or might not be present depending on use_bias
 
     def test_weights_statistics_without_bias(self):
@@ -122,7 +122,7 @@ class TestGrowingMLP(TorchTestCase):
         self.assertIsInstance(stats, dict)
 
         # Check that bias is not present in statistics
-        for layer_idx, layer_stats in stats.items():
+        for _, layer_stats in stats.items():
             self.assertNotIn("bias", layer_stats)
 
     def test_update_information(self):
@@ -149,7 +149,9 @@ class TestGrowingMLP(TorchTestCase):
         y_pred_normalised_list = [self.model(x) for x, _ in self.dataloader]
 
         # Predictions should remain the same after normalization
-        for y_pred, y_pred_normalised in zip(y_pred_list, y_pred_normalised_list):
+        for y_pred, y_pred_normalised in zip(
+            y_pred_list, y_pred_normalised_list, strict=True
+        ):
             self.assertAllClose(y_pred, y_pred_normalised, atol=1e-7)
 
     def test_normalise_verbose(self):
@@ -195,7 +197,7 @@ class TestGrowingMLP(TorchTestCase):
         # Test the TypeError branch for invalid in_features type
         with self.assertRaises(TypeError) as context:
             # Use a type that's not int, list, or tuple to trigger the error
-            invalid_features = set([1, 2, 3])  # set is not supported
+            invalid_features = {1, 2, 3}  # set is not supported
             GrowingMLP(
                 in_features=invalid_features,  # type: ignore  # This should trigger TypeError
                 out_features=self.out_features,
@@ -267,7 +269,7 @@ class TestGrowingMLP(TorchTestCase):
 
         # Test that the model correctly computes num_features as product
         expected_num_features = 2 * 3 * 4
-        self.assertEqual(model.num_features, expected_num_features)
+        self.assertEqual(model.in_features, expected_num_features)
 
         # Test forward pass
         x = torch.randn(1, *in_features)

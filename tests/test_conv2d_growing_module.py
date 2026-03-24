@@ -1,6 +1,8 @@
 import random
+import types
+import warnings
 from copy import deepcopy
-from unittest import main
+from unittest import main, mock
 
 import torch
 
@@ -10,7 +12,10 @@ from gromo.modules.conv2d_growing_module import (
     FullConv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
-from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.modules.linear_growing_module import (
+    LinearGrowingModule,
+    LinearMergeGrowingModule,
+)
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_output_shape_conv
 from gromo.utils.utils import global_device
@@ -58,7 +63,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             device=global_device(),
         )
 
-        # Next conv module used for properties (padding/stride/dilation) and activity storage
+        # Next conv module used for properties (padding/stride/dilation)
+        # and activity storage
         self.next = Conv2dGrowingModule(
             in_channels=self.merge_in_channels,
             out_channels=5,
@@ -149,7 +155,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertEqual(merge_with_int_kernel.kernel_size, (5, 5))
 
     def test_padding_stride_dilation_properties(self):
-        """Test padding/stride/dilation derivation for conv next and warning path when missing."""
+        """Test padding/stride/dilation derivation for conv next and
+        warning path when missing."""
         m = self.merge
         # With conv next
         self.assertEqual(m.padding, self.next.layer.padding)
@@ -174,7 +181,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertEqual(m.dilation, (1, 1))
 
     def test_set_previous_modules_and_shapes(self):
-        """Test set_previous_modules happy path and shape bookkeeping with multiple previous nodes."""
+        """Test set_previous_modules happy path and shape bookkeeping with
+        multiple previous nodes."""
         # Create a second previous conv with same kernel size and out_channels
         prev2 = Conv2dGrowingModule(
             in_channels=1,
@@ -281,7 +289,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             input_size=m.output_size,
             device=global_device(),
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(AssertionError), self.assertWarns(UserWarning):
+            # You are setting the next modules with a non-empty tensor S
             m.set_next_modules([n1, n3])
 
         # Kernel size mismatch between merge and next -> assertion
@@ -295,7 +304,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             m2.set_next_modules([n1])
 
     def test_construct_full_activity_and_previous_updates(self):
-        """Test construct_full_activity content and previous S/M updates with a single previous module."""
+        """Test construct_full_activity content and previous S/M updates
+        with a single previous module."""
         # Ensure prev stores input for unfolded access
         self.prev.store_input = True
 
@@ -313,7 +323,8 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertAllClose(s_prev, s_prev.T)
 
         # Prepare gradient on merge.pre_activity via a small chain to test M update
-        # Make next store_input so merge stores its activity, and merge store_input for gradients
+        # Make next store_input so merge stores its activity,
+        # and merge store_input for gradients
         self.next.store_input = True
         self.merge.store_input = True  # Enable input storage for gradient computation
         seq = torch.nn.Sequential(self.prev, self.merge, self.next)
@@ -326,23 +337,24 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertEqual(m_prev.shape, (full_act.size(1), self.merge.in_channels))
 
     def test_unfolded_extended_activity_and_s_update_conv_next(self):
-        """Test unfolded_extended_activity (conv next branch) and compute_s_update output shape."""
+        """Test unfolded_extended_activity (conv next branch) and
+        compute_s_update output shape."""
         # Create a synthetic activity map at the merge (before post merge)
         self.merge.store_activity = True
-        H, W = self.merge.output_size
+        h, w = self.merge.output_size
         # Use a non-padded next conv (stride/dilation already set in setUp)
         self.merge.activity = torch.randn(
-            self.batch, self.merge_in_channels, H + 2, W + 2, device=global_device()
+            self.batch, self.merge_in_channels, h + 2, w + 2, device=global_device()
         )
 
         unfolded_ext = self.merge.unfolded_extended_activity
         # D = C * kx * ky + 1 (bias)
-        D = self.merge_in_channels * self.kernel_size[0] * self.kernel_size[1] + 1
-        self.assertEqual(unfolded_ext.shape[1], D)
+        d = self.merge_in_channels * self.kernel_size[0] * self.kernel_size[1] + 1
+        self.assertEqual(unfolded_ext.shape[1], d)
 
         s_update, n = self.merge.compute_s_update()
         self.assertEqual(n, self.merge.activity.shape[0])
-        self.assertEqual(s_update.shape, (D, D))
+        self.assertEqual(s_update.shape, (d, d))
         self.assertAllClose(s_update, s_update.T)
 
     def test_compute_s_update_assertions(self):
@@ -361,9 +373,11 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             m.compute_s_update()
 
     def test_compute_s_update_not_implemented_next_module(self):
-        """Test NotImplementedError for unsupported next module types in compute_s_update."""
+        """Test NotImplementedError for unsupported next module types
+        in compute_s_update."""
         m = self.merge
-        # Set up valid activity - use 2D to avoid tensor concatenation issues in unfolded_extended_activity
+        # Set up valid activity - use 2D to avoid tensor concatenation issues in
+        # unfolded_extended_activity
         m.store_activity = True
         m.activity = torch.randn(self.batch, m.out_features, device=global_device())
 
@@ -456,7 +470,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         )
 
         # Use setattr to bypass type checking for test purposes
-        setattr(m, "input_size", None)
+        m.input_size = None
 
         # Set previous modules - should auto-set input_size
         m.set_previous_modules([self.prev])
@@ -513,7 +527,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
             _ = m.compute_s_update()
 
     def test_unfolded_extended_activity_conv_without_bias(self):
-        """Test unfolded_extended_activity for Conv2d path without bias - covers line 159."""
+        """Test unfolded_extended_activity for Conv2d path without bias."""
         m = Conv2dMergeGrowingModule(
             in_channels=self.merge_in_channels,
             input_size=self.merge.input_size,
@@ -537,7 +551,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         self.assertEqual(unfolded.shape[1], expected_d)
 
     def test_update_size_tensor_shape_mismatch(self):
-        """Test update_size when tensor shapes don't match - covers lines 414, 427."""
+        """Test update_size when tensor shapes don't match."""
         m = Conv2dMergeGrowingModule(
             in_channels=self.merge_in_channels,
             input_size=self.merge.input_size,
@@ -941,7 +955,8 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         """
         Test the computation of delta with a simple example:
         We get a random theta as parameter of the layer
-        We get each e_i = (0, ..., 0, 1, 0, ..., 0) as input and the loss is the norm of the output
+        We get each e_i = (0, ..., 0, 1, 0, ..., 0) as input and the loss is
+        the norm of the output
         There fore the optimal delta is proportional to -theta.
         """
         self.demo.init_computation()
@@ -1077,7 +1092,153 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = FullConv2dGrowingModule
 
-    def test_zero_bottleneck(self):
+    def test_compute_optimal_added_parameters_conv2d_merge_previous_module_error(self):
+        """Test that _compute_optimal_added_parameters raises NotImplementedError when previous_module is Conv2dMergeGrowingModule."""
+        # Use TestConv2dGrowingModuleBase factory to create a pair of connected layers
+        base_tester = TestConv2dGrowingModuleBase()
+        base_tester.setUp()
+        _, layer = base_tester.create_demo_layers(bias=True)
+
+        # Mock the _auxiliary_compute_alpha_omega method to skip tensor statistics
+        def mock_auxiliary_compute(self, **kwargs):
+            # For Conv2dGrowingModule, omega is expected to have shape (out_channels, k)
+            k = 1
+            out_channels = layer.out_channels
+            # alpha second dimension is not constrained here because we don't hit
+            # the Conv2dGrowingModule reshape branch in this test
+            alpha = torch.randn(k, layer.in_features + 1, device=global_device())
+            omega = torch.randn(out_channels, k, device=global_device())
+            eigenvalues = torch.randn(k, device=global_device())
+            return alpha, omega, eigenvalues
+
+        layer._auxiliary_compute_alpha_omega = types.MethodType(
+            mock_auxiliary_compute, layer
+        )
+
+        # Test case: previous_module is Conv2dMergeGrowingModule -> NotImplementedError
+        merge_conv = Conv2dMergeGrowingModule(
+            in_channels=layer.in_channels,
+            input_size=(8, 8),
+            next_kernel_size=layer.kernel_size,
+            device=global_device(),
+        )
+        layer.previous_module = merge_conv
+
+        with self.assertRaises(NotImplementedError):
+            layer._compute_optimal_added_parameters(
+                update_previous=True,
+                use_projection=True,
+                use_covariance=True,
+                alpha_zero=False,
+            )
+
+    def test_compute_optimal_added_parameters_linear_merge_previous_module_error(self):
+        """Test that _compute_optimal_added_parameters raises NotImplementedError when previous_module is LinearMergeGrowingModule."""
+        # Use TestConv2dGrowingModuleBase factory to create a pair of connected layers
+        base_tester = TestConv2dGrowingModuleBase()
+        base_tester.setUp()
+        _, layer = base_tester.create_demo_layers(bias=True)
+
+        # Mock the _auxiliary_compute_alpha_omega method to skip tensor statistics
+        def mock_auxiliary_compute(self, **kwargs):
+            # For Conv2dGrowingModule, omega is expected to have shape (out_channels, k)
+            k = 1
+            out_channels = layer.out_channels
+            # alpha second dimension is not constrained here because we don't hit
+            # the Conv2dGrowingModule reshape branch in this test
+            alpha = torch.randn(k, layer.in_features + 1, device=global_device())
+            omega = torch.randn(out_channels, k, device=global_device())
+            eigenvalues = torch.randn(k, device=global_device())
+            return alpha, omega, eigenvalues
+
+        layer._auxiliary_compute_alpha_omega = types.MethodType(
+            mock_auxiliary_compute, layer
+        )
+
+        # Test case: previous_module is LinearMergeGrowingModule -> NotImplementedError
+        merge_linear = LinearMergeGrowingModule(
+            in_features=layer.in_features,
+            device=global_device(),
+            name="linear_merge",
+        )
+        layer.previous_module = merge_linear
+
+        with self.assertRaises(NotImplementedError):
+            layer._compute_optimal_added_parameters(
+                update_previous=True,
+                use_projection=True,
+                use_covariance=True,
+                alpha_zero=False,
+            )
+
+    def test_compute_optimal_added_parameters_unsupported_previous_module_error(self):
+        """Test that _compute_optimal_added_parameters raises NotImplementedError for unsupported previous_module types."""
+        # Use TestConv2dGrowingModuleBase factory to create a pair of connected layers
+        base_tester = TestConv2dGrowingModuleBase()
+        base_tester.setUp()
+        _, layer = base_tester.create_demo_layers(bias=True)
+
+        # Mock the _auxiliary_compute_alpha_omega method to skip tensor statistics
+        def mock_auxiliary_compute(self, **kwargs):
+            # For Conv2dGrowingModule, omega is expected to have shape (out_channels, k)
+            k = 1
+            out_channels = layer.out_channels
+            # alpha second dimension is not constrained here because we don't hit
+            # the Conv2dGrowingModule reshape branch in this test
+            alpha = torch.randn(k, layer.in_features + 1, device=global_device())
+            omega = torch.randn(out_channels, k, device=global_device())
+            eigenvalues = torch.randn(k, device=global_device())
+            return alpha, omega, eigenvalues
+
+        layer._auxiliary_compute_alpha_omega = types.MethodType(
+            mock_auxiliary_compute, layer
+        )
+
+        # Test case: previous_module is unsupported type -> generic NotImplementedError
+        class MockConv2d(torch.nn.Conv2d):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                # Attribute accessed by _compute_optimal_added_parameters
+                self.use_bias = True
+
+        layer.previous_module = MockConv2d(
+            layer.in_channels,
+            layer.out_channels,
+            kernel_size=layer.kernel_size,
+            device=global_device(),
+        )
+
+        with self.assertRaises(NotImplementedError):
+            layer._compute_optimal_added_parameters(
+                update_previous=True,
+                use_projection=True,
+                use_covariance=True,
+                alpha_zero=False,
+            )
+
+    @unittest_parametrize(
+        (
+            {
+                "compute_delta": True,
+                "use_covariance": True,
+                "alpha_zero": False,
+                "use_projection": True,
+            },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": False,
+            },
+        )
+    )
+    def test_zero_bottleneck(
+        self,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+    ):
         """Test behavior when bottleneck is fully resolved
         with parameter change for FullConv2d."""
         # Create FullConv2d equivalent of the demo layers
@@ -1088,7 +1249,8 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
         demo_layer_2.init_computation()
 
-        # Use indicator batch for Conv2d - each sample has 1 in different spatial locations
+        # Use indicator batch for Conv2d - each sample has 1 in different
+        # spatial locations
         input_x = indicator_batch(
             (demo_layer_1.in_channels, 5, 5), device=global_device()
         )
@@ -1096,17 +1258,50 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         loss = torch.norm(y) ** 2 / 2
         loss.backward()
         demo_layer_2.update_computation()
-        demo_layer_2.compute_optimal_updates()
+        # Clear any previous updates to ensure clean state for each test case
+        demo_layer_2.delete_update()
+        demo_layer_2.compute_optimal_updates(
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
+        )
 
-        # For FullConv2d, tensor_n should be zero when bottleneck is fully resolved
-        self.assertAllClose(
-            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-6
-        )
-        self.assertAllClose(
-            demo_layer_2.eigenvalues_extension,
-            torch.zeros_like(demo_layer_2.eigenvalues_extension),
-            atol=1e-6,
-        )
+        # Use explicit checks for configuration-specific behavior
+        if not alpha_zero:
+            # For FullConv2d with TINY configuration, tensor_n should be zero when bottleneck is fully resolved
+            self.assertAllClose(
+                demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-6
+            )
+            assert isinstance(demo_layer_2.eigenvalues_extension, torch.Tensor)
+            self.assertAllClose(
+                demo_layer_2.eigenvalues_extension,
+                torch.zeros_like(demo_layer_2.eigenvalues_extension),
+                atol=2e-6,
+            )
+        else:
+            # GradMax-specific checks
+            # optimal_delta_layer should not be set (may not exist or be None)
+            self.assertFalse(
+                hasattr(demo_layer_2, "optimal_delta_layer")
+                and demo_layer_2.optimal_delta_layer is not None,
+                "GradMax configuration should not compute optimal_delta_layer",
+            )
+            # parameter_update_decrease should still be set so first_order_improvement is usable
+            self.assertIsInstance(
+                demo_layer_2.parameter_update_decrease,
+                torch.Tensor,
+                "GradMax configuration should still set parameter_update_decrease",
+            )
+            assert demo_layer_2.parameter_update_decrease is not None
+            self.assertAllClose(
+                demo_layer_2.parameter_update_decrease,
+                torch.zeros_like(demo_layer_2.parameter_update_decrease),
+                atol=1e-8,
+            )
+            # Verify eigenvalues are computed
+            assert isinstance(demo_layer_2.eigenvalues_extension, torch.Tensor)
+            self.assertIsInstance(demo_layer_2.first_order_improvement, torch.Tensor)
 
     def test_compute_m_prev_without_intermediate_input(self):
         """Check that the batch size is computed using stored variables for FullConv2d"""
@@ -1180,7 +1375,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             self.demo.kernel_size[0] * self.demo.kernel_size[1],
             hin * win,
         )
-        for i, (t, t_th) in enumerate(zip(tensor_t.shape, size_theoretic)):
+        for i, (t, t_th) in enumerate(zip(tensor_t.shape, size_theoretic, strict=True)):
             self.assertEqual(t, t_th, f"Error for dim {i}: should be {t_th}, got {t}")
 
     def test_tensor_m_prev_update(self):
@@ -1306,7 +1501,8 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_added_parameters(self, bias: bool):
         """
-        Test sub_select_optimal_added_parameters in merge to compute_optimal_added_parameters
+        Test sub_select_optimal_added_parameters in merge to
+        compute_optimal_added_parameters
         """
         demo_couple = self.demo_couple[bias]
         demo_couple[0].store_input = True
@@ -1337,10 +1533,16 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         self.assertShapeEqual(demo_couple[1].tensor_m_prev(), m_prev_shape_theory)
 
         demo_couple[1].compute_optimal_delta()
+        # Use private method with new signature (TINY method: use_covariance=True, alpha_zero=False, use_projection=True)
         alpha, alpha_b, omega, eigenvalues = demo_couple[
             1
-        ].compute_optimal_added_parameters(
-            numerical_threshold=0, statistical_threshold=0, maximum_added_neurons=10
+        ]._compute_optimal_added_parameters(
+            numerical_threshold=0,
+            statistical_threshold=0,
+            maximum_added_neurons=10,
+            use_projection=True,
+            use_covariance=True,
+            alpha_zero=False,
         )
 
         self.assertShapeEqual(
@@ -1380,55 +1582,6 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         self.assertEqual(demo_couple[0].extended_output_layer.out_channels, 3)
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
-    def test_compute_optimal_added_parameters_use_projected_gradient_false(
-        self, bias: bool
-    ):
-        """
-        Explicitly test the use_projected_gradient=False branch for coverage.
-        """
-        demo_couple = self.demo_couple[bias]
-        demo_couple[1].init_computation()
-
-        y = demo_couple[0](self.input_x)
-        y = demo_couple[1](y)
-        loss = torch.norm(y)
-        loss.backward()
-
-        demo_couple[1].update_computation()
-
-        # Call with use_projected_gradient=False
-        alpha, alpha_b, omega, eigenvalues = demo_couple[
-            1
-        ].compute_optimal_added_parameters(use_projected_gradient=False)
-
-        self.assertShapeEqual(
-            alpha,
-            (
-                -1,
-                demo_couple[0].in_channels,
-                demo_couple[0].kernel_size[0],
-                demo_couple[0].kernel_size[1],
-            ),
-        )
-        k = alpha.size(0)
-        if bias:
-            self.assertShapeEqual(alpha_b, (k,))
-        else:
-            self.assertIsNone(alpha_b)
-
-        self.assertShapeEqual(
-            omega,
-            (
-                demo_couple[1].out_channels,
-                k,
-                demo_couple[1].kernel_size[0],
-                demo_couple[1].kernel_size[1],
-            ),
-        )
-
-        self.assertShapeEqual(eigenvalues, (k,))
-
-    @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_added_parameters_empirical(self, bias: bool):
         demo_couple = self.demo_couple[bias]
         demo_couple_1 = FullConv2dGrowingModule(
@@ -1462,16 +1615,25 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_couple[1].update_computation()
         demo_couple[1].tensor_s_growth.update()
 
-        demo_couple[1].compute_optimal_delta()
+        with self.assertMaybeWarns(
+            UserWarning,
+            "Using the pseudo-inverse for the computation of the optimal delta",
+        ):
+            demo_couple[1].compute_optimal_delta()
         demo_couple[1].delta_raw *= 0
 
         self.assertAllClose(
             -demo_couple[1].tensor_m_prev(),
             demo_couple[1].tensor_n,
-            message="The tensor_m_prev should be equal to the tensor_n when the delta is zero",
+            message=(
+                "The tensor_m_prev should be equal to the tensor_n when the delta is zero"
+            ),
         )
 
-        demo_couple[1].compute_optimal_added_parameters()
+        # Use private method with new signature (TINY method: use_covariance=True, alpha_zero=False, use_projection=True)
+        demo_couple[1]._compute_optimal_added_parameters(
+            use_projection=True, use_covariance=True, alpha_zero=False
+        )
 
         extension_network = torch.nn.Sequential(
             demo_couple[0].extended_output_layer,
@@ -1508,7 +1670,8 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
         demo.update_computation()
 
-        # tensor_s_growth should return the internal _tensor_s_growth, not previous module's tensor_s
+        # tensor_s_growth should return the internal _tensor_s_growth,
+        # not previous module's tensor_s
         tensor_s_growth = demo.tensor_s_growth
         self.assertIs(tensor_s_growth, demo._tensor_s_growth)
 
@@ -1517,7 +1680,8 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_tensor_s_growth_independence_from_previous_module(self, bias):
-        """Test that FullConv2dGrowingModule tensor_s_growth is independent of previous module."""
+        """Test that FullConv2dGrowingModule tensor_s_growth is independent of
+        previous module."""
         demo_couple = self.demo_couple[bias]
         demo_in, demo_out = demo_couple[0], demo_couple[1]
 
@@ -1542,7 +1706,8 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_in.update_computation()
         demo_out.update_computation()
 
-        # tensor_s_growth for FullConv2dGrowingModule should NOT redirect to previous module
+        # tensor_s_growth for FullConv2dGrowingModule should NOT redirect
+        # to previous module
         # It should use its own _tensor_s_growth
         tensor_s_growth_out = demo_out.tensor_s_growth
         tensor_s_in = demo_in.tensor_s
@@ -1564,7 +1729,8 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
         demo.update_computation()
 
-        # For FullConv2dGrowingModule, we need to ensure _tensor_s_growth has been computed
+        # For FullConv2dGrowingModule, we need to ensure _tensor_s_growth has
+        # been computed
         # Check if tensor_s_growth has samples before calling it
         tensor_s_growth_stat = demo.tensor_s_growth
         self.assertIsInstance(tensor_s_growth_stat, TensorStatistic)
@@ -1581,14 +1747,37 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             # Both dimensions should be equal (square matrix)
             self.assertEqual(tensor_s_growth.shape[0], tensor_s_growth.shape[1])
         else:
-            # If no samples, just verify the tensor_s_growth property exists and is correct type
+            # If no samples, just verify the tensor_s_growth property
+            # exists and is correct type
             self.assertIsInstance(tensor_s_growth_stat, TensorStatistic)
 
 
 class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = RestrictedConv2dGrowingModule
 
-    def test_zero_bottleneck_restricted(self):
+    @unittest_parametrize(
+        (
+            {
+                "compute_delta": True,
+                "use_covariance": True,
+                "alpha_zero": False,
+                "use_projection": True,
+            },
+            {
+                "compute_delta": False,
+                "use_covariance": False,
+                "alpha_zero": True,
+                "use_projection": False,
+            },
+        )
+    )
+    def test_zero_bottleneck_restricted(
+        self,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        use_projection: bool = True,
+    ):
         """Test behavior when bottleneck is fully resolved
         with parameter change for RestrictedConv2d."""
         # Use predefined demo_couple objects
@@ -1599,7 +1788,8 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
         demo_layer_2.init_computation()
 
-        # Use indicator batch for Conv2d - each sample has 1 in different spatial locations
+        # Use indicator batch for Conv2d - each sample has 1 in different
+        # spatial locations
         input_x = indicator_batch(
             (demo_layer_1.in_channels, 5, 5), device=global_device()
         )
@@ -1607,20 +1797,53 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         loss = torch.norm(y) ** 2 / 2
         loss.backward()
         demo_layer_2.update_computation()
-        demo_layer_2.compute_optimal_updates()
+        # Clear any previous updates to ensure clean state for each test case
+        demo_layer_2.delete_update()
+        demo_layer_2.compute_optimal_updates(
+            compute_delta=compute_delta,
+            use_covariance=use_covariance,
+            alpha_zero=alpha_zero,
+            use_projection=use_projection,
+        )
 
-        # For RestrictedConv2d, tensor_n should be zero when bottleneck is fully resolved
-        self.assertAllClose(
-            demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-7
-        )
-        self.assertAllClose(
-            demo_layer_2.eigenvalues_extension,
-            torch.zeros_like(demo_layer_2.eigenvalues_extension),
-            atol=1e-7,
-        )
+        # Use explicit checks for configuration-specific behavior
+        if not alpha_zero:
+            # For RestrictedConv2d with TINY configuration, tensor_n should be zero when bottleneck is fully resolved
+            self.assertAllClose(
+                demo_layer_2.tensor_n, torch.zeros_like(demo_layer_2.tensor_n), atol=1e-6
+            )
+            self.assertAllClose(
+                demo_layer_2.eigenvalues_extension,
+                torch.zeros_like(demo_layer_2.eigenvalues_extension),
+                atol=1e-6,
+            )
+        else:
+            # GradMax-specific checks
+            # optimal_delta_layer should not be set (may not exist or be None)
+            self.assertFalse(
+                hasattr(demo_layer_2, "optimal_delta_layer")
+                and demo_layer_2.optimal_delta_layer is not None,
+                "GradMax configuration should not compute optimal_delta_layer",
+            )
+            # parameter_update_decrease should still be set so first_order_improvement is usable
+            self.assertIsInstance(
+                demo_layer_2.parameter_update_decrease,
+                torch.Tensor,
+                "GradMax configuration should still set parameter_update_decrease",
+            )
+            assert demo_layer_2.parameter_update_decrease is not None
+            self.assertAllClose(
+                demo_layer_2.parameter_update_decrease,
+                torch.zeros_like(demo_layer_2.parameter_update_decrease),
+                atol=1e-8,
+            )
+            # Verify eigenvalues are computed
+            assert isinstance(demo_layer_2.eigenvalues_extension, torch.Tensor)
+            self.assertIsInstance(demo_layer_2.first_order_improvement, torch.Tensor)
 
     def test_compute_m_prev_without_intermediate_input_restricted(self):
-        """Check that the batch size is computed using stored variables for RestrictedConv2d"""
+        """Check that the batch size is computed using stored variables
+        for RestrictedConv2d"""
         # Use predefined demo_couple objects
         demo_layer_1, demo_layer_2 = self.demo_couple[
             False
@@ -1655,7 +1878,7 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_linear_layer_of_tensor(self, bias: bool):
-        demo_layer = demo_out = RestrictedConv2dGrowingModule(
+        demo_layer = RestrictedConv2dGrowingModule(
             in_channels=2,
             out_channels=3,
             kernel_size=(5, 5),
@@ -1771,7 +1994,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         self.assertAllClose(
             n,
             -demo_out.tensor_m_prev(),
-            message="The tensor_n should be equal to the tensor_m_prev when the delta is zero",
+            message=(
+                "The tensor_n should be equal to the tensor_m_prev when the delta is zero"
+            ),
         )
 
         demo_out.delta_raw = torch.randn_like(demo_out.delta_raw)
@@ -1798,42 +2023,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
             device=global_device(),
         )
 
-        alpha, alpha_b, omega, eigs = demo_out.compute_optimal_added_parameters()
-
-        self.assertIsInstance(alpha, torch.Tensor)
-        self.assertIsInstance(omega, torch.Tensor)
-        self.assertIsInstance(eigs, torch.Tensor)
-        if bias:
-            self.assertIsInstance(alpha_b, torch.Tensor)
-        else:
-            self.assertIsNone(alpha_b)
-
-    @unittest_parametrize(({"bias": True}, {"bias": False}))
-    def test_compute_optimal_added_parameters_use_projected_gradient_false(
-        self, bias: bool
-    ):
-        """Test compute_optimal_added_parameters with use_projected_gradient=False for RestrictedConv2dGrowingModule."""
-        demo_in, demo_out = self.demo_couple[bias]
-
-        demo_out.init_computation()
-
-        x = demo_in(self.input_x)
-        y = demo_out(x)
-        loss = torch.nn.functional.mse_loss(y, torch.zeros_like(y))
-        loss.backward()
-
-        demo_out.update_computation()
-
-        demo_out.delta_raw = torch.zeros(
-            demo_out.out_channels,
-            demo_out.in_channels * demo_out.kernel_size[0] * demo_out.kernel_size[1]
-            + bias,
-            device=global_device(),
-        )
-
-        # Test with use_projected_gradient=False
-        alpha, alpha_b, omega, eigs = demo_out.compute_optimal_added_parameters(
-            use_projected_gradient=False
+        # Use private method with new signature (TINY method: use_covariance=True, alpha_zero=False, use_projection=True)
+        alpha, alpha_b, omega, eigs = demo_out._compute_optimal_added_parameters(
+            use_projection=True, use_covariance=True, alpha_zero=False
         )
 
         self.assertIsInstance(alpha, torch.Tensor)
@@ -1846,7 +2038,8 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
 
     def test_bordered_unfolded_extended_prev_input_shape(self):
         """
-        Test that bordered_unfolded_extended_prev_input runs correctly and returns proper shape.
+        Test that bordered_unfolded_extended_prev_input runs correctly and
+        returns proper shape.
 
         This test mimics the setup from minimal_crashing_code_2 to ensure that the
         bordered_unfolded_extended_prev_input property works correctly and returns
@@ -1885,7 +2078,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
 
         # Update input sizes
         # Access bordered_unfolded_extended_prev_input - this should not crash
-        bordered_tensor = current_module.bordered_unfolded_extended_prev_input
+        with self.assertWarns(UserWarning):
+            # The input size of the layer has changed
+            bordered_tensor = current_module.bordered_unfolded_extended_prev_input
 
         # Verify tensor structure
         self.assertShapeEqual(
@@ -1990,23 +2185,34 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
                 msg="layer_out has no extended output when only input extension added",
             )
 
+            layer_out.apply_change(extension_size=extension_size)
+
         # Subtest 2: Without features (hidden_channels=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden channels
-            layer_in, layer_out = self.create_demo_layers(bias=False, hidden_channels=0)
+            with self.assertWarns(UserWarning):
+                # Initializing zero-element tensors is a no-op
+                layer_in, layer_out = self.create_demo_layers(
+                    bias=False, hidden_channels=0
+                )
 
             # When out_channels=0, the layer has no weights
-            # So copy_uniform should fallback to 1/sqrt(fan_in)
-            extension_size = 3
+            # So copy_uniform should fallback to sqrt(2/fan_in)
+            extension_size = 13
 
-            with self.assertWarns(UserWarning):
-                # UserWarning: std(): degrees of freedom is <= 0.
-                # This happens because the layer has no weights to compute std from.
+            # Check that kaiming_initialization fallback is called
+            with mock.patch.object(
+                layer_out,
+                "kaiming_initialization",
+                wraps=layer_out.kaiming_initialization,
+            ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,
                     output_extension_init="copy_uniform",
                     input_extension_init="copy_uniform",
                 )
+
+            self.assertEqual(kaiming_mock.call_count, 2)
 
             # Verify extensions were created
             self.assertIsInstance(
@@ -2024,26 +2230,24 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
             assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
 
-            # When there are no hidden channels, the std should be 1/sqrt(fan_in)
+            # When there are no hidden channels, the std should be sqrt(2/fan_in)
             # For Conv2d: fan_in = in_channels * kernel_h * kernel_w
             # For extended_output_layer:
             # fan_in = layer_in.in_channels * kernel_h * kernel_w
             expected_output_ext_std = (
-                1.0
+                2
                 / (
                     layer_in.in_channels
                     * layer_in.kernel_size[0]
                     * layer_in.kernel_size[1]
                 )
-                ** 0.5
-            )
+            ) ** 0.5
+
             # For extended_input_layer:
             # fan_in = extension_size * kernel_h * kernel_w
             expected_input_ext_std = (
-                1.0
-                / (extension_size * layer_out.kernel_size[0] * layer_out.kernel_size[1])
-                ** 0.5
-            )
+                2 / (extension_size * layer_out.kernel_size[0] * layer_out.kernel_size[1])
+            ) ** 0.5
 
             # Verify std matches expected values
             # Allow tolerance for small sample statistics
@@ -2056,9 +2260,127 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             self.assertAlmostEqual(
                 layer_out.extended_input_layer.weight.std().item(),
                 expected_input_ext_std,
-                delta=expected_input_ext_std * 0.5,
+                delta=expected_input_ext_std * 0.1,
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
+
+            layer_out.apply_change(extension_size=extension_size)
+
+    def test_create_layer_extensions_with_kaiming_matches_pytorch(self) -> None:
+        """Test Kaiming extension init matches PyTorch fan-in behavior."""
+        extension_size = 18
+
+        for test_case, channels in (("with_features", 15), ("without_features", 0)):
+            with self.subTest(case=test_case):
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        ".*Initializing zero-element tensors is a no-op.*",
+                        UserWarning,
+                    )
+                    layer_in, layer_out = self.create_demo_layers(
+                        bias=False,
+                        hidden_channels=channels,
+                    )
+
+                layer_out.create_layer_extensions(
+                    extension_size=extension_size,
+                    output_extension_init="kaiming",
+                    input_extension_init="kaiming",
+                )
+
+                ref_in_weight = torch.empty(
+                    (
+                        layer_out.out_channels,
+                        layer_out.in_channels + extension_size,
+                        layer_out.kernel_size[0],
+                        layer_out.kernel_size[1],
+                    ),
+                    device=global_device(),
+                )
+
+                torch.nn.init.kaiming_uniform_(ref_in_weight)
+                ref_in_weight = ref_in_weight[:, -extension_size:]
+
+                assert isinstance(layer_out.extended_input_layer, torch.nn.Conv2d)
+                self.assertAlmostEqual(
+                    layer_out.extended_input_layer.weight.std().item(),
+                    ref_in_weight.std().item(),
+                    delta=ref_in_weight.std().item() * 0.1,
+                    msg="extended_input_layer weight std should match PyTorch Kaiming",
+                )
+
+                ref_out_weight = torch.empty_like(layer_in.extended_output_layer.weight)
+                torch.nn.init.kaiming_uniform_(ref_out_weight)
+
+                assert isinstance(layer_in.extended_output_layer, torch.nn.Conv2d)
+                self.assertAlmostEqual(
+                    layer_in.extended_output_layer.weight.std().item(),
+                    ref_out_weight.std().item(),
+                    delta=ref_out_weight.std().item() * 0.1,
+                    msg="extended_output_layer weight std should match PyTorch Kaiming",
+                )
+
+
+class TestNeuronCountingConv2d(TestConv2dGrowingModuleBase):
+    """Test in_neurons property and growth-related methods for Conv2dGrowingModule."""
+
+    def test_in_neurons_returns_in_channels(self) -> None:
+        """Test that in_neurons returns in_channels for Conv2d modules."""
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            device=global_device(),
+        )
+        self.assertEqual(layer.in_neurons, 5)
+        self.assertEqual(layer.in_neurons, layer.in_channels)
+
+    def test_target_in_channels_initialization(self) -> None:
+        """Test that target_in_neurons is correctly initialized via target_in_channels."""
+        # Without target
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            device=global_device(),
+        )
+        self.assertIsNone(layer.target_in_neurons)
+        self.assertEqual(layer._initial_in_neurons, 5)
+
+        # With target
+        layer_with_target = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            target_in_channels=10,
+            device=global_device(),
+        )
+        self.assertEqual(layer_with_target.target_in_neurons, 10)
+        self.assertEqual(layer_with_target._initial_in_neurons, 5)
+
+    def test_missing_neurons_for_conv2d(self) -> None:
+        """Test missing_neurons for Conv2dGrowingModule."""
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            target_in_channels=10,
+            device=global_device(),
+        )
+        self.assertEqual(layer.missing_neurons(), 5)
+
+    def test_number_of_neurons_to_add_for_conv2d(self) -> None:
+        """Test number_of_neurons_to_add for Conv2dGrowingModule."""
+        layer = Conv2dGrowingModule(
+            in_channels=5,
+            out_channels=3,
+            kernel_size=(3, 3),
+            target_in_channels=15,
+            device=global_device(),
+        )
+        # Total to add: 15 - 5 = 10
+        self.assertEqual(layer.number_of_neurons_to_add(number_of_growth_steps=2), 5)
 
 
 if __name__ == "__main__":

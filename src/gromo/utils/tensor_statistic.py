@@ -17,7 +17,7 @@ class TensorStatistic:
     multiple samples. It is typically computed by batch.
 
     When computing the new source data, the tensor statistic should be
-    informed that it is not updated. Then The update function should be called
+    informed that it is not updated. Then the update function should be called
     to update the tensor statistic.
 
     Example:
@@ -36,6 +36,17 @@ class TensorStatistic:
 
             print(tensor_statistic())
             ```
+
+    Parameters
+    ----------
+    shape: tuple[int, ...] | None
+        shape of the tensor to compute, if None use the shape of the first update
+    update_function: Callable[[Any], tuple[torch.Tensor, int]] | Callable[[], tuple[torch.Tensor, int]]
+        function to update the tensor
+    device : torch.device | str | None, optional
+        default device, by default None
+    name: str | None, optional
+        used for debugging, by default None
     """
 
     def __init__(
@@ -58,7 +69,8 @@ class TensorStatistic:
             used for debugging
         """
         assert shape is None or all(
-            i >= 0 and isinstance(i, (int, np.int64)) for i in shape  # type: ignore
+            i >= 0 and isinstance(i, (int, np.int64))
+            for i in shape  # type: ignore
         ), f"The shape must be a tuple of positive integers. {type(shape)}, {shape}"
         self._shape = shape
         self._update_function = update_function
@@ -73,6 +85,7 @@ class TensorStatistic:
 
     @torch.no_grad()
     def update(self, **kwargs: Any) -> StatisticUpdateResult | None:
+        """Accumulate one batch contribution when the statistic is marked stale."""
         if self.updated is False:
             update, nb_sample = self._update_function(**kwargs)
             assert (self._shape is None or self._shape == update.size()) and (
@@ -91,19 +104,33 @@ class TensorStatistic:
             return update, nb_sample
 
     def init(self):
+        """Reset the tensor"""
         self.reset()
 
     def reset(self):
+        """Reset the tensor"""
         self._tensor = None
         self.samples = 0
 
-    def __call__(self):
+    def __call__(self) -> torch.Tensor:
+        """Get the average of the precomputed tensor over the number of samples
+
+        Returns
+        -------
+        torch.Tensor
+            averaged tensor
+
+        Raises
+        ------
+        ValueError
+            if the tensor has not been computed
+        """
         if self.samples == 0:
             raise ValueError("The tensor statistic has not been computed.")
         else:
-            assert (
-                self._tensor is not None
-            ), "If the number of samples is not zero the tensor should not be None."
+            assert self._tensor is not None, (
+                "If the number of samples is not zero the tensor should not be None."
+            )
             return self._tensor / self.samples
 
 
@@ -139,6 +166,19 @@ class TensorStatiticWithEstimationError(TensorStatistic):
             print(tensor_statistic())
             print(tensor_statistic.error())
             ```
+
+    Parameters
+    ----------
+    shape: tuple[int, ...] | None
+        shape of the tensor to compute, if None use the shape of the first update
+    update_function: Callable[[Any], tuple[torch.Tensor, int]] | Callable[[], tuple[torch.Tensor, int]]
+        function to update the tensor and compute the batch covariance
+    device : torch.device | str | None, optional
+        default device, by default None
+    name: str | None, optional
+        used for debugging, by default None
+    trace_precision: float
+        relative precision for the trace computation, default 1e-3
     """
 
     def __init__(
@@ -173,6 +213,7 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         # (of the random variable obtain when averaging on a batch)
 
     def reset(self):
+        """Reset the tensor"""
         super().reset()
         self._square_norm_sum = 0
         self._compute_trace = True
@@ -200,6 +241,7 @@ class TensorStatiticWithEstimationError(TensorStatistic):
 
     @torch.no_grad()
     def update(self, **kwargs: Any) -> StatisticUpdateResult | None:
+        """Accumulate one batch and update the running trace-error estimate."""
         if self.updated is False:
             update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
             assert isinstance(

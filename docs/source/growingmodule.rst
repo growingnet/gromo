@@ -15,4 +15,4 @@ Growing module
     :template: class.rst
 
     GrowingModule
-    AdditionGrowingModule
+    MergeGrowingModule

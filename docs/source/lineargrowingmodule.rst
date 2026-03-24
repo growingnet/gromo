@@ -15,4 +15,4 @@ Linear growing module
     :template: class.rst
 
     LinearGrowingModule
-    LinearAdditionGrowingModule
+    LinearMergeGrowingModule

@@ -8,6 +8,9 @@ Provide:
     - assertAllClose: check that two torch tensors are equal up to a tolerance
 """
 
+import warnings
+from contextlib import contextmanager
+from typing import ContextManager
 from unittest import TestCase
 
 import torch
@@ -18,18 +21,24 @@ class SizedIdentity(torch.nn.Identity):
         super().__init__()
         self.num_features = size
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if input.size(1) != self.num_features:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.size(1) != self.num_features:
             raise ValueError(
                 f"Input size of SizedIdentity must be {self.num_features}, "
-                f"but got {input.size(1)}"
+                f"but got {x.size(1)}"
             )
-        return super().forward(input)
+        return super().forward(x)
 
 
 class GrowableIdentity(SizedIdentity):
     def grow(self, extension_size: int) -> None:
         self.num_features += extension_size
+
+    def extended_forward(
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply identity to x (sized correctly) and pass x_ext unchanged."""
+        return self(x) if x is not None else None, x_ext
 
 
 def indicator_batch(
@@ -43,9 +52,9 @@ def indicator_batch(
 
     Parameters
     ----------
-    tensor_shape : tuple[int]
+    tensor_shape : tuple[int, ...]
         Shape of the tensor.
-    device : torch.device, optional
+    device : torch.device | None, optional
         Device of the tensor, by default None
     dtype : torch.dtype, optional
         Data type of the tensor, by default torch.float32
@@ -65,6 +74,9 @@ def indicator_batch(
 
 
 class TorchTestCase(TestCase):
+    def setUp(self) -> None:
+        torch.manual_seed(0)
+
     def assertShapeEqual(
         self,
         t: torch.Tensor,
@@ -79,7 +91,7 @@ class TorchTestCase(TestCase):
         ----------
         t: torch.Tensor
             tensor to check
-        shape: tuple
+        shape: tuple[int | None, ...]
             expected shape, if a dimension is not tested set it to -1
         message: str
             message to display if the test fails
@@ -92,7 +104,7 @@ class TorchTestCase(TestCase):
         self.assertEqual(
             t.dim(),
             len(shape),
-            f"Error: {t.dim()=} should be {len(shape)=}\n" f"{message}",
+            f"Error: {t.dim()=} should be {len(shape)=}\n{message}",
         )
         for i, s in enumerate(shape):
             if s is not None and s >= 0:
@@ -137,7 +149,7 @@ class TorchTestCase(TestCase):
         self.assertEqual(
             a.shape,
             b.shape,
-            f"Error: tensors have different shapes {a.shape=} {b.shape=}\n" f"{message}",
+            f"Error: tensors have different shapes {a.shape=} {b.shape=}\n{message}",
         )
         all_close = torch.allclose(a, b, atol=atol, rtol=rtol)
         max_diff = 0
@@ -156,3 +168,24 @@ class TorchTestCase(TestCase):
             f"Norm delta relative to a: {norm_delta_relative_to_a:.2e}\n"
             f"{message}",
         )
+
+    @contextmanager
+    def assertMaybeWarns(
+        self, warning_class, warning_message: str = ""
+    ) -> ContextManager:
+        with warnings.catch_warnings(record=True) as warning_context:
+            warnings.simplefilter("always")
+
+            yield warning_context
+
+        if warning_context:
+            for w in warning_context:
+                self.assertTrue(
+                    issubclass(w.category, warning_class),
+                    f"Unexpected {w.category.__name__!s}:{w.message} was raised in {w.filename}:{w.lineno}",
+                )
+                self.assertIn(
+                    warning_message,
+                    str(w.message),
+                    f"Unexpected {w.category.__name__!s}:{w.message} was raised in {w.filename}:{w.lineno}",
+                )

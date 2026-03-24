@@ -7,6 +7,11 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      - name: Don't commit on `main` branch
+        id: no-commit-to-branch
+        args:
+          - --branch
+          - main
       - id: check-executables-have-shebangs
       - id: check-toml
       - id: check-docstring-first
@@ -15,55 +20,36 @@ repos:
       - id: trailing-whitespace
       - id: check-case-conflict
       - id: mixed-line-ending
-      - id: end-of-file-fixer
-      - id: check-case-conflict
       - id: forbid-new-submodules
-
-
-  - repo: https://github.com/psf/black
-    rev: 25.9.0
-    hooks:
-      - id: black
-        language_version: python3
-        args: [ --line-length=90, --target-version=py311, --target-version=py312 ]
 
   - repo: https://github.com/asottile/blacken-docs
     rev: 1.20.0
     hooks:
       - id: blacken-docs
         additional_dependencies: [ black==23.3.0 ]
+        args: ["-l", "90"]
         exclude: ^.github/
 
-  - repo: https://github.com/PyCQA/isort
-    rev: 6.1.0
-    hooks:
-      - id: isort
 
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.3.0
+  - repo: https://github.com/jsh9/pydoclint
+    rev: 0.8.3
     hooks:
-      - id: flake8
-        additional_dependencies: [
-          'flake8-blind-except',
-          'flake8-docstrings',
-          'flake8-bugbear',
-          'flake8-comprehensions',
-          'flake8-docstrings',
-          'flake8-implicit-str-concat',
-          'pydocstyle>=5.0.0',
-        ]
-        exclude: ^docs/ | ^setup\.py$ |
+      - id: pydoclint
+        exclude: ^docs/ |  ^setup\.py$ | ^tests/ |
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.3
+    rev: v0.15.6
     hooks:
-    -   id: ruff-check
-        args: ["--fix", "--output-format=full", "--exit-zero"]
+      - id: ruff-check
+        args: ["--fix", "--output-format=full"]
+        files: ^(src|tests|examples)/
         verbose: true
-    # - id: ruff-format conflict with black
+      - id: ruff-format
+        files: ^(src|tests|examples)/
+        verbose: true
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
         args:
@@ -72,12 +58,3 @@ repos:
           - --quiet-level=2
         exclude_types: [ csv, json, svg ]
         exclude: ^tests/|generated/
-
-#  - repo: local
-#    hooks:
-#      - id: run-unit-tests-coverage
-#        name: Run Unit Tests with Coverage
-#        entry: bash bash/test_coverage.sh
-#        language: system
-#        always_run: true
-#        pass_filenames: false

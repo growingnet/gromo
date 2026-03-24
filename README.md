@@ -26,6 +26,10 @@ contact us!
 Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G. (2024). Growing tiny networks: Spotting expressivity bottlenecks and fixing them optimally. Transactions on Machine Learning Research.
 ```
 
+```
+Douka, S., Verbockhaven, M., Rudkiewicz, T., Rivaud, S., Landes, F., Chevallier, S., Charpiat, G. (2025). Growth strategies for arbitrary DAG neural architectures. European Symposium on Artificial Neural Networks.
+```
+
 ## Installation
 
 ### For users
@@ -44,13 +48,24 @@ You may also clone with SSH if you have set up your SSH keys with GitHub: `git c
 
 ### For developers
 
-To set up a development environment, first ensure that you have an ssh key set up with GitHub. Then, you can use the following commands:
+To set up a development environment:
+1. Ensure that you have an SSH key set up with GitHub.
+2. Fork the repository.
+3. Use the following commands, replacing `$USER` with your GitHub username:
 
 ```bash
 pip install build
-git clone git@github.com:growingnet/gromo.git
+git clone git@github.com:$USER/gromo.git --origin origin
 cd gromo
+git remote add upstream git@github.com:growingnet/gromo.git
+git remote set-url --push upstream no-pushing
+git fetch upstream
+git branch --set-upstream-to=upstream/main main
 python -m build
 pip install -e .[dev,test]
 pre-commit install
 ```
+
+## Documentation
+
+The documentation for Gromo can be found at: https://growingnet.github.io/gromo/

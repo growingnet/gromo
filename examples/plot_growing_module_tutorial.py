@@ -1,4 +1,4 @@
-"""
+r"""
 GroMo tutorial
 ==============
 
@@ -19,8 +19,10 @@ Imports
    fully connected growing modules.
 -  ``SinDataLoader`` is a custom data loader that generates the training
    data for the sine function.
--  ``train`` is exactly like a **standard PyTorch training loop**
--  ``evaluate`` is exactly like a **standard PyTorch evaluation loop**
+-  ``evaluate_model`` from ``gromo.utils.training_utils`` is a standard
+   evaluation loop
+-  ``gradient_descent`` from ``gromo.utils.training_utils`` is a standard
+   training loop (one epoch)
 
 Then we define ``plt_model`` to visualize the model.
 """
@@ -28,18 +30,21 @@ Then we define ``plt_model`` to visualize the model.
 ###############################################################################
 import matplotlib.pyplot as plt
 import torch
-from helpers.auxilliary_functions import SinDataloader, evaluate_model, train
+import torch.utils.data
+from helpers.synthetic_data import SinDataloader
 
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.training_utils import evaluate_model, gradient_descent
 from gromo.utils.utils import global_device
 
 
-global_device()
+device = global_device()
+print(f"Using device: {device}")
 
 ###############################################################################
 
 
-def plt_model(model: torch.nn.Module, fig: "plt.axes._axes.Axes") -> None:
+def plt_model(model: torch.nn.Module, fig: "plt.axes._axes.Axes") -> None:  # type: ignore
     """
     Plot the model's predictions and the true function.
 
@@ -66,8 +71,7 @@ def plt_model(model: torch.nn.Module, fig: "plt.axes._axes.Axes") -> None:
 
 
 ###############################################################################
-
-data = SinDataloader(nb_sample=10, batch_size=100)
+data = SinDataloader(nb_sample=10, batch_size=100, device=device)
 loss_function = torch.nn.MSELoss()
 ###############################################################################
 # 1. Define the model
@@ -94,7 +98,7 @@ growing_net = torch.nn.Sequential(
     second_layer,
 )
 
-growing_net = growing_net.to(global_device())
+growing_net = growing_net.to(device)
 
 print(growing_net)
 ###############################################################################
@@ -117,7 +121,7 @@ print(growing_net)
 # 2. Use it like a normal model
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-l2_err = evaluate_model(growing_net, data, loss_function)[0]
+l2_err, _ = evaluate_model(growing_net, data, loss_function, device=device)
 print(f"Initial error: {l2_err:.2e}")
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 plt_model(growing_net, ax)
@@ -127,13 +131,13 @@ plt_model(growing_net, ax)
 # Here we guide it a bit in the right direction to make it learn faster
 
 growing_net[0].weight.data = torch.ones_like(growing_net[0].weight.data)
-growing_net[0].bias.data = torch.tensor([-2.0, -3 * torch.pi / 2], device=global_device())
-growing_net[1].weight.data = torch.tensor([[-1.0, 2.0]], device=global_device())
+growing_net[0].bias.data = torch.tensor([-2.0, -3 * torch.pi / 2], device=device)
+growing_net[1].weight.data = torch.tensor([[-1.0, 2.0]], device=device)
 growing_net[1].bias.data = torch.zeros_like(growing_net[1].bias.data)
 
 ###############################################################################
 
-l2_err = evaluate_model(growing_net, data, loss_function)[0]
+l2_err, _ = evaluate_model(growing_net, data, loss_function, device=device)
 print(f"Error: {l2_err:.2e}")
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 plt_model(growing_net, ax)
@@ -143,21 +147,24 @@ plt_model(growing_net, ax)
 optimizer = torch.optim.SGD(growing_net.parameters(), lr=1e-2)
 # optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
 
-res = train(
-    model=growing_net,
-    train_dataloader=data,
-    optimizer=optimizer,
-    nb_epoch=10,
-    show=False,
-    aux_loss_function=None,
-)
-loss_train, accuracy_train, loss_val, _ = res
+nb_epoch = 10
+loss_train = []
+for epoch in range(nb_epoch):
+    train_loss, _ = gradient_descent(
+        growing_net,
+        data,
+        optimizer,
+        scheduler=None,
+        loss_function=loss_function,
+        device=device,
+    )
+    loss_train.append(train_loss)
+
 plt.plot(loss_train, label="train")
-plt.plot(loss_val, label="val")
 plt.legend()
 plt.show()
 
-l2_err = evaluate_model(growing_net, data, loss_function, aux_loss_function=None)[0]
+l2_err, _ = evaluate_model(growing_net, data, loss_function, device=device)
 print(f"Error: {l2_err:.2e}")
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 plt_model(growing_net, ax)
@@ -172,8 +179,8 @@ plt_model(growing_net, ax)
 # those the first set is to initialize the computation of those.
 #
 
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # Above you can see that nothing is stored in the model.
 #
@@ -182,8 +189,8 @@ growing_net[1].init_computation()
 
 ###############################################################################
 
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # Above you can see that one the computation are initialised, we see that
 # ``Store input : True``. This means that the next time we forward through
@@ -212,8 +219,8 @@ for x, sinx in data:
 # estimated over 1000 samples.
 #
 
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # Then we can compute the natural gradient step and the new neurons to add
 # with ``compute_optimal_updates``. You can see that now the first layer
@@ -224,24 +231,24 @@ print(growing_net[1].__str__(verbose=2))
 #
 
 growing_net[1].compute_optimal_updates()
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # Once the updates are computed we can stop computing statistics and
 # storing them. This is done by calling the ``reset_computation`` method.
 #
 
 growing_net[1].reset_computation()
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # Here we can see that the first layer still store the input. To correct
 # it we can simply set ``store_input=False`` in the first layer.
 #
 
-growing_net[0].store_input = False
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+growing_net[0].store_input = False  # type: ignore
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # 4. Choose a scaling factor
 # --------------------------
@@ -253,7 +260,7 @@ print(growing_net[1].__str__(verbose=2))
 # natural gradient step).
 #
 
-growing_net[1].scaling_factor = 0.5
+growing_net[1].scaling_factor = 0.5  # type: ignore
 
 ###############################################################################
 
@@ -265,14 +272,13 @@ def extended_evaluate_model(
     batch_limit: int = -1,
     device: torch.device = global_device(),
 ) -> float:
-    assert (
-        loss_function.reduction == "sum"
-    ), "The loss function should not be averaged over the batch"
+    assert loss_function.reduction == "sum", (
+        "The loss function should not be averaged over the batch"
+    )
     growing_model.eval()
-    n_batch = 0
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)
-    for x, y in dataloader:
+    for n_batch, (x, y) in enumerate(dataloader, start=1):
         growing_model.zero_grad()
         x, y = x.to(device), y.to(device)
         z, z_ext = growing_model[0].extended_forward(x)
@@ -280,7 +286,6 @@ def extended_evaluate_model(
         loss = loss_function(y_pred, y)
         total_loss += loss
         nb_sample += x.size(0)
-        n_batch += 1
         if 0 <= batch_limit <= n_batch:
             break
     return total_loss.item() / nb_sample
@@ -307,16 +312,16 @@ print(f"New error: {new_error:.2e}")
 # model. This is done by calling the ``apply_change`` methods.
 
 growing_net[1].apply_change()
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # We can then delete the ``extended_output_layer``,
 # ``extended_input_layer`` and ``Optimal delta layer`` as they are not
 # needed anymore.
 
 growing_net[1].delete_update()
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
 ###############################################################################
 # 6. Use your grown model
 # ~~~~~~~~~~~~~~~~~~~~~~~
@@ -325,12 +330,12 @@ print(growing_net[1].__str__(verbose=2))
 # PyTorch model. You can train it, evaluate it, etc.
 #
 
-l2_err = evaluate_model(growing_net, data, loss_function)[0]
+l2_err, _ = evaluate_model(growing_net, data, loss_function, device=device)
 print(f"New error: {l2_err:.2e}")
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 plt_model(growing_net, ax)
 
 ###############################################################################
 #
-print(growing_net[0].__str__(verbose=2))
-print(growing_net[1].__str__(verbose=2))
+print(growing_net[0].__str__(verbose=2))  # pyright: ignore[reportCallIssue]
+print(growing_net[1].__str__(verbose=2))  # pyright: ignore[reportCallIssue]

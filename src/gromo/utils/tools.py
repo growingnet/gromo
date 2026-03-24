@@ -1,3 +1,4 @@
+import math
 from warnings import warn
 
 import torch
@@ -6,7 +7,6 @@ import torch
 def sqrt_inverse_matrix_semi_positive(
     matrix: torch.Tensor,
     threshold: float = 1e-5,
-    preferred_linalg_library: None | str = None,
 ) -> torch.Tensor:
     """
     Compute the square root of the inverse of a semi-positive definite matrix.
@@ -17,10 +17,6 @@ def sqrt_inverse_matrix_semi_positive(
         input matrix, square and semi-positive definite
     threshold: float
         threshold to consider an eigenvalue as zero
-    preferred_linalg_library: None | str in ("magma", "cusolver")
-        linalg library to use, "cusolver" may fail
-        for non-positive definite matrix if CUDA < 12.1 is used
-        see: https://pytorch.org/docs/stable/generated/torch.linalg.eigh.html
 
     Returns
     -------
@@ -31,18 +27,23 @@ def sqrt_inverse_matrix_semi_positive(
     assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
     assert torch.isnan(matrix).sum() == 0, "The input matrix must not contain NaN values."
 
-    if preferred_linalg_library is not None:
-        torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
-    except torch.linalg.LinAlgError as e:
-        if preferred_linalg_library == "cusolver":
-            raise ValueError(
-                "This is probably a bug from CUDA < 12.1"
-                "Try torch.backends.cuda.preferred_linalg_library('magma')"
-            )
-        else:
-            raise e
+    except torch.linalg.LinAlgError:
+        # Sometimes, due to numerical issues, we get an error:
+        # The algorithm failed to converge because the input matrix is
+        # ill-conditioned or has too many repeated eigenvalues
+        matrix += torch.finfo(matrix.dtype).resolution * torch.eye(
+            matrix.shape[0],
+            device=matrix.device,
+            dtype=matrix.dtype,
+        )
+        warn(
+            message="Adding a small identity matrix to make the input matrix positive definite.",
+            category=RuntimeWarning,
+        )
+        eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
+
     selected_eigenvalues = eigenvalues > threshold
     eigenvalues = torch.rsqrt(eigenvalues[selected_eigenvalues])  # inverse square root
     eigenvectors = eigenvectors[:, selected_eigenvalues]
@@ -66,15 +67,15 @@ def optimal_delta(
 
     Parameters
     ----------
-    tensor_s: torch.Tensor, of shape [total_in_features, total_in_features]
-        S tensor from calling layer, shape
-    tensor_m: torch.Tensor, of shape [total_in_features, in_features]
-        M tensor from calling layer
-    dtype: torch.dtype, default torch.float32
-        dtype for S and M during the computation
-    force_pseudo_inverse: bool, default False
+    tensor_s: torch.Tensor
+        S tensor from calling layer, of shape [total_in_features, total_in_features]
+    tensor_m: torch.Tensor
+        M tensor from calling layer, of shape [total_in_features, in_features]
+    dtype: torch.dtype, optional
+        dtype for S and M during the computation, by default torch.float32
+    force_pseudo_inverse: bool, optional
         if True, use the pseudo-inverse to compute the optimal delta even if the
-        matrix is invertible
+        matrix is invertible, by default False
 
     Returns
     -------
@@ -93,6 +94,7 @@ def optimal_delta(
     if tensor_m.dtype != dtype:
         tensor_m = tensor_m.to(dtype=dtype)
 
+    delta_raw = None
     if not force_pseudo_inverse:
         try:
             delta_raw = torch.linalg.solve(tensor_s, tensor_m).t()
@@ -105,9 +107,9 @@ def optimal_delta(
         delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
 
     assert delta_raw is not None, "delta_raw should be computed by now."
-    assert (
-        delta_raw.isnan().sum() == 0
-    ), "The optimal delta should not contain NaN values."
+    assert delta_raw.isnan().sum() == 0, (
+        "The optimal delta should not contain NaN values."
+    )
     parameter_update_decrease = torch.trace(tensor_m @ delta_raw)
     if parameter_update_decrease < 0:
         warn(
@@ -131,90 +133,127 @@ def optimal_delta(
 
 
 def compute_optimal_added_parameters(
-    matrix_s: torch.Tensor,
+    matrix_s: torch.Tensor | None,
     matrix_n: torch.Tensor,
-    numerical_threshold: float = 1e-15,
+    numerical_threshold: float = 1e-6,
     statistical_threshold: float = 1e-3,
     maximum_added_neurons: int | None = None,
+    alpha_zero: bool = False,
+    omega_zero: bool = False,
+    ignore_singular_values: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
 
+    This function operates on primitive options, not method names.
+
     Parameters
     ----------
-    matrix_s: torch.Tensor in (s, s)
-        square matrix S
-    matrix_n: torch.Tensor in (s, t)
-        matrix N
-    numerical_threshold: float
-        threshold to consider an eigenvalue as zero in the square root of the inverse of S
-    statistical_threshold: float
-        threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
-    maximum_added_neurons: int | None
-        maximum number of added neurons, if None all significant neurons are kept
+    matrix_s : torch.Tensor | None
+        Square matrix S of shape (s, s). If None, identity matrix is used.
+    matrix_n : torch.Tensor
+        Matrix N (correlation matrix) of shape (s, t).
+    numerical_threshold : float
+        Threshold to consider an eigenvalue as zero in square root of inverse of S
+    statistical_threshold : float
+        Threshold to consider a singular value as zero in the SVD
+    maximum_added_neurons : int | None
+        Maximum number of added neurons, if None all significant neurons are kept
+    alpha_zero : bool
+        If True, set alpha (incoming weights) to zero, else compute from SVD.
+    omega_zero : bool
+        If True, set omega (outgoing weights) to zero, else compute from SVD.
+    ignore_singular_values : bool
+        If True, ignore the actual singular values and treat them as 1 for computing alpha and
+        omega, effectively only using the singular vectors for the update direction.
 
     Returns
     -------
-    tuple[torch.Tensor, torch.Tensor, torch.Tensor] in (k, s) (t, k) (k,)
-        optimal added weights alpha, omega and eigenvalues lambda
+    torch.Tensor
+        Optimal added weights alpha, shape (k, s).
+    torch.Tensor
+        Optimal added weights omega, shape (t, k).
+    torch.Tensor
+        Singular values s, shape (k,).
+
+    Raises
+    ------
+    torch.linalg.LinAlgError
+        If SVD of S^{-1/2} N fails.
     """
-    # matrix_n = matrix_n.t()
-    s_1, s_2 = matrix_s.shape
-    assert s_1 == s_2, "The input matrix S must be square."
-    n_1, n_2 = matrix_n.shape
-    assert s_2 == n_1, (
-        f"The input matrices S and N must have compatible shapes."
-        f"(got {matrix_s.shape=} and {matrix_n.shape=})"
-    )
-    if not torch.allclose(matrix_s, matrix_s.t()):
-        diff = torch.abs(matrix_s - matrix_s.t())
-        warn(
-            f"Warning: The input matrix S is not symmetric.\n"
-            f"Max difference: {diff.max():.2e},\n"
-            f"% of non-zero elements: {100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
+    # Validate inputs
+    n_1, _ = matrix_n.shape
+
+    if matrix_s is not None:
+        # validate S matrix
+        s_1, s_2 = matrix_s.shape
+        assert s_1 == s_2, "The input matrix S must be square."
+        assert s_2 == n_1, (
+            f"The input matrices S and N must have compatible shapes."
+            f"(got {matrix_s.shape=} and {matrix_n.shape=})"
         )
-        matrix_s = (matrix_s + matrix_s.t()) / 2
+        if not torch.allclose(matrix_s, matrix_s.t()):
+            diff = torch.abs(matrix_s - matrix_s.t())
+            warn(
+                f"Warning: The input matrix S is not symmetric.\n"
+                f"Max difference: {diff.max():.2e},\n"
+                f"% of non-zero elements: "
+                f"{100 * (diff > 1e-10).sum() / diff.numel():.2f}%"
+            )
+            matrix_s = (matrix_s + matrix_s.t()) / 2
 
-    # assert torch.allclose(matrix_s, matrix_s.t()), "The input matrix S must be symmetric."
+        # Compute the square root of the inverse of S
+        matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
+            matrix_s, threshold=numerical_threshold
+        )
+        # Compute the product P := S^{-1/2} N
+        matrix_p = matrix_s_inverse_sqrt @ matrix_n
+    else:
+        # GradMax path: S = Identity, so S^{-1/2} = Identity
+        matrix_p = matrix_n
+        matrix_s_inverse_sqrt = torch.eye(
+            n_1, device=matrix_n.device, dtype=matrix_n.dtype
+        )
 
-    # compute the square root of the inverse of S
-    matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
-        matrix_s, threshold=numerical_threshold
-    )
-    # compute the product P := S^{-1/2} N
-    matrix_p = matrix_s_inverse_sqrt @ matrix_n
-    # compute the SVD of the product
+    # Compute the SVD of the product
     try:
         u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
-    except torch.linalg.LinAlgError:
+    except torch.linalg.LinAlgError as e:
         print("Warning: An error occurred during the SVD computation.")
-        print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
+        if matrix_s is not None:
+            print(f"matrix_s: {matrix_s.min()=}, {matrix_s.max()=}, {matrix_s.shape=}")
         print(f"matrix_n: {matrix_n.min()=}, {matrix_n.max()=}, {matrix_n.shape=}")
         print(
-            f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, {matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
+            f"matrix_s_inverse_sqrt: {matrix_s_inverse_sqrt.min()=}, "
+            f"{matrix_s_inverse_sqrt.max()=}, {matrix_s_inverse_sqrt.shape=}"
         )
         print(f"matrix_p: {matrix_p.min()=}, {matrix_p.max()=}, {matrix_p.shape=}")
-        u, s, v = torch.linalg.svd(matrix_p, full_matrices=False)
-        # raise ValueError("An error occurred during the SVD computation.")
+        raise e
 
-        # u = torch.zeros((1, matrix_p.shape[0]))
-        # s = torch.zeros(1)
-        # v = torch.randn((matrix_p.shape[1], 1))
-        # return u, v, s
-
-    # select the singular values
+    # Select the singular values
     selected_singular_values = s >= min(statistical_threshold, s.max())
     if maximum_added_neurons is not None:
         selected_singular_values[maximum_added_neurons:] = False
 
-    # keep only the significant singular values but keep at least one
+    # Keep only the significant singular values but keep at least one
     s = s[selected_singular_values]
     u = u[:, selected_singular_values]
     v = v[selected_singular_values, :]
-    # compute the optimal added weights
-    sqrt_s = torch.sqrt(torch.abs(s))
-    alpha = torch.sign(s) * sqrt_s * (matrix_s_inverse_sqrt @ u)
+
+    # Compute output based on ignore_singular_values option
+    if ignore_singular_values:
+        sqrt_s = torch.ones_like(s)
+    else:
+        sqrt_s = torch.sqrt(torch.abs(s))
+    alpha = sqrt_s * (matrix_s_inverse_sqrt @ u)
     omega = sqrt_s[:, None] * v
+
+    if alpha_zero:
+        alpha = torch.zeros_like(alpha)
+
+    if omega_zero:
+        omega = torch.zeros_like(omega)
+
     return alpha.t(), omega.t(), s
 
 
@@ -226,7 +265,7 @@ def compute_output_shape_conv(
 
     Parameters
     ----------
-    input_shape: tuple
+    input_shape: tuple[int, int]
         shape of the input tensor (H, W)
     conv: torch.nn.Conv2d
         convolutional layer
@@ -267,7 +306,8 @@ def compute_mask_tensor_t(
     """
     Compute the tensor T
     For:
-    - input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H'[-1]W'[-1]) after the pooling
+    - input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H'[-1]W'[-1])
+      after the pooling
     - output tensor: B in (S, HW)
     - conv kernel tensor: W in (S, S[-1], Hd, Wd)
     T is the tensor in (HW, HdWd, H'[-1]W'[-1]) such that:
@@ -275,7 +315,7 @@ def compute_mask_tensor_t(
 
     Parameters
     ----------
-    input_shape: tuple
+    input_shape: tuple[int, int]
         shape of the input tensor B[-1] of size (H[-1], W[-1])
     conv: torch.nn.Conv2d
         convolutional layer applied to the input tensor B[-1]
@@ -334,6 +374,13 @@ def create_bordering_effect_convolution(
     -------
     torch.nn.Conv2d
         convolutional layer that simulates the border effect
+
+    Raises
+    ------
+    ValueError
+        if argument channels is not a positive integer
+    TypeError
+        if argument convolution is not of type torch.nn.Conv2d
     """
     if not isinstance(channels, int) or channels <= 0:
         raise ValueError("Input 'input_channels' must be a positive integer.")
@@ -384,9 +431,9 @@ def apply_border_effect_on_unfolded(
         unfolded tensor to be modified
     original_size: tuple[int, int]
         original size of the tensor before unfolding
-    border_effect_conv: torch.Conv2d
+    border_effect_conv: torch.nn.Conv2d | None, optional
         convolutional layer to be applied on the unfolded tensor
-    identity_conv: torch.Conv2d
+    identity_conv: torch.nn.Conv2d | None, optional
         convolutional layer that simulates the identity effect,
         if None, it will be created from `border_effect_conv`.
 
@@ -394,20 +441,25 @@ def apply_border_effect_on_unfolded(
     -------
     torch.Tensor
         modified unfolded tensor
+
+    Raises
+    ------
+    TypeError
+        if argument unfloded_tensor is not of type torch.Tensor
     """
     if not isinstance(unfolded_tensor, torch.Tensor):
         raise TypeError("Input 'unfolded_tensor' must be a torch.Tensor")
     assert isinstance(border_effect_conv, torch.nn.Conv2d) or isinstance(
         identity_conv, torch.nn.Conv2d
     ), "Either 'border_effect_conv' or 'identity_conv' must be provided."
-    assert all(
-        isinstance(s, int) and s > 0 for s in original_size
-    ), "'original_size' must be a tuple of positive integers."
+    assert all(isinstance(s, int) and s > 0 for s in original_size), (
+        "'original_size' must be a tuple of positive integers."
+    )
 
     if identity_conv is None:
-        assert isinstance(
-            border_effect_conv, torch.nn.Conv2d
-        ), "'border_effect_conv' must be provided if 'identity_conv' is None."
+        assert isinstance(border_effect_conv, torch.nn.Conv2d), (
+            "'border_effect_conv' must be provided if 'identity_conv' is None."
+        )
         channels = unfolded_tensor.shape[1]
         identity_conv = create_bordering_effect_convolution(
             channels=channels,
@@ -425,3 +477,34 @@ def apply_border_effect_on_unfolded(
     unfolded_tensor = unfolded_tensor.flatten(start_dim=2)
 
     return unfolded_tensor
+
+
+def lecun_normal_(tensor: torch.Tensor) -> torch.Tensor:
+    """Initialize weight tensor with LecunNorm
+    Draws samples from a truncated normal distribution centered around 0 with std = sqrt(1 / fan_in)
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        weight tensor
+
+    Returns
+    -------
+    torch.Tensor
+        initialized weight tensor
+
+    Raises
+    ------
+    ValueError
+        if the shape of the tensor is not 2D or 4D
+    """
+    if tensor.ndim == 2:  # Linear
+        fan_in = tensor.size(1)
+    elif tensor.ndim == 4:  # Conv2d
+        fan_in = tensor.size(1) * tensor.size(2) * tensor.size(3)
+    else:
+        raise ValueError(
+            f"Only supports Linear (2D) or Conv2d (4D) weights, got tensor with shape {tensor.shape}"
+        )
+    std = 1.0 / math.sqrt(fan_in)
+    return torch.nn.init.normal_(tensor, mean=0.0, std=std)
