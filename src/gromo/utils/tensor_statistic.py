@@ -1,9 +1,13 @@
-from typing import Any, Callable
+from typing import Any, Callable, TypeAlias
 
 import numpy as np
 import torch
 
 from gromo.utils.utils import global_device
+
+
+StatisticUpdateResult: TypeAlias = tuple[torch.Tensor, int]
+StatisticUpdateFunction: TypeAlias = Callable[..., StatisticUpdateResult]
 
 
 class TensorStatistic:
@@ -48,13 +52,22 @@ class TensorStatistic:
     def __init__(
         self,
         shape: tuple[int, ...] | None,
-        update_function: (
-            Callable[[Any], tuple[torch.Tensor, int]]
-            | Callable[[], tuple[torch.Tensor, int]]
-        ),
+        update_function: StatisticUpdateFunction,
         device: torch.device | str | None = None,
         name: str | None = None,
     ) -> None:
+        """
+        Initialise the tensor information.
+
+        Parameters
+        ----------
+        shape: tuple[int, ...] | None
+            shape of the tensor to compute, if None use the shape of the first update
+        update_function: StatisticUpdateFunction
+            function to update the tensor
+        name: str
+            used for debugging
+        """
         assert shape is None or all(
             i >= 0 and isinstance(i, (int, np.int64))
             for i in shape  # type: ignore
@@ -71,20 +84,10 @@ class TensorStatistic:
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
     @torch.no_grad()
-    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
-        """Update tensor based on update_function
-
-        Parameters
-        ----------
-        **kwargs : Any
-
-        Returns
-        -------
-        tuple[torch.Tensor, int] | None
-            the update tensor, number of samples used to compute the update
-        """
+    def update(self, **kwargs: Any) -> StatisticUpdateResult | None:
+        """Accumulate one batch contribution when the statistic is marked stale."""
         if self.updated is False:
-            update, nb_sample = self._update_function(**kwargs)  # type: ignore
+            update, nb_sample = self._update_function(**kwargs)
             assert (self._shape is None or self._shape == update.size()) and (
                 self._tensor is None or self._tensor.size() == update.size()
             ), (
@@ -181,14 +184,25 @@ class TensorStatiticWithEstimationError(TensorStatistic):
     def __init__(
         self,
         shape: tuple[int, ...] | None,
-        update_function: (
-            Callable[[Any], tuple[torch.Tensor, int]]
-            | Callable[[], tuple[torch.Tensor, int]]
-        ),
+        update_function: StatisticUpdateFunction,
         device: torch.device | str | None = None,
         name: str | None = None,
         trace_precision: float = 1e-3,
     ) -> None:
+        """
+        Initialise the tensor information.
+
+        Parameters
+        ----------
+        shape: tuple[int, ...] | None
+            shape of the tensor to compute, if None use the shape of the first update
+        update_function: StatisticUpdateFunction
+            function to update the tensor and compute the batch covariance
+        name: str
+            used for debugging
+        trace_precision: float
+            relative precision for the trace computation, default 1e-3
+        """
         super().__init__(shape, update_function, device, name)
         self._square_norm_sum = 0
         self.trace_precision = trace_precision
@@ -226,18 +240,8 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         return self._trace / self._batches
 
     @torch.no_grad()
-    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
-        """Update tensor based on update_function
-
-        Parameters
-        ----------
-        **kwargs : Any
-
-        Returns
-        -------
-        tuple[torch.Tensor, int] | None
-            the update tensor, number of samples used to compute the update
-        """
+    def update(self, **kwargs: Any) -> StatisticUpdateResult | None:
+        """Accumulate one batch and update the running trace-error estimate."""
         if self.updated is False:
             update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
             assert isinstance(
