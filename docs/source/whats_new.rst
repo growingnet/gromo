@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Adds configurability to the ResNet container to allow using BatchNorm2d or disabling normalization entirely (:gh:`228` by `Théo Rudkiewicz`_)
 - Add ``uv`` files, use ``uv sync --extra dev --extra test --extra doc`` to install the package with all dependencies (:gh:`226` by `Théo Rudkiewicz`_)
 - Use ``ruff`` for formatting (:gh:`227` by `Théo Rudkiewicz`_)
 - Change how size-dependent post_layer_function modules handle extended activities in the growing module framework (:gh:`224` by `Théo Rudkiewicz`_)

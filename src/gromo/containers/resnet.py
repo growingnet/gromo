@@ -5,6 +5,7 @@ and to add basic blocks add the end of the stages.
 """
 
 from math import ceil
+from typing import Literal, TypeAlias, TypedDict
 
 import torch
 from torch import nn
@@ -16,6 +17,34 @@ from gromo.modules.conv2d_growing_module import (
     RestrictedConv2dGrowingModule,
 )
 from gromo.modules.growing_normalisation import GrowingBatchNorm2d
+
+
+class NormKwargs(TypedDict, total=False):
+    """Optional normalization configuration."""
+
+    eps: float
+    momentum: float
+    affine: bool
+    track_running_stats: bool
+
+
+class CompleteNormKwargs(TypedDict):
+    """Complete normalization configuration for currently supported norms."""
+
+    eps: float
+    momentum: float
+    affine: bool
+    track_running_stats: bool
+
+
+base_batch_norm_kwargs: CompleteNormKwargs = {
+    "eps": 1e-5,
+    "momentum": 0.1,
+    "affine": True,
+    "track_running_stats": True,
+}
+
+NormalizationType: TypeAlias = Literal["batch"]
 
 
 class ResNetBasicBlock(SequentialGrowingModel):
@@ -49,6 +78,14 @@ class ResNetBasicBlock(SequentialGrowingModel):
     use_preactivation : bool
         If True, use full pre-activation ResNet (BN-ReLU before conv).
         If False, use classical ResNet (conv-BN-ReLU).
+    normalization : NormalizationType | None
+        Normalization layer to use. Supported values are ``"batch"`` and
+        ``None``.
+    normalization_kwargs : NormKwargs | None
+        Additional keyword arguments passed to batch normalization layers.
+        Supported keys are ``eps``, ``momentum``, ``affine``, and
+        ``track_running_stats``. The normalization construction is centralized
+        so that other normalization layers can be integrated later.
     growing_conv_type : type[Conv2dGrowingModule]
         Type of convolutional growing module to use
         (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...).
@@ -66,6 +103,8 @@ class ResNetBasicBlock(SequentialGrowingModel):
         small_inputs: bool = False,
         inplanes: int = 64,
         use_preactivation: bool = True,
+        normalization: NormalizationType | None = "batch",
+        normalization_kwargs: NormKwargs | None = None,
         growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
     ) -> None:
         super().__init__(
@@ -77,6 +116,12 @@ class ResNetBasicBlock(SequentialGrowingModel):
         self.inplanes = inplanes
         self.input_block_kernel_size = input_block_kernel_size
         self.output_block_kernel_size = output_block_kernel_size
+        self.normalization: None | Literal["batch"] = self._validate_normalization(
+            normalization
+        )
+        self.normalization_kwargs: CompleteNormKwargs = base_batch_norm_kwargs.copy()
+        if normalization_kwargs is not None:
+            self.normalization_kwargs.update(normalization_kwargs)
         self.growing_conv_type = growing_conv_type
 
         nb_stages = len(hidden_channels)
@@ -120,6 +165,135 @@ class ResNetBasicBlock(SequentialGrowingModel):
                 if isinstance(block, Conv2dGrowingBlock):
                     self._growable_layers.append(block)
 
+    @staticmethod
+    def _validate_normalization(
+        normalization: NormalizationType | None,
+    ) -> NormalizationType | None:
+        """Validate and normalize the normalization configuration.
+
+        Parameters
+        ----------
+        normalization : NormalizationType | None
+            Requested normalization configuration.
+
+        Returns
+        -------
+        NormalizationType | None
+            The validated normalization name.
+
+        Raises
+        ------
+        ValueError
+            If the normalization type is not supported.
+        """
+        if normalization is None:
+            return None
+        elif normalization == "batch":
+            return normalization
+        else:
+            raise ValueError(
+                f"normalization must be 'batch' or None, got {normalization!r}."
+            )
+
+    def _build_normalization(self, num_channels: int) -> nn.Module | None:
+        """Build a standard normalization module.
+
+        Parameters
+        ----------
+        num_channels : int
+            Number of channels to normalize.
+
+        Returns
+        -------
+        nn.Module | None
+            The normalization module, or ``None`` when normalization is disabled.
+
+        Raises
+        ------
+        AssertionError
+            If an unsupported normalization reaches this method despite prior
+            validation.
+        """
+        if self.normalization is None:
+            return None
+        elif self.normalization == "batch":
+            return nn.BatchNorm2d(
+                num_channels,
+                eps=self.normalization_kwargs["eps"],
+                momentum=self.normalization_kwargs["momentum"],
+                affine=self.normalization_kwargs["affine"],
+                track_running_stats=self.normalization_kwargs["track_running_stats"],
+                device=self.device,
+            )
+        # Unreachable due to validation
+        raise AssertionError("Normalization should have been validated before use.")
+
+    def _build_growing_normalization(self, num_channels: int) -> nn.Module | None:
+        """Build a growing normalization module.
+
+        Parameters
+        ----------
+        num_channels : int
+            Number of channels to normalize.
+
+        Returns
+        -------
+        nn.Module | None
+            The growing normalization module, or ``None`` when normalization is
+            disabled.
+
+        Raises
+        ------
+        AssertionError
+            If an unsupported normalization reaches this method despite prior
+            validation.
+        """
+        if self.normalization is None:
+            return None
+        elif self.normalization == "batch":
+            return GrowingBatchNorm2d(
+                num_channels,
+                eps=self.normalization_kwargs["eps"],
+                momentum=self.normalization_kwargs["momentum"],
+                affine=self.normalization_kwargs["affine"],
+                track_running_stats=self.normalization_kwargs["track_running_stats"],
+                device=self.device,
+            )
+        # Unreachable due to validation
+        raise AssertionError("Normalization should have been validated before use.")
+
+    def _build_norm_activation_layers(
+        self,
+        num_channels: int,
+        *,
+        growing: bool = False,
+    ) -> list[nn.Module]:
+        """Build the normalization-activation sequence as a list of layers.
+
+        Parameters
+        ----------
+        num_channels : int
+            Number of channels to normalize.
+        growing : bool
+            If True, use the growing normalization counterpart.
+
+        Returns
+        -------
+        list[nn.Module]
+            Layers implementing normalization followed by activation, or only the
+            activation when normalization is disabled.
+        """
+        normalization = (
+            self._build_growing_normalization(num_channels)
+            if growing
+            else self._build_normalization(num_channels)
+        )
+        layers: list[nn.Module] = []
+        if normalization is not None:
+            layers.append(normalization)
+        layers.append(self.activation)
+        return layers
+
     def _build_pre_net(self, in_features: int, inplanes: int) -> nn.Sequential:
         """Build the pre-network (stem) based on input size and architecture type.
 
@@ -135,9 +309,10 @@ class ResNetBasicBlock(SequentialGrowingModel):
         nn.Sequential
             The stem network.
         """
+        layers: list[nn.Module]
         if self.small_inputs:
             # For small inputs like CIFAR-10/100 (32x32)
-            layers: list[nn.Module] = [
+            layers = [
                 nn.Conv2d(
                     in_features,
                     inplanes,
@@ -163,8 +338,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
             ]
 
         if not self.use_preactivation:
-            layers.append(nn.BatchNorm2d(inplanes, device=self.device))
-            layers.append(self.activation)
+            layers.extend(self._build_norm_activation_layers(inplanes))
 
         if not self.small_inputs:
             layers.append(nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
@@ -186,8 +360,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         """
         layers: list[nn.Module] = []
         if self.use_preactivation:
-            layers.append(nn.BatchNorm2d(final_channels, device=self.device))
-            layers.append(self.activation)
+            layers.extend(self._build_norm_activation_layers(final_channels))
         layers.extend(
             [
                 nn.AdaptiveAvgPool2d((1, 1)),
@@ -255,20 +428,17 @@ class ResNetBasicBlock(SequentialGrowingModel):
             "stride": output_block_stride,
         }
         mid_activation = nn.Sequential(
-            GrowingBatchNorm2d(hidden_channels, device=self.device),
-            self.activation,
+            *self._build_norm_activation_layers(hidden_channels, growing=True)
         )
 
         if self.use_preactivation:
             pre_activation: nn.Module | None = nn.Sequential(
-                nn.BatchNorm2d(in_channels, device=self.device),
-                self.activation,
+                *self._build_norm_activation_layers(in_channels)
             )
             pre_addition_function: nn.Module = nn.Identity()
             downsample: nn.Module = (
                 nn.Sequential(
-                    nn.BatchNorm2d(in_channels, device=self.device),
-                    self.activation,
+                    *self._build_norm_activation_layers(in_channels),
                     nn.Conv2d(
                         in_channels=in_channels,
                         out_channels=out_channels,
@@ -283,9 +453,12 @@ class ResNetBasicBlock(SequentialGrowingModel):
             )
         else:
             pre_activation = None
-            pre_addition_function = nn.BatchNorm2d(out_channels, device=self.device)
-            downsample = (
-                nn.Sequential(
+            normalization = self._build_normalization(out_channels)
+            pre_addition_function = (
+                normalization if normalization is not None else nn.Identity()
+            )
+            if use_downsample:
+                downsample_layers: list[nn.Module] = [
                     nn.Conv2d(
                         in_channels=in_channels,
                         out_channels=out_channels,
@@ -293,12 +466,14 @@ class ResNetBasicBlock(SequentialGrowingModel):
                         stride=input_block_stride,
                         bias=False,
                         device=self.device,
-                    ),
-                    nn.BatchNorm2d(out_channels, device=self.device),
-                )
-                if use_downsample
-                else nn.Identity()
-            )
+                    )
+                ]
+                downsample_normalization = self._build_normalization(out_channels)
+                if downsample_normalization is not None:
+                    downsample_layers.append(downsample_normalization)
+                downsample = nn.Sequential(*downsample_layers)
+            else:
+                downsample = nn.Identity()
 
         return Conv2dGrowingBlock(
             in_channels=in_channels,
@@ -355,7 +530,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         stage: nn.Sequential = self.stages[stage_index]  # type: ignore
         # For classical mode, the last element is activation, so use -2
         ref_block_idx = -1 if self.use_preactivation else -2
-        input_channels = stage[ref_block_idx].out_features
+        input_channels: int = stage[ref_block_idx].out_features  # type: ignore
         output_channels = input_channels
 
         num_blocks = sum(1 for m in stage if isinstance(m, Conv2dGrowingBlock))
@@ -444,6 +619,8 @@ def init_full_resnet_structure(
     inplanes: int = 64,
     nb_stages: int = 4,
     use_preactivation: bool = True,
+    normalization: NormalizationType | None = "batch",
+    normalization_kwargs: NormKwargs | None = None,
     growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
 ) -> ResNetBasicBlock:
     """
@@ -495,6 +672,14 @@ def init_full_resnet_structure(
     use_preactivation : bool
         If True, use full pre-activation ResNet (BN-ReLU before conv).
         If False, use classical ResNet (conv-BN-ReLU).
+    normalization : NormalizationType | None
+        Normalization layer to use. Supported values are ``"batch"`` and
+        ``None``.
+    normalization_kwargs : NormKwargs | None
+        Additional keyword arguments passed to batch normalization layers.
+        Supported keys are ``eps``, ``momentum``, ``affine``, and
+        ``track_running_stats``. The normalization construction is centralized
+        so that other normalization layers can be integrated later.
     growing_conv_type : type[Conv2dGrowingModule]
         Type of convolutional growing module to use
         (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...).
@@ -512,7 +697,8 @@ def init_full_resnet_structure(
     ValueError
         If ``hidden_channels`` length does not match ``nb_stages``,
         or if a per-stage tuple length does not match the corresponding
-        ``number_of_blocks_per_stage``.
+        ``number_of_blocks_per_stage``, or if ``normalization`` is not one of the
+        supported values.
     """
     if isinstance(input_shape, torch.Size):
         input_shape = tuple(input_shape)  # type: ignore
@@ -585,6 +771,8 @@ def init_full_resnet_structure(
         small_inputs=small_inputs,
         inplanes=inplanes,
         use_preactivation=use_preactivation,
+        normalization=normalization,
+        normalization_kwargs=normalization_kwargs,
         growing_conv_type=growing_conv_type,
     )
 
@@ -615,7 +803,7 @@ if __name__ == "__main__":
     )  # number of parameters: 11,688,616
     print(model_preact)
 
-    from torchinfo import summary
+    from torchinfo import summary  # pyright: ignore[reportMissingImports]
 
     summary(model_preact, input_size=(1, 3, 224, 224))
 
@@ -643,7 +831,7 @@ if __name__ == "__main__":
     print(f"Number of parameters (classical): {classical_params}")
 
     # Compare with torchvision ResNet-18
-    import torchvision.models as models
+    import torchvision.models as models  # pyright: ignore[reportMissingImports]
 
     torchvision_resnet18 = models.resnet18(weights=None)
     torchvision_params = sum(p.numel() for p in torchvision_resnet18.parameters())

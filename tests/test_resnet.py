@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from gromo.containers.resnet import ResNetBasicBlock, init_full_resnet_structure
+from gromo.containers.resnet import (
+    NormKwargs,
+    ResNetBasicBlock,
+    init_full_resnet_structure,
+)
 from gromo.utils.utils import global_device
 from tests.unittest_tools import unittest_parametrize
 
@@ -182,6 +186,104 @@ class TestResNet(TorchTestCase):
         self.assertShapeEqual(output, (4, 10), "Output shape should be (4, 10)")
         loss = output.sum()
         loss.backward()  # Check that backward pass works without error
+
+    def test_normalization_configuration_forward(self):
+        """Test forward passes with no normalization and custom BatchNorm kwargs."""
+        device = global_device()
+        x = torch.randn(2, 3, 32, 32, device=device)
+
+        with self.subTest(normalization="invalid"):
+            with self.assertRaises(ValueError):
+                init_full_resnet_structure(
+                    input_shape=(3, 32, 32),
+                    out_features=7,
+                    number_of_blocks_per_stage=1,
+                    reduction_factor=0.5,
+                    inplanes=8,
+                    nb_stages=2,
+                    normalization="invalid",  # type: ignore[arg-type]
+                    device=device,
+                )
+
+        with self.subTest(normalization="none"):
+            for preactivation in [True, False]:
+                model_no_norm = init_full_resnet_structure(
+                    input_shape=(3, 32, 32),
+                    out_features=7,
+                    number_of_blocks_per_stage=1,
+                    reduction_factor=0.5,
+                    inplanes=8,
+                    nb_stages=2,
+                    use_preactivation=preactivation,
+                    normalization=None,
+                    device=device,
+                )
+                norm_layers = [
+                    module
+                    for module in model_no_norm.modules()
+                    if isinstance(module, torch.nn.BatchNorm2d)
+                ]
+                self.assertEqual(norm_layers, [])
+                output = model_no_norm(x)
+                self.assertShapeEqual(output, (2, 7))
+
+        with self.subTest(normalization="batch"):
+            normalization_kwargs: NormKwargs = {
+                "eps": 1e-3,
+                "momentum": 0.25,
+                "affine": False,
+                "track_running_stats": False,
+            }
+            model_batch_norm = init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                out_features=7,
+                number_of_blocks_per_stage=1,
+                reduction_factor=0.5,
+                inplanes=8,
+                nb_stages=2,
+                normalization="batch",
+                normalization_kwargs=normalization_kwargs,
+                device=device,
+            )
+            norm_layers = [
+                module
+                for module in model_batch_norm.modules()
+                if isinstance(module, torch.nn.BatchNorm2d)
+            ]
+            self.assertGreater(len(norm_layers), 0)
+            for norm_layer in norm_layers:
+                self.assertEqual(norm_layer.eps, normalization_kwargs["eps"])
+                self.assertEqual(
+                    norm_layer.momentum,
+                    normalization_kwargs["momentum"],
+                )
+                self.assertEqual(norm_layer.affine, normalization_kwargs["affine"])
+                self.assertEqual(
+                    norm_layer.track_running_stats,
+                    normalization_kwargs["track_running_stats"],
+                )
+            output = model_batch_norm(x)
+            self.assertShapeEqual(output, (2, 7))
+
+        with self.subTest(normalization="batch_classical_downsample"):
+            model_classical_batch_norm = init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                out_features=7,
+                number_of_blocks_per_stage=1,
+                reduction_factor=0.5,
+                inplanes=8,
+                nb_stages=2,
+                normalization="batch",
+                use_preactivation=False,
+                device=device,
+            )
+            downsample = model_classical_batch_norm.stages[1][0].downsample  # type: ignore[index]
+            self.assertIsInstance(downsample, torch.nn.Sequential)
+            self.assertTrue(
+                any(isinstance(module, torch.nn.BatchNorm2d) for module in downsample)
+            )
+            output = model_classical_batch_norm(x)
+            self.assertShapeEqual(output, (2, 7))
 
     def test_append_block(self):
         """
