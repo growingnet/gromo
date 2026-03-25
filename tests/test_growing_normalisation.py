@@ -664,16 +664,21 @@ class TestGrowingLayerNorm(unittest.TestCase):
         self.assertEqual(output.shape, x.shape)
 
     def test_grow_multi_dim_normalized_shape(self):
-        """Test growing the last dim of a 2-D normalized_shape."""
+        """Test growing the first (channel) dim of a 2-D normalized_shape."""
         H, W = 8, 16
         ln = GrowingLayerNorm(normalized_shape=[H, W], device=self.device)
         additional = 8
 
         ln.grow(additional)
 
-        self.assertEqual(ln.normalized_shape, (H, W + additional))
-        self.assertEqual(ln.weight.shape, (H, W + additional))
-        self.assertEqual(ln.bias.shape, (H, W + additional))
+        self.assertEqual(ln.normalized_shape, (H + additional, W))
+        self.assertEqual(ln.weight.shape, (H + additional, W))
+        self.assertEqual(ln.bias.shape, (H + additional, W))
+
+        # Forward pass with correctly-grown input
+        x = torch.randn(self.batch_size, H + additional, W, device=self.device)
+        out = ln(x)
+        self.assertEqual(out.shape, x.shape)
 
     def test_grow_error_cases(self):
         """Test ValueError for non-positive additional_last_dim and wrong custom shapes."""
@@ -738,7 +743,7 @@ class TestGrowingLayerNorm(unittest.TestCase):
         )
         buffers = dict(ln.named_buffers())
         self.assertIn("running_stat", buffers)
-        self.assertEqual(buffers["running_stat"].shape[-1], self.initial_features + 8)
+        self.assertEqual(buffers["running_stat"].shape[0], self.initial_features + 8)
 
     def test_grow_device_inferred_from_weight(self):
         """Test that device is inferred from self.weight when not passed."""
