@@ -35,7 +35,7 @@ import torch.nn as nn
 
 from gromo.utils.tensor_statistic import (
     TensorStatistic,
-    TensorStatiticWithEstimationError,
+    TensorStatisticWithEstimationError,
 )
 
 
@@ -44,38 +44,38 @@ class ClosedFormOptimizationConfig:
     """
     Hyper-parameters controlling the alternating closed-form updates.
 
-    Parameters
+    Attributes
     ----------
-    reg:
+    reg : float
         Ridge parameter added to covariance matrices before inversion.
-    nb_iterations:
+    nb_iterations : int
         Number of alternating ``Omega -> A`` passes.
-    z_mode:
+    z_mode : str
         ``"star"`` uses the target itself, while ``"mid"`` uses the midpoint
         between the target and the current prediction.
-    z_solver:
+    z_solver : str
         Method used to infer latent targets ``z`` from the second layer.
-    clip:
+    clip : float
         Lower bound enforced on ``z`` for non-negative activations.
-    delta_mode:
+    delta_mode : str
         ``"one"`` uses uniform weights and ``"delta"`` uses the sample-wise
         ratio described in ``_compute_sample_weights``.
-    max_pgd_iter:
+    max_pgd_iter : int
         Maximum number of projected-gradient iterations for the latent solver.
-    pgd_tol:
+    pgd_tol : float
         Stopping tolerance on consecutive projected-gradient iterates.
-    svd_floor:
+    svd_floor : float
         Singular values below this threshold are discarded in pseudo-inverses.
-    estimate_precision:
+    estimate_precision : float
         Relative precision target for statistic estimation. A value ``<= 0``
         disables early stopping and consumes the full dataloader.
-    trace_precision:
+    trace_precision : float
         Relative precision target used internally by
-        ``TensorStatiticWithEstimationError`` to stop refining its trace
+        ``TensorStatisticWithEstimationError`` to stop refining its trace
         estimate.
-    convergence_tau:
+    convergence_tau : float
         Small positive constant used in relative-error denominators.
-    verbose:
+    verbose : int
         When non-zero, print a short optimization summary.
     """
 
@@ -156,7 +156,6 @@ class SupervisedBatchAdapter:
         """
         Move the selected input and target tensors to ``device``.
         """
-
         del block
         if not isinstance(batch, (tuple, list)):
             raise TypeError(
@@ -184,7 +183,6 @@ class TwoLayerLinearBlockView:
         """
         Device on which the block parameters live.
         """
-
         return self.first_linear.weight.device
 
     @property
@@ -192,7 +190,6 @@ class TwoLayerLinearBlockView:
         """
         Input dimension ``n`` of the first linear layer.
         """
-
         return self.first_linear.in_features
 
     @property
@@ -200,7 +197,6 @@ class TwoLayerLinearBlockView:
         """
         Hidden dimension ``k`` of the intermediate representation.
         """
-
         return self.first_linear.out_features
 
     @property
@@ -208,21 +204,18 @@ class TwoLayerLinearBlockView:
         """
         Output dimension ``m`` of the second linear layer.
         """
-
         return self.second_linear.out_features
 
     def hidden(self, x: torch.Tensor) -> torch.Tensor:
         """
         Compute ``h = sigma(Ax + b_A)`` for one batch.
         """
-
         return self.activation(self.first_linear(x))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Compute ``Omega sigma(Ax + b_A) + b_Omega`` for one batch.
         """
-
         return self.second_linear(self.hidden(x))
 
 
@@ -233,11 +226,10 @@ def resolve_two_layer_linear_block(block: nn.Module) -> TwoLayerLinearBlockView:
     The returned object always exposes ``(first_linear, activation,
     second_linear)`` so the optimizer can work with a uniform API.
     """
-
     if all(hasattr(block, name) for name in ("linear1", "activation", "linear2")):
-        linear1 = getattr(block, "linear1")
-        activation = getattr(block, "activation")
-        linear2 = getattr(block, "linear2")
+        linear1 = block.linear1
+        activation = block.activation
+        linear2 = block.linear2
         if isinstance(linear1, nn.Linear) and isinstance(linear2, nn.Linear):
             return TwoLayerLinearBlockView(
                 first_linear=linear1,
@@ -257,8 +249,8 @@ def resolve_two_layer_linear_block(block: nn.Module) -> TwoLayerLinearBlockView:
             )
 
     if hasattr(block, "first_layer") and hasattr(block, "second_layer"):
-        first_layer = getattr(block, "first_layer")
-        second_layer = getattr(block, "second_layer")
+        first_layer = block.first_layer
+        second_layer = block.second_layer
         linear1 = getattr(first_layer, "layer", None)
         activation = getattr(first_layer, "post_layer_function", None)
         linear2 = getattr(second_layer, "layer", None)
@@ -333,7 +325,6 @@ def _centered_covariance(
     """
     Compute ``Cov(X, Y) = E[XY^T] - E[X] E[Y]^T`` from batch-estimated moments.
     """
-
     return second_moment - torch.outer(first_moment_left, first_moment_right)
 
 
@@ -349,7 +340,6 @@ def _pseudo_inverse_from_svd(
 
     ``V diag(s^{-1}) U^T``.
     """
-
     u, s, vh = torch.linalg.svd(matrix, full_matrices=False)
     s_inv = torch.where(
         s > singular_value_floor,
@@ -372,7 +362,6 @@ def _inverse_activation(
     - ReLU: the clipped latent target already lies in the positive branch
     - LeakyReLU: piecewise linear inverse
     """
-
     if isinstance(activation, nn.Softplus):
         return z + torch.log(-torch.expm1(-z))
     if isinstance(activation, nn.ReLU):
@@ -408,7 +397,6 @@ def _solve_latent_targets(
     either by pseudo-inversion or by projected gradient descent. Non-negative
     activations use ``clip`` to enforce the feasible set ``z >= clip``.
     """
-
     omega = second_linear.weight
     bias = second_linear.bias
     if bias is None:
@@ -462,7 +450,6 @@ def _projected_gradient_nonnegative_least_squares(
     with ``eta = 1 / ||Omega||_2^2`` and the classical extrapolation update on
     ``m_t``.
     """
-
     spectral_norm = torch.linalg.matrix_norm(omega, ord=2)
     step = 1.0 / max(spectral_norm.pow(2).item(), 1e-12)
     gram = omega.transpose(0, 1) @ omega
@@ -508,7 +495,6 @@ def _compute_sample_weights(
     The weights are clipped to avoid exploding ratios when the denominator is
     very small.
     """
-
     if config.delta_mode == "one":
         return torch.ones(x.size(0), device=x.device, dtype=x.dtype)
 
@@ -529,12 +515,11 @@ def _new_mean_statistic(
     device: torch.device,
     name: str,
     trace_precision: float,
-) -> TensorStatiticWithEstimationError:
+) -> TensorStatisticWithEstimationError:
     """
     Create a statistic tracking the batch-average of one tensor quantity.
     """
-
-    return TensorStatiticWithEstimationError(
+    return TensorStatisticWithEstimationError(
         shape=shape,
         device=device,
         name=name,
@@ -552,12 +537,11 @@ def _new_cross_statistic(
     device: torch.device,
     name: str,
     trace_precision: float,
-) -> TensorStatiticWithEstimationError:
+) -> TensorStatisticWithEstimationError:
     """
     Create a statistic tracking ``E[left^T right]`` from two batched matrices.
     """
-
-    return TensorStatiticWithEstimationError(
+    return TensorStatisticWithEstimationError(
         shape=shape,
         device=device,
         name=name,
@@ -576,12 +560,11 @@ def _new_weighted_statistic(
     name: str,
     trace_precision: float,
     update_function: Any,
-) -> TensorStatiticWithEstimationError:
+) -> TensorStatisticWithEstimationError:
     """
     Create a weighted statistic whose normalization is the batch weight mass.
     """
-
-    return TensorStatiticWithEstimationError(
+    return TensorStatisticWithEstimationError(
         shape=shape,
         device=device,
         name=name,
@@ -594,25 +577,23 @@ def _update_statistic(statistic: TensorStatistic, **kwargs: Any) -> None:
     """
     Mark a statistic as stale and consume one batch update.
     """
-
     statistic.updated = False
     statistic.update(**kwargs)
 
 
 def _relative_statistic_error(
-    statistic: TensorStatiticWithEstimationError,
+    statistic: TensorStatisticWithEstimationError,
     tau: float,
 ) -> float:
     """
     Estimate the relative error of a statistic from its tracked trace.
 
     If ``mu`` is the current estimate and ``err`` is the quadratic error on the
-    mean returned by ``TensorStatiticWithEstimationError.error()``, this helper
+    mean returned by ``TensorStatisticWithEstimationError.error()``, this helper
     returns
 
     ``sqrt(err) / (||mu||_F + tau)``.
     """
-
     error = statistic.error()
     if not math.isfinite(error):
         return float("inf")
@@ -620,13 +601,12 @@ def _relative_statistic_error(
 
 
 def _statistics_converged(
-    statistics: list[TensorStatiticWithEstimationError],
+    statistics: list[TensorStatisticWithEstimationError],
     config: ClosedFormOptimizationConfig,
 ) -> bool:
     """
     Check whether every tracked statistic meets the configured precision target.
     """
-
     if config.estimate_precision <= 0:
         return False
     return all(
@@ -653,7 +633,6 @@ def collect_second_layer_statistics(
     If ``estimate_precision > 0``, the pass can stop early once all tracked
     batch-average statistics satisfy the requested relative precision.
     """
-
     device = block.device
     hidden_stat = _new_mean_statistic(
         (block.hidden_dim,),
@@ -734,7 +713,6 @@ def update_second_layer_from_statistics(
     ``Omega* = Cov(y, h) (Cov(h, h) + reg I)^(-1)``
     ``b_Omega* = E[y] - Omega* E[h]``.
     """
-
     device = block.device
     covariance_hidden = _centered_covariance(
         second_moment=moments.mean_hidden_hidden_t,
@@ -774,7 +752,6 @@ def collect_first_layer_statistics(
     After inverse activation, the first layer is fitted through weighted
     moments of ``x`` and ``z_inv = sigma^{-1}(z)``.
     """
-
     device = block.device
     x_stat = _new_weighted_statistic(
         (block.input_dim,),
@@ -884,7 +861,6 @@ def update_first_layer_from_statistics(
     ``A* = Cov_w(z_inv, x) (Cov_w(x, x) + reg I)^(-1)``
     ``b_A* = E_w[z_inv] - A* E_w[x]``.
     """
-
     device = block.device
     covariance_x = _centered_covariance(
         second_moment=moments.mean_xx_t,
@@ -932,7 +908,6 @@ class ClosedFormBlockOptimizer:
         """
         Run the alternating optimizer and update the block weights in place.
         """
-
         block_view = (
             block
             if isinstance(block, TwoLayerLinearBlockView)
@@ -1000,6 +975,5 @@ def optimize(
     """
     Convenience wrapper around ``ClosedFormBlockOptimizer.optimize``.
     """
-
     optimizer = ClosedFormBlockOptimizer(config=config, adapter=adapter)
     return optimizer.optimize(block, dataloader)

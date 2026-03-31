@@ -41,7 +41,7 @@ class TensorStatistic:
     ----------
     shape: tuple[int, ...] | None
         shape of the tensor to compute, if None use the shape of the first update
-    update_function: Callable[[Any], tuple[torch.Tensor, int]] | Callable[[], tuple[torch.Tensor, int]]
+    update_function: StatisticUpdateFunction
         function to update the tensor
     device : torch.device | str | None, optional
         default device, by default None
@@ -56,18 +56,6 @@ class TensorStatistic:
         device: torch.device | str | None = None,
         name: str | None = None,
     ) -> None:
-        """
-        Initialise the tensor information.
-
-        Parameters
-        ----------
-        shape: tuple[int, ...] | None
-            shape of the tensor to compute, if None use the shape of the first update
-        update_function: StatisticUpdateFunction
-            function to update the tensor
-        name: str
-            used for debugging
-        """
         assert shape is None or all(
             i >= 0 and isinstance(i, (int, np.int64))
             for i in shape  # type: ignore
@@ -171,7 +159,7 @@ class TensorStatisticWithEstimationError(TensorStatistic):
     ----------
     shape: tuple[int, ...] | None
         shape of the tensor to compute, if None use the shape of the first update
-    update_function: Callable[[Any], tuple[torch.Tensor, int]] | Callable[[], tuple[torch.Tensor, int]]
+    update_function: StatisticUpdateFunction
         function to update the tensor and compute the batch covariance
     device : torch.device | str | None, optional
         default device, by default None
@@ -189,20 +177,6 @@ class TensorStatisticWithEstimationError(TensorStatistic):
         name: str | None = None,
         trace_precision: float = 1e-3,
     ) -> None:
-        """
-        Initialise the tensor information.
-
-        Parameters
-        ----------
-        shape: tuple[int, ...] | None
-            shape of the tensor to compute, if None use the shape of the first update
-        update_function: StatisticUpdateFunction
-            function to update the tensor and compute the batch covariance
-        name: str
-            used for debugging
-        trace_precision: float
-            relative precision for the trace computation, default 1e-3
-        """
         super().__init__(shape, update_function, device, name)
         self._square_norm_sum = 0
         self.trace_precision = trace_precision
