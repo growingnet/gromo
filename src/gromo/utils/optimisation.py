@@ -408,10 +408,15 @@ def _solve_latent_targets(
         target_goal = 0.5 * (target + current_prediction) - bias
 
     omega_inv = _pseudo_inverse_from_svd(omega, config.svd_floor)
+
+    # For LeakyReLU, allow negative latent targets and always use
+    # the unconstrained least-squares solution, regardless of z_solver.
+    if isinstance(activation, nn.LeakyReLU):
+        z = target_goal @ omega_inv.transpose(0, 1)
+        return z
+
     if config.z_solver == "pinv":
         z = target_goal @ omega_inv.transpose(0, 1)
-        if isinstance(activation, nn.LeakyReLU):
-            return z
         return torch.clamp(z, min=config.clip)
 
     return _projected_gradient_nonnegative_least_squares(
