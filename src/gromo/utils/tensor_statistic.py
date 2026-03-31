@@ -134,7 +134,7 @@ class TensorStatistic:
             return self._tensor / self.samples
 
 
-class TensorStatiticWithEstimationError(TensorStatistic):
+class TensorStatisticWithEstimationError(TensorStatistic):
     """
     Extends TensorStatistic with estimated quadratic error.
 
