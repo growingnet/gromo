@@ -274,7 +274,7 @@ class TestVGG(TorchTestCase):
         with self.assertRaises(ValueError):
             init_full_vgg_structure(reduction_factor=1.5)
 
-        with patch.object(vgg_module, "min", return_value=0):
+        with patch.object(vgg_module, "min", return_value=0, create=True):
             with self.assertRaises(ValueError):
                 init_full_vgg_structure(
                     nb_stages=1,
