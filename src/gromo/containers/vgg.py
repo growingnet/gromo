@@ -604,7 +604,10 @@ def init_full_vgg_structure(
     """
     if isinstance(input_shape, torch.Size):
         input_shape = tuple(input_shape)  # type: ignore[assignment]
-        assert len(input_shape) == 3, "input_shape must be a tuple of (C, H, W)"
+    if len(input_shape) != 3:
+        raise ValueError(
+            f"input_shape must be a sequence of length 3 (C, H, W), got {input_shape}."
+        )
     if in_features is None:
         in_features = input_shape[0]
 
