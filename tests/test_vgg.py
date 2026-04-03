@@ -130,7 +130,7 @@ class TestVGG(TorchTestCase):
         self.assertIsInstance(model, VGG)
         self.assertEqual(
             self._stage_conv_widths(model),
-            [(64,), (128,), (256, 8), (512, 16), (512, 16)],
+            [(64,), (128,), (8, 256), (16, 512), (16, 512)],
         )
         self.assertEqual(
             self._conv_allow_growing_flags(model),
@@ -152,7 +152,7 @@ class TestVGG(TorchTestCase):
         )
         self.assertEqual(
             self._stage_conv_widths(model_varied_blocks),
-            [(64,), (128, 4), (256, 8, 8), (512,), (512, 16)],
+            [(64,), (4, 128), (8, 8, 256), (512,), (16, 512)],
         )
         self.assertEqual(
             self._conv_allow_growing_flags(model_varied_blocks),
@@ -165,7 +165,7 @@ class TestVGG(TorchTestCase):
         )
         self.assertEqual(
             self._stage_conv_widths(model_with_higher_reduction_factor),
-            [(64,), (128, 32), (256, 64, 64), (512,), (512, 128)],
+            [(64,), (32, 128), (64, 64, 256), (512,), (128, 512)],
         )
 
         model_without_reduction = init_full_vgg_structure(
@@ -183,7 +183,7 @@ class TestVGG(TorchTestCase):
         )
         self.assertEqual(
             self._stage_conv_widths(model_hidden_int),
-            [(16, 1), (32, 1), (64, 2), (128, 4), (256, 8)],
+            [(1, 16), (1, 32), (2, 64), (4, 128), (8, 256)],
         )
 
         model_hidden_mixed = init_full_vgg_structure(
@@ -192,7 +192,7 @@ class TestVGG(TorchTestCase):
         )
         self.assertEqual(
             self._stage_conv_widths(model_hidden_mixed),
-            [(16, 1), (32, 2), (64, 2), (128, 4), (192, 8)],
+            [(1, 16), (1, 48), (2, 64), (4, 128), (6, 256)],
         )
 
         model_torch_size = init_full_vgg_structure(
@@ -568,7 +568,7 @@ class TestVGG(TorchTestCase):
         )
         self.assertEqual(
             _reduce_growing_conv_widths((16, 16, 16), 0.25),
-            (16, 4, 4),
+            (4, 4, 16),
         )
 
         classifier_growth_model = VGG(
@@ -604,13 +604,15 @@ class TestVGG(TorchTestCase):
 
         self.assertEqual(
             self._stage_conv_widths(model),
-            [(32,), (64, 8, 8), (128, 16, 16)],
+            [(32,), (8, 8, 64), (16, 16, 128)],
         )
         self.assertEqual(model.final_spatial_shape, (4, 4))
         self.assertEqual(
             self._growable_layer_targets(model),
             [
                 ("RestrictedConv2dGrowingModule", 8, 64),
+                ("RestrictedConv2dGrowingModule", 8, 64),
+                ("RestrictedConv2dGrowingModule", 16, 128),
                 ("RestrictedConv2dGrowingModule", 16, 128),
             ],
         )
@@ -626,8 +628,10 @@ class TestVGG(TorchTestCase):
         self.assertEqual(
             self._growable_layer_targets(mixed_model),
             [
-                ("RestrictedConv2dGrowingModule", 5, 24),
-                ("RestrictedConv2dGrowingModule", 10, 48),
+                ("RestrictedConv2dGrowingModule", 3, 24),
+                ("RestrictedConv2dGrowingModule", 5, 40),
+                ("RestrictedConv2dGrowingModule", 6, 48),
+                ("RestrictedConv2dGrowingModule", 10, 80),
             ],
         )
 
@@ -912,7 +916,8 @@ class TestVGG(TorchTestCase):
             device=torch.device("cpu"),
         )
 
-        feature_layer = model._feature_growing_modules[3]
+        feature_layer = model._growable_layers[0]
+        assert isinstance(feature_layer, Conv2dGrowingModule)
         classifier_layer = model._classifier_growing_modules[0]
 
         model.set_growing_layers(index=0)
@@ -994,6 +999,17 @@ class TestVGG(TorchTestCase):
 
         self.assertGreater(layer.in_neurons, initial_in_neurons)
         self.assertEqual(layer.missing_neurons(), 0)
+        full_model = init_full_vgg_structure(
+            input_shape=(3, 32, 32),
+            out_features=10,
+            nb_stages=3,
+            number_of_conv_per_stage=(1, 3, 3),
+            hidden_channels=(32, 64, 128),
+            number_of_fc_layers=1,
+            reduction_factor=1.0,
+            device=torch.device("cpu"),
+        )
+        self.assertEqual(model.number_of_parameters(), full_model.number_of_parameters())
 
         model.set_growing_layers(scheduling_method="all")
         self.assertTrue(

@@ -111,7 +111,6 @@ class _VGGStageBlock(nn.Module):
 
         previous_growing_layer: Conv2dGrowingModule | None = None
         current_in_channels = in_channels
-        stage_target_out_channels = target_stage_channels[0]
         for layer_index, (out_channels, _) in enumerate(
             zip(stage_channels, target_stage_channels, strict=True)
         ):
@@ -120,7 +119,9 @@ class _VGGStageBlock(nn.Module):
                 out_channels,
                 spatial_shape,
             )
-            target_in_channels = None if is_first_conv else stage_target_out_channels
+            target_in_channels = (
+                None if is_first_conv else target_stage_channels[layer_index - 1]
+            )
             conv = growing_conv_type(
                 in_channels=current_in_channels,
                 out_channels=out_channels,
@@ -278,7 +279,7 @@ class VGG(SequentialGrowingModel):
             self._feature_growing_modules.extend(stage_block.growing_modules)
             growable_layers.extend(stage_block.growable_layers)
             in_channels = stage_block.out_channels
-            current_stage_target_out_channels = target_stage_channels[0]
+            current_stage_target_out_channels = target_stage_channels[-1]
             if has_pool:
                 self.features.append(nn.MaxPool2d(kernel_size=2, stride=2))
                 feature_module_index += 1
@@ -509,7 +510,9 @@ def _reduce_growing_conv_widths(
     if reduction_factor is None:
         return stage_hidden_per_block
     return tuple(
-        stage_width if block_idx == 0 else ceil(stage_width * reduction_factor)
+        stage_width
+        if block_idx == len(stage_hidden_per_block) - 1
+        else ceil(stage_width * reduction_factor)
         for block_idx, stage_width in enumerate(stage_hidden_per_block)
     )
 
