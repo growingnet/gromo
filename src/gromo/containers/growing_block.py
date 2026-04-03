@@ -583,6 +583,8 @@ class GrowingBlock(GrowingContainer):
         input_extension_size: int | None = None,
         output_extension_init: str = "copy_uniform",
         input_extension_init: str = "copy_uniform",
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
     ) -> None:
         """
         Create the layer input and output extensions of given sizes.
@@ -593,20 +595,27 @@ class GrowingBlock(GrowingContainer):
 
         Parameters
         ----------
-        extension_size: int
-            size of the extension to create
-        output_extension_size: int | None
-            size of the output extension to create, if None use extension_size
-        input_extension_size: int | None
-            size of the input extension to create, if None use extension_size
-        output_extension_init: str
-            Initialization method for the output extension. Possible values include
-            "copy_uniform", "kaiming", "zeros", or other supported initialization
-            strategies.
-        input_extension_init: str
-            Initialization method for the input extension. Possible values include
-            "copy_uniform", "kaiming", "zeros", or other supported initialization
-            strategies.
+        extension_size : int
+            Size of the extension to create.
+        output_extension_size : int | None
+            Size of the output extension to create, if ``None`` use
+            *extension_size*.
+        input_extension_size : int | None
+            Size of the input extension to create, if ``None`` use
+            *extension_size*.
+        output_extension_init : str
+            Initialisation method for the output extension.  Possible values
+            include ``"copy_uniform"``, ``"kaiming"``, ``"zeros"``.
+        input_extension_init : str
+            Initialisation method for the input extension.  Possible values
+            include ``"copy_uniform"``, ``"kaiming"``, ``"zeros"``.
+        neuron_pairing : GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
+            Neuron-pairing strategy.  ``None`` (default) or
+            ``"vv_z_negz"``.
+        rescaling : GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None
+            Variance-transfer rescaling strategy.  ``None`` (default),
+            ``"default_vt"``, ``"vt_constraint_old_shape"``, or
+            ``"vt_constraint_new_shape"``.
         """
         self.second_layer.create_layer_extensions(
             extension_size=extension_size,
@@ -614,6 +623,55 @@ class GrowingBlock(GrowingContainer):
             input_extension_size=input_extension_size,
             output_extension_init=output_extension_init,
             input_extension_init=input_extension_init,
+            neuron_pairing=neuron_pairing,
+            rescaling=rescaling,
+        )
+
+    def apply_rescaling(
+        self,
+        rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        extension_size: int | None = None,
+    ) -> None:
+        """Rescale existing weights via the second layer.
+
+        Delegates to ``self.second_layer.apply_rescaling``.  Intended for
+        the FOGRO path, where rescaling is called separately from extension
+        creation.
+
+        Parameters
+        ----------
+        rescaling : GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None
+            Rescaling strategy.
+        neuron_pairing : GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
+            Neuron-pairing strategy (needed to compute effective extension
+            size).
+        extension_size : int | None
+            Extension size override.
+        """
+        self.second_layer.apply_rescaling(
+            rescaling=rescaling,
+            neuron_pairing=neuron_pairing,
+            extension_size=extension_size,
+        )
+
+    def apply_neuron_pairing(
+        self,
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+    ) -> None:
+        """Apply neuron pairing via the second layer.
+
+        Delegates to ``self.second_layer.apply_neuron_pairing``.  Intended
+        for the FOGRO path, where pairing is called separately from
+        extension creation.
+
+        Parameters
+        ----------
+        neuron_pairing : GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
+            Pairing strategy.
+        """
+        self.second_layer.apply_neuron_pairing(
+            neuron_pairing=neuron_pairing,
         )
 
     def normalize_optimal_updates(self, **kwargs: Any) -> None:
