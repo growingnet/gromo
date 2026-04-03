@@ -19,6 +19,8 @@ Develop branch
 
 Enhancements
 ~~~~~~~~~~~~
+
+
 - Introduce VGG-like growing architecture support with `VGG` and `_VGGStageBlock` classes(:gh:`236` by `Hugo Mousset`_)
 - Adds configurability to the ResNet container to allow using BatchNorm2d or disabling normalization entirely (:gh:`228` by `Théo Rudkiewicz`_)
 - Add ``uv`` files, use ``uv sync --extra dev --extra test --extra doc`` to install the package with all dependencies (:gh:`226` by `Théo Rudkiewicz`_)
