@@ -212,7 +212,7 @@ class TestVGG(TorchTestCase):
         )
         self.assertEqual(self._first_conv(model_explicit_in).in_channels, 2)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             init_full_vgg_structure(input_shape=torch.Size((3, 32)))  # type: ignore[arg-type]
 
         with self.assertRaises(TypeError):
