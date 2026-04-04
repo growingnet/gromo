@@ -3124,6 +3124,7 @@ class GrowingModule(torch.nn.Module):
     def apply_neuron_pairing(
         self,
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        noise_ratio: float = 0.001,
     ) -> None:
         """Double extensions via neuron pairing for function preservation.
 
@@ -3136,7 +3137,10 @@ class GrowingModule(torch.nn.Module):
           copies.
 
         At initialisation this ensures the net contribution of new neurons is
-        zero, preserving the function represented by the network.
+        zero, preserving the function represented by the network.  A small
+        amount of noise is then added to the input extension weights to break
+        the symmetry between paired neurons, allowing them to learn different
+        features during training.
 
         Must be called **after** extensions are created and initialised.
 
@@ -3144,6 +3148,10 @@ class GrowingModule(torch.nn.Module):
         ----------
         neuron_pairing : _KNOWN_NEURON_PAIRINGS_TYPE | None
             Pairing strategy.  One of ``"none"``, ``"vv_z_negz"``.
+        noise_ratio : float
+            Fraction of the standard deviation of the input extension weights
+            used as the noise level for symmetry breaking.  Set to ``0`` to
+            disable noise (exact function preservation).  Default ``0.001``.
 
         Raises
         ------
@@ -3198,6 +3206,11 @@ class GrowingModule(torch.nn.Module):
         ext_in.weight.data[:, :dh_in].copy_(old_in_weight)
         ext_in.weight.data[:, dh_in:].copy_(-old_in_weight)
         # Input extension bias is always False (no bias on fan-in side)
+
+        # --- Symmetry-breaking noise on input extension ---
+        if noise_ratio > 0:
+            noise_std = noise_ratio * ext_in.weight.data.std()
+            ext_in.weight.data.add_(torch.randn_like(ext_in.weight.data) * noise_std)
 
     @torch.no_grad()
     def copy_uniform_initialization(
@@ -3271,6 +3284,7 @@ class GrowingModule(torch.nn.Module):
         input_extension_init: str = "copy_uniform",
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None = None,
         rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
+        noise_ratio: float = 0.001,
     ) -> None:
         """
         Create extension for layer input and output.
@@ -3316,6 +3330,11 @@ class GrowingModule(torch.nn.Module):
             Variance-transfer rescaling strategy applied before extension
             creation.  ``"none"`` (default), ``"default_vt"``,
             ``"vt_constraint_old_shape"``, or ``"vt_constraint_new_shape"``.
+        noise_ratio : float
+            Fraction of the standard deviation of the input extension weights
+            used as the noise level for symmetry breaking after neuron
+            pairing.  Set to ``0`` for exact function preservation.
+            Default ``0.001``.
 
         Notes
         -----
@@ -3411,7 +3430,10 @@ class GrowingModule(torch.nn.Module):
 
         # Step 4: Neuron pairing (after init)
         if neuron_pairing is not None:
-            self.apply_neuron_pairing(neuron_pairing=neuron_pairing)
+            self.apply_neuron_pairing(
+                neuron_pairing=neuron_pairing,
+                noise_ratio=noise_ratio,
+            )
 
     def missing_neurons(self) -> int:
         """
