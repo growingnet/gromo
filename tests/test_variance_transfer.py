@@ -192,16 +192,16 @@ class TestRescalingSmoke(TorchTestCase):
         self.assertAllClose(block.second_layer.extended_input_layer.weight, w_in)
 
     def test_apply_change_after_growth_updates_sizes(self):
-        """After growth with pairing, hidden_features increases by 2*dh."""
+        """After growth with pairing, hidden_neurons increases by 2*dh."""
         block = _make_conv_block(h_t=8, device=self.device)
         _grow_block(block, dh=4, neuron_pairing="vv_z_negz")
-        self.assertEqual(block.hidden_features, 8 + 4 * 2)
+        self.assertEqual(block.hidden_neurons, 8 + 4 * 2)
 
     def test_apply_change_after_growth_no_pairing(self):
-        """After growth without pairing, hidden_features increases by dh."""
+        """After growth without pairing, hidden_neurons increases by dh."""
         block = _make_conv_block(h_t=8, device=self.device)
         _grow_block(block, dh=4)
-        self.assertEqual(block.hidden_features, 8 + 4)
+        self.assertEqual(block.hidden_neurons, 8 + 4)
 
     @unittest_parametrize(
         [
@@ -848,7 +848,7 @@ class TestSmallWeightVarianceEdgeCases(TorchTestCase):
             rescaling="vt_constraint_new_shape",
             neuron_pairing="vv_z_negz",
         )
-        self.assertEqual(block.hidden_features, 1 + 1 * 2)
+        self.assertEqual(block.hidden_neurons, 1 + 1 * 2)
 
 
 # ===============================================================
