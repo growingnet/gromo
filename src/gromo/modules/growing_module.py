@@ -3377,6 +3377,7 @@ class GrowingModule(torch.nn.Module):
                 1.0 / (fan_in_self_new * var_w_self) if var_w_self > 0 else 1.0
             ) ** 0.5
         else:
+            # this should not be reached
             raise ValueError(
                 f"Unknown rescaling strategy '{rescaling}'. "
                 f"Available: {get_args(GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE)}."
