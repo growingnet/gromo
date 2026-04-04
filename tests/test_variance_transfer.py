@@ -759,6 +759,51 @@ class TestBatchNormRescaling(TorchTestCase):
             msg="running_var should be scaled by alpha^2",
         )
 
+    def test_batchnorm_stats_rescaled_conv2(self):
+        """Conv2's post_layer_function BN: running_mean *= beta, running_var *= beta^2."""
+        h_t = 8
+        out_channels = 3
+        bn2 = GrowingBatchNorm2d(out_channels, device=self.device)
+
+        # Set known running statistics
+        mu2 = torch.randn(out_channels, device=self.device)
+        sigma2 = torch.rand(out_channels, device=self.device).abs() + 0.1
+        bn2.running_mean.copy_(mu2)
+        bn2.running_var.copy_(sigma2)
+
+        block = _make_conv_block(
+            h_t=h_t,
+            out_channels=out_channels,
+            pre_addition_function=bn2,
+            device=self.device,
+        )
+        # Perturb Conv2 weights so beta != 1
+        block.second_layer.weight.data.mul_(0.5)
+
+        # Read beta before rescaling (Strategy B: beta targets 1/fan_in_self_old)
+        fan_in_self_old = h_t * 3 * 3
+        var_w_self = block.second_layer.weight.var().item()
+        beta = (1.0 / (fan_in_self_old * var_w_self)) ** 0.5
+
+        block.apply_rescaling(
+            rescaling="vt_constraint_old_shape",
+            neuron_pairing="vv_z_negz",
+            extension_size=4,
+        )
+
+        self.assertAllClose(
+            bn2.running_mean,
+            beta * mu2,
+            atol=1e-6,
+            msg="Conv2 BN running_mean should be scaled by beta",
+        )
+        self.assertAllClose(
+            bn2.running_var,
+            beta**2 * sigma2,
+            atol=1e-6,
+            msg="Conv2 BN running_var should be scaled by beta^2",
+        )
+
 
 # ===============================================================
 # 3.  Edge-case tests
