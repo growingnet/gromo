@@ -80,6 +80,7 @@ def _grow_block(
     neuron_pairing=None,
     output_extension_init: str = "kaiming",
     input_extension_init: str = "kaiming",
+    noise_ratio: float = 0.0,
 ) -> None:
     """Create extensions, apply change, and delete update."""
     block.create_layer_extensions(
@@ -88,6 +89,7 @@ def _grow_block(
         input_extension_init=input_extension_init,
         rescaling=rescaling,
         neuron_pairing=neuron_pairing,
+        noise_ratio=noise_ratio,
     )
     # Determine actual extension size (may be doubled by pairing)
     actual_ext_size = block.second_layer.extended_input_layer.weight.shape[1]
@@ -607,6 +609,7 @@ class TestPairingStructure(TorchTestCase):
             output_extension_init="kaiming",
             input_extension_init="kaiming",
             neuron_pairing="vv_z_negz",
+            noise_ratio=0,
         )
 
         ext_out = block.first_layer.extended_output_layer
@@ -633,6 +636,7 @@ class TestPairingStructure(TorchTestCase):
             output_extension_init="kaiming",
             input_extension_init="kaiming",
             neuron_pairing="vv_z_negz",
+            noise_ratio=0,
         )
 
         ext_out = block.first_layer.extended_output_layer
@@ -654,6 +658,7 @@ class TestPairingStructure(TorchTestCase):
             output_extension_init="kaiming",
             input_extension_init="kaiming",
             neuron_pairing="vv_z_negz",
+            noise_ratio=0,
         )
         ext_out = block.first_layer.extended_output_layer
         if ext_out.bias is not None:

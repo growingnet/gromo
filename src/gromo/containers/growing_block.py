@@ -594,6 +594,7 @@ class GrowingBlock(GrowingContainer):
         input_extension_init: str = "copy_uniform",
         neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
         rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
+        noise_ratio: float = 0.001,
     ) -> None:
         """
         Create the layer input and output extensions of given sizes.
@@ -625,6 +626,10 @@ class GrowingBlock(GrowingContainer):
             Variance-transfer rescaling strategy.  ``None`` (default),
             ``"default_vt"``, ``"vt_constraint_old_shape"``, or
             ``"vt_constraint_new_shape"``.
+        noise_ratio : float
+            Fraction of the standard deviation of the input extension weights
+            used as noise for symmetry breaking after neuron pairing.
+            Default ``0.001``.
         """
         self.second_layer.create_layer_extensions(
             extension_size=extension_size,
@@ -634,6 +639,7 @@ class GrowingBlock(GrowingContainer):
             input_extension_init=input_extension_init,
             neuron_pairing=neuron_pairing,
             rescaling=rescaling,
+            noise_ratio=noise_ratio,
         )
 
     def apply_rescaling(
@@ -667,6 +673,7 @@ class GrowingBlock(GrowingContainer):
     def apply_neuron_pairing(
         self,
         neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        noise_ratio: float = 0.001,
     ) -> None:
         """Apply neuron pairing via the second layer.
 
@@ -678,9 +685,13 @@ class GrowingBlock(GrowingContainer):
         ----------
         neuron_pairing : GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
             Pairing strategy.
+        noise_ratio : float
+            Fraction of the standard deviation of the input extension weights
+            used as the noise level for symmetry breaking.  Default ``0.001``.
         """
         self.second_layer.apply_neuron_pairing(
             neuron_pairing=neuron_pairing,
+            noise_ratio=noise_ratio,
         )
 
     def normalize_optimal_updates(self, **kwargs: Any) -> None:
