@@ -1,8 +1,7 @@
-from __future__ import annotations
-
+from collections.abc import Callable
 from copy import deepcopy
 from math import ceil, prod
-from typing import Callable, Literal, TypeAlias, TypedDict, Union, cast
+from typing import Literal, TypeAlias, TypedDict, cast
 
 import torch
 import torch.nn as nn
@@ -168,8 +167,8 @@ class VGG(SequentialGrowingModel):
 
     def __init__(
         self,
-        cfg: list[Union[str, int]],
-        target_cfg: list[Union[str, int]] | None = None,
+        cfg: list[str | int],
+        target_cfg: list[str | int] | None = None,
         in_features: int = 3,
         activation: nn.Module = nn.ReLU(inplace=True),
         normalization: NormalizationType | None = "batch",
@@ -721,8 +720,8 @@ def init_full_vgg_structure(
                 else target_stage_hidden
             )
 
-    cfg: list[Union[str, int]] = []
-    target_cfg: list[Union[str, int]] = []
+    cfg: list[str | int] = []
+    target_cfg: list[str | int] = []
     for stage_hidden in hidden_channels_per_block:
         cfg.extend(stage_hidden)
         cfg.append("M")
