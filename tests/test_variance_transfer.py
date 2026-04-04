@@ -916,3 +916,182 @@ class TestStandaloneMethods(TorchTestCase):
             torch.allclose(block.second_layer.weight, w2_before),
             "Conv2 weights should have been rescaled",
         )
+
+
+# ===============================================================
+# 5.  Coverage smoke tests
+# ===============================================================
+
+
+class TestCoverageSmoke(TorchTestCase):
+    """Smoke tests targeting uncovered branches in the new VT code."""
+
+    def setUp(self):
+        super().setUp()
+        self.device = global_device()
+
+    def test_batchnorm1d_rescaling(self):
+        """Hit BatchNorm1d branch in _rescale_post_layer_function."""
+        bn1d = torch.nn.BatchNorm1d(8, device=self.device)
+        bn1d.running_mean.fill_(1.0)
+        bn1d.running_var.fill_(2.0)
+
+        block = _make_linear_block(h_t=8, device=self.device)
+        # Inject BN1d as mid_activation (post_layer_function of first_layer)
+        block.first_layer.post_layer_function = bn1d
+
+        block.first_layer.weight.data.mul_(2.0)
+        block.apply_rescaling(
+            rescaling="vt_constraint_old_shape",
+            neuron_pairing=None,
+            extension_size=4,
+        )
+        # BN1d running stats should have been rescaled
+        self.assertFalse(
+            torch.allclose(bn1d.running_mean, torch.ones(8, device=self.device)),
+        )
+
+    def test_invalid_neuron_pairing_in_apply_rescaling(self):
+        """Invalid neuron_pairing in apply_rescaling raises ValueError."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        with self.assertRaises(ValueError):
+            block.second_layer.apply_rescaling(
+                rescaling="default_vt",
+                neuron_pairing="bad_pairing",  # type: ignore
+                extension_size=4,
+            )
+
+    def test_rescaling_no_extension_no_size(self):
+        """apply_rescaling with no extensions and no extension_size => ext_size=0."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        # No extensions exist, no extension_size passed => ext_size = 0
+        block.second_layer.apply_rescaling(
+            rescaling="default_vt",
+            neuron_pairing=None,
+        )
+
+    def test_rescaling_no_bias(self):
+        """Rescaling with bias=None hits the False branch of bias checks."""
+        block = Conv2dGrowingBlock(
+            in_channels=3,
+            out_channels=3,
+            kernel_size=3,
+            hidden_channels=8,
+            kwargs_layer={"padding": 1, "use_bias": False},
+            device=self.device,
+        )
+        block.first_layer.weight.data.mul_(2.0)
+        block.second_layer.weight.data.mul_(0.5)
+        # Strategy B gives alpha!=1 and beta!=1, exercising bias-is-None branches
+        block.apply_rescaling(
+            rescaling="vt_constraint_old_shape",
+            neuron_pairing=None,
+            extension_size=4,
+        )
+
+    def test_pairing_no_extended_output_raises(self):
+        """apply_neuron_pairing without extended_output_layer raises RuntimeError."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        # Only create input extension, not output
+        block.second_layer.create_layer_in_extension(4)
+        with self.assertRaises(RuntimeError):
+            block.second_layer.apply_neuron_pairing(neuron_pairing="vv_z_negz")
+
+    def test_pairing_no_extended_input_raises(self):
+        """apply_neuron_pairing without extended_input_layer raises RuntimeError."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        # Only create output extension, not input
+        block.first_layer.create_layer_out_extension(4)
+        with self.assertRaises(RuntimeError):
+            block.second_layer.apply_neuron_pairing(neuron_pairing="vv_z_negz")
+
+    def test_copy_uniform_initialization(self):
+        """create_layer_extensions with copy_uniform init hits copy_uniform_initialization."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_init="copy_uniform",
+            input_extension_init="copy_uniform",
+        )
+        self.assertIsNotNone(block.second_layer.extended_input_layer)
+
+    def test_copy_uniform_fallback_to_kaiming(self):
+        """copy_uniform with zero-variance reference falls back to kaiming (line 3235)."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        # Set all weights to constant => zero variance => kaiming fallback
+        block.first_layer.weight.data.fill_(0.5)
+        block.second_layer.weight.data.fill_(0.5)
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_init="copy_uniform",
+            input_extension_init="copy_uniform",
+        )
+
+    def test_extension_size_overrides(self):
+        """Explicit output_extension_size and input_extension_size."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_size=6,
+            input_extension_size=3,
+            output_extension_init="kaiming",
+            input_extension_init="kaiming",
+        )
+        self.assertEqual(block.first_layer.extended_output_layer.weight.shape[0], 6)
+        self.assertEqual(block.second_layer.extended_input_layer.weight.shape[1], 3)
+
+    def test_unknown_init_raises(self):
+        """Unknown initialization method raises ValueError."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        with self.assertRaises(ValueError):
+            block.create_layer_extensions(
+                extension_size=4,
+                output_extension_init="bad_init",  # type: ignore
+                input_extension_init="kaiming",
+            )
+
+    def test_no_bias_output_extension(self):
+        """Output extension without bias (use_bias=False) hits bias-is-None branch."""
+        block = Conv2dGrowingBlock(
+            in_channels=3,
+            out_channels=3,
+            kernel_size=3,
+            hidden_channels=8,
+            kwargs_layer={"padding": 1, "use_bias": False},
+            device=self.device,
+        )
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_init="kaiming",
+            input_extension_init="kaiming",
+        )
+        self.assertIsNone(block.first_layer.extended_output_layer.bias)
+
+    def test_pairing_no_bias(self):
+        """Neuron pairing with bias=False hits the bias-is-None branch."""
+        block = Conv2dGrowingBlock(
+            in_channels=3,
+            out_channels=3,
+            kernel_size=3,
+            hidden_channels=8,
+            kwargs_layer={"padding": 1, "use_bias": False},
+            device=self.device,
+        )
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_init="kaiming",
+            input_extension_init="kaiming",
+            neuron_pairing="vv_z_negz",
+        )
+        # Output extension should be doubled
+        self.assertEqual(block.first_layer.extended_output_layer.weight.shape[0], 8)
+
+    def test_rescaling_reads_extension_size_from_layer(self):
+        """apply_rescaling reads ext_size from extended_input_layer when not passed."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        block.second_layer.create_layer_in_extension(4)
+        # Don't pass extension_size — should read from extended_input_layer
+        block.second_layer.apply_rescaling(
+            rescaling="default_vt",
+            neuron_pairing=None,
+        )
