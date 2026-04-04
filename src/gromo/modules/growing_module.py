@@ -3007,7 +3007,7 @@ class GrowingModule(torch.nn.Module):
         Parameters
         ----------
         rescaling : _KNOWN_RESCALING_STRATEGIES_TYPE | None
-            Rescaling strategy.  One of ``"none"``, ``"default_vt"``,
+            Rescaling strategy.  One of ``"default_vt"``,
             ``"vt_constraint_old_shape"``, ``"vt_constraint_new_shape"``.
         neuron_pairing : _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy that will be applied *after* rescaling.
