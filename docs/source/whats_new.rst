@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Adds variance-transfer (VT) weight rescaling and (V,V)/(Z,-Z) neuron pairing to the growing-module extension workflow (:gh:`237` by `Théo Rudkiewicz`_)
 - Adds configurability to the ResNet container to allow using BatchNorm2d or disabling normalization entirely (:gh:`228` by `Théo Rudkiewicz`_)
 - Add ``uv`` files, use ``uv sync --extra dev --extra test --extra doc`` to install the package with all dependencies (:gh:`226` by `Théo Rudkiewicz`_)
 - Use ``ruff`` for formatting (:gh:`227` by `Théo Rudkiewicz`_)
