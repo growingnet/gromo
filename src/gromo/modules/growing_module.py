@@ -3338,6 +3338,12 @@ class GrowingModule(torch.nn.Module):
 
         # --- Fan-in values ---
         fan_in_self_old = self.get_fan_in_from_layer(self.layer)
+
+        # When in_neurons == 0 (e.g. hidden_channels=0), there are no
+        # existing weights to rescale — nothing to do.
+        if self.in_neurons == 0:
+            return
+
         # receptive_field = k*k for Conv2d, 1 for Linear
         receptive_field = fan_in_self_old // self.in_neurons
         fan_in_self_new = fan_in_self_old + effective_ext_size * receptive_field
