@@ -3395,9 +3395,7 @@ class GrowingModule(torch.nn.Module):
             self.weight.data.mul_(beta)
             if self.bias is not None:
                 self.bias.data.mul_(beta)
-            # Conv2's post_layer_function (e.g. BN after residual addition)
-            # is NOT rescaled here: it sits after the skip connection.
-            # TODO: think how to rescale it properly
+            self._rescale_post_layer_function(self.post_layer_function, beta)
 
     @torch.no_grad()
     def apply_neuron_pairing(
