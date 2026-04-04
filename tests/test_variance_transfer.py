@@ -354,6 +354,9 @@ class TestFunctionPreservationWithRescaling(TorchTestCase):
         block.second_layer.weight.data.mul_(0.5)
 
         x = torch.randn(2, 3, 8, 8, device=self.device)
+        # Capture Conv2 bias before rescaling (shape: [out_channels])
+        b2 = block.second_layer.bias.clone()
+
         with torch.no_grad():
             y_before = block(x).clone()
             skip = block.downsample(x)
@@ -389,15 +392,14 @@ class TestFunctionPreservationWithRescaling(TorchTestCase):
 
         # conv_path_before = W2*W1*x + W2*b1 + b2
         # After rescaling: alpha*beta*W2*W1*x + alpha*beta*W2*b1 + beta*b2
-        # = alpha*beta*conv_path_before + (beta - alpha*beta)*b2
         # = alpha*beta*conv_path_before + beta*(1 - alpha)*b2
-        # For default_vt (alpha=1), this simplifies to alpha*beta*conv_path.
-        # For B/C strategies, the b2 term introduces a small offset.
-        expected = alpha * beta * conv_path_before + skip
+        # For default_vt (alpha=1), the bias offset vanishes.
+        bias_offset = beta * (1.0 - alpha) * b2.view(1, -1, 1, 1)
+        expected = alpha * beta * conv_path_before + bias_offset + skip
         self.assertAllClose(
             y_after,
             expected,
-            atol=0.05,
+            atol=1e-5,
             msg=f"rescaling={rescaling}, alpha={alpha:.4f}, beta={beta:.4f}",
         )
 
