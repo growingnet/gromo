@@ -19,10 +19,10 @@ from gromo.utils.utils import global_device
 
 
 try:
-    from tests.torch_unittest import TorchTestCase
+    from tests.torch_unittest import SizedIdentity, TorchTestCase
     from tests.unittest_tools import unittest_parametrize
 except ImportError:
-    from torch_unittest import TorchTestCase
+    from torch_unittest import SizedIdentity, TorchTestCase
     from unittest_tools import unittest_parametrize
 
 
@@ -666,6 +666,27 @@ class TestPairingStructure(TorchTestCase):
                 torch.equal(ext_out.bias[:dh], ext_out.bias[dh:]),
                 "Output extension bias: first half should equal second half",
             )
+
+    def test_pairing_apply_change_then_forward_with_sized_activation(self):
+        """Growing with pairing then forwarding with SizedIdentity currently fails."""
+        h_t = 8
+        dh = 4
+        block = _make_conv_block(
+            h_t=h_t,
+            mid_activation=SizedIdentity(h_t),
+            device=self.device,
+        )
+
+        block.create_layer_extensions(
+            extension_size=dh,
+            neuron_pairing="vv_z_negz",
+        )
+        actual_ext_size = block.second_layer.extended_input_layer.weight.shape[1]
+        block.apply_change(scaling_factor=1.0, extension_size=actual_ext_size)
+
+        x = torch.randn(2, 3, 8, 8, device=self.device)
+        with self.assertRaises(ValueError):
+            _ = block(x)
 
 
 class TestRescalingIdempotence(TorchTestCase):

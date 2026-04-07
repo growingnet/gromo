@@ -3604,6 +3604,8 @@ class GrowingModule(torch.nn.Module):
         neuron_pairing : _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy applied after initialisation.
             ``"none"`` (default) or ``"vv_z_negz"``.
+            /!/ Note that neuron pairing doubles the effective extension size, so the
+            *extension_size* argument is the size before pairing.
         rescaling : _KNOWN_RESCALING_STRATEGIES_TYPE | None
             Variance-transfer rescaling strategy applied before extension
             creation.  ``"none"`` (default), ``"default_vt"``,
