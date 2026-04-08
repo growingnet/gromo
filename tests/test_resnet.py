@@ -267,7 +267,8 @@ class TestResNet(TorchTestCase):
 
         with self.subTest(normalization="group"):
             normalization_kwargs: NormKwargs = {
-                "eps": 1e-3,
+                "eps": 1e-2,
+                "num_groups": 2,
                 "momentum": 0.25,
                 "affine": False,
                 "track_running_stats": False,
