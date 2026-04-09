@@ -265,6 +265,28 @@ class TestResNet(TorchTestCase):
             output = model_batch_norm(x)
             self.assertShapeEqual(output, (2, 7))
 
+        with self.subTest(normalization="group"):
+            normalization_kwargs: NormKwargs = {
+                "eps": 1e-2,
+                "num_groups": 2,
+                "momentum": 0.25,
+                "affine": False,
+                "track_running_stats": False,
+            }
+            model_group_norm = init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                out_features=7,
+                number_of_blocks_per_stage=1,
+                reduction_factor=0.5,
+                inplanes=8,
+                nb_stages=2,
+                normalization="group",
+                normalization_kwargs=normalization_kwargs,
+                device=device,
+            )
+            output = model_group_norm(x)
+            self.assertIsInstance(output, torch.Tensor)
+
         with self.subTest(normalization="batch_classical_downsample"):
             model_classical_batch_norm = init_full_resnet_structure(
                 input_shape=(3, 32, 32),
