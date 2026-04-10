@@ -248,20 +248,16 @@ class TestEvaluateModel(TorchTestCase):
             )
 
 
-class _FakeScheduler:
+class _FakeScheduler(torch.optim.lr_scheduler.LRScheduler):
     """Minimal scheduler double that records step/epoch_step calls."""
 
     def __init__(self):
         self.step_count = 0
         self.epoch_step_count = 0
 
-    def step(self):
+    def step(self):  # type: ignore
         """Record a step call."""
         self.step_count += 1
-
-    def epoch_step(self):
-        """Record an epoch_step call."""
-        self.epoch_step_count += 1
 
 
 class TestGradientDescent(TorchTestCase):
@@ -318,16 +314,31 @@ class TestGradientDescent(TorchTestCase):
         model = _SimpleModel(4, 2)
         dl = self._make_dataloader(n_samples=8, batch_size=4)  # 2 batches
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-        scheduler = _FakeScheduler()
-        gradient_descent(
-            model,
-            dl,
-            optimizer,
-            scheduler=scheduler,
-            loss_function=nn.MSELoss(reduction="mean"),
-        )
-        self.assertEqual(scheduler.step_count, 2)
-        self.assertEqual(scheduler.epoch_step_count, 1)
+        with self.subTest("after_batch"):
+            scheduler = _FakeScheduler()
+            gradient_descent(
+                model,
+                dl,
+                optimizer,
+                scheduler=scheduler,
+                loss_function=nn.MSELoss(reduction="mean"),
+                scheduler_step_after_batch=True,
+                scheduler_step_after_epoch=False,
+            )
+            self.assertEqual(scheduler.step_count, 2)
+
+        with self.subTest("after_epoch"):
+            scheduler = _FakeScheduler()
+            gradient_descent(
+                model,
+                dl,
+                optimizer,
+                scheduler=scheduler,
+                loss_function=nn.MSELoss(reduction="mean"),
+                scheduler_step_after_batch=False,
+                scheduler_step_after_epoch=True,
+            )
+            self.assertEqual(scheduler.step_count, 1)
 
     def test_loss_decreases(self):
         """Loss after training is lower than before."""
