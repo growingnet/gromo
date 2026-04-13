@@ -9,7 +9,7 @@ from gromo.containers.vgg import (
     VGG,
     NormKwargs,
     _reduce_growing_conv_widths,
-    base_batch_norm_kwargs,
+    base_norm_kwargs,
     init_full_vgg_structure,
 )
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
@@ -454,22 +454,19 @@ class TestVGG(TorchTestCase):
         post_conv_layers = model._build_post_conv_layers(4, (32, 32))
         self.assertIsInstance(post_conv_layers, nn.Sequential)
 
-        model._update_batch_norm_kwargs({"momentum": 0.25})
-        self.assertEqual(model.batch_norm_kwargs["momentum"], 0.25)
-        with self.assertRaises(ValueError):
-            model._update_batch_norm_kwargs({"unknown": 1.0})  # type: ignore[arg-type]
+        model._update_normalization_kwargs({"momentum": 0.25})
+        self.assertEqual(model.normalization_kwargs["momentum"], 0.25)
+        model._update_normalization_kwargs({"unknown": 1.0})  # type: ignore[arg-type]
 
         model.normalization = "group"
-        model._update_group_norm_kwargs({"num_groups": 4})
-        self.assertEqual(model.group_norm_kwargs["num_groups"], 4)
-        with self.assertRaises(ValueError):
-            model._update_group_norm_kwargs({"momentum": 0.1})  # type: ignore[arg-type]
+        model._update_normalization_kwargs({"num_groups": 4, "momentum": 0.1})
+        self.assertEqual(model.normalization_kwargs["num_groups"], 4)
+        self.assertEqual(model.normalization_kwargs["momentum"], 0.1)
 
         model.normalization = "layer"
-        model._update_layer_norm_kwargs({"bias": False})
-        self.assertFalse(model.layer_norm_kwargs["bias"])
-        with self.assertRaises(ValueError):
-            model._update_layer_norm_kwargs({"affine": False})  # type: ignore[arg-type]
+        model._update_normalization_kwargs({"bias": False})
+        self.assertFalse(model.normalization_kwargs["bias"])
+        model._update_normalization_kwargs({"unknown_layer_key": False})  # type: ignore[arg-type]
 
         layer_norm = model._build_growing_normalization(4, (32, 32))
         self.assertIsInstance(layer_norm, GrowingLayerNorm)
@@ -496,17 +493,17 @@ class TestVGG(TorchTestCase):
                 input_spatial_shape=(32, 32),
             )
 
-        with self.assertRaises(ValueError):
-            VGG(
-                cfg=[8, "M"],
-                target_cfg=[8, "M"],
-                normalization=None,
-                normalization_kwargs={"eps": 1e-4},
-                num_classes=3,
-                number_of_fc_layers=1,
-                fc_layer_width=8,
-                input_spatial_shape=(32, 32),
-            )
+        none_norm_model = VGG(
+            cfg=[8, "M"],
+            target_cfg=[8, "M"],
+            normalization=None,
+            normalization_kwargs={"eps": 1e-4},
+            num_classes=3,
+            number_of_fc_layers=1,
+            fc_layer_width=8,
+            input_spatial_shape=(32, 32),
+        )
+        self.assertEqual(none_norm_model.normalization_kwargs["eps"], 1e-4)
 
         with self.assertRaises(ValueError):
             VGG(
@@ -771,17 +768,17 @@ class TestVGG(TorchTestCase):
             self.assertEqual(norm_layers, [])
             self.assertShapeEqual(model_no_norm(x), (2, 7))
 
-            with self.assertRaises(ValueError):
-                init_full_vgg_structure(
-                    input_shape=(3, 32, 32),
-                    out_features=7,
-                    nb_stages=3,
-                    number_of_conv_per_stage=(1, 2, 1),
-                    hidden_channels=(8, 16, 32),
-                    normalization=None,
-                    normalization_kwargs={"eps": 1e-3},
-                    device=device,
-                )
+            model_no_norm_with_kwargs = init_full_vgg_structure(
+                input_shape=(3, 32, 32),
+                out_features=7,
+                nb_stages=3,
+                number_of_conv_per_stage=(1, 2, 1),
+                hidden_channels=(8, 16, 32),
+                normalization=None,
+                normalization_kwargs={"eps": 1e-3},
+                device=device,
+            )
+            self.assertEqual(model_no_norm_with_kwargs.normalization_kwargs["eps"], 1e-3)
 
         with self.subTest(normalization="batch"):
             normalization_kwargs: NormKwargs = {
@@ -832,8 +829,8 @@ class TestVGG(TorchTestCase):
                 for module in model_default_norm.modules()
                 if isinstance(module, torch.nn.BatchNorm2d)
             )
-            self.assertEqual(first_norm.eps, base_batch_norm_kwargs["eps"])
-            self.assertEqual(first_norm.momentum, base_batch_norm_kwargs["momentum"])
+            self.assertEqual(first_norm.eps, base_norm_kwargs["eps"])
+            self.assertEqual(first_norm.momentum, base_norm_kwargs["momentum"])
 
     def test_extended_forward_with_layer_extensions(self):
         """Test extended_forward and verify active extensions change the output."""

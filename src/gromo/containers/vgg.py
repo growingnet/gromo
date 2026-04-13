@@ -20,7 +20,15 @@ from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
 class NormKwargs(TypedDict, total=False):
-    """Optional normalization configuration."""
+    """Optional normalization configuration.
+
+    This is a superset of all normalization keyword arguments.
+    Each normalization type uses only the relevant keys:
+
+    - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
+    - ``"group"``: ``num_groups``, ``eps``, ``affine``
+    - ``"layer"``: ``eps``, ``elementwise_affine``, ``bias``
+    """
 
     # BatchNorm keys
     eps: float
@@ -34,46 +42,24 @@ class NormKwargs(TypedDict, total=False):
     bias: bool
 
 
-class CompleteBatchNormKwargs(TypedDict):
-    """Complete batch-normalization configuration."""
+class CompleteNormKwargs(TypedDict):
+    """Complete normalization configuration (superset of all norm types)."""
 
     eps: float
     momentum: float
     affine: bool
     track_running_stats: bool
-
-
-class CompleteGroupNormKwargs(TypedDict):
-    """Complete group-normalization configuration."""
-
     num_groups: int
-    eps: float
-    affine: bool
-
-
-class CompleteLayerNormKwargs(TypedDict):
-    """Complete layer-normalization configuration."""
-
-    eps: float
     elementwise_affine: bool
     bias: bool
 
 
-base_batch_norm_kwargs: CompleteBatchNormKwargs = {
+base_norm_kwargs: CompleteNormKwargs = {
     "eps": 1e-5,
     "momentum": 0.1,
     "affine": True,
     "track_running_stats": True,
-}
-
-base_group_norm_kwargs: CompleteGroupNormKwargs = {
-    "num_groups": 32,
-    "eps": 1e-5,
-    "affine": True,
-}
-
-base_layer_norm_kwargs: CompleteLayerNormKwargs = {
-    "eps": 1e-5,
+    "num_groups": 1,
     "elementwise_affine": True,
     "bias": True,
 }
@@ -199,20 +185,9 @@ class VGG(SequentialGrowingModel):
         self.normalization: NormalizationType | None = self._validate_normalization(
             normalization
         )
-        self.batch_norm_kwargs: CompleteBatchNormKwargs = base_batch_norm_kwargs.copy()
-        self.group_norm_kwargs: CompleteGroupNormKwargs = base_group_norm_kwargs.copy()
-        self.layer_norm_kwargs: CompleteLayerNormKwargs = base_layer_norm_kwargs.copy()
+        self.normalization_kwargs: CompleteNormKwargs = base_norm_kwargs.copy()
         if normalization_kwargs is not None:
-            if self.normalization == "batch":
-                self._update_batch_norm_kwargs(normalization_kwargs)
-            elif self.normalization == "group":
-                self._update_group_norm_kwargs(normalization_kwargs)
-            elif self.normalization == "layer":
-                self._update_layer_norm_kwargs(normalization_kwargs)
-            else:
-                raise ValueError(
-                    "normalization_kwargs cannot be provided when normalization is None."
-                )
+            self._update_normalization_kwargs(normalization_kwargs)
 
         self.growing_conv_type = growing_conv_type
         self.initial_fc_layer_width = (
@@ -419,32 +394,8 @@ class VGG(SequentialGrowingModel):
             f"got {normalization!r}."
         )
 
-    def _update_batch_norm_kwargs(self, normalization_kwargs: NormKwargs) -> None:
-        for key, value in normalization_kwargs.items():
-            if key not in self.batch_norm_kwargs:
-                raise ValueError(
-                    f"Unsupported BatchNorm kwarg {key!r}. "
-                    "Allowed keys: eps, momentum, affine, track_running_stats."
-                )
-            self.batch_norm_kwargs[key] = value  # type: ignore[index]
-
-    def _update_group_norm_kwargs(self, normalization_kwargs: NormKwargs) -> None:
-        for key, value in normalization_kwargs.items():
-            if key not in self.group_norm_kwargs:
-                raise ValueError(
-                    f"Unsupported GroupNorm kwarg {key!r}. "
-                    "Allowed keys: num_groups, eps, affine."
-                )
-            self.group_norm_kwargs[key] = value  # type: ignore[index]
-
-    def _update_layer_norm_kwargs(self, normalization_kwargs: NormKwargs) -> None:
-        for key, value in normalization_kwargs.items():
-            if key not in self.layer_norm_kwargs:
-                raise ValueError(
-                    f"Unsupported LayerNorm kwarg {key!r}. "
-                    "Allowed keys: eps, elementwise_affine, bias."
-                )
-            self.layer_norm_kwargs[key] = value  # type: ignore[index]
+    def _update_normalization_kwargs(self, normalization_kwargs: NormKwargs) -> None:
+        self.normalization_kwargs.update(normalization_kwargs)
 
     def _make_activation(self) -> nn.Module:
         return deepcopy(self.activation)
@@ -459,18 +410,18 @@ class VGG(SequentialGrowingModel):
         if self.normalization == "batch":
             return GrowingBatchNorm2d(
                 num_channels,
-                eps=self.batch_norm_kwargs["eps"],
-                momentum=self.batch_norm_kwargs["momentum"],
-                affine=self.batch_norm_kwargs["affine"],
-                track_running_stats=self.batch_norm_kwargs["track_running_stats"],
+                eps=self.normalization_kwargs["eps"],
+                momentum=self.normalization_kwargs["momentum"],
+                affine=self.normalization_kwargs["affine"],
+                track_running_stats=self.normalization_kwargs["track_running_stats"],
                 device=self.device,
             )
         if self.normalization == "group":
             return GrowingGroupNorm(
-                num_groups=self.group_norm_kwargs["num_groups"],
+                num_groups=self.normalization_kwargs["num_groups"],
                 num_channels=num_channels,
-                eps=self.group_norm_kwargs["eps"],
-                affine=self.group_norm_kwargs["affine"],
+                eps=self.normalization_kwargs["eps"],
+                affine=self.normalization_kwargs["affine"],
                 device=self.device,
             )
         if self.normalization == "layer":
@@ -480,9 +431,9 @@ class VGG(SequentialGrowingModel):
                 )
             return GrowingLayerNorm(
                 [num_channels, *spatial_shape],
-                eps=self.layer_norm_kwargs["eps"],
-                elementwise_affine=self.layer_norm_kwargs["elementwise_affine"],
-                bias=self.layer_norm_kwargs["bias"],
+                eps=self.normalization_kwargs["eps"],
+                elementwise_affine=self.normalization_kwargs["elementwise_affine"],
+                bias=self.normalization_kwargs["bias"],
                 device=self.device,
             )
         raise AssertionError("Normalization should have been validated before use.")
@@ -509,9 +460,11 @@ def _reduce_growing_conv_widths(
     if reduction_factor is None:
         return stage_hidden_per_block
     return tuple(
-        stage_width
-        if block_idx == len(stage_hidden_per_block) - 1
-        else ceil(stage_width * reduction_factor)
+        (
+            stage_width
+            if block_idx == len(stage_hidden_per_block) - 1
+            else ceil(stage_width * reduction_factor)
+        )
         for block_idx, stage_width in enumerate(stage_hidden_per_block)
     )
 
