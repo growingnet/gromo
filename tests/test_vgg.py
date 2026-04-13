@@ -1143,6 +1143,6 @@ class TestVGG(TorchTestCase):
         self.assertEqual(single_fc_linears[0].in_features, 32 * 4 * 4)
         self.assertEqual(single_fc_linears[0].out_features, 11)
 
-        x = torch.randn(2, 3, 32, 32)
+        x = torch.randn(2, 3, 32, 32, device=model.device)
         output = model(x)
         self.assertShapeEqual(output, (2, 11))
