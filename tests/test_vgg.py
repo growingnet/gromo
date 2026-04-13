@@ -285,6 +285,7 @@ class TestVGG(TorchTestCase):
     @unittest.skipUnless(HAS_TORCHVISION, "torchvision is not installed")
     def test_torchvision_vgg11_parity(self):
         """Temporary parity check against torchvision VGG11."""
+        device = global_device()
         model = init_full_vgg_structure(
             input_shape=(3, 224, 224),
             out_features=1000,
@@ -295,7 +296,7 @@ class TestVGG(TorchTestCase):
             fc_layer_width=4096,
             reduction_factor=None,
         )
-        reference = vgg11(weights=None)
+        reference = vgg11(weights=None).to(device)
         self._copy_torchvision_vgg_weights(reference, model)
         model.eval()
         reference.eval()
@@ -319,7 +320,7 @@ class TestVGG(TorchTestCase):
             sum(parameter.numel() for parameter in reference.parameters()),
         )
 
-        x = torch.randn(2, 3, 224, 224)
+        x = torch.randn(2, 3, 224, 224, device=device)
         model_output = model(x)
         reference_output = reference(x)
         self.assertShapeEqual(model_output, reference_output.shape)
@@ -328,6 +329,7 @@ class TestVGG(TorchTestCase):
     @unittest.skipUnless(HAS_TORCHVISION, "torchvision is not installed")
     def test_torchvision_vgg11_bn_parity(self):
         """Temporary parity check against torchvision VGG11 with batch norm."""
+        device = global_device()
         model = init_full_vgg_structure(
             input_shape=(3, 224, 224),
             out_features=1000,
@@ -338,7 +340,7 @@ class TestVGG(TorchTestCase):
             fc_layer_width=4096,
             reduction_factor=None,
         )
-        reference = vgg11_bn(weights=None)
+        reference = vgg11_bn(weights=None).to(device)
         self._copy_torchvision_vgg_weights(reference, model)
         model.eval()
         reference.eval()
@@ -353,7 +355,7 @@ class TestVGG(TorchTestCase):
             sum(parameter.numel() for parameter in reference.parameters()),
         )
 
-        x = torch.randn(2, 3, 224, 224)
+        x = torch.randn(2, 3, 224, 224, device=device)
         model_output = model(x)
         reference_output = reference(x)
         self.assertShapeEqual(model_output, reference_output.shape)
