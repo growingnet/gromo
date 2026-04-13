@@ -7,16 +7,15 @@ import torch.nn as nn
 import gromo.containers.vgg as vgg_module
 from gromo.containers.vgg import (
     VGG,
-    NormKwargs,
     _reduce_growing_conv_widths,
-    base_norm_kwargs,
     init_full_vgg_structure,
 )
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.growing_normalisation import (
     GrowingBatchNorm2d,
     GrowingGroupNorm,
-    GrowingLayerNorm,
+    NormKwargs,
+    base_norm_kwargs,
 )
 from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.utils import global_device
@@ -368,8 +367,7 @@ class TestVGG(TorchTestCase):
                 stage_channels=(8,),
                 target_stage_channels=(8, 8),
                 in_channels=3,
-                spatial_shape=(32, 32),
-                build_post_conv_layers=lambda *_: nn.Identity(),
+                build_post_conv_layers=lambda _: nn.Identity(),
                 growing_conv_type=Conv2dGrowingModule,
                 device=torch.device("cpu"),
                 name="bad_stage",
@@ -380,8 +378,7 @@ class TestVGG(TorchTestCase):
                 stage_channels=(),
                 target_stage_channels=(),
                 in_channels=3,
-                spatial_shape=(32, 32),
-                build_post_conv_layers=lambda *_: nn.Identity(),
+                build_post_conv_layers=lambda _: nn.Identity(),
                 growing_conv_type=Conv2dGrowingModule,
                 device=torch.device("cpu"),
                 name="empty_stage",
@@ -441,7 +438,8 @@ class TestVGG(TorchTestCase):
         self.assertEqual(VGG._validate_normalization(None), None)
         self.assertEqual(VGG._validate_normalization("batch"), "batch")
         self.assertEqual(VGG._validate_normalization("group"), "group")
-        self.assertEqual(VGG._validate_normalization("layer"), "layer")
+        with self.assertRaises(ValueError):
+            VGG._validate_normalization("layer")  # type: ignore[arg-type]
         with self.assertRaises(ValueError):
             VGG._validate_normalization("instance")  # type: ignore[arg-type]
 
@@ -449,11 +447,11 @@ class TestVGG(TorchTestCase):
         self.assertIsInstance(activation_copy, nn.ReLU)
         self.assertIsNot(activation_copy, model.activation)
 
-        normalization = model._build_growing_normalization(4, (32, 32))
+        normalization = model._build_growing_normalization(4)
         self.assertIsInstance(normalization, GrowingBatchNorm2d)
         self.assertEqual(normalization.eps, 1e-3)
 
-        post_conv_layers = model._build_post_conv_layers(4, (32, 32))
+        post_conv_layers = model._build_post_conv_layers(4)
         self.assertIsInstance(post_conv_layers, nn.Sequential)
 
         model._update_normalization_kwargs({"momentum": 0.25})
@@ -465,24 +463,14 @@ class TestVGG(TorchTestCase):
         self.assertEqual(model.normalization_kwargs["num_groups"], 4)
         self.assertEqual(model.normalization_kwargs["momentum"], 0.1)
 
-        model.normalization = "layer"
-        model._update_normalization_kwargs({"bias": False})
-        self.assertFalse(model.normalization_kwargs["bias"])
-        model._update_normalization_kwargs({"unknown_layer_key": False})  # type: ignore[arg-type]
-
-        layer_norm = model._build_growing_normalization(4, (32, 32))
-        self.assertIsInstance(layer_norm, GrowingLayerNorm)
-        with self.assertRaises(ValueError):
-            model._build_growing_normalization(4)
-
         model.normalization = None
-        self.assertIsNone(model._build_growing_normalization(4, (32, 32)))
-        post_conv_without_norm = model._build_post_conv_layers(4, (32, 32))
+        self.assertIsNone(model._build_growing_normalization(4))
+        post_conv_without_norm = model._build_post_conv_layers(4)
         self.assertIsInstance(post_conv_without_norm, nn.ReLU)
 
         model.normalization = "invalid"  # type: ignore[assignment]
-        with self.assertRaises(AssertionError):
-            model._build_growing_normalization(4, (32, 32))
+        with self.assertRaises(ValueError):
+            model._build_growing_normalization(4)
 
         with self.assertRaises(ValueError):
             VGG(
@@ -688,35 +676,6 @@ class TestVGG(TorchTestCase):
         self.assertEqual(group_norm_layers[0].eps, 1e-4)
         self.assertFalse(group_norm_layers[0].affine)
         self.assertShapeEqual(group_model(x), (2, 7))
-
-        layer_model = init_full_vgg_structure(
-            input_shape=(3, 32, 32),
-            out_features=7,
-            nb_stages=3,
-            number_of_conv_per_stage=(1, 2, 1),
-            hidden_channels=(8, 16, 32),
-            normalization="layer",
-            normalization_kwargs={
-                "eps": 1e-4,
-                "elementwise_affine": False,
-                "bias": False,
-            },
-            reduction_factor=None,
-            device=device,
-            init_weights=False,
-        )
-        layer_norm_layers = [
-            module
-            for module in layer_model.modules()
-            if isinstance(module, GrowingLayerNorm)
-        ]
-        self.assertGreater(len(layer_norm_layers), 0)
-        self.assertEqual(layer_norm_layers[0].normalized_shape, (8, 32, 32))
-        self.assertEqual(layer_norm_layers[1].normalized_shape, (16, 16, 16))
-        self.assertEqual(layer_norm_layers[2].normalized_shape, (16, 16, 16))
-        self.assertFalse(layer_norm_layers[0].elementwise_affine)
-        self.assertIsNone(layer_norm_layers[0].bias)
-        self.assertShapeEqual(layer_model(x), (2, 7))
 
     def test_forward_backward(self):
         """Test forward and backward passes of the initialized VGG model."""
@@ -1054,25 +1013,6 @@ class TestVGG(TorchTestCase):
         self.assertIsNone(group_norm.weight)
         self.assertIsNone(group_norm.bias)
         group_model._initialize_weights()
-
-        layer_model = init_full_vgg_structure(
-            input_shape=(3, 32, 32),
-            out_features=10,
-            nb_stages=2,
-            number_of_conv_per_stage=(1, 1),
-            hidden_channels=(8, 16),
-            normalization="layer",
-            normalization_kwargs={"elementwise_affine": True, "bias": False},
-            init_weights=False,
-        )
-        layer_norm = next(
-            module
-            for module in layer_model.modules()
-            if isinstance(module, GrowingLayerNorm)
-        )
-        self.assertIsNotNone(layer_norm.weight)
-        self.assertIsNone(layer_norm.bias)
-        layer_model._initialize_weights()
 
     def test_custom_activation_and_classifier_configuration(self):
         """Test custom activation wiring and configurable classifier layout."""

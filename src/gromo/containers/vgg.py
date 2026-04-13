@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from copy import deepcopy
 from math import ceil, prod
-from typing import Literal, TypeAlias, TypedDict, cast
+from typing import Literal, TypeAlias, cast
 
 import torch
 import torch.nn as nn
@@ -12,59 +12,16 @@ from gromo.modules.conv2d_growing_module import (
     RestrictedConv2dGrowingModule,
 )
 from gromo.modules.growing_normalisation import (
+    CompleteNormKwargs,
     GrowingBatchNorm2d,
     GrowingGroupNorm,
-    GrowingLayerNorm,
+    NormKwargs,
+    base_norm_kwargs,
 )
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-class NormKwargs(TypedDict, total=False):
-    """Optional normalization configuration.
-
-    This is a superset of all normalization keyword arguments.
-    Each normalization type uses only the relevant keys:
-
-    - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
-    - ``"group"``: ``num_groups``, ``eps``, ``affine``
-    - ``"layer"``: ``eps``, ``elementwise_affine``, ``bias``
-    """
-
-    # BatchNorm keys
-    eps: float
-    momentum: float
-    affine: bool
-    track_running_stats: bool
-    # GroupNorm key
-    num_groups: int
-    # LayerNorm keys
-    elementwise_affine: bool
-    bias: bool
-
-
-class CompleteNormKwargs(TypedDict):
-    """Complete normalization configuration (superset of all norm types)."""
-
-    eps: float
-    momentum: float
-    affine: bool
-    track_running_stats: bool
-    num_groups: int
-    elementwise_affine: bool
-    bias: bool
-
-
-base_norm_kwargs: CompleteNormKwargs = {
-    "eps": 1e-5,
-    "momentum": 0.1,
-    "affine": True,
-    "track_running_stats": True,
-    "num_groups": 1,
-    "elementwise_affine": True,
-    "bias": True,
-}
-
-NormalizationType: TypeAlias = Literal["batch", "group", "layer"]
+VggNormalizationType: TypeAlias = Literal["batch", "group"]
 
 
 class _VGGStageBlock(nn.Module):
@@ -76,8 +33,7 @@ class _VGGStageBlock(nn.Module):
         target_stage_channels: tuple[int, ...],
         *,
         in_channels: int,
-        spatial_shape: tuple[int, int] | None,
-        build_post_conv_layers: Callable[[int, tuple[int, int] | None], nn.Module],
+        build_post_conv_layers: Callable[[int], nn.Module],
         growing_conv_type: type[Conv2dGrowingModule],
         device: torch.device | str | None,
         name: str,
@@ -100,10 +56,7 @@ class _VGGStageBlock(nn.Module):
             zip(stage_channels, target_stage_channels, strict=True)
         ):
             is_first_conv = layer_index == 0
-            post_layer_function = build_post_conv_layers(
-                out_channels,
-                spatial_shape,
-            )
+            post_layer_function = build_post_conv_layers(out_channels)
             target_in_channels = (
                 None if is_first_conv else target_stage_channels[layer_index - 1]
             )
@@ -163,16 +116,15 @@ class VGG(SequentialGrowingModel):
         Number of input channels.
     activation : nn.Module
         Activation function applied after each convolution.
-    normalization : NormalizationType | None
+    normalization : VggNormalizationType | None
         Normalization layer to use. Supported values are ``"batch"``,
-        ``"group"``, ``"layer"``, and ``None``.
+        ``"group"``, and ``None``.
     normalization_kwargs : NormKwargs | None
         Additional keyword arguments passed to normalization layers.
         Supported keys depend on the normalization type:
 
         - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
         - ``"group"``: ``num_groups``, ``eps``, ``affine``
-        - ``"layer"``: ``eps``, ``elementwise_affine``, ``bias``
 
         Keys irrelevant to the chosen normalization are ignored.
     num_classes : int
@@ -189,8 +141,9 @@ class VGG(SequentialGrowingModel):
         Width of the first fully-connected layer. Defaults to ``fc_layer_width``
         when ``None``.
     input_spatial_shape : tuple[int, int] | None
-        Spatial dimensions ``(H, W)`` of the input feature maps. Required when
-        ``normalization="layer"``.
+        Spatial dimensions ``(H, W)`` of the input. Used to compute the
+        feature-map size before the classifier. When ``None``, an
+        ``AdaptiveAvgPool2d(7, 7)`` is used.
     device : torch.device | str | None
         Device to run the model on.
     growing_conv_type : type[Conv2dGrowingModule]
@@ -202,7 +155,6 @@ class VGG(SequentialGrowingModel):
     ValueError
         If ``number_of_fc_layers`` is not positive, ``fc_layer_width`` is not
         positive, ``initial_fc_layer_width`` is not positive,
-        ``normalization="layer"`` and ``input_spatial_shape`` is ``None``,
         or ``target_cfg`` does not match the pooling structure of ``cfg``.
     """
 
@@ -212,7 +164,7 @@ class VGG(SequentialGrowingModel):
         target_cfg: list[str | int] | None = None,
         in_features: int = 3,
         activation: nn.Module = nn.ReLU(inplace=True),
-        normalization: NormalizationType | None = "batch",
+        normalization: VggNormalizationType | None = "batch",
         normalization_kwargs: NormKwargs | None = None,
         num_classes: int = 1000,
         init_weights: bool = True,
@@ -237,7 +189,7 @@ class VGG(SequentialGrowingModel):
             )
 
         self.activation = activation.to(device)
-        self.normalization: NormalizationType | None = self._validate_normalization(
+        self.normalization: VggNormalizationType | None = self._validate_normalization(
             normalization
         )
         self.normalization_kwargs: CompleteNormKwargs = base_norm_kwargs.copy()
@@ -248,13 +200,8 @@ class VGG(SequentialGrowingModel):
         self.initial_fc_layer_width = (
             fc_layer_width if initial_fc_layer_width is None else initial_fc_layer_width
         )
-        self.input_spatial_shape = input_spatial_shape
-        if self.normalization == "layer" and self.input_spatial_shape is None:
-            raise ValueError(
-                "input_spatial_shape must be provided when normalization='layer'."
-            )
 
-        current_spatial_shape = self.input_spatial_shape
+        current_spatial_shape = input_spatial_shape
 
         self.features = nn.Sequential()
         self.flatten = nn.Flatten(1)
@@ -296,7 +243,6 @@ class VGG(SequentialGrowingModel):
                 tuple(stage_channels),
                 tuple(target_stage_channels),
                 in_channels=in_channels,
-                spatial_shape=current_spatial_shape,
                 build_post_conv_layers=self._build_post_conv_layers,
                 growing_conv_type=growing_conv_type,
                 device=self.device,
@@ -425,9 +371,7 @@ class VGG(SequentialGrowingModel):
                 )
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
-            elif isinstance(
-                module, (GrowingBatchNorm2d, GrowingGroupNorm, GrowingLayerNorm)
-            ):
+            elif isinstance(module, (GrowingBatchNorm2d, GrowingGroupNorm)):
                 if module.weight is not None:
                     nn.init.constant_(module.weight, 1)
                 if module.bias is not None:
@@ -438,15 +382,14 @@ class VGG(SequentialGrowingModel):
 
     @staticmethod
     def _validate_normalization(
-        normalization: NormalizationType | None,
-    ) -> NormalizationType | None:
+        normalization: VggNormalizationType | None,
+    ) -> VggNormalizationType | None:
         if normalization is None:
             return None
-        if normalization in {"batch", "group", "layer"}:
+        if normalization in {"batch", "group"}:
             return normalization
         raise ValueError(
-            "normalization must be 'batch', 'group', 'layer' or None, "
-            f"got {normalization!r}."
+            f"normalization must be 'batch', 'group' or None, got {normalization!r}."
         )
 
     def _update_normalization_kwargs(self, normalization_kwargs: NormKwargs) -> None:
@@ -458,7 +401,6 @@ class VGG(SequentialGrowingModel):
     def _build_growing_normalization(
         self,
         num_channels: int,
-        spatial_shape: tuple[int, int] | None = None,
     ) -> nn.Module | None:
         if self.normalization is None:
             return None
@@ -479,26 +421,10 @@ class VGG(SequentialGrowingModel):
                 affine=self.normalization_kwargs["affine"],
                 device=self.device,
             )
-        if self.normalization == "layer":
-            if spatial_shape is None:
-                raise ValueError(
-                    "spatial_shape must be provided when normalization='layer'."
-                )
-            return GrowingLayerNorm(
-                [num_channels, *spatial_shape],
-                eps=self.normalization_kwargs["eps"],
-                elementwise_affine=self.normalization_kwargs["elementwise_affine"],
-                bias=self.normalization_kwargs["bias"],
-                device=self.device,
-            )
-        raise AssertionError("Normalization should have been validated before use.")
+        raise ValueError(f"Unsupported normalization {self.normalization!r}.")
 
-    def _build_post_conv_layers(
-        self,
-        num_channels: int,
-        spatial_shape: tuple[int, int] | None = None,
-    ) -> nn.Module:
-        normalization = self._build_growing_normalization(num_channels, spatial_shape)
+    def _build_post_conv_layers(self, num_channels: int) -> nn.Module:
+        normalization = self._build_growing_normalization(num_channels)
         layers: list[nn.Module] = []
         if normalization is not None:
             layers.append(normalization)
@@ -556,7 +482,7 @@ def init_full_vgg_structure(
     out_features: int = 1000,
     device: torch.device | str | None = None,
     activation: nn.Module = nn.ReLU(inplace=True),
-    normalization: NormalizationType | None = "batch",
+    normalization: VggNormalizationType | None = "batch",
     normalization_kwargs: NormKwargs | None = None,
     hidden_channels: tuple[int | tuple[int, ...], ...] | None = None,
     number_of_conv_per_stage: int | tuple[int, ...] = (1, 1, 2, 2, 2),
@@ -584,15 +510,14 @@ def init_full_vgg_structure(
     activation : nn.Module
         Activation function to use after each normalized convolution/linear
         block in the feature extractor and classifier hidden layers.
-    normalization : NormalizationType | None
+    normalization : VggNormalizationType | None
         Normalization layer to use. Supported values are ``"batch"``,
-        ``"group"``, ``"layer"``, and ``None``.
+        ``"group"``, and ``None``.
     normalization_kwargs : NormKwargs | None
         Additional keyword arguments passed to the selected normalization layer.
         Supported keys are:
         ``eps``, ``momentum``, ``affine``, ``track_running_stats`` for batch norm;
-        ``num_groups``, ``eps``, ``affine`` for group norm;
-        ``eps``, ``elementwise_affine``, ``bias`` for layer norm.
+        ``num_groups``, ``eps``, ``affine`` for group norm.
     hidden_channels : tuple[int | tuple[int, ...], ...] | None
         Explicit channels per stage/block. If provided, each stage entry can be:
         - int: same width for all blocks in the stage
