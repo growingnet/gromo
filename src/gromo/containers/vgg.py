@@ -512,6 +512,32 @@ def _reduce_growing_conv_widths(
     stage_hidden_per_block: tuple[int, ...],
     reduction_factor: float | None,
 ) -> tuple[int, ...]:
+    """Scale down all but the last block width in a stage by a reduction factor.
+
+    The last block retains its target width; earlier blocks are multiplied by
+    ``reduction_factor`` (rounded up) so they start smaller and can grow toward
+    the target.
+
+    Parameters
+    ----------
+    stage_hidden_per_block : tuple[int, ...]
+        Target channel widths, one per convolutional block in the stage.
+    reduction_factor : float | None
+        Multiplicative factor applied to non-final block widths.
+        If ``None``, the input tuple is returned unchanged.
+
+    Returns
+    -------
+    tuple[int, ...]
+        Widths after reduction, same length as ``stage_hidden_per_block``.
+
+    Examples
+    --------
+    >>> _reduce_growing_conv_widths((256, 256, 512), reduction_factor=0.5)
+    (128, 128, 512)
+    >>> _reduce_growing_conv_widths((256, 512), reduction_factor=None)
+    (256, 512)
+    """
     if reduction_factor is None:
         return stage_hidden_per_block
     return tuple(
