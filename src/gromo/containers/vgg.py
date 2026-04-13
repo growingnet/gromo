@@ -149,7 +149,54 @@ class _VGGStageBlock(nn.Module):
 
 
 class VGG(SequentialGrowingModel):
-    """Growable VGG backbone with torchvision-aligned classifier."""
+    """Growable VGG backbone with torchvision-aligned classifier.
+
+    Parameters
+    ----------
+    cfg : list[str | int]
+        Architecture configuration. Each integer specifies the number of output
+        channels of a convolutional layer; ``"M"`` inserts a MaxPool2d layer.
+    target_cfg : list[str | int] | None
+        Target configuration used to size the growing modules. Must share the
+        same pooling structure as ``cfg``. Defaults to ``cfg`` when ``None``.
+    in_features : int
+        Number of input channels.
+    activation : nn.Module
+        Activation function applied after each convolution.
+    normalization : NormalizationType | None
+        Normalization layer to use. Supported values are ``"batch"``,
+        ``"group"``, ``"layer"``, and ``None``.
+    normalization_kwargs : NormKwargs | None
+        Additional keyword arguments passed to normalization layers.
+        Supported keys depend on the normalization type:
+
+        - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
+        - ``"group"``: ``num_groups``, ``eps``, ``affine``
+        - ``"layer"``: ``eps``, ``elementwise_affine``, ``bias``
+
+        Keys irrelevant to the chosen normalization are ignored.
+    num_classes : int
+        Number of output classes.
+    init_weights : bool
+        If ``True``, initialise weights with Kaiming normal / constant init.
+    dropout : float
+        Dropout probability applied inside the classifier.
+    number_of_fc_layers : int
+        Number of fully-connected layers in the classifier (must be > 0).
+    fc_layer_width : int
+        Width of the hidden fully-connected layers (must be > 0).
+    initial_fc_layer_width : int | None
+        Width of the first fully-connected layer. Defaults to ``fc_layer_width``
+        when ``None``.
+    input_spatial_shape : tuple[int, int] | None
+        Spatial dimensions ``(H, W)`` of the input feature maps. Required when
+        ``normalization="layer"``.
+    device : torch.device | str | None
+        Device to run the model on.
+    growing_conv_type : type[Conv2dGrowingModule]
+        Type of convolutional growing module to use
+        (e.g. ``RestrictedConv2dGrowingModule``, ``FullConv2dGrowingModule``).
+    """
 
     def __init__(
         self,
