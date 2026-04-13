@@ -196,6 +196,14 @@ class VGG(SequentialGrowingModel):
     growing_conv_type : type[Conv2dGrowingModule]
         Type of convolutional growing module to use
         (e.g. ``RestrictedConv2dGrowingModule``, ``FullConv2dGrowingModule``).
+
+    Raises
+    ------
+    ValueError
+        If ``number_of_fc_layers`` is not positive, ``fc_layer_width`` is not
+        positive, ``initial_fc_layer_width`` is not positive,
+        ``normalization="layer"`` and ``input_spatial_shape`` is ``None``,
+        or ``target_cfg`` does not match the pooling structure of ``cfg``.
     """
 
     def __init__(
