@@ -1,7 +1,63 @@
-from typing import Callable
+"""Growing normalization layers and shared normalization configuration types."""
+
+from typing import Callable, Literal, TypeAlias, TypedDict
 
 import torch
 import torch.nn as nn
+
+
+# ---------------------------------------------------------------------------
+# Shared normalization configuration types
+# ---------------------------------------------------------------------------
+
+NormalizationType: TypeAlias = Literal["batch", "group", "layer"]
+#: Normalization types supported across growing containers.
+
+
+class NormKwargs(TypedDict, total=False):
+    """Optional normalization keyword arguments (superset of all norm types).
+
+    Each normalization type uses only the relevant keys:
+
+    - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
+    - ``"group"``: ``num_groups``, ``eps``, ``affine``
+    - ``"layer"``: ``eps``, ``elementwise_affine``, ``bias``
+    """
+
+    # BatchNorm keys
+    eps: float
+    momentum: float
+    affine: bool
+    track_running_stats: bool
+    # GroupNorm key
+    num_groups: int
+    # LayerNorm keys
+    elementwise_affine: bool
+    bias: bool
+
+
+class CompleteNormKwargs(TypedDict):
+    """Complete normalization configuration (all keys required)."""
+
+    eps: float
+    momentum: float
+    affine: bool
+    track_running_stats: bool
+    num_groups: int
+    elementwise_affine: bool
+    bias: bool
+
+
+base_norm_kwargs: CompleteNormKwargs = {
+    "eps": 1e-5,
+    "momentum": 0.1,
+    "affine": True,
+    "track_running_stats": True,
+    "num_groups": 1,
+    "elementwise_affine": True,
+    "bias": True,
+}
+#: Default normalization kwargs used when no overrides are provided.
 
 
 class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
@@ -396,7 +452,10 @@ class GrowingLayerNorm(nn.LayerNorm):
 
         # Validate custom tensor shapes before any mutation
         if getattr(self, "elementwise_affine", False):
-            weight_required_shape = (additional_first_dim, *tuple(self.weight.shape[1:]))
+            weight_required_shape = (
+                additional_first_dim,
+                *tuple(self.weight.shape[1:]),
+            )
             if (
                 new_weights is not None
                 and tuple(new_weights.shape) != weight_required_shape
@@ -407,7 +466,10 @@ class GrowingLayerNorm(nn.LayerNorm):
                 )
 
             if getattr(self, "bias", None) is not None and new_biases is not None:
-                bias_required_shape = (additional_first_dim, *tuple(self.bias.shape[1:]))
+                bias_required_shape = (
+                    additional_first_dim,
+                    *tuple(self.bias.shape[1:]),
+                )
                 if tuple(new_biases.shape) != bias_required_shape:
                     raise ValueError(
                         f"new_bias must have shape {bias_required_shape}, "

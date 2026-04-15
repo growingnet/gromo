@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 import torch
 
 from gromo.containers.resnet import (
-    NormKwargs,
     ResNetBasicBlock,
     init_full_resnet_structure,
 )
@@ -13,6 +12,7 @@ from tests.unittest_tools import unittest_parametrize
 
 if TYPE_CHECKING:
     from gromo.containers.growing_block import Conv2dGrowingBlock
+    from gromo.modules.growing_normalisation import NormKwargs
 
 
 try:
