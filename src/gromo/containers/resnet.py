@@ -72,6 +72,10 @@ class ResNetBasicBlock(SequentialGrowingModel):
         Device to run the model on.
     activation : nn.Module
         Activation function to use.
+    dropout_rate : float
+        Dropout rate.
+        If greater than 0, WideRestNet-style dropout
+        will be added before the second convolution in each block.
     input_block_kernel_size : int
         Kernel size for the input block.
     output_block_kernel_size : int
@@ -111,6 +115,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         out_features: int = 1000,
         device: torch.device | str | None = None,
         activation: nn.Module = nn.ReLU(),
+        dropout_rate: float = 0.0,  # Set to non 0 for WideResNet;
         input_block_kernel_size: int = 3,
         output_block_kernel_size: int = 3,
         hidden_channels: tuple[int, ...] = (0, 0, 0, 0),
@@ -125,6 +130,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
             in_features=in_features, out_features=out_features, device=device
         )
         self.activation = activation.to(device)
+        self.dropout_rate = dropout_rate
         self.small_inputs = small_inputs
         self.use_preactivation = use_preactivation
         self.inplanes = inplanes
@@ -458,7 +464,8 @@ class ResNetBasicBlock(SequentialGrowingModel):
             "stride": output_block_stride,
         }
         mid_activation = nn.Sequential(
-            *self._build_norm_activation_layers(hidden_channels, growing=True)
+            *self._build_norm_activation_layers(hidden_channels, growing=True),
+            GrowingDropout2d(self.dropout_rate, device=self.device),
         )
 
         if self.use_preactivation:
@@ -632,172 +639,6 @@ class ResNetBasicBlock(SequentialGrowingModel):
                     x = block(x)
         x = self.post_net(x)
         return x
-
-
-class WideResNetBasicBlock(ResNetBasicBlock):
-    """
-    WideResNet is similar to ResNet with a dropout layer
-    added before the second convolution layer in each block
-
-    WideResNet with dropout rate = 0 is equivalent to ResNet
-    """
-
-    def __init__(
-        self,
-        in_features: int = 3,
-        out_features: int = 1000,
-        device: torch.device | str | None = None,
-        activation: nn.Module = nn.ReLU(),
-        dropout_rate: float = 0.0,
-        input_block_kernel_size: int = 3,
-        output_block_kernel_size: int = 3,
-        hidden_channels: tuple[int, ...] = (0, 0, 0, 0),
-        small_inputs: bool = False,
-        inplanes: int = 64,
-        use_preactivation: bool = True,
-        normalization: NormalizationType | None = "batch",
-        normalization_kwargs: NormKwargs | None = None,
-        growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
-    ) -> None:
-        super().__init__(
-            in_features=in_features,
-            out_features=out_features,
-            device=device,
-            activation=activation,
-            input_block_kernel_size=input_block_kernel_size,
-            output_block_kernel_size=output_block_kernel_size,
-            hidden_channels=hidden_channels,
-            small_inputs=small_inputs,
-            inplanes=inplanes,
-            use_preactivation=use_preactivation,
-            normalization=normalization,
-            normalization_kwargs=normalization_kwargs,
-            growing_conv_type=growing_conv_type,
-        )
-        self.dropout_rate = dropout_rate
-
-    def _create_block(
-        self,
-        in_channels: int,
-        out_channels: int,
-        hidden_channels: int,
-        name: str,
-        use_downsample: bool = False,
-        input_block_stride: int = 1,
-        output_block_stride: int = 1,
-        input_block_kernel_size: int | None = None,
-        output_block_kernel_size: int | None = None,
-    ) -> Conv2dGrowingBlock:
-        """Create a WideResNet block with the appropriate configuration.
-
-        Parameters
-        ----------
-        in_channels : int
-            Number of input channels.
-        out_channels : int
-            Number of output channels.
-        hidden_channels : int
-            Number of hidden channels in the block.
-        name : str
-            Name of the block.
-        use_downsample : bool
-            If True, add a downsample module to match dimensions.
-        input_block_stride : int
-            Stride for the first convolutional layer.
-        output_block_stride : int
-            Stride for the second convolutional layer.
-        input_block_kernel_size : int | None
-            Kernel size for the first layer. If None, uses the instance default.
-        output_block_kernel_size : int | None
-            Kernel size for the second layer. If None, uses the instance default.
-
-        Returns
-        -------
-        Conv2dGrowingBlock
-            The constructed block.
-        """
-        if input_block_kernel_size is None:
-            input_block_kernel_size = self.input_block_kernel_size
-        if output_block_kernel_size is None:
-            output_block_kernel_size = self.output_block_kernel_size
-
-        kwargs_first_layer = {
-            "kernel_size": input_block_kernel_size,
-            "padding": 1,
-            "use_bias": False,
-            "stride": input_block_stride,
-        }
-        kwargs_second_layer = {
-            "kernel_size": output_block_kernel_size,
-            "padding": 1,
-            "use_bias": False,
-            "stride": output_block_stride,
-        }
-
-        mid_activation = nn.Sequential(
-            *self._build_norm_activation_layers(hidden_channels, growing=True),
-            GrowingDropout2d(self.dropout_rate, device=self.device),
-        )
-
-        if self.use_preactivation:
-            pre_activation: nn.Module | None = nn.Sequential(
-                *self._build_norm_activation_layers(in_channels)
-            )
-            pre_addition_function: nn.Module = nn.Identity()
-            downsample: nn.Module = (
-                nn.Sequential(
-                    *self._build_norm_activation_layers(in_channels),
-                    nn.Conv2d(
-                        in_channels=in_channels,
-                        out_channels=out_channels,
-                        kernel_size=1,
-                        stride=input_block_stride,
-                        bias=False,
-                        device=self.device,
-                    ),
-                )
-                if use_downsample
-                else nn.Identity()
-            )
-        else:
-            pre_activation = None
-            normalization = self._build_normalization(out_channels)
-            pre_addition_function = (
-                normalization if normalization is not None else nn.Identity()
-            )
-            if use_downsample:
-                downsample_layers: list[nn.Module] = [
-                    nn.Conv2d(
-                        in_channels=in_channels,
-                        out_channels=out_channels,
-                        kernel_size=1,
-                        stride=input_block_stride,
-                        bias=False,
-                        device=self.device,
-                    )
-                ]
-                downsample_normalization = self._build_normalization(out_channels)
-                if downsample_normalization is not None:
-                    downsample_layers.append(downsample_normalization)
-                downsample = nn.Sequential(*downsample_layers)
-            else:
-                downsample = nn.Identity()
-
-        return Conv2dGrowingBlock(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            hidden_channels=hidden_channels,
-            kwargs_first_layer=kwargs_first_layer,
-            kwargs_second_layer=kwargs_second_layer,
-            pre_activation=pre_activation,
-            mid_activation=mid_activation,
-            pre_addition_function=pre_addition_function,
-            name=name,
-            target_hidden_channels=out_channels,
-            downsample=downsample,
-            growing_conv_type=self.growing_conv_type,
-            device=self.device,
-        )
 
 
 def init_full_resnet_structure(

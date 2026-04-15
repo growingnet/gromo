@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-class GrowingDropout(nn.modules.droupout._DropoutNd):
+class GrowingDropout(nn.modules.dropout._DropoutNd):
     """
     Base class for dropout layers on growing architectures.
 
@@ -33,7 +33,7 @@ class GrowingDropout(nn.modules.droupout._DropoutNd):
         name: str = "growing_dropout",
     ):
         super(GrowingDropout, self).__init__(
-            dropout_rate=dropout_rate,
+            p=dropout_rate,
             inplace=inplace,
             device=device,
             dtype=dtype,
