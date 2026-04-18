@@ -1,5 +1,5 @@
 from collections.abc import Callable, Generator
-from typing import Any
+from typing import Any, Literal
 
 import torch
 import torch.utils.data
@@ -245,8 +245,7 @@ def gradient_descent(
     batch_limit: int | None = None,
     dataloader_seed: int | None = None,
     device: torch.device = torch.device("cpu"),
-    scheduler_step_after_epoch: bool = True,
-    scheduler_step_after_batch: bool = False,
+    scheduler_step_granularity: Literal["epoch", "batch"] = "epoch",
 ) -> tuple[float, float]:
     """
     Train the model on the train_dataloader using classic gradient descent.
@@ -274,10 +273,8 @@ def gradient_descent(
         Default is None.
     device : torch.device, optional
         Device to use. Default is torch.device("cpu").
-    scheduler_step_after_epoch : bool, optional
-        Whether to step the scheduler after each epoch. Default is True.
-    scheduler_step_after_batch : bool, optional
-        Whether to step the scheduler after each batch. Default is False.
+    scheduler_step_granularity : Literal["epoch", "batch"], optional
+        Whether to step the scheduler after each epoch (`"epoch"`, default) or each mini-batch (`"batch"`).
 
     Returns
     -------
@@ -318,10 +315,10 @@ def gradient_descent(
         loss_meter.update(loss.detach(), x.size(0))
         metrics.update(y_pred.detach(), y)
 
-        if scheduler is not None and scheduler_step_after_batch:
+        if scheduler is not None and scheduler_step_granularity == "batch":
             scheduler.step()
 
-    if scheduler is not None and scheduler_step_after_epoch:
+    if scheduler is not None and scheduler_step_granularity == "epoch":
         scheduler.step()
 
     return loss_meter.compute().item(), metrics.compute().item()

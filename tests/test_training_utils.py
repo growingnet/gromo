@@ -322,8 +322,7 @@ class TestGradientDescent(TorchTestCase):
                 optimizer,
                 scheduler=scheduler,
                 loss_function=nn.MSELoss(reduction="mean"),
-                scheduler_step_after_batch=True,
-                scheduler_step_after_epoch=False,
+                scheduler_step_granularity="batch",
             )
             self.assertEqual(scheduler.step_count, 2)
 
@@ -335,8 +334,7 @@ class TestGradientDescent(TorchTestCase):
                 optimizer,
                 scheduler=scheduler,
                 loss_function=nn.MSELoss(reduction="mean"),
-                scheduler_step_after_batch=False,
-                scheduler_step_after_epoch=True,
+                scheduler_step_granularity="epoch",
             )
             self.assertEqual(scheduler.step_count, 1)
 
