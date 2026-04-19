@@ -2228,6 +2228,9 @@ class GrowingModule(torch.nn.Module):
             ignore_singular_values=ignore_singular_values,
         )
 
+        if ignore_singular_values:
+            eigenvalues_extension = eigenvalues_extension**0.5
+
         alpha = alpha.to(dtype=saved_dtype)
         omega = omega.to(dtype=saved_dtype)
         eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
