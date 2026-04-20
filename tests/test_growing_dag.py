@@ -103,6 +103,113 @@ class TestGrowingDAG(TorchTestCase):
         self.assertEqual(dag.ancestors, {})
         self.assertEqual(len(dag._growing_layers), 0)
 
+    def test_export_dag_parameters(self) -> None:
+        # Test linear DAG
+        test_dag = self.dag
+        test_dag.add_node_with_two_edges(
+            test_dag.root,
+            "test",
+            test_dag.end,
+            node_attributes=self.init_node_attributes,
+            edge_attributes=self.default_edge_attributes,
+        )
+        DAG_parameters = test_dag.export_dag_parameters()
+
+        self.assertIsInstance(DAG_parameters, dict)
+        self.assertIn("edges", DAG_parameters)
+        self.assertIn("node_attributes", DAG_parameters)
+        self.assertIn("edge_attributes", DAG_parameters)
+
+        self.assertEqual(DAG_parameters["edges"], list(test_dag.edges))
+        for edge in test_dag.edges:
+            edge_module = test_dag.get_edge_module(*edge)
+            self.assertIn(str(edge), DAG_parameters["edge_attributes"])
+            self.assertEqual(
+                DAG_parameters["edge_attributes"][str(edge)],
+                {
+                    "type": "linear"
+                    if isinstance(edge_module.layer, torch.nn.Linear)
+                    else "convolution",
+                    "use_bias": edge_module.bias is not None,
+                    "kernel_size": edge_module.kernel_size
+                    if hasattr(edge_module, "kernel_size")
+                    else test_dag.kernel_size,
+                },
+            )
+        for node in test_dag.nodes:
+            node_module = test_dag.get_node_module(node)
+            self.assertIn(node, DAG_parameters["node_attributes"])
+            self.assertEqual(
+                DAG_parameters["node_attributes"][node],
+                {
+                    "type": "linear"
+                    if isinstance(node_module, LinearMergeGrowingModule)
+                    else "convolution",
+                    "size": node_module.in_features,
+                    "shape": node_module.input_size
+                    if hasattr(node_module, "input_size")
+                    else None,
+                    "kernel_size": node_module.kernel_size
+                    if hasattr(node_module, "kernel_size")
+                    else test_dag.kernel_size,
+                    "activation": test_dag.activation if node != test_dag.root else "id",
+                    "use_layer_norm": test_dag.use_layer_norm,
+                },
+            )
+
+        # Test convolution DAG
+        test_dag = self.dag_conv
+        test_dag.add_node_with_two_edges(
+            test_dag.root,
+            "test",
+            test_dag.end,
+            node_attributes=self.init_node_conv_attributes,
+            edge_attributes=self.default_edge_attributes,
+        )
+        DAG_parameters = test_dag.export_dag_parameters()
+
+        self.assertIsInstance(DAG_parameters, dict)
+        self.assertIn("edges", DAG_parameters)
+        self.assertIn("node_attributes", DAG_parameters)
+        self.assertIn("edge_attributes", DAG_parameters)
+
+        self.assertEqual(DAG_parameters["edges"], list(test_dag.edges))
+        for edge in test_dag.edges:
+            edge_module = test_dag.get_edge_module(*edge)
+            self.assertIn(str(edge), DAG_parameters["edge_attributes"])
+            self.assertEqual(
+                DAG_parameters["edge_attributes"][str(edge)],
+                {
+                    "type": "linear"
+                    if isinstance(edge_module.layer, torch.nn.Linear)
+                    else "convolution",
+                    "use_bias": edge_module.bias is not None,
+                    "kernel_size": edge_module.kernel_size
+                    if hasattr(edge_module, "kernel_size")
+                    else test_dag.kernel_size,
+                },
+            )
+        for node in test_dag.nodes:
+            node_module = test_dag.get_node_module(node)
+            self.assertIn(node, DAG_parameters["node_attributes"])
+            self.assertEqual(
+                DAG_parameters["node_attributes"][node],
+                {
+                    "type": "linear"
+                    if isinstance(node_module, LinearMergeGrowingModule)
+                    else "convolution",
+                    "size": node_module.in_features,
+                    "shape": node_module.input_size
+                    if hasattr(node_module, "input_size")
+                    else None,
+                    "kernel_size": node_module.kernel_size
+                    if hasattr(node_module, "kernel_size")
+                    else test_dag.kernel_size,
+                    "activation": test_dag.activation if node != test_dag.root else "id",
+                    "use_layer_norm": test_dag.use_layer_norm,
+                },
+            )
+
     def test_edge_candidate(self) -> None:
         with self.assertRaises(ValueError):
             # Edge not present in the graph
