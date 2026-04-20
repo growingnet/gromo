@@ -97,6 +97,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Fix orientation of non-square images in `__make_safe_forward` (:gh:`230` by `Stella Douka`_)
 - Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
 - Fix lingering modules that were not properly deleted (:gh:`210` by `Stella Douka`_)
 - Fix sub-modules that are not registered in pytorch (:gh:`179` by `Stella Douka`_)
