@@ -1727,6 +1727,59 @@ class TestGrowingDAG(TorchTestCase):
             1,
         )
 
+    def test_expansion_evaluate(self) -> None:
+        expansion = Expansion(
+            self.dag,
+            exp_type=ExpansionType.NEW_EDGE,
+            previous_node=self.dag.root,
+            next_node=self.dag.end,
+        )
+        expansion.expand()
+
+        x = torch.rand((10, self.in_features), device=global_device())
+        y = torch.rand((10, self.out_features), device=global_device()).argmax(axis=1)
+        dataloader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x, y),
+            batch_size=10,
+        )
+        loss_fn = torch.nn.CrossEntropyLoss()
+
+        edge_module = self.dag.get_edge_module(self.dag.root, self.dag.end)
+        end_node_module = self.dag.get_node_module(self.dag.end)
+
+        new_edge_out = end_node_module(edge_module(x))
+        actual_out = self.dag.extended_forward(x, mask=expansion.create_mask())[0]
+        self.assertTrue(torch.equal(actual_out, new_edge_out))
+
+        new_edge_loss = loss_fn(new_edge_out, y).item()
+        actual_loss = loss_fn(actual_out, y).item()
+        self.assertEqual(actual_loss, new_edge_loss)
+
+        expansion.evaluate(
+            self.dag,
+            train_dataloader=dataloader,
+            dev_dataloader=None,
+            val_dataloader=None,
+            loss_fn=loss_fn,
+        )
+        self.assertEqual(expansion.metrics["loss_train"], new_edge_loss)
+        self.assertNotIn("loss_dev", expansion.metrics)
+        self.assertNotIn("acc_dev", expansion.metrics)
+        self.assertNotIn("loss_val", expansion.metrics)
+        self.assertNotIn("acc_val", expansion.metrics)
+
+        count_params = sum(param.numel() for param in edge_module.parameters())
+        self.assertEqual(count_params, expansion.metrics["nb_params"])
+
+        expansion.evaluate(
+            self.dag,
+            train_dataloader=None,
+            dev_dataloader=dataloader,
+            val_dataloader=None,
+            loss_fn=loss_fn,
+        )
+        self.assertEqual(expansion.metrics["loss_dev"], new_edge_loss)
+
 
 if __name__ == "__main__":
     unittest.main()
