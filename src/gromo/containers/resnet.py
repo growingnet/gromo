@@ -5,7 +5,7 @@ and to add basic blocks add the end of the stages.
 """
 
 from math import ceil
-from typing import Literal, TypeAlias, TypedDict
+from typing import Literal, TypeAlias
 
 import torch
 from torch import nn
@@ -16,35 +16,16 @@ from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
-from gromo.modules.growing_normalisation import GrowingBatchNorm2d
+from gromo.modules.growing_normalisation import (
+    CompleteNormKwargs,
+    GrowingBatchNorm2d,
+    GrowingGroupNorm,
+    NormKwargs,
+    base_norm_kwargs,
+)
 
 
-class NormKwargs(TypedDict, total=False):
-    """Optional normalization configuration."""
-
-    eps: float
-    momentum: float
-    affine: bool
-    track_running_stats: bool
-
-
-class CompleteNormKwargs(TypedDict):
-    """Complete normalization configuration for currently supported norms."""
-
-    eps: float
-    momentum: float
-    affine: bool
-    track_running_stats: bool
-
-
-base_batch_norm_kwargs: CompleteNormKwargs = {
-    "eps": 1e-5,
-    "momentum": 0.1,
-    "affine": True,
-    "track_running_stats": True,
-}
-
-NormalizationType: TypeAlias = Literal["batch"]
+ResNetNormalizationType: TypeAlias = Literal["batch", "group"]
 
 
 class ResNetBasicBlock(SequentialGrowingModel):
@@ -78,14 +59,17 @@ class ResNetBasicBlock(SequentialGrowingModel):
     use_preactivation : bool
         If True, use full pre-activation ResNet (BN-ReLU before conv).
         If False, use classical ResNet (conv-BN-ReLU).
-    normalization : NormalizationType | None
-        Normalization layer to use. Supported values are ``"batch"`` and
-        ``None``.
+    normalization : ResNetNormalizationType | None
+        Normalization layer to use. Supported values are ``"batch"``,
+        ``"group"``, and ``None``.
     normalization_kwargs : NormKwargs | None
-        Additional keyword arguments passed to batch normalization layers.
-        Supported keys are ``eps``, ``momentum``, ``affine``, and
-        ``track_running_stats``. The normalization construction is centralized
-        so that other normalization layers can be integrated later.
+        Additional keyword arguments passed to normalization layers.
+        Supported keys depend on the normalization type:
+
+        - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
+        - ``"group"``: ``num_groups``, ``eps``, ``affine``
+
+        Keys irrelevant to the chosen normalization are ignored.
     growing_conv_type : type[Conv2dGrowingModule]
         Type of convolutional growing module to use
         (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...).
@@ -103,7 +87,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         small_inputs: bool = False,
         inplanes: int = 64,
         use_preactivation: bool = True,
-        normalization: NormalizationType | None = "batch",
+        normalization: ResNetNormalizationType | None = "batch",
         normalization_kwargs: NormKwargs | None = None,
         growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
     ) -> None:
@@ -116,10 +100,10 @@ class ResNetBasicBlock(SequentialGrowingModel):
         self.inplanes = inplanes
         self.input_block_kernel_size = input_block_kernel_size
         self.output_block_kernel_size = output_block_kernel_size
-        self.normalization: None | Literal["batch"] = self._validate_normalization(
+        self.normalization: ResNetNormalizationType | None = self._validate_normalization(
             normalization
         )
-        self.normalization_kwargs: CompleteNormKwargs = base_batch_norm_kwargs.copy()
+        self.normalization_kwargs: CompleteNormKwargs = base_norm_kwargs.copy()
         if normalization_kwargs is not None:
             self.normalization_kwargs.update(normalization_kwargs)
         self.growing_conv_type = growing_conv_type
@@ -167,18 +151,18 @@ class ResNetBasicBlock(SequentialGrowingModel):
 
     @staticmethod
     def _validate_normalization(
-        normalization: NormalizationType | None,
-    ) -> NormalizationType | None:
+        normalization: ResNetNormalizationType | None,
+    ) -> ResNetNormalizationType | None:
         """Validate and normalize the normalization configuration.
 
         Parameters
         ----------
-        normalization : NormalizationType | None
+        normalization : ResNetNormalizationType | None
             Requested normalization configuration.
 
         Returns
         -------
-        NormalizationType | None
+        ResNetNormalizationType | None
             The validated normalization name.
 
         Raises
@@ -188,11 +172,11 @@ class ResNetBasicBlock(SequentialGrowingModel):
         """
         if normalization is None:
             return None
-        elif normalization == "batch":
+        elif normalization in ("batch", "group"):
             return normalization
         else:
             raise ValueError(
-                f"normalization must be 'batch' or None, got {normalization!r}."
+                f"normalization must be 'batch', 'group', or None, got {normalization!r}."
             )
 
     def _build_normalization(self, num_channels: int) -> nn.Module | None:
@@ -223,6 +207,14 @@ class ResNetBasicBlock(SequentialGrowingModel):
                 momentum=self.normalization_kwargs["momentum"],
                 affine=self.normalization_kwargs["affine"],
                 track_running_stats=self.normalization_kwargs["track_running_stats"],
+                device=self.device,
+            )
+        elif self.normalization == "group":
+            return nn.GroupNorm(
+                num_groups=self.normalization_kwargs["num_groups"],
+                num_channels=num_channels,
+                eps=self.normalization_kwargs["eps"],
+                affine=self.normalization_kwargs["affine"],
                 device=self.device,
             )
         # Unreachable due to validation
@@ -257,6 +249,14 @@ class ResNetBasicBlock(SequentialGrowingModel):
                 momentum=self.normalization_kwargs["momentum"],
                 affine=self.normalization_kwargs["affine"],
                 track_running_stats=self.normalization_kwargs["track_running_stats"],
+                device=self.device,
+            )
+        elif self.normalization == "group":
+            return GrowingGroupNorm(
+                num_groups=self.normalization_kwargs["num_groups"],
+                num_channels=num_channels,
+                eps=self.normalization_kwargs["eps"],
+                affine=self.normalization_kwargs["affine"],
                 device=self.device,
             )
         # Unreachable due to validation
@@ -619,7 +619,7 @@ def init_full_resnet_structure(
     inplanes: int = 64,
     nb_stages: int = 4,
     use_preactivation: bool = True,
-    normalization: NormalizationType | None = "batch",
+    normalization: ResNetNormalizationType | None = "batch",
     normalization_kwargs: NormKwargs | None = None,
     growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
 ) -> ResNetBasicBlock:
@@ -672,14 +672,17 @@ def init_full_resnet_structure(
     use_preactivation : bool
         If True, use full pre-activation ResNet (BN-ReLU before conv).
         If False, use classical ResNet (conv-BN-ReLU).
-    normalization : NormalizationType | None
-        Normalization layer to use. Supported values are ``"batch"`` and
-        ``None``.
+    normalization : ResNetNormalizationType | None
+        Normalization layer to use. Supported values are ``"batch"``,
+        ``"group"``, and ``None``.
     normalization_kwargs : NormKwargs | None
-        Additional keyword arguments passed to batch normalization layers.
-        Supported keys are ``eps``, ``momentum``, ``affine``, and
-        ``track_running_stats``. The normalization construction is centralized
-        so that other normalization layers can be integrated later.
+        Additional keyword arguments passed to normalization layers.
+        Supported keys depend on the normalization type:
+
+        - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
+        - ``"group"``: ``num_groups``, ``eps``, ``affine``
+
+        Keys irrelevant to the chosen normalization are ignored.
     growing_conv_type : type[Conv2dGrowingModule]
         Type of convolutional growing module to use
         (e.g. RestrictedConv2dGrowingModule, FullConv2dGrowingModule, ...).
