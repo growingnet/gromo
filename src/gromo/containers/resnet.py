@@ -465,7 +465,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         }
         mid_activation = nn.Sequential(
             *self._build_norm_activation_layers(hidden_channels, growing=True),
-            GrowingDropout2d(self.dropout_rate, device=self.device),
+            GrowingDropout2d(self.dropout_rate),
         )
 
         if self.use_preactivation:

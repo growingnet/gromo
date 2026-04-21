@@ -28,15 +28,11 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
         self,
         dropout_rate: float = 0.0,
         inplace: bool = False,
-        device: torch.device | str | None = None,
-        dtype: torch.dtype | None = None,
         name: str = "growing_dropout",
     ):
         super(GrowingDropout, self).__init__(
             p=dropout_rate,
             inplace=inplace,
-            device=device,
-            dtype=dtype,
         )
         self.name = name
 
