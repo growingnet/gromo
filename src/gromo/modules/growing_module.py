@@ -2809,14 +2809,14 @@ class GrowingModule(torch.nn.Module):
         ----------
         std_target : float | None
             target standard deviation for the weights of the updates
-        gradmax_scale : float
-            For ``gradmax_normalization`` only: scalar :math:`s` in :math:`c = s \\cdot \\text{mean}(\\|W_i\\|)`.
-            Must be positive. Default ``1.0``.
         normalization_type : str
             type of normalization to use, one of
             'equalize_second_layer', 'equalize_extensions',
             'weird_normalization', 'legacy_normalization',
             'gradmax_normalization'
+        gradmax_scale : float
+            For ``gradmax_normalization`` only: scalar :math:`s` in :math:`c = s \\cdot \\text{mean}(\\|W_i\\|)`.
+            Must be positive. Default ``1.0``.
 
         Raises
         ------

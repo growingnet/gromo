@@ -3824,6 +3824,103 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 msg="gradmax_scale should multiply c = mean(||W_i||).",
             )
 
+            with self.subTest(case="gradmax_missing_extension_returns"):
+                _, layer_missing_ext = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_missing_ext.extended_input_layer = None
+                layer_missing_ext.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+
+            with self.subTest(case="gradmax_extension_dim_one_returns"):
+                _, layer_ext_dim_one = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_ext_dim_one.extended_input_layer = type(
+                    "DummyExtension",
+                    (),
+                    {
+                        "weight": torch.nn.Parameter(
+                            torch.tensor([1.0], device=global_device())
+                        )
+                    },
+                )()
+                layer_ext_dim_one.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+
+            with self.subTest(case="gradmax_existing_dim_one_returns"):
+                _, layer_existing_dim_one = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_existing_dim_one.layer = type(
+                    "DummyLayer",
+                    (),
+                    {
+                        "weight": torch.nn.Parameter(
+                            torch.tensor([1.0], device=global_device())
+                        )
+                    },
+                )()
+                layer_existing_dim_one.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+
+            with self.subTest(case="gradmax_empty_existing_norms_returns"):
+                _, layer_empty_existing = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_empty_existing.layer.weight.data = torch.empty(
+                    (2, 0), device=global_device()
+                )
+                layer_empty_existing.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+
+            with self.subTest(case="gradmax_zero_target_norm_returns"):
+                _, layer_zero_target = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_zero_target.layer.weight.data.zero_()
+                before_extension = (
+                    layer_zero_target.extended_input_layer.weight.detach().clone()
+                )
+                layer_zero_target.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+                self.assertTrue(
+                    torch.allclose(
+                        layer_zero_target.extended_input_layer.weight,
+                        before_extension,
+                    ),
+                    msg="No scaling should be applied when target norm is zero.",
+                )
+
+            with self.subTest(case="gradmax_eigenvalues_mismatch_warns"):
+                _, layer_warn = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_warn.layer.weight.data = W.clone()
+                layer_warn.extended_input_layer.weight.data = E.clone()
+                layer_warn.eigenvalues_extension = torch.ones(3, device=global_device())
+                with self.assertWarnsRegex(UserWarning, "eigenvalues_extension length"):
+                    layer_warn.normalize_optimal_updates(
+                        normalization_type="gradmax_normalization"
+                    )
+
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
     """Test create_layer_extensions method for LinearGrowingModule."""
