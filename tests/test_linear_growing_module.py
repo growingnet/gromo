@@ -3736,6 +3736,94 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     std_target=None, normalization_type="equalize_extensions"
                 )
 
+        with self.subTest(case="gradmax_normalization"):
+            # Match Linear shapes: layer_out.weight is (out_features, in_features),
+            # extended_input_layer.weight is (out_features, extension_size).
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True,
+                hidden_features=2,
+                extension_size=2,
+            )
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            out_f, in_f = layer_out.layer.weight.shape
+            ext_k = layer_out.extended_input_layer.weight.shape[1]
+            self.assertEqual(in_f, 2)
+            self.assertEqual(ext_k, 2)
+
+            # Existing input columns: norms 3 and 4 => mean c = 3.5.
+            W = torch.zeros(out_f, in_f, device=global_device())
+            W[0, 0] = 3.0
+            W[1, 1] = 4.0
+            layer_out.layer.weight.data = W
+
+            # Extension columns: nonzero norms so each is rescaled to c.
+            E = torch.zeros(out_f, ext_k, device=global_device())
+            E[0, 0] = 3.0
+            E[1, 0] = 4.0
+            E[0, 1] = 4.0
+            E[1, 1] = 3.0
+            layer_out.extended_input_layer.weight.data = E
+
+            col_norm = torch.tensor([5.0, 5.0], device=global_device())
+            target_norm = torch.tensor(3.5, device=global_device())
+            scales = target_norm / col_norm
+            ev_before = torch.tensor([100.0, 400.0], device=global_device())
+            layer_out.eigenvalues_extension = ev_before.clone()
+
+            layer_out.normalize_optimal_updates(
+                normalization_type="gradmax_normalization"
+            )
+
+            new_col_norms = layer_out.extended_input_layer.weight.norm(dim=0)
+            self.assertTrue(
+                torch.allclose(
+                    new_col_norms,
+                    torch.full_like(new_col_norms, target_norm),
+                    atol=1e-6,
+                ),
+                msg=(
+                    "Each added-neuron vector should be normalized "
+                    "to the mean norm of existing input-column weight vectors."
+                ),
+            )
+            assert layer_out.eigenvalues_extension is not None
+            expected_ev = ev_before * torch.sqrt(scales)
+            self.assertTrue(
+                torch.allclose(
+                    layer_out.eigenvalues_extension,
+                    expected_ev,
+                    atol=1e-5,
+                ),
+                msg="eigenvalues_extension should rescale by sqrt(column scale).",
+            )
+
+            with self.assertRaises(ValueError):
+                layer_out.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization",
+                    gradmax_scale=0.0,
+                )
+
+            # c = s * mean(||W_i||): s=2 doubles column target norms (3.5 -> 7).
+            E_reset = torch.zeros(out_f, ext_k, device=global_device())
+            E_reset[0, 0] = 3.0
+            E_reset[1, 0] = 4.0
+            E_reset[0, 1] = 4.0
+            E_reset[1, 1] = 3.0
+            layer_out.extended_input_layer.weight.data = E_reset
+            layer_out.eigenvalues_extension = ev_before.clone()
+            layer_out.normalize_optimal_updates(
+                normalization_type="gradmax_normalization",
+                gradmax_scale=2.0,
+            )
+            self.assertTrue(
+                torch.allclose(
+                    layer_out.extended_input_layer.weight.norm(dim=0),
+                    torch.full((ext_k,), 7.0, device=global_device()),
+                    atol=1e-5,
+                ),
+                msg="gradmax_scale should multiply c = mean(||W_i||).",
+            )
+
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
     """Test create_layer_extensions method for LinearGrowingModule."""

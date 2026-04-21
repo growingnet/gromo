@@ -2760,6 +2760,7 @@ class GrowingModule(torch.nn.Module):
         self,
         std_target: float | None = None,
         normalization_type: str = "legacy_normalization",
+        gradmax_scale: float = 1.0,
     ) -> None:
         """
         Normalize optimal update to target standard deviation
@@ -2790,13 +2791,32 @@ class GrowingModule(torch.nn.Module):
         and the extended_output_layer
         (so by s ** 2 / (std(extended_input_layer) * std(extended_output_layer)))
 
+        If normalization_type is "gradmax_normalization":
+        Let ``gradmax_scale`` be :math:`s` (default 1). Let :math:`c = s \\cdot \\text{mean}_i \\|W_i\\|`
+        where :math:`\\|W_i\\|` are the L2 (or Frobenius per channel) norms of the existing
+        slices of ``self.layer.weight`` along the input / fan-in axis (axis 1 for ``nn.Linear``).
+        Each new column (added neuron) w of ``extended_input_layer.weight`` is rescaled as
+        ``w <- w / ||w|| * c`` when ``||w|| > 0``.
+
+        For each such column j, let r_j be the factor applied (target norm divided by
+        the column norm before scaling). If ``eigenvalues_extension`` is present and
+        has one entry per added neuron, it is updated as
+        ``eigenvalues_extension[j] *= sqrt(r_j)``, matching the one-sided analogue of
+        ``scale_layer_extension`` (which uses ``*= sqrt(scale_output * scale_input)``)
+        when only the input extension is rescaled.
+
         Parameters
         ----------
         std_target : float | None
             target standard deviation for the weights of the updates
+        gradmax_scale : float
+            For ``gradmax_normalization`` only: scalar :math:`s` in :math:`c = s \\cdot \\text{mean}(\\|W_i\\|)`.
+            Must be positive. Default ``1.0``.
         normalization_type : str
             type of normalization to use, one of
-            'equalize_second_layer', 'equalize_extensions', 'weird_normalization'
+            'equalize_second_layer', 'equalize_extensions',
+            'weird_normalization', 'legacy_normalization',
+            'gradmax_normalization'
 
         Raises
         ------
@@ -2808,7 +2828,75 @@ class GrowingModule(torch.nn.Module):
             "equalize_extensions",
             "weird_normalization",
             "legacy_normalization",
+            "gradmax_normalization",
         ]
+
+        if normalization_type == "gradmax_normalization":
+            if gradmax_scale <= 0:
+                raise ValueError(
+                    f"gradmax_scale must be positive, got {gradmax_scale}."
+                )
+            if (
+                self.extended_input_layer is None
+                or not hasattr(self.extended_input_layer, "weight")
+                or not hasattr(self.layer, "weight")
+            ):
+                return
+
+            with torch.no_grad():
+                layer_weight = self.layer.weight
+                extension_weight = self.extended_input_layer.weight
+
+                # Added neurons correspond to axis 1 in extension weight.
+                reduced_dims_extension = tuple(
+                    dim for dim in range(extension_weight.dim()) if dim != 1
+                )
+                if len(reduced_dims_extension) == 0:
+                    return
+
+                # Existing neurons also correspond to axis 1 in base layer weight.
+                reduced_dims_existing = tuple(
+                    dim for dim in range(layer_weight.dim()) if dim != 1
+                )
+                if len(reduced_dims_existing) == 0:
+                    return
+
+                existing_norms = (layer_weight ** 2).sum(dim=reduced_dims_existing).sqrt()
+                if existing_norms.numel() == 0:
+                    return
+                target_norm = existing_norms.mean() * float(gradmax_scale)
+                if target_norm <= 0:
+                    return
+
+                extension_norms = (extension_weight ** 2).sum(dim=reduced_dims_extension).sqrt()
+                non_zero_mask = extension_norms > 0
+                if non_zero_mask.any():
+                    reshape_shape = [1] * extension_weight.dim()
+                    reshape_shape[1] = extension_weight.shape[1]
+                    scales = torch.ones_like(extension_norms)
+                    scales[non_zero_mask] = (
+                        target_norm / extension_norms[non_zero_mask]
+                    )
+                    extension_weight.mul_(scales.view(*reshape_shape))
+                    if self.eigenvalues_extension is not None:
+                        ev = self.eigenvalues_extension
+                        if ev.numel() != scales.numel():
+                            warnings.warn(
+                                "gradmax_normalization: eigenvalues_extension length "
+                                f"({ev.numel()}) does not match number of extension slices "
+                                f"({scales.numel()}); leaving eigenvalues unchanged.",
+                                UserWarning,
+                            )
+                        else:
+                            ev.mul_(
+                                torch.sqrt(
+                                    scales.to(
+                                        device=ev.device,
+                                        dtype=ev.dtype,
+                                    )
+                                )
+                            )
+            return
 
         # Determine target standard deviation
         if std_target is None:
