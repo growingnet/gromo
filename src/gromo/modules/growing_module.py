@@ -2762,7 +2762,7 @@ class GrowingModule(torch.nn.Module):
         normalization_type: str = "legacy_normalization",
         gradmax_scale: float = 1.0,
     ) -> None:
-        """
+        r"""
         Normalize optimal update to target standard deviation
 
         Normalize the optimal updates so that the standard deviation of the
@@ -2833,9 +2833,7 @@ class GrowingModule(torch.nn.Module):
 
         if normalization_type == "gradmax_normalization":
             if gradmax_scale <= 0:
-                raise ValueError(
-                    f"gradmax_scale must be positive, got {gradmax_scale}."
-                )
+                raise ValueError(f"gradmax_scale must be positive, got {gradmax_scale}.")
             if (
                 self.extended_input_layer is None
                 or not hasattr(self.extended_input_layer, "weight")
@@ -2861,22 +2859,22 @@ class GrowingModule(torch.nn.Module):
                 if len(reduced_dims_existing) == 0:
                     return
 
-                existing_norms = (layer_weight ** 2).sum(dim=reduced_dims_existing).sqrt()
+                existing_norms = (layer_weight**2).sum(dim=reduced_dims_existing).sqrt()
                 if existing_norms.numel() == 0:
                     return
                 target_norm = existing_norms.mean() * float(gradmax_scale)
                 if target_norm <= 0:
                     return
 
-                extension_norms = (extension_weight ** 2).sum(dim=reduced_dims_extension).sqrt()
+                extension_norms = (
+                    (extension_weight**2).sum(dim=reduced_dims_extension).sqrt()
+                )
                 non_zero_mask = extension_norms > 0
                 if non_zero_mask.any():
                     reshape_shape = [1] * extension_weight.dim()
                     reshape_shape[1] = extension_weight.shape[1]
                     scales = torch.ones_like(extension_norms)
-                    scales[non_zero_mask] = (
-                        target_norm / extension_norms[non_zero_mask]
-                    )
+                    scales[non_zero_mask] = target_norm / extension_norms[non_zero_mask]
                     extension_weight.mul_(scales.view(*reshape_shape))
                     if self.eigenvalues_extension is not None:
                         ev = self.eigenvalues_extension

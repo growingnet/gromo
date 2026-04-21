@@ -168,6 +168,7 @@ class ReLUDerivativeOneAtZero(nn.Module):
     """
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply ReLU with derivative set to 1 at :math:`x=0`."""
         return _ReLUDerivativeOneAtZero.apply(x)
 
 
