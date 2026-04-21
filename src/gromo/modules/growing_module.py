@@ -3687,6 +3687,8 @@ class GrowingModule(torch.nn.Module):
         init_fn = known_inits[input_extension_init]
         base_fan_in = self.get_fan_in_from_layer(layer_to_init)
         ext_fan_in = self.get_fan_in_from_layer(self.layer)
+        if neuron_pairing:
+            ext_fan_in *= 2  # pairing doubles the extension
 
         init_fn(layer_to_init.weight, self.weight, base_fan_in + ext_fan_in)
         if layer_to_init.bias is not None:
