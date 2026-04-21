@@ -3841,15 +3841,15 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     hidden_features=2,
                     extension_size=2,
                 )
-                layer_ext_dim_one.extended_input_layer = type(
-                    "DummyExtension",
-                    (),
-                    {
-                        "weight": torch.nn.Parameter(
-                            torch.tensor([1.0], device=global_device())
+
+                class DummyExtension(torch.nn.Module):
+                    def __init__(self) -> None:
+                        super().__init__()
+                        self.weight = torch.nn.Parameter(
+                            torch.tensor(1.0, device=global_device())
                         )
-                    },
-                )()
+
+                layer_ext_dim_one.extended_input_layer = DummyExtension()
                 layer_ext_dim_one.normalize_optimal_updates(
                     normalization_type="gradmax_normalization"
                 )
@@ -3860,15 +3860,15 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     hidden_features=2,
                     extension_size=2,
                 )
-                layer_existing_dim_one.layer = type(
-                    "DummyLayer",
-                    (),
-                    {
-                        "weight": torch.nn.Parameter(
-                            torch.tensor([1.0], device=global_device())
+
+                class DummyLayer(torch.nn.Module):
+                    def __init__(self) -> None:
+                        super().__init__()
+                        self.weight = torch.nn.Parameter(
+                            torch.tensor(1.0, device=global_device())
                         )
-                    },
-                )()
+
+                layer_existing_dim_one.layer = DummyLayer()
                 layer_existing_dim_one.normalize_optimal_updates(
                     normalization_type="gradmax_normalization"
                 )
