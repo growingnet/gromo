@@ -16,8 +16,6 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
         Probability of an element to be zeroed.
         Set to non 0 to run WideResNet architecture.
         Default: 0.0 for classical ResNet.
-    inplace : bool, optional
-        If set to True, will do this operation in-place, by default False
     name : str, optional
         Name of the layer for debugging, by default="growing_droupout"
     """
@@ -25,12 +23,12 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
     def __init__(
         self,
         dropout_rate: float = 0.0,
-        inplace: bool = False,
         name: str = "growing_dropout",
     ):
+        self.inplace: bool = False  # Dropout should not be inplace to avoid modifying the input tensor directly
         super(GrowingDropout, self).__init__(
             p=dropout_rate,
-            inplace=inplace,
+            inplace=self.inplace,
         )
         self.name = name
 
