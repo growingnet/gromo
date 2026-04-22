@@ -93,6 +93,7 @@ Enhancements
 - Option to disable logging (:gh:`14` by `Stella Douka`_)
 - Add CI (:gh:`2` by `Sylvain Chevallier`_)
 - Modify LinearGrowingModule to operate on the last dimension of an input tensor with arbitrary shape (:gh:`54` by `Stéphane Rivaud`_)
+- Add WideResNet-style dropout support to ResNet with `GrowingDropout2d` modules that preserve network growth (:gh:`243` by `ferdinandlouapre`_)
 
 Bugs
 ~~~~
@@ -134,3 +135,4 @@ API changes
 .. _Stéphane Rivaud: https://github.com/streethagore
 .. _Félix Houdouin: https://github.com/Edarfix
 .. _Hugo Mousset: https://github.com/hmousset
+.. _ferdinandlouapre: https://github.com/ferdinandlouapre
