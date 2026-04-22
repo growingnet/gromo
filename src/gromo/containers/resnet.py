@@ -16,6 +16,7 @@ from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.modules.growing_dropout import GrowingDropout2d
 from gromo.modules.growing_normalisation import (
     CompleteNormKwargs,
     GrowingBatchNorm2d,
@@ -23,7 +24,7 @@ from gromo.modules.growing_normalisation import (
     NormKwargs,
     base_norm_kwargs,
 )
-from gromo.modules.growing_dropout import GrowingDropout2d
+
 
 
 ResNetNormalizationType: TypeAlias = Literal["batch", "group"]
