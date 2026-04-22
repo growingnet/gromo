@@ -5,7 +5,7 @@ and to add basic blocks add the end of the stages.
 """
 
 from math import ceil
-from typing import Literal, TypeAlias, TypedDict
+from typing import Literal, TypeAlias
 
 import torch
 from torch import nn
@@ -16,46 +16,17 @@ from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.modules.growing_normalisation import (
+    CompleteNormKwargs,
+    GrowingBatchNorm2d,
+    GrowingGroupNorm,
+    NormKwargs,
+    base_norm_kwargs,
+)
 from gromo.modules.growing_dropout import GrowingDropout2d
-from gromo.modules.growing_normalisation import GrowingBatchNorm2d, GrowingGroupNorm
 
 
-class NormKwargs(TypedDict, total=False):
-    """Optional normalization configuration.
-
-    This is a superset of all normalization keyword arguments.
-    Each normalization type uses only the relevant keys:
-
-    - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
-    - ``"group"``: ``num_groups``, ``eps``, ``affine``
-    """
-
-    eps: float
-    momentum: float
-    affine: bool
-    track_running_stats: bool
-    num_groups: int
-
-
-class CompleteNormKwargs(TypedDict):
-    """Complete normalization configuration (superset of all norm types)."""
-
-    eps: float
-    momentum: float
-    affine: bool
-    track_running_stats: bool
-    num_groups: int
-
-
-base_norm_kwargs: CompleteNormKwargs = {
-    "eps": 1e-5,
-    "momentum": 0.1,
-    "affine": True,
-    "track_running_stats": True,
-    "num_groups": 1,
-}
-
-NormalizationType: TypeAlias = Literal["batch", "group"]
+ResNetNormalizationType: TypeAlias = Literal["batch", "group"]
 
 
 class ResNetBasicBlock(SequentialGrowingModel):
@@ -87,13 +58,16 @@ class ResNetBasicBlock(SequentialGrowingModel):
         If True, adapt the network for small input images (e.g., CIFAR-10/100).
         This uses smaller kernels, no stride, and
         no max pooling in the initial layers.
+    skip_first_downsample : bool
+        If True, the first block of the second stage will not perform spatial
+        downsampling (stride=1 instead of 2).
     inplanes : int
         Number of initial planes (channels) after the first convolution.
         (Default is 64 as in standard ResNet architectures.)
     use_preactivation : bool
         If True, use full pre-activation ResNet (BN-ReLU before conv).
         If False, use classical ResNet (conv-BN-ReLU).
-    normalization : NormalizationType | None
+    normalization : ResNetNormalizationType | None
         Normalization layer to use. Supported values are ``"batch"``,
         ``"group"``, and ``None``.
     normalization_kwargs : NormKwargs | None
@@ -120,9 +94,10 @@ class ResNetBasicBlock(SequentialGrowingModel):
         output_block_kernel_size: int = 3,
         hidden_channels: tuple[int, ...] = (0, 0, 0, 0),
         small_inputs: bool = False,
+        skip_first_downsample: bool = False,
         inplanes: int = 64,
         use_preactivation: bool = True,
-        normalization: NormalizationType | None = "batch",
+        normalization: ResNetNormalizationType | None = "batch",
         normalization_kwargs: NormKwargs | None = None,
         growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
     ) -> None:
@@ -136,7 +111,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         self.inplanes = inplanes
         self.input_block_kernel_size = input_block_kernel_size
         self.output_block_kernel_size = output_block_kernel_size
-        self.normalization: NormalizationType | None = self._validate_normalization(
+        self.normalization: ResNetNormalizationType | None = self._validate_normalization(
             normalization
         )
         self.normalization_kwargs: CompleteNormKwargs = base_norm_kwargs.copy()
@@ -153,10 +128,8 @@ class ResNetBasicBlock(SequentialGrowingModel):
             output_channels = inplanes * (2**i)
             stage_hidden_channels = hidden_channels[i]
 
-            # For small inputs, adjust stride behavior
-            stage_stride = 2 if (i > 0 and not (small_inputs and i == 1)) else 1
-            if small_inputs and i == 1:
-                stage_stride = 1
+            # adjust stride behavior
+            stage_stride = 1 if (i == 0 or (skip_first_downsample and i == 1)) else 2
 
             stage = nn.Sequential()
             block = self._create_block(
@@ -187,18 +160,18 @@ class ResNetBasicBlock(SequentialGrowingModel):
 
     @staticmethod
     def _validate_normalization(
-        normalization: NormalizationType | None,
-    ) -> NormalizationType | None:
+        normalization: ResNetNormalizationType | None,
+    ) -> ResNetNormalizationType | None:
         """Validate and normalize the normalization configuration.
 
         Parameters
         ----------
-        normalization : NormalizationType | None
+        normalization : ResNetNormalizationType | None
             Requested normalization configuration.
 
         Returns
         -------
-        NormalizationType | None
+        ResNetNormalizationType | None
             The validated normalization name.
 
         Raises
@@ -653,11 +626,12 @@ def init_full_resnet_structure(
     reduction_factor: float = 1 / 64,
     hidden_channels: tuple[int | tuple[int, ...], ...] | None = None,
     small_inputs: bool | None = None,
+    skip_first_downsample: bool | None = None,
     number_of_blocks_per_stage: int | tuple[int, ...] = 2,
     inplanes: int = 64,
     nb_stages: int = 4,
     use_preactivation: bool = True,
-    normalization: NormalizationType | None = "batch",
+    normalization: ResNetNormalizationType | None = "batch",
     normalization_kwargs: NormKwargs | None = None,
     growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
 ) -> ResNetBasicBlock:
@@ -698,6 +672,9 @@ def init_full_resnet_structure(
     small_inputs : bool | None
         If True, adapt the network for small input images (e.g., CIFAR-10/100).
         This uses smaller kernels, no stride, and no max pooling in the initial layers.
+    skip_first_downsample : bool | None
+        If True, skip the first downsampling operation of the second stage.
+        If None, it will be set to `small_inputs` (i.e., skip downsampling for small inputs).
     number_of_blocks_per_stage : int | tuple[int, ...]
         Number of basic blocks per stage. If an integer is provided, the same number
         of blocks will be used for all stages. If a tuple is provided, it should
@@ -710,7 +687,7 @@ def init_full_resnet_structure(
     use_preactivation : bool
         If True, use full pre-activation ResNet (BN-ReLU before conv).
         If False, use classical ResNet (conv-BN-ReLU).
-    normalization : NormalizationType | None
+    normalization : ResNetNormalizationType | None
         Normalization layer to use. Supported values are ``"batch"``,
         ``"group"``, and ``None``.
     normalization_kwargs : NormKwargs | None
@@ -748,6 +725,8 @@ def init_full_resnet_structure(
         in_features = input_shape[0]
     if small_inputs is None:
         small_inputs = input_shape[1] <= 32 and input_shape[2] <= 32
+    if skip_first_downsample is None:
+        skip_first_downsample = small_inputs
 
     # Normalize number_of_blocks_per_stage to a tuple
     if isinstance(number_of_blocks_per_stage, int):
@@ -811,6 +790,7 @@ def init_full_resnet_structure(
         output_block_kernel_size=output_block_kernel_size,
         hidden_channels=initial_hidden_channels,
         small_inputs=small_inputs,
+        skip_first_downsample=skip_first_downsample,
         inplanes=inplanes,
         use_preactivation=use_preactivation,
         normalization=normalization,
@@ -903,3 +883,19 @@ if __name__ == "__main__":
         ]
         print(f"  Stage {i}: {block_hidden}")
     summary(model_custom, input_size=(1, 3, 224, 224))
+
+    resnet20 = init_full_resnet_structure(
+        input_shape=(3, 32, 32),
+        out_features=10,
+        reduction_factor=1,
+        number_of_blocks_per_stage=3,
+        nb_stages=3,
+        inplanes=16,
+        use_preactivation=False,
+        skip_first_downsample=False,  # ResNet-20 for CIFAR-10 does not skip the first downsample
+    )
+    print("\n" + "=" * 60)
+    print("ResNet-20 for CIFAR-10")
+    print("=" * 60)
+    print(resnet20)
+    summary(resnet20, input_size=(1, 3, 32, 32))

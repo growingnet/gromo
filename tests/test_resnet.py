@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 import torch
 
 from gromo.containers.resnet import (
-    NormKwargs,
     ResNetBasicBlock,
     init_full_resnet_structure,
 )
@@ -13,6 +12,7 @@ from tests.unittest_tools import unittest_parametrize
 
 if TYPE_CHECKING:
     from gromo.containers.growing_block import Conv2dGrowingBlock
+    from gromo.modules.growing_normalisation import NormKwargs
 
 
 try:
@@ -168,6 +168,118 @@ class TestResNet(TorchTestCase):
                 hidden_channels=(8, "invalid", 32, 64),  # type: ignore
                 number_of_blocks_per_stage=2,
             )
+
+    def test_stage2_first_block_stride_with_skip_first_downsample(
+        self,
+        use_preactivation: bool = True,
+    ):
+        """Test stage-2 first-block stride and spatial size with explicit skip policy."""
+        device = global_device()
+
+        def get_stage2_stride_and_output_size(
+            model: ResNetBasicBlock,
+            input_hw: int,
+        ) -> tuple[tuple[int, int], tuple[int, int]]:
+            stage2_first_block = model.stages[1][0]  # type: ignore[index]
+            stride = stage2_first_block.first_layer.layer.stride  # type: ignore[attr-defined]
+
+            x = torch.randn(2, 3, input_hw, input_hw, device=device)
+            x = model.pre_net(x)
+            x = model.stages[0](x)
+            x = stage2_first_block(x)
+            output_size = x.shape[-2:]
+            return stride, output_size
+
+        model_skip = init_full_resnet_structure(
+            input_shape=(3, 8, 8),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            small_inputs=True,
+            skip_first_downsample=True,
+            device=device,
+        )
+        stride_skip, output_size_skip = get_stage2_stride_and_output_size(model_skip, 8)
+        self.assertEqual(stride_skip, (1, 1))
+        self.assertEqual(output_size_skip, (8, 8))
+
+        model_downsample = init_full_resnet_structure(
+            input_shape=(3, 8, 8),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            small_inputs=True,
+            skip_first_downsample=False,
+            device=device,
+        )
+        stride_downsample, output_size_downsample = get_stage2_stride_and_output_size(
+            model_downsample,
+            8,
+        )
+
+        self.assertEqual(stride_downsample, (2, 2))
+        self.assertEqual(output_size_downsample, (4, 4))
+
+    def test_stage2_first_block_stride_default_skip_first_downsample(
+        self,
+        use_preactivation: bool = True,
+    ):
+        """Test default skip_first_downsample behavior inferred from input size."""
+        device = global_device()
+
+        def get_stage2_stride_and_output_size(
+            model: ResNetBasicBlock,
+            input_hw: int,
+        ) -> tuple[tuple[int, int], tuple[int, int]]:
+            stage2_first_block = model.stages[1][0]  # type: ignore[index]
+            stride = stage2_first_block.first_layer.layer.stride  # type: ignore[attr-defined]
+
+            x = torch.randn(2, 3, input_hw, input_hw, device=device)
+            x = model.pre_net(x)
+            x = model.stages[0](x)
+            x = stage2_first_block(x)
+            output_size = x.shape[-2:]
+            return stride, output_size
+
+        model_small_default = init_full_resnet_structure(
+            input_shape=(3, 8, 8),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            device=device,
+        )
+        small_stride, small_output_size = get_stage2_stride_and_output_size(
+            model_small_default,
+            8,
+        )
+
+        self.assertTrue(model_small_default.small_inputs)
+        self.assertEqual(small_stride, (1, 1))
+        self.assertEqual(small_output_size, (8, 8))
+
+        model_large_default = init_full_resnet_structure(
+            input_shape=(3, 64, 64),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            device=device,
+        )
+        large_stride, large_output_size = get_stage2_stride_and_output_size(
+            model_large_default,
+            64,
+        )
+
+        self.assertFalse(model_large_default.small_inputs)
+        self.assertEqual(large_stride, (2, 2))
+        self.assertEqual(large_output_size, (8, 8))
 
     @unittest_parametrize(({"use_preactivation": True}, {"use_preactivation": False}))
     def test_forward_backward(self, use_preactivation: bool = True):
