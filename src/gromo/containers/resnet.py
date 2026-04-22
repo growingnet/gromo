@@ -653,6 +653,9 @@ def init_full_resnet_structure(
         Device to run the model on.
     activation : nn.Module
         Activation function to use.
+    dropout_rate : float
+        If greater than 0, WideRestNet-style dropout
+        will be added before the second convolution in each block.
     input_block_kernel_size : int
         Kernel size for the input block.
     output_block_kernel_size : int
