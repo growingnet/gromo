@@ -14,12 +14,10 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
     ----------
     dropout_rate : float
         Probability of an element to be zeroed.
+        Set to non 0 to run WideResNet architecture.
+        Default: 0.0 for classical ResNet.
     inplace : bool, optional
         If set to True, will do this operation in-place, by default False
-    device : torch.device | str | None, optional
-        Device to place the layer on, by default None
-    dtype : torch.dtype | None, optional
-        Data type for the parameters, by default None
     name : str, optional
         Name of the layer for debugging, by default="growing_droupout"
     """
