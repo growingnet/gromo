@@ -2835,6 +2835,20 @@ class GrowingModule(torch.nn.Module):
         - optimal_delta_layer is scaled to match the scaling of the extended_input_layer
         and the extended_output_layer
         (so by s ** 2 / (std(extended_input_layer) * std(extended_output_layer)))
+        Note that the goal here is to give both extensions the same scale; for the
+        output extension this is not the std of the layer it extends (that layer
+        belongs to ``self.previous_module``), so the result is *not* scale-matched
+        to the target layer. Use "match_extending_layer" for that behaviour.
+
+        If normalization_type is "match_extending_layer":
+        Each update component is scaled to match the std of the layer it modifies:
+        - extended_input_layer is scaled to std(self.layer.weight)
+        - previous_module.extended_output_layer is scaled to
+        std(previous_module.layer.weight)
+        - optimal_delta_layer is scaled to std(self.layer.weight)
+        In this mode ``std_target`` is ignored; each component uses the std of its
+        target layer. A previous GrowingModule with a ``.layer`` exposing weights
+        is required.
 
         If normalization_type is "gradmax_normalization":
         Let ``gradmax_scale`` be :math:`s` (default 1). Let :math:`c = s \cdot \text{mean}_i \|W_i\|`
@@ -2853,11 +2867,12 @@ class GrowingModule(torch.nn.Module):
         Parameters
         ----------
         std_target : float | None
-            target standard deviation for the weights of the updates
+            target standard deviation for the weights of the updates. Ignored
+            when ``normalization_type == "match_extending_layer"``.
         normalization_type : str
-            type of normalization to use, one of
-            'equalize_second_layer', 'equalize_extensions',
-            'weird_normalization', 'legacy_normalization',
+            type of normalization to use, one of 'equalize_second_layer',
+            'equalize_extensions', 'match_extending_layer', 'weird_normalization',
+            'legacy_normalization'
             'gradmax_normalization'
         gradmax_scale : float
             For ``gradmax_normalization`` only: scalar :math:`s` in :math:`c = s \\cdot \\text{mean}(\\|W_i\\|)`.
@@ -2871,6 +2886,7 @@ class GrowingModule(torch.nn.Module):
         existing_normalizations = [
             "equalize_second_layer",
             "equalize_extensions",
+            "match_extending_layer",
             "weird_normalization",
             "legacy_normalization",
             "gradmax_normalization",
@@ -2951,18 +2967,18 @@ class GrowingModule(torch.nn.Module):
                     scales[non_zero_mask] = target_norm / extension_norms[non_zero_mask]
                     extension_weight.mul_(scales.view(*reshape_shape))
                     if self.eigenvalues_extension is not None:
-                        ev = self.eigenvalues_extension
-                        ev.mul_(
+                        self.eigenvalues_extension.mul_(
                             torch.sqrt(
                                 scales.to(
-                                    device=ev.device,
-                                    dtype=ev.dtype,
+                                    device=self.eigenvalues_extension.device,
+                                    dtype=self.eigenvalues_extension.dtype,
                                 )
                             )
                         )
             return
 
-        # Determine target standard deviation
+        # Determine target standard deviation (not used by match_extending_layer,
+        # which computes per-target stds below).
         if std_target is None:
             if (
                 hasattr(self.layer, "weight")
@@ -2981,67 +2997,102 @@ class GrowingModule(torch.nn.Module):
                 std_target = 1.0 / (
                     self.get_fan_in_from_layer(self.extended_input_layer) ** 0.5
                 )
-        assert isinstance(std_target, float), "std_target must be a float."
-        assert std_target > 0, "std_target must be positive."
+        assert isinstance(std_target, float) and std_target > 0, (
+            "std_target must be a positive float."
+        )
 
-        def _get_scale(layer: torch.nn.Module | None, target_std: float) -> float:
+        def _std_of_layer(layer: torch.nn.Module | None) -> float | None:
             """
-            Calculate the scaling factor for a layer to reach the target standard
-            deviation.
+            Return the std of ``layer.weight``, or a kaiming-like fallback.
 
-            If the layer is None or has no weights, return 1.0.
-            If the current standard deviation is 0, return
-            self.get_fan_in_from_layer(layer) ** (-0.5).
+            Returns ``None`` when ``layer`` is missing or has no weights;
+            returns ``layer.weight.std().item()`` when positive; otherwise
+            returns ``get_fan_in_from_layer(layer) ** -0.5``.
 
             Parameters
             ----------
-            layer: torch.nn.Module | None
-                The layer to calculate the scaling factor for.
-            target_std: float
-                The target standard deviation.
+            layer : torch.nn.Module | None
+                Layer whose ``.weight`` std we want.
+
+            Returns
+            -------
+            float | None
+                The std, the fallback, or ``None`` when no weights exist.
+            """
+            if (
+                layer is None
+                or not hasattr(layer, "weight")
+                or layer.weight is None
+                or layer.weight.numel() == 0
+            ):
+                return None
+            else:
+                std = layer.weight.std().item()
+                if std > 0:
+                    return std
+                else:
+                    return self.get_fan_in_from_layer(layer) ** (-0.5)
+
+        def _scale_to(layer: torch.nn.Module | None, target_std: float) -> float:
+            """
+            Scaling factor that brings ``layer``'s std to ``target_std``.
+
+            Returns 1.0 when ``layer`` has no weights to scale.
+
+            Parameters
+            ----------
+            layer : torch.nn.Module | None
+                Layer being scaled.
+            target_std : float
+                Desired std after scaling.
 
             Returns
             -------
             float
-                The scaling factor for the layer.
+                Multiplicative factor to apply to ``layer.weight``.
             """
-            if layer is not None and hasattr(layer, "weight"):
-                if (current_std := layer.weight.std().item()) > 0:
-                    return target_std / current_std
-                else:
-                    return self.get_fan_in_from_layer(layer) ** (-0.5)
-            else:
-                return 1.0
+            current_std = _std_of_layer(layer)
+            return 1.0 if current_std is None else target_std / current_std
 
         if normalization_type == "equalize_second_layer":
-            # Get current standard deviations and calculate scaling factors
-            delta_scale = _get_scale(self.optimal_delta_layer, std_target)
-            input_extension_scale = _get_scale(self.extended_input_layer, std_target)
-            # Calculate output extension scale to maintain relationship
+            delta_scale = _scale_to(self.optimal_delta_layer, std_target)
+            input_extension_scale = _scale_to(self.extended_input_layer, std_target)
             output_extension_scale = delta_scale / input_extension_scale
-        elif normalization_type == "equalize_extensions":
-            # Get current standard deviations and calculate scaling factors
-            input_extension_scale = _get_scale(self.extended_input_layer, std_target)
-
-            if self.previous_module is not None:
-                assert isinstance(self.previous_module, GrowingModule)
-                output_extension_scale = _get_scale(
-                    self.previous_module.extended_output_layer,
-                    std_target,
+        elif normalization_type == "match_extending_layer":
+            if self.previous_module is None or not hasattr(self.previous_module, "layer"):
+                raise ValueError(
+                    "match_extending_layer requires a previous GrowingModule "
+                    "with a .layer attribute."
                 )
-            else:
+            # Target std for each component = std of the layer it modifies.
+            # When the target layer has no weights (e.g. an identity/empty
+            # layer), fall back to a kaiming-like std computed from the
+            # extension's fan-in.
+            prev_ext = self.previous_module.extended_output_layer
+            self_std = _std_of_layer(self.layer)
+            if self_std is None and self.extended_input_layer is not None:
+                self_std = self.get_fan_in_from_layer(self.extended_input_layer) ** -0.5
+            prev_std = _std_of_layer(self.previous_module.layer)
+            if prev_std is None and prev_ext is not None:
+                prev_std = self.get_fan_in_from_layer(prev_ext) ** -0.5
+            input_extension_scale = _scale_to(self.extended_input_layer, self_std)
+            output_extension_scale = _scale_to(prev_ext, prev_std)
+            delta_scale = _scale_to(self.optimal_delta_layer, self_std)
+        elif normalization_type == "equalize_extensions":
+            if self.previous_module is None:
                 raise ValueError(
                     "Cannot use equalize_extensions normalization "
                     "as there is no previous module."
                 )
-            # Calculate delta scale to maintain relationship
+            assert isinstance(self.previous_module, GrowingModule)
+            input_extension_scale = _scale_to(self.extended_input_layer, std_target)
+            output_extension_scale = _scale_to(
+                self.previous_module.extended_output_layer, std_target
+            )
             delta_scale = input_extension_scale * output_extension_scale
-        elif (
-            normalization_type == "legacy_normalization"
-            or normalization_type == "weird_normalization"
-        ):
-            delta_scale = _get_scale(self.optimal_delta_layer, std_target)
-            output_extension_scale = _get_scale(self.extended_input_layer, std_target)
+        elif normalization_type in ("legacy_normalization", "weird_normalization"):
+            delta_scale = _scale_to(self.optimal_delta_layer, std_target)
+            output_extension_scale = _scale_to(self.extended_input_layer, std_target)
             input_extension_scale = 1.0
         else:
             raise ValueError(
