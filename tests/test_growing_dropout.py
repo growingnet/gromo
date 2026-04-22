@@ -29,7 +29,7 @@ class TestGrowingDropout2d(unittest.TestCase):
         )
 
         # Check attributes
-        self.assertEqual(dropout.dropout_rate, 0.5)
+        self.assertEqual(dropout.p, 0.5)
         self.assertEqual(dropout.name, "test_dropout")
         self.assertFalse(dropout.inplace)
 
@@ -38,7 +38,7 @@ class TestGrowingDropout2d(unittest.TestCase):
         dropout = GrowingDropout2d()
 
         # Check default attributes
-        self.assertEqual(dropout.dropout_rate, 0.0)
+        self.assertEqual(dropout.p, 0.0)
         self.assertEqual(dropout.name, "growing_dropout")
         self.assertFalse(dropout.inplace)
 

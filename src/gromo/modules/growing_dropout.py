@@ -25,10 +25,10 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
         dropout_rate: float = 0.0,
         name: str = "growing_dropout",
     ):
-        self.inplace: bool = False  # Dropout should not be inplace to avoid modifying the input tensor directly
+
         super(GrowingDropout, self).__init__(
             p=dropout_rate,
-            inplace=self.inplace,
+            inplace=False,  # Dropout should not be inplace to avoid modifying the input tensor directly
         )
         self.name = name
 
