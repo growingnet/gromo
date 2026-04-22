@@ -24,7 +24,7 @@ class TestGrowingDropout2d(unittest.TestCase):
     def test_initialization(self):
         """Test proper initialization of GrowingDropout2d."""
         dropout = GrowingDropout2d(
-            p=0.5,
+            dropout_rate=0.5,
             name="test_dropout",
         )
 
@@ -45,7 +45,7 @@ class TestGrowingDropout2d(unittest.TestCase):
     def test_forward_pass(self):
         """Test forward pass with original features."""
         dropout = GrowingDropout2d(
-            p=0.5,
+            dropout_rate=0.5,
         )
 
         # Create test input
@@ -64,10 +64,10 @@ class TestGrowingDropout2d(unittest.TestCase):
         self.assertEqual(output.shape, x.shape)
 
     def test_extended_forward(self):
-        """Test extended_forward applies BN to x and passes x_ext unchanged."""
+        """Test extended_forward applies dropout to x and passes x_ext unchanged."""
         extension_size = 8
         dropout = GrowingDropout2d(
-            p=0.5,
+            dropout_rate=0.5,
         )
 
         x = torch.randn(
@@ -106,7 +106,7 @@ class TestGrowingDropout2d(unittest.TestCase):
     def test_zero_dropout(self):
         """Test that setting dropout_rate to 0 results in no dropout."""
         dropout = GrowingDropout2d(
-            p=0.0,
+            dropout_rate=0.0,
         )
 
         x = torch.randn(
@@ -124,7 +124,7 @@ class TestGrowingDropout2d(unittest.TestCase):
     def test_full_dropout(self):
         """Test that setting dropout_rate to 1 results in all zeros."""
         dropout = GrowingDropout2d(
-            p=1.0,
+            dropout_rate=1.0,
         )
 
         x = torch.randn(
