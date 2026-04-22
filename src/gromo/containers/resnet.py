@@ -26,7 +26,6 @@ from gromo.modules.growing_normalisation import (
 )
 
 
-
 ResNetNormalizationType: TypeAlias = Literal["batch", "group"]
 
 
