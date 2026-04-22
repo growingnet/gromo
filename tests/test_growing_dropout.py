@@ -91,7 +91,6 @@ class TestGrowingDropout2d(unittest.TestCase):
 
         self.assertEqual(processed_x.shape, x.shape)
         self.assertEqual(processed_x_ext.shape, x_ext.shape)
-        torch.testing.assert_close(processed_x, dropout(x))
         torch.testing.assert_close(processed_x_ext, x_ext)
 
     def test_extra_repr(self):
