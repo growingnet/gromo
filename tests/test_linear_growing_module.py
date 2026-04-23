@@ -1032,6 +1032,48 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             ),
         )
 
+    def test_apply_change_decoupled_scalings(self):
+        """Passing the three scaling kwargs must apply each one to exactly
+        its own component (delta, input extension, output extension)."""
+        torch.manual_seed(self.config.RANDOM_SEED)
+        layer_in = LinearGrowingModule(
+            2, 2, use_bias=False, name="in", device=global_device()
+        )
+        layer_out = LinearGrowingModule(
+            2,
+            1,
+            use_bias=False,
+            name="out",
+            device=global_device(),
+            previous_module=layer_in,
+        )
+
+        w_in0 = layer_in.weight.data.clone()
+        w_out0 = layer_out.weight.data.clone()
+
+        ext_out = torch.nn.Linear(2, 1, bias=False, device=global_device())
+        ext_in = torch.nn.Linear(1, 1, bias=False, device=global_device())
+        delta = torch.nn.Linear(2, 1, bias=False, device=global_device())
+        layer_in.extended_output_layer = ext_out
+        layer_out.extended_input_layer = ext_in
+        layer_out.optimal_delta_layer = delta
+
+        layer_out.apply_change(
+            extension_size=1,
+            optimal_delta_scaling=3.0,
+            input_extension_scaling=5.0,
+            output_extension_scaling=7.0,
+        )
+
+        # layer_out: first 2 cols = base - 3 * delta; last col = 5 * ext_in
+        self.assertAllClose(
+            layer_out.weight.data[:, :2], w_out0 - 3.0 * delta.weight.data
+        )
+        self.assertAllClose(layer_out.weight.data[:, 2:], 5.0 * ext_in.weight.data)
+        # layer_in: first 2 rows = base; last row = 7 * ext_out
+        self.assertAllClose(layer_in.weight.data[:2], w_in0)
+        self.assertAllClose(layer_in.weight.data[2:], 7.0 * ext_out.weight.data)
+
     def test_apply_change_no_corresponding_extension(self):
         layer1, layer2 = self.create_demo_layers_with_extension()
         layer1.extended_output_layer = None
