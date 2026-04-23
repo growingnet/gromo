@@ -212,15 +212,15 @@ class MergeGrowingModule(torch.nn.Module):
         elif verbose >= 2:
             txt = [
                 f"{self.__class__.__name__} module.",
-                f"\tPrevious modules : {self.previous_modules}",
-                f"\tNext modules : {self.next_modules}",
-                f"\tPost merge function : {self.post_merge_function}",
-                f"\tAllow growing : {self._allow_growing}",
-                f"\tStore input : {self.store_input}",
-                f"\tStore activity : {self.store_activity}",
-                f"\tTensor S : {self.tensor_s}",
-                f"\tPrevious tensor S : {self.previous_tensor_s}",
-                f"\tPrevious tensor M : {self.previous_tensor_m}",
+                f"\tPrevious modules: {self.previous_modules}",
+                f"\tNext modules: {self.next_modules}",
+                f"\tPost merge function: {self.post_merge_function}",
+                f"\tAllow growing: {self._allow_growing}",
+                f"\tStore input: {self.store_input}",
+                f"\tStore activity: {self.store_activity}",
+                f"\tTensor S: {self.tensor_s}",
+                f"\tPrevious tensor S: {self.previous_tensor_s}",
+                f"\tPrevious tensor M: {self.previous_tensor_m}",
             ]
             return "\n".join(txt)
         else:
@@ -235,7 +235,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        x : torch.Tensor
+        x: torch.Tensor
             input tensor
 
         Returns
@@ -497,7 +497,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        extension_size : int
+        extension_size: int
             size of extension
         """
         if isinstance(self.post_merge_function, torch.nn.Sequential):
@@ -576,7 +576,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        recurse : bool, optional
+        recurse: bool, optional
             use recursion, by default True
 
         Returns
@@ -591,7 +591,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        with_bias : bool, optional
+        with_bias: bool, optional
             add bias to the sum, by default False
 
         Returns
@@ -1107,7 +1107,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        factor : float
+        factor: float
             scaling factor
         """
         self.scaling_factor = factor  # type: ignore
@@ -1124,19 +1124,19 @@ class GrowingModule(torch.nn.Module):
         elif verbose >= 2:
             txt = [
                 f"{self.name} module with {self.number_of_parameters()} parameters.",
-                f"\tLayer : {self.layer}",
-                f"\tPost layer function : {self.post_layer_function}",
-                f"\tAllow growing : {self._allow_growing}",
-                f"\tStore input : {self.store_input}",
+                f"\tLayer: {self.layer}",
+                f"\tPost layer function: {self.post_layer_function}",
+                f"\tAllow growing: {self._allow_growing}",
+                f"\tStore input: {self.store_input}",
                 f"\t{self._internal_store_input=}",
-                f"\tStore pre-activity : {self.store_pre_activity}",
+                f"\tStore pre-activity: {self.store_pre_activity}",
                 f"\t{self._internal_store_pre_activity=}",
-                f"\tTensor S (internal) : {self._tensor_s}",
-                f"\tTensor S : {self.tensor_s}",
-                f"\tTensor M : {self.tensor_m}",
-                f"\tOptimal delta layer : {self.optimal_delta_layer}",
-                f"\tExtended input layer : {self.extended_input_layer}",
-                f"\tExtended output layer : {self.extended_output_layer}",
+                f"\tTensor S (internal): {self._tensor_s}",
+                f"\tTensor S: {self.tensor_s}",
+                f"\tTensor M: {self.tensor_m}",
+                f"\tOptimal delta layer: {self.optimal_delta_layer}",
+                f"\tExtended input layer: {self.extended_input_layer}",
+                f"\tExtended output layer: {self.extended_output_layer}",
             ]
             return "\n".join(txt)
         else:
@@ -2047,7 +2047,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        extension_size : int
+        extension_size: int
             size of extension
         """
         if isinstance(self.post_layer_function, torch.nn.Sequential):
@@ -2632,13 +2632,13 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        include_previous : bool, optional
+        include_previous: bool, optional
             delete the extended_output_layer of the previous layer, by default True
-        delete_delta : bool, optional
+        delete_delta: bool, optional
             delete the optimal_delta_layer of the module, by default True
-        delete_input : bool, optional
+        delete_input: bool, optional
             delete the extended_input_layer of this module, by default True
-        delete_output : bool, optional
+        delete_output: bool, optional
             delete the extended_output_layer of this layer, by default False
             warning: this does not delete the extended_input_layer of the next layer
 
@@ -2769,7 +2769,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        scale : float
+        scale: float
             The factor by which to scale the parameter update.
         """
         if self.optimal_delta_layer is not None:
@@ -2784,9 +2784,9 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        layer : torch.nn.Module
+        layer: torch.nn.Module
             The layer whose parameters are to be scaled.
-        scale : float
+        scale: float
             The factor by which to scale the layer's parameters.
 
         Returns
@@ -2815,13 +2815,13 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        scale : float | None
+        scale: float | None
             The factor by which to scale the layer extension.
             If not None, replace both scale_input and scale_output
             if they are not None.
-        scale_output : float | None
+        scale_output: float | None
             The factor by which to scale the layer output extension.
-        scale_input : float | None
+        scale_input: float | None
             The factor by which to scale the layer input extension.
             If not None, scale must be None.
 
@@ -2940,14 +2940,14 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        std_target : float | None
+        std_target: float | None
             target standard deviation for the weights of the updates. Ignored
             when ``normalization_type == "match_extending_layer"``.
-        normalization_type : str
+        normalization_type: str
             type of normalization to use, one of 'equalize_second_layer',
             'equalize_extensions', 'match_extending_layer', 'weird_normalization',
             'legacy_normalization', 'gradmax_normalization'
-        gradmax_scale : float
+        gradmax_scale: float
             For ``gradmax_normalization`` only: scalar :math:`s` in :math:`c = s \\cdot \\text{mean}(\\|W_i\\|)`.
             Must be positive. Default ``1.0``.
 
@@ -3246,9 +3246,9 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        post_layer_fn : torch.nn.Module
+        post_layer_fn: torch.nn.Module
             The post-layer function (may contain BatchNorm sub-modules).
-        scale : float
+        scale: float
             Multiplicative factor that was applied to the preceding layer's
             weights.
         """
@@ -3284,14 +3284,14 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        rescaling : _KNOWN_RESCALING_STRATEGIES_TYPE | None
+        rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None
             Rescaling strategy.  One of ``"default_vt"``,
             ``"vt_constraint_old_shape"``, ``"vt_constraint_new_shape"``.
-        neuron_pairing : _KNOWN_NEURON_PAIRINGS_TYPE | None
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy that will be applied *after* rescaling.
             Needed to compute the effective extension size (pairing doubles
             the extension).  One of ``"none"``, ``"vv_z_negz"``.
-        extension_size : int | None
+        extension_size: int | None
             Number of neurons in the extension *before* pairing.  If ``None``,
             the size is read from the existing ``extended_input_layer``.
 
@@ -3424,9 +3424,9 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        neuron_pairing : _KNOWN_NEURON_PAIRINGS_TYPE | None
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
             Pairing strategy.  One of ``"none"``, ``"vv_z_negz"``.
-        noise_ratio : float
+        noise_ratio: float
             Fraction of the standard deviation of the input extension weights
             used as the noise level for symmetry breaking.  Set to ``0`` to
             disable noise (exact function preservation).  Default ``0.001``.
@@ -3585,32 +3585,32 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        extension_size : int
+        extension_size: int
             Size of the extension to create.
-        output_extension_size : int | None
+        output_extension_size: int | None
             Size of the output extension to create, if ``None`` use
             *extension_size*.
-        input_extension_size : int | None
+        input_extension_size: int | None
             Size of the input extension to create, if ``None`` use
             *extension_size*.
-        output_extension_init : str
+        output_extension_init: str
             Initialisation method for the output extension.  Must be one of
             the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
             ``"zeros"``), default ``"copy_uniform"``.
-        input_extension_init : str
+        input_extension_init: str
             Initialisation method for the input extension.  Must be one of
             the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
             ``"zeros"``), default ``"copy_uniform"``.
-        neuron_pairing : _KNOWN_NEURON_PAIRINGS_TYPE | None
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy applied after initialisation.
             ``"none"`` (default) or ``"vv_z_negz"``.
             /!/ Note that neuron pairing doubles the effective extension size, so the
             *extension_size* argument is the size before pairing.
-        rescaling : _KNOWN_RESCALING_STRATEGIES_TYPE | None
+        rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None
             Variance-transfer rescaling strategy applied before extension
             creation.  ``"none"`` (default), ``"default_vt"``,
             ``"vt_constraint_old_shape"``, or ``"vt_constraint_new_shape"``.
-        noise_ratio : float
+        noise_ratio: float
             Fraction of the standard deviation of the input extension weights
             used as the noise level for symmetry breaking after neuron
             pairing.  Set to ``0`` for exact function preservation.
@@ -3625,11 +3625,11 @@ class GrowingModule(torch.nn.Module):
 
         The callable must accept the following arguments:
 
-        tensor : torch.Tensor
+        tensor: torch.Tensor
             Tensor of the weight/bias extension, to initialize.
-        reference_tensor : torch.Tensor | None
+        reference_tensor: torch.Tensor | None
             Weight/bias tensor from the layer before extension.
-        fan_in : int
+        fan_in: int
             The fan_in of the layer, after including the extension.
 
         An initialization callable may also modify the existing weights/biases,
@@ -3754,10 +3754,10 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        method : str
+        method: str
             Method to use for determining the number of neurons to add.
             Options are "fixed_proportional".
-        number_of_growth_steps : int
+        number_of_growth_steps: int
             Number of growth steps planned, used only if method is "fixed_proportional".
 
         Returns
@@ -3790,7 +3790,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        extension_kwargs : Any
+        extension_kwargs: Any
             Additional arguments for creating layer extensions.
         """
         neurons_to_add = self.missing_neurons()
