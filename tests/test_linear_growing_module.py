@@ -437,9 +437,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         layer_in.extended_output_layer = first_layer_ext
         layer_out.extended_input_layer = second_layer_ext
 
-        layer_in.scaling_factor.data[0] = 1
-        layer_in._scaling_factor_next_module.data[0] = 1
-        layer_out.scaling_factor.data[0] = 1
+        layer_in.scaling_factor = 1
+        layer_in.output_extension_scaling = 1
+        layer_out.scaling_factor = 1
 
         if include_eigenvalues:
             layer_out.eigenvalues_extension = torch.empty(
@@ -759,7 +759,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
     ):
         """Helper to test extended forward pass with specific gamma values."""
         layer.scaling_factor = gamma
-        layer._scaling_factor_next_module[0] = gamma_next
+        layer.output_extension_scaling = gamma_next
 
         x = self.create_test_input_batch()
 
@@ -844,7 +844,9 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
             torch.norm(y).backward()
 
-            self.assertIsNotNone(layer.scaling_factor.grad)
+            # Gradient now flows through the two sub-factors that extended_forward reads.
+            self.assertIsNotNone(layer.optimal_delta_scaling.grad)
+            self.assertIsNotNone(layer.input_extension_scaling.grad)
 
         layer.apply_change(apply_previous=False)
         x_cat = torch.concatenate((x, x_ext), dim=1)
@@ -985,7 +987,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         layer.apply_change(apply_previous=False)
         self.assertAllClose(layer.weight.data, l0.weight.data)
 
-        layer._scaling_factor_next_module[0] = gamma_next
+        layer.output_extension_scaling = gamma_next
         layer._apply_output_changes()
 
         x = torch.randn((10, 5), device=global_device())
@@ -1732,7 +1734,7 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
         demo_layers = self.demo_modules[True]
 
         demo_layers["add"].update_scaling_factor(scaling_factor=0.5)
-        self.assertEqual(demo_layers["prev"]._scaling_factor_next_module.item(), 0.5)
+        self.assertEqual(demo_layers["prev"].output_extension_scaling.item(), 0.5)
         self.assertEqual(demo_layers["prev"].scaling_factor.item(), 0.0)
         self.assertEqual(demo_layers["next"].scaling_factor.item(), 0.5)
 

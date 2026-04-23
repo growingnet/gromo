@@ -63,7 +63,7 @@ class GrowingContainer(torch.nn.Module):
                 layer.set_scaling_factor(factor)
             elif isinstance(layer, GrowingModule):
                 layer.scaling_factor = factor  # type: ignore
-                layer._scaling_factor_next_module.data[0] = factor
+                layer.output_extension_scaling = factor  # type: ignore
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network"""
