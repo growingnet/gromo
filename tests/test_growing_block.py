@@ -1715,6 +1715,53 @@ class TestLinearGrowingBlock(TorchTestCase):
             msg="dW should match std(second_layer.weight)",
         )
 
+    def test_normalize_optimal_updates_match_extending_layer_empty_layers(self):
+        """
+        Test ``match_extending_layer`` fallback when inner layers have no weights.
+
+        A block with ``hidden_features=0`` has empty weights in both inner
+        layers, so the target std for each component must come from the
+        kaiming-like fallback ``get_fan_in_from_layer(extension) ** -0.5``.
+        """
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            device=self.device,
+        )
+
+        block.create_layer_extensions(self.added_features)
+        assert isinstance(block.first_layer.extended_output_layer, torch.nn.Linear)
+        assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
+
+        block.normalize_optimal_updates(normalization_type="match_extending_layer")
+
+        expected_second_std = (
+            block.second_layer.get_fan_in_from_layer(
+                block.second_layer.extended_input_layer
+            )
+            ** -0.5
+        )
+        expected_first_std = (
+            block.first_layer.get_fan_in_from_layer(
+                block.first_layer.extended_output_layer
+            )
+            ** -0.5
+        )
+
+        self.assertAlmostEqual(
+            block.second_layer.extended_input_layer.weight.std().item(),
+            expected_second_std,
+            places=5,
+            msg="Omega should match kaiming fallback of second_layer's fan-in",
+        )
+        self.assertAlmostEqual(
+            block.first_layer.extended_output_layer.weight.std().item(),
+            expected_first_std,
+            places=5,
+            msg="Alpha should match kaiming fallback of first_layer's fan-in",
+        )
+
     def test_weights_statistics(self):
         """Test that weights_statistics method runs and returns a dictionary."""
 
