@@ -3293,11 +3293,13 @@ class GrowingModule(torch.nn.Module):
             ``"vt_constraint_old_shape"``, ``"vt_constraint_new_shape"``.
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy that will be applied *after* rescaling.
-            Needed to compute the effective extension size (pairing doubles
-            the extension).  One of ``"none"``, ``"vv_z_negz"``.
+            Validated for unknown values but no longer influences the
+            fan-in computation — ``extension_size`` is the final size.
+            One of ``"none"``, ``"vv_z_negz"``.
         extension_size: int | None
-            Number of neurons in the extension *before* pairing.  If ``None``,
-            the size is read from the existing ``extended_input_layer``.
+            Final number of neurons in the extension (pairing included).
+            If ``None``, the size is read from the existing
+            ``extended_input_layer``.
 
         Raises
         ------
@@ -3343,13 +3345,8 @@ class GrowingModule(torch.nn.Module):
         fan_in_self_old = self.get_fan_in_from_layer(self.layer)
 
         # --- Extended Fan-in values --
-        # Pairing will double the extension
-        if neuron_pairing == "vv_z_negz":
-            effective_ext_size = ext_size * 2
-        else:
-            effective_ext_size = ext_size
-
-        fan_in_extension = self.get_fan_in_from_layer(num_neurons=effective_ext_size)
+        # ext_size is the final extension size, pairing included
+        fan_in_extension = self.get_fan_in_from_layer(num_neurons=ext_size)
 
         fan_in_self_new = fan_in_self_old + fan_in_extension
 
@@ -3409,21 +3406,24 @@ class GrowingModule(torch.nn.Module):
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None = None,
         noise_ratio: float = 0.001,
     ) -> None:
-        """Double extensions via neuron pairing for function preservation.
+        """Fill the second half of the extensions according to the pairing rule.
 
-        Implements the (V,V)/(Z,-Z) pairing strategy:
+        The extension layers are expected to already have their **final**
+        (even) size.  Only the first half (``[: dh // 2]`` rows / columns)
+        must be initialised; the second half is overwritten in place:
 
         * Output extension (previous layer): V -> (V, V).
-          The first *dh* rows are kept, the second *dh* rows are copies.
+          The first ``dh // 2`` rows are left untouched; the second
+          ``dh // 2`` rows are copies of the first half.
         * Input extension (current layer): Z -> (Z, -Z).
-          The first *dh* columns are kept, the second *dh* columns are negated
-          copies.
+          The first ``dh_in // 2`` columns are left untouched; the second
+          ``dh_in // 2`` columns are negated copies of the first half.
 
         At initialisation this ensures the net contribution of new neurons is
         zero, preserving the function represented by the network.  A small
-        amount of noise is then added to the input extension weights to break
-        the symmetry between paired neurons, allowing them to learn different
-        features during training.
+        amount of noise is then added to the full input extension weight to
+        break the symmetry between paired neurons, allowing them to learn
+        different features during training.
 
         Must be called **after** extensions are created and initialised.
 
@@ -3439,7 +3439,8 @@ class GrowingModule(torch.nn.Module):
         Raises
         ------
         ValueError
-            If *neuron_pairing* is not a recognised strategy.
+            If *neuron_pairing* is not a recognised strategy, or if one of
+            the extensions has an odd leading dimension.
         RuntimeError
             If the required extension layers do not exist.
         """
@@ -3464,16 +3465,15 @@ class GrowingModule(torch.nn.Module):
                 "no extended_output_layer."
             )
         dh = ext_out.weight.shape[0]
-        old_out_weight = ext_out.weight.data.clone()
-        old_out_bias = ext_out.bias.data.clone() if ext_out.bias is not None else None
-
-        self.previous_module.create_layer_out_extension(dh * 2)
-        ext_out: torch.nn.Module | None = self.previous_module.extended_output_layer
-        ext_out.weight.data[:dh].copy_(old_out_weight)
-        ext_out.weight.data[dh:].copy_(old_out_weight)
-        if old_out_bias is not None:
-            ext_out.bias.data[:dh].copy_(old_out_bias)
-            ext_out.bias.data[dh:].copy_(old_out_bias)
+        if dh % 2 != 0:
+            raise ValueError(
+                f"apply_neuron_pairing requires an even-sized output "
+                f"extension, got dh={dh}."
+            )
+        half_out = dh // 2
+        ext_out.weight.data[half_out:].copy_(ext_out.weight.data[:half_out])
+        if ext_out.bias is not None:
+            ext_out.bias.data[half_out:].copy_(ext_out.bias.data[:half_out])
 
         # --- Input extension: Z -> (Z, -Z) ---
         ext_in = self.extended_input_layer
@@ -3482,12 +3482,13 @@ class GrowingModule(torch.nn.Module):
                 "Cannot apply neuron pairing: current module has no extended_input_layer."
             )
         dh_in = ext_in.weight.shape[1]
-        old_in_weight = ext_in.weight.data.clone()
-
-        self.create_layer_in_extension(dh_in * 2)
-        ext_in = self.extended_input_layer
-        ext_in.weight.data[:, :dh_in].copy_(old_in_weight)
-        ext_in.weight.data[:, dh_in:].copy_(-old_in_weight)
+        if dh_in % 2 != 0:
+            raise ValueError(
+                f"apply_neuron_pairing requires an even-sized input "
+                f"extension, got dh_in={dh_in}."
+            )
+        half_in = dh_in // 2
+        ext_in.weight.data[:, half_in:].copy_(-ext_in.weight.data[:, :half_in])
         # Input extension bias is always False (no bias on fan-in side)
 
         # --- Symmetry-breaking noise on input extension ---
@@ -3584,9 +3585,13 @@ class GrowingModule(torch.nn.Module):
         1. **Rescaling** — existing weights are rescaled in-place (before
            extensions are created, so that ``copy_uniform`` init reads the
            rescaled weights as reference).
-        2. **Extension creation** — physical extension layers are allocated.
-        3. **Initialisation** — extension weights are initialised.
-        4. **Neuron pairing** — extensions are doubled via (V,V)/(Z,-Z).
+        2. **Extension creation** — physical extension layers are allocated
+           at their final (post-pairing) size.
+        3. **Initialisation** — the first half of each extension is
+           initialised when ``neuron_pairing`` is active, the full extension
+           otherwise.
+        4. **Neuron pairing** — the already-allocated second half of each
+           extension is filled in place via (V,V)/(Z,-Z).
 
         Parameters
         ----------
@@ -3609,8 +3614,10 @@ class GrowingModule(torch.nn.Module):
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy applied after initialisation.
             ``"none"`` (default) or ``"vv_z_negz"``.
-            /!/ Note that neuron pairing doubles the effective extension size, so the
-            *extension_size* argument is the size before pairing.
+            /!/ When ``neuron_pairing`` is active, ``extension_size`` (and
+            ``output_extension_size`` / ``input_extension_size``) is the
+            **final** size, pairing included, and must be even. A
+            ``ValueError`` is raised otherwise.
         rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None
             Variance-transfer rescaling strategy applied before extension
             creation.  ``"none"`` (default), ``"default_vt"``,
@@ -3655,6 +3662,18 @@ class GrowingModule(torch.nn.Module):
             "Therefore, neuron addition is not possible."
         )
 
+        if neuron_pairing is not None:
+            for param_name, value in (
+                ("extension_size", extension_size),
+                ("output_extension_size", output_extension_size),
+                ("input_extension_size", input_extension_size),
+            ):
+                if value % 2 != 0:
+                    raise ValueError(
+                        f"neuron_pairing={neuron_pairing!r} requires an even "
+                        f"{param_name}, got {value}."
+                    )
+
         # Step 1: Rescaling (before extensions, so copy_uniform reads
         # rescaled weights as reference)
         self.apply_rescaling(
@@ -3663,7 +3682,7 @@ class GrowingModule(torch.nn.Module):
             extension_size=input_extension_size,
         )
 
-        # Step 2: Create extension layers
+        # Step 2: Create extension layers at their final size
         self.previous_module.create_layer_out_extension(output_extension_size)
         self.create_layer_in_extension(input_extension_size)
 
@@ -3681,7 +3700,12 @@ class GrowingModule(torch.nn.Module):
                     f"Available methods are: {list(known_inits.keys())}."
                 )
 
-        # Step 3: Initialize extensions
+        # Step 3: Initialize extensions. When pairing is active only the
+        # first half is initialised; the second half is filled by
+        # apply_neuron_pairing.
+        half_in = input_extension_size // 2 if neuron_pairing else None
+        half_out = output_extension_size // 2 if neuron_pairing else None
+
         # Initialize input extension
         layer_to_init = self.extended_input_layer
         assert isinstance(layer_to_init, torch.nn.Module), (
@@ -3691,12 +3715,19 @@ class GrowingModule(torch.nn.Module):
         init_fn = known_inits[input_extension_init]
         base_fan_in = self.get_fan_in_from_layer(layer_to_init)
         ext_fan_in = self.get_fan_in_from_layer(self.layer)
-        if neuron_pairing:
-            ext_fan_in *= 2  # pairing doubles the extension
 
-        init_fn(layer_to_init.weight, self.weight, base_fan_in + ext_fan_in)
+        if half_in is not None:
+            weight_view = layer_to_init.weight[:, :half_in]
+        else:
+            weight_view = layer_to_init.weight
+        init_fn(weight_view, self.weight, base_fan_in + ext_fan_in)
         if layer_to_init.bias is not None:
-            init_fn(layer_to_init.bias, self.bias, base_fan_in + ext_fan_in)
+            bias_view = (
+                layer_to_init.bias[:half_in]
+                if half_in is not None
+                else layer_to_init.bias
+            )
+            init_fn(bias_view, self.bias, base_fan_in + ext_fan_in)
 
         # Initialize output extension
         layer_to_init = self.previous_module.extended_output_layer
@@ -3710,11 +3741,20 @@ class GrowingModule(torch.nn.Module):
             self.previous_module.layer
         )
 
-        init_fn(layer_to_init.weight, self.previous_module.weight, prev_fan_in)
+        if half_out is not None:
+            weight_view = layer_to_init.weight[:half_out]
+        else:
+            weight_view = layer_to_init.weight
+        init_fn(weight_view, self.previous_module.weight, prev_fan_in)
         if layer_to_init.bias is not None:
-            init_fn(layer_to_init.bias, self.previous_module.bias, prev_fan_in)
+            bias_view = (
+                layer_to_init.bias[:half_out]
+                if half_out is not None
+                else layer_to_init.bias
+            )
+            init_fn(bias_view, self.previous_module.bias, prev_fan_in)
 
-        # Step 4: Neuron pairing (after init)
+        # Step 4: Neuron pairing — fill the second halves in place
         self.apply_neuron_pairing(
             neuron_pairing=neuron_pairing,
             noise_ratio=noise_ratio,

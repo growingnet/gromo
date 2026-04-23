@@ -91,9 +91,8 @@ def _grow_block(
         neuron_pairing=neuron_pairing,
         noise_ratio=noise_ratio,
     )
-    # Determine actual extension size (may be doubled by pairing)
-    actual_ext_size = block.second_layer.extended_input_layer.weight.shape[1]
-    block.apply_change(scaling_factor=1.0, extension_size=actual_ext_size)
+    # extension_size is the final size (pairing included)
+    block.apply_change(scaling_factor=1.0, extension_size=dh)
     block.second_layer.delete_update(include_previous=True)
 
 
@@ -153,13 +152,9 @@ class TestRescalingSmoke(TorchTestCase):
         self.assertIsNotNone(ext_out)
         self.assertIsNotNone(ext_in)
 
-        if neuron_pairing == "vv_z_negz":
-            # Pairing doubles the extension size
-            self.assertEqual(ext_out.weight.shape[0], 8)  # 4 * 2
-            self.assertEqual(ext_in.weight.shape[1], 8)  # 4 * 2
-        else:
-            self.assertEqual(ext_out.weight.shape[0], 4)
-            self.assertEqual(ext_in.weight.shape[1], 4)
+        # extension_size is the final size (pairing included)
+        self.assertEqual(ext_out.weight.shape[0], 4)
+        self.assertEqual(ext_in.weight.shape[1], 4)
 
     def test_invalid_rescaling_raises(self):
         """Unknown rescaling strategy raises ValueError."""
@@ -173,6 +168,44 @@ class TestRescalingSmoke(TorchTestCase):
         block.create_layer_extensions(extension_size=4)
         with self.assertRaises(ValueError):
             block.apply_neuron_pairing(neuron_pairing="unknown_pairing")  # type: ignore
+
+    def test_odd_extension_size_with_pairing_raises(self):
+        """create_layer_extensions with odd extension_size and pairing raises."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        with self.assertRaises(ValueError):
+            block.create_layer_extensions(
+                extension_size=3,
+                neuron_pairing="vv_z_negz",
+            )
+
+    def test_odd_output_extension_size_with_pairing_raises(self):
+        """Odd output_extension_size override with pairing raises."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        with self.assertRaises(ValueError):
+            block.create_layer_extensions(
+                extension_size=4,
+                output_extension_size=5,
+                neuron_pairing="vv_z_negz",
+            )
+
+    def test_odd_input_extension_size_with_pairing_raises(self):
+        """Odd input_extension_size override with pairing raises."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        with self.assertRaises(ValueError):
+            block.create_layer_extensions(
+                extension_size=4,
+                input_extension_size=5,
+                neuron_pairing="vv_z_negz",
+            )
+
+    def test_odd_existing_extension_pairing_raises(self):
+        """apply_neuron_pairing on an odd-sized existing extension raises."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        # Create extensions without pairing, at an odd size
+        block.second_layer.create_layer_in_extension(3)
+        block.first_layer.create_layer_out_extension(3)
+        with self.assertRaises(ValueError):
+            block.apply_neuron_pairing(neuron_pairing="vv_z_negz")
 
     def test_none_rescaling_is_noop(self):
         """rescaling=None should not change weights."""
@@ -194,10 +227,10 @@ class TestRescalingSmoke(TorchTestCase):
         self.assertAllClose(block.second_layer.extended_input_layer.weight, w_in)
 
     def test_apply_change_after_growth_updates_sizes(self):
-        """After growth with pairing, hidden_neurons increases by 2*dh."""
+        """After growth with pairing, hidden_neurons increases by dh (final size)."""
         block = _make_conv_block(h_t=8, device=self.device)
         _grow_block(block, dh=4, neuron_pairing="vv_z_negz")
-        self.assertEqual(block.hidden_neurons, 8 + 4 * 2)
+        self.assertEqual(block.hidden_neurons, 8 + 4)
 
     def test_apply_change_after_growth_no_pairing(self):
         """After growth without pairing, hidden_neurons increases by dh."""
@@ -367,7 +400,8 @@ class TestFunctionPreservationWithRescaling(TorchTestCase):
         # Compute alpha and beta from formulas before rescaling
         fan_in_prev = block.first_layer.layer.in_channels * k * k
         fan_in_self_old = block.second_layer.layer.in_channels * k * k
-        fan_in_self_new = (h_t + dh * 2) * k * k  # dh * 2 because of pairing
+        # dh is the final extension size (pairing included)
+        fan_in_self_new = (h_t + dh) * k * k
 
         var_w_prev = block.first_layer.weight.var().item()
         var_w_self = block.second_layer.weight.var().item()
@@ -481,7 +515,8 @@ class TestWeightVarianceAfterRescaling(TorchTestCase):
         block.second_layer.weight.data.mul_(0.5)
 
         fan_in_prev = C_in * k * k
-        fan_in_self_new = (h_t + dh * 2) * k * k  # pairing doubles
+        # dh is the final extension size (pairing included)
+        fan_in_self_new = (h_t + dh) * k * k
 
         block.apply_rescaling(
             rescaling="vt_constraint_new_shape",
@@ -575,7 +610,7 @@ class TestActivationVariance(TorchTestCase):
             neuron_pairing="vv_z_negz",
         )
 
-        h_t_plus_1 = h_t + dh * 2
+        h_t_plus_1 = h_t + dh
         expected_var = h_t / h_t_plus_1
 
         x = torch.randn(512, 3, 8, 8, device=self.device)
@@ -603,7 +638,8 @@ class TestPairingStructure(TorchTestCase):
     def test_vv_z_negz_structure_conv(self):
         """Output ext rows duplicated, input ext columns sign-paired."""
         block = _make_conv_block(h_t=8, device=self.device)
-        dh = 4
+        dh = 4  # final size (pairing included)
+        half = dh // 2
         block.create_layer_extensions(
             extension_size=dh,
             output_extension_init="kaiming",
@@ -615,22 +651,23 @@ class TestPairingStructure(TorchTestCase):
         ext_out = block.first_layer.extended_output_layer
         ext_in = block.second_layer.extended_input_layer
 
-        # V -> (V, V): first dh rows == second dh rows
+        # V -> (V, V): first half rows == second half rows
         self.assertTrue(
-            torch.equal(ext_out.weight[:dh], ext_out.weight[dh:]),
+            torch.equal(ext_out.weight[:half], ext_out.weight[half:]),
             "Output extension: first half should equal second half (V,V)",
         )
 
-        # Z -> (Z, -Z): first dh cols == -(second dh cols)
+        # Z -> (Z, -Z): first half cols == -(second half cols)
         self.assertTrue(
-            torch.equal(ext_in.weight[:, :dh], -ext_in.weight[:, dh:]),
+            torch.equal(ext_in.weight[:, :half], -ext_in.weight[:, half:]),
             "Input extension: first half should be negation of second (Z,-Z)",
         )
 
     def test_vv_z_negz_structure_linear(self):
         """Same structure check for LinearGrowingBlock."""
         block = _make_linear_block(h_t=8, device=self.device)
-        dh = 4
+        dh = 4  # final size (pairing included)
+        half = dh // 2
         block.create_layer_extensions(
             extension_size=dh,
             output_extension_init="kaiming",
@@ -643,16 +680,17 @@ class TestPairingStructure(TorchTestCase):
         ext_in = block.second_layer.extended_input_layer
 
         self.assertTrue(
-            torch.equal(ext_out.weight[:dh], ext_out.weight[dh:]),
+            torch.equal(ext_out.weight[:half], ext_out.weight[half:]),
         )
         self.assertTrue(
-            torch.equal(ext_in.weight[:, :dh], -ext_in.weight[:, dh:]),
+            torch.equal(ext_in.weight[:, :half], -ext_in.weight[:, half:]),
         )
 
     def test_pairing_bias_duplicated(self):
         """Output extension bias is also duplicated (V,V)."""
         block = _make_conv_block(h_t=8, device=self.device)
-        dh = 4
+        dh = 4  # final size (pairing included)
+        half = dh // 2
         block.create_layer_extensions(
             extension_size=dh,
             output_extension_init="kaiming",
@@ -663,7 +701,7 @@ class TestPairingStructure(TorchTestCase):
         ext_out = block.first_layer.extended_output_layer
         if ext_out.bias is not None:
             self.assertTrue(
-                torch.equal(ext_out.bias[:dh], ext_out.bias[dh:]),
+                torch.equal(ext_out.bias[:half], ext_out.bias[half:]),
                 "Output extension bias: first half should equal second half",
             )
 
@@ -681,8 +719,7 @@ class TestPairingStructure(TorchTestCase):
             extension_size=dh,
             neuron_pairing="vv_z_negz",
         )
-        actual_ext_size = block.second_layer.extended_input_layer.weight.shape[1]
-        block.apply_change(scaling_factor=1.0, extension_size=actual_ext_size)
+        block.apply_change(scaling_factor=1.0, extension_size=dh)
 
         x = torch.randn(2, 3, 8, 8, device=self.device)
         with self.assertRaises(ValueError):
@@ -870,13 +907,14 @@ class TestSmallWeightVarianceEdgeCases(TorchTestCase):
         """Rescaling with h_t=1 (minimal hidden dimension)."""
         block = _make_conv_block(h_t=1, device=self.device)
         # Conv2 weight has shape (out, 1, k, k) — variance computed over all elems
+        # Minimum even extension under pairing is 2.
         _grow_block(
             block,
-            dh=1,
+            dh=2,
             rescaling="vt_constraint_new_shape",
             neuron_pairing="vv_z_negz",
         )
-        self.assertEqual(block.hidden_neurons, 1 + 1 * 2)
+        self.assertEqual(block.hidden_neurons, 1 + 2)
 
 
 # ===============================================================
@@ -892,14 +930,18 @@ class TestStandaloneMethods(TorchTestCase):
         self.device = global_device()
 
     def test_standalone_rescaling_then_pairing(self):
-        """Simulates FOGRO path: rescale and pair called separately."""
+        """Simulates FOGRO path: rescale and pair called separately.
+
+        The extension is created at its final (even) size; pairing fills the
+        second half in place and does not resize.
+        """
         block = _make_conv_block(h_t=8, device=self.device)
         block.first_layer.weight.data.mul_(2.0)
         block.second_layer.weight.data.mul_(0.5)
 
-        # Simulate FOGRO: extensions already exist
-        block.second_layer.create_layer_in_extension(4)
-        block.first_layer.create_layer_out_extension(4)
+        # Simulate FOGRO: extensions already exist at their final size
+        block.second_layer.create_layer_in_extension(8)
+        block.first_layer.create_layer_out_extension(8)
 
         # Init extensions with kaiming
         torch.nn.init.kaiming_uniform_(block.second_layer.extended_input_layer.weight)
@@ -911,10 +953,10 @@ class TestStandaloneMethods(TorchTestCase):
             neuron_pairing="vv_z_negz",
         )
 
-        # Step 2: pair
-        block.apply_neuron_pairing(neuron_pairing="vv_z_negz")
+        # Step 2: pair (in place, no resize)
+        block.apply_neuron_pairing(neuron_pairing="vv_z_negz", noise_ratio=0.0)
 
-        # Verify doubled sizes
+        # Sizes unchanged
         self.assertEqual(
             block.first_layer.extended_output_layer.weight.shape[0],
             8,
@@ -923,6 +965,12 @@ class TestStandaloneMethods(TorchTestCase):
             block.second_layer.extended_input_layer.weight.shape[1],
             8,
         )
+
+        # Verify (V,V) and (Z,-Z) structure on halves
+        ext_out = block.first_layer.extended_output_layer
+        ext_in = block.second_layer.extended_input_layer
+        self.assertTrue(torch.equal(ext_out.weight[:4], ext_out.weight[4:]))
+        self.assertTrue(torch.equal(ext_in.weight[:, :4], -ext_in.weight[:, 4:]))
 
     def test_standalone_rescaling_with_extension_size_override(self):
         """apply_rescaling with extension_size before extensions exist."""
@@ -1111,8 +1159,8 @@ class TestCoverageSmoke(TorchTestCase):
             input_extension_init="kaiming",
             neuron_pairing="vv_z_negz",
         )
-        # Output extension should be doubled
-        self.assertEqual(block.first_layer.extended_output_layer.weight.shape[0], 8)
+        # extension_size is the final size (pairing included)
+        self.assertEqual(block.first_layer.extended_output_layer.weight.shape[0], 4)
 
     def test_rescaling_reads_extension_size_from_layer(self):
         """apply_rescaling reads ext_size from extended_input_layer when not passed."""
