@@ -2853,15 +2853,19 @@ class GrowingModule(torch.nn.Module):
         if self.eigenvalues_extension is not None:
             self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
 
-    @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Module) -> int:
+    def get_fan_in_from_layer(
+        self, layer: torch.nn.Module | None = None, num_neurons: int | None = None
+    ) -> int:
         """
-        Get the fan_in (number of input features) from a given layer.
+        Get the fan_in (number of input features) from a given layer
+        or from a given number of neurons.
 
         Parameters
         ----------
-        layer: torch.nn.Module
+        layer: torch.nn.Module | None
             layer to get the fan_in from
+        num_neurons: int | None
+            number of neurons in the layer
 
         Returns
         -------
@@ -3321,6 +3325,11 @@ class GrowingModule(torch.nn.Module):
                 f"Available: {get_args(GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE)}."
             )
 
+        # When in_neurons == 0 (e.g. hidden_channels=0), there are no
+        # existing weights to rescale — nothing to do.
+        if self.in_neurons == 0:
+            return
+
         # --- Determine extension size ---
         if extension_size is not None:
             ext_size = extension_size
@@ -3330,23 +3339,19 @@ class GrowingModule(torch.nn.Module):
         else:
             ext_size = 0
 
+        # --- Fan-in values ---
+        fan_in_self_old = self.get_fan_in_from_layer(self.layer)
+
+        # --- Extended Fan-in values --
         # Pairing will double the extension
         if neuron_pairing == "vv_z_negz":
             effective_ext_size = ext_size * 2
         else:
             effective_ext_size = ext_size
 
-        # --- Fan-in values ---
-        fan_in_self_old = self.get_fan_in_from_layer(self.layer)
+        fan_in_extension = self.get_fan_in_from_layer(num_neurons=effective_ext_size)
 
-        # When in_neurons == 0 (e.g. hidden_channels=0), there are no
-        # existing weights to rescale — nothing to do.
-        if self.in_neurons == 0:
-            return
-
-        # receptive_field = k*k for Conv2d, 1 for Linear
-        receptive_field = fan_in_self_old // self.in_neurons
-        fan_in_self_new = fan_in_self_old + effective_ext_size * receptive_field
+        fan_in_self_new = fan_in_self_old + fan_in_extension
 
         assert isinstance(self.previous_module, GrowingModule), (
             f"apply_rescaling requires a GrowingModule as previous_module, "

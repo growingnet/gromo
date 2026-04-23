@@ -1306,25 +1306,35 @@ class Conv2dGrowingModule(GrowingModule):
         self.update_input_size()
         super(Conv2dGrowingModule, self).update_computation()
 
-    @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Conv2d) -> int:  # type: ignore
+    def get_fan_in_from_layer(  # type: ignore
+        self, layer: torch.nn.Conv2d | None = None, num_neurons: int | None = None
+    ) -> int:
         """
-        Get the fan_in (number of input features) from a given layer.
+        Get the fan_in (number of input features) from a given layer
+        or from the number of neurons (input channels).
 
         Parameters
         ----------
-        layer: torch.nn.Conv2d
+        layer: torch.nn.Conv2d | None
             layer to get the fan_in from
+        num_neurons: int | None
+            number of neurons in the layer
 
         Returns
         -------
         int
             fan_in of the layer
         """
-        assert isinstance(layer, torch.nn.Conv2d), (
-            f"The layer should be a torch.nn.Conv2d but got {type(layer)}."
-        )
-        return layer.in_channels * layer.kernel_size[0] * layer.kernel_size[1]
+        if layer is not None:
+            assert isinstance(layer, torch.nn.Conv2d), (
+                f"The layer should be a torch.nn.Conv2d but got {type(layer)}."
+            )
+            return layer.in_channels * layer.kernel_size[0] * layer.kernel_size[1]
+        else:
+            assert num_neurons is not None, (
+                "Either layer or num_neurons should be provided."
+            )
+            return num_neurons * self.kernel_size[0] * self.kernel_size[1]
 
     def create_layer_in_extension(self, extension_size: int) -> None:
         """
