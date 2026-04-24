@@ -3905,9 +3905,9 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
         self, bias: bool
     ) -> None:
         """Test Kaiming extension init matches PyTorch fan-in behavior."""
-        extension_size = 18
+        extension_size = 30
 
-        for test_case, features in (("with_features", 15), ("without_features", 0)):
+        for test_case, features in (("with_features", 20), ("without_features", 0)):
             with self.subTest(case=test_case):
                 with warnings.catch_warnings():
                     warnings.filterwarnings(
