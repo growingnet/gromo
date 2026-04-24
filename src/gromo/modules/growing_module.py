@@ -624,7 +624,7 @@ class MergeGrowingModule(torch.nn.Module):
     def update_scaling_factor(self, scaling_factor: torch.Tensor | float) -> None:
         """
         Update the scaling factor of all next modules and
-        the _next_module_scaling_factor of the previous modules.
+        the output_extension_scaling of the previous modules.
         Does only work if previous and next modules are GrowingModule.
 
         Parameters
@@ -1322,7 +1322,10 @@ class GrowingModule(torch.nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Forward pass of the module with layer extension and layer update scaled
-        according to the scaling factor.
+        according to the scaling factors:
+        - `optimal_delta_layer` is scaled by `optimal_delta_scaling`
+        - `extended_input_layer` is scaled by `input_extension_scaling`
+        - `extended_output_layer` is scaled by `output_extension_scaling`
         WARNING: does not store the input and pre-activity tensors.
         WARNING: the scaling factor is squared for the optimal delta and
         linear for the extension. (Instead of linear for the optimal delta and
