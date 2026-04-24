@@ -19,10 +19,10 @@ from gromo.utils.utils import global_device
 
 
 try:
-    from tests.torch_unittest import SizedIdentity, TorchTestCase
+    from tests.torch_unittest import GrowableIdentity, TorchTestCase
     from tests.unittest_tools import unittest_parametrize
 except ImportError:
-    from torch_unittest import SizedIdentity, TorchTestCase
+    from torch_unittest import GrowableIdentity, TorchTestCase
     from unittest_tools import unittest_parametrize
 
 
@@ -355,6 +355,70 @@ class TestFunctionPreservation(TorchTestCase):
 
         self.assertAllClose(y_before, y_after, atol=1e-5)
 
+    def test_pairing_with_noise_is_almost_preserving_linear(self):
+        """With pairing and non-zero noise, function is close but not exactly preserved."""
+        block = _make_linear_block(h_t=8, device=self.device)
+        x = torch.randn(256, 8, device=self.device)
+
+        with torch.no_grad():
+            y_before = block(x).clone()
+
+        _grow_block(
+            block,
+            dh=4,
+            neuron_pairing="vv_z_negz",
+            rescaling=None,
+            noise_ratio=0.1,
+        )
+
+        with torch.no_grad():
+            y_after = block(x)
+
+        self.assertFalse(
+            torch.allclose(y_before, y_after, atol=1e-8, rtol=1e-5),
+            "Non-zero pairing noise should break exact function preservation.",
+        )
+
+        rel_error = torch.norm(y_after - y_before) / (torch.norm(y_before) + 1e-12)
+        self.assertLess(
+            rel_error.item(),
+            0.2,
+            f"Pairing with noise should remain close to original function, got relative error {rel_error.item():.4f}",
+        )
+
+    def test_pairing_preserves_output_linear_with_nonzero_bias(self):
+        """With explicit non-zero biases, pairing with zero noise preserves output."""
+        block = LinearGrowingBlock(
+            in_features=8,
+            out_features=8,
+            hidden_features=8,
+            kwargs_layer={"use_bias": True},
+            device=self.device,
+        )
+        assert block.first_layer.bias is not None
+        assert block.second_layer.bias is not None
+
+        with torch.no_grad():
+            block.first_layer.bias.fill_(0.7)
+            block.second_layer.bias.fill_(-0.3)
+
+        x = torch.randn(64, 8, device=self.device)
+        with torch.no_grad():
+            y_before = block(x).clone()
+
+        _grow_block(
+            block,
+            dh=4,
+            neuron_pairing="vv_z_negz",
+            rescaling=None,
+            noise_ratio=0.0,
+        )
+
+        with torch.no_grad():
+            y_after = block(x)
+
+        self.assertAllClose(y_before, y_after, atol=1e-5)
+
 
 class TestFunctionPreservationWithRescaling(TorchTestCase):
     """Test 2: with pairing + rescaling, the block internal path is scaled.
@@ -562,17 +626,17 @@ class TestActivationVariance(TorchTestCase):
         super().setUp()
         self.device = global_device()
 
-    def _make_block_with_perturbed_weights(self, h_t, k=3):
+    def _make_block_with_perturbed_weights(self, h_t):
         """Create block with weights far from Kaiming scale."""
-        block = _make_conv_block(h_t=h_t, kernel_size=k, device=self.device)
+        block = _make_linear_block(h_t=h_t, device=self.device)
         block.first_layer.weight.data.mul_(2.0)
         block.second_layer.weight.data.mul_(0.5)
         return block
 
     def test_activation_variance_strategy_b(self):
         """V[conv_path]_init ~ 1 for Strategy B with pairing."""
-        h_t = 16
-        dh = 4
+        h_t = 96
+        dh = 16
         block = self._make_block_with_perturbed_weights(h_t)
 
         _grow_block(
@@ -582,25 +646,25 @@ class TestActivationVariance(TorchTestCase):
             neuron_pairing="vv_z_negz",
         )
 
-        x = torch.randn(512, 3, 8, 8, device=self.device)
+        x = torch.randn(512, 8, device=self.device)
         with torch.no_grad():
             y = block(x)
             skip = block.downsample(x)
-            conv_path = y - skip
+            main_path = y - skip
 
-        var_cp = conv_path.var().item()
+        var_cp = main_path.var().item()
         # Statistical test — fairly loose tolerance
         self.assertAlmostEqual(
             var_cp,
             1.0,
-            delta=0.5,
-            msg=f"V[conv_path]={var_cp:.4f}, expected ~1.0",
+            delta=0.2,
+            msg=f"V[main_path]={var_cp:.4f}, expected ~1.0",
         )
 
     def test_activation_variance_strategy_c(self):
         """V[conv_path]_init ~ h_t / h_{t+1} for Strategy C with pairing."""
-        h_t = 16
-        dh = 4
+        h_t = 96
+        dh = 16
         block = self._make_block_with_perturbed_weights(h_t)
 
         _grow_block(
@@ -613,18 +677,18 @@ class TestActivationVariance(TorchTestCase):
         h_t_plus_1 = h_t + dh
         expected_var = h_t / h_t_plus_1
 
-        x = torch.randn(512, 3, 8, 8, device=self.device)
+        x = torch.randn(512, 8, device=self.device)
         with torch.no_grad():
             y = block(x)
             skip = block.downsample(x)
-            conv_path = y - skip
+            main_path = y - skip
 
-        var_cp = conv_path.var().item()
+        var_cp = main_path.var().item()
         self.assertAlmostEqual(
             var_cp,
             expected_var,
-            delta=0.5,
-            msg=f"V[conv_path]={var_cp:.4f}, expected ~{expected_var:.4f}",
+            delta=0.2,
+            msg=f"V[main_path]={var_cp:.4f}, expected ~{expected_var:.4f}",
         )
 
 
@@ -711,7 +775,7 @@ class TestPairingStructure(TorchTestCase):
         dh = 4
         block = _make_conv_block(
             h_t=h_t,
-            mid_activation=SizedIdentity(h_t),
+            mid_activation=GrowableIdentity(h_t),
             device=self.device,
         )
 
@@ -722,8 +786,7 @@ class TestPairingStructure(TorchTestCase):
         block.apply_change(scaling_factor=1.0, extension_size=dh)
 
         x = torch.randn(2, 3, 8, 8, device=self.device)
-        with self.assertRaises(ValueError):
-            _ = block(x)
+        _ = block(x)
 
 
 class TestRescalingIdempotence(TorchTestCase):
@@ -741,8 +804,10 @@ class TestRescalingIdempotence(TorchTestCase):
     )
     def test_kaiming_weights_nearly_unchanged(self, rescaling):
         """When V[W] ~ 1/fan_in, rescaling factors are ~1."""
-        block = _make_conv_block(h_t=16, device=self.device)
+        block = _make_conv_block(h_t=32, device=self.device)
         # Block is Kaiming-initialized by default
+        torch.nn.init.kaiming_uniform_(block.first_layer.weight, nonlinearity="linear")
+        torch.nn.init.kaiming_uniform_(block.second_layer.weight, nonlinearity="linear")
 
         w1_before = block.first_layer.weight.clone()
         w2_before = block.second_layer.weight.clone()
@@ -760,15 +825,15 @@ class TestRescalingIdempotence(TorchTestCase):
         self.assertAllClose(
             block.first_layer.weight,
             w1_before,
-            atol=0.2,
-            rtol=0.15,
+            atol=0.01,
+            rtol=0.01,
             msg="Conv1 weights should not change much with Kaiming init",
         )
         self.assertAllClose(
             block.second_layer.weight,
             w2_before,
-            atol=0.2,
-            rtol=0.15,
+            atol=0.01,
+            rtol=0.01,
             msg="Conv2 weights should not change much with Kaiming init",
         )
 
