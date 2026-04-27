@@ -6,8 +6,7 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
     """
     Base class for dropout layers on growing architectures.
 
-    This class provides the common functionality for dropout
-    layers on basic architecture without penalyzing growth.
+    This class provides dropout without penalyzing growth.
     The growth of the previous layer is never zeroed.
 
     Parameters
