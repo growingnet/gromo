@@ -6,16 +6,15 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
     """
     Base class for dropout layers on growing architectures.
 
-    This class provides the common functionality for dropout
-    layers on basic architecture without penalyzing growth.
+    This class provides dropout without penalyzing growth.
     The growth of the previous layer is never zeroed.
 
     Parameters
     ----------
     dropout_rate : float
         Probability of an element to be zeroed.
-        Set to non 0 to run WideResNet architecture.
-        Default: 0.0 for classical ResNet.
+        Set to non-zero to activate.
+        Default: 0.0 for no dropout.
     name : str, optional
         Name of the layer for debugging, by default="growing_droupout"
     """
