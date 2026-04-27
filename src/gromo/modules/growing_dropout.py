@@ -13,8 +13,8 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
     ----------
     dropout_rate : float
         Probability of an element to be zeroed.
-        Set to non 0 to run WideResNet architecture.
-        Default: 0.0 for classical ResNet.
+        Set to non-zero to activate.
+        Default: 0.0 for no dropout.
     name : str, optional
         Name of the layer for debugging, by default="growing_droupout"
     """
