@@ -848,9 +848,9 @@ class GrowingModule(torch.nn.Module):
         # the optimal update used to compute v_projected
         self.optimal_delta_layer: torch.nn.Module | None = None
         # Three independent scaling tensors:
-        #  * optimal_delta_scaling multiplies optimal_delta_layer
-        #  * input_extension_scaling multiplies extended_input_layer (this layer)
-        #  * output_extension_scaling multiplies extended_output_layer (this layer's
+        #  * optimal_delta_scaling scales optimal_delta_layer
+        #  * input_extension_scaling scales extended_input_layer (this layer)
+        #  * output_extension_scaling scales extended_output_layer (this layer's
         #    output extension, consumed by the next module's extended_forward)
         self.optimal_delta_scaling: torch.Tensor = torch.zeros(1, device=self.device)
         self.optimal_delta_scaling.requires_grad = True
