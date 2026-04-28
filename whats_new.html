@@ -32,7 +32,7 @@
 
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=d2d258e8" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=fd6457a4" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-binder.css?v=f4aeca0c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-dataframe.css?v=2082cf3c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-rendered-html.css?v=1277b6f3" />
@@ -52,6 +52,7 @@
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/sg-tags.js?v=d80f6fa4"></script>
     <script src="_static/design-tabs.js?v=f930bc37"></script>
     <script async="async" src="https://www.googletagmanager.com/gtag/js?id=XXXX"></script>
     <script>
@@ -389,6 +390,7 @@
 <section id="enhancements">
 <h3>Enhancements<a class="headerlink" href="#enhancements" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Introduce decoupled scaling factors for GrowingModule behavior, separating scaling for the optimal-delta update, the input extension, and the output extension (<a class="reference external" href="https://github.com/growingnet/gromo/issues/245">#245</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>).</p></li>
 <li><p>Introduce VGG-like growing architecture support with the <cite>VGG</cite> class (<a class="reference external" href="https://github.com/growingnet/gromo/issues/236">#236</a> by <a class="reference external" href="https://github.com/hmousset">Hugo Mousset</a>)</p></li>
 <li><p>Adds support for selecting GroupNorm as the normalization layer in the ResNet container, alongside the existing BatchNorm option (<a class="reference external" href="https://github.com/growingnet/gromo/issues/233">#233</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>).</p></li>
 <li><p>Adds configurability to the ResNet container to allow using BatchNorm2d or disabling normalization entirely (<a class="reference external" href="https://github.com/growingnet/gromo/issues/228">#228</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
