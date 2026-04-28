@@ -1922,7 +1922,7 @@ class GrowingModule(torch.nn.Module):
         sub_select_previous: bool
             if True, sub-select the previous layer added parameters as well
         zeros_if_not_enough: bool
-            if True, will keep the all neurons and set the non selected ones to zero
+            if True, will keep all the neurons and set the non selected ones to zero
             (either first or last depending on zeros_fan_in and zeros_fan_out)
         zeros_fan_in: bool
             if True and zeros_if_not_enough is True, will set the non selected
