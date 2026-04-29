@@ -22,6 +22,7 @@ Enhancements
 
 
 - Add GradMax normalization details and associated tests for update scaling behavior (:gh:`242` by `Pako Maxence TEKOU`_)
+- Introduce an empirical Fisher / loss-gradient covariance statistic to GrowingModule-based layers (:gh:`249` by `Théo Rudkiewicz`_).
 - Introduce decoupled scaling factors for GrowingModule behavior, separating scaling for the optimal-delta update, the input extension, and the output extension (:gh:`245` by `Théo Rudkiewicz`_).
 - Introduce VGG-like growing architecture support with the `VGG` class (:gh:`236` by `Hugo Mousset`_)
 - Adds support for selecting GroupNorm as the normalization layer in the ResNet container, alongside the existing BatchNorm option (:gh:`233` by `Théo Rudkiewicz`_).
