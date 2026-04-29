@@ -3824,16 +3824,17 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                 msg="gradmax_scale should multiply c = mean(||W_i||).",
             )
 
-            with self.subTest(case="gradmax_missing_extension_returns"):
+            with self.subTest(case="gradmax_missing_extension_raises"):
                 _, layer_missing_ext = self.create_demo_layers_with_extension(
                     include_eigenvalues=True,
                     hidden_features=2,
                     extension_size=2,
                 )
                 layer_missing_ext.extended_input_layer = None
-                layer_missing_ext.normalize_optimal_updates(
-                    normalization_type="gradmax_normalization"
-                )
+                with self.assertRaises(ValueError):
+                    layer_missing_ext.normalize_optimal_updates(
+                        normalization_type="gradmax_normalization"
+                    )
 
             with self.subTest(case="gradmax_extension_dim_one_returns"):
                 _, layer_ext_dim_one = self.create_demo_layers_with_extension(

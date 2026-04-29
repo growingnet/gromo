@@ -2839,31 +2839,60 @@ class GrowingModule(torch.nn.Module):
                 or not hasattr(self.extended_input_layer, "weight")
                 or not hasattr(self.layer, "weight")
             ):
-                return
+                raise ValueError(
+                    "gradmax_normalization requires extended_input_layer and layer "
+                    "with weights."
+                )
 
             with torch.no_grad():
                 layer_weight = self.layer.weight
                 extension_weight = self.extended_input_layer.weight
 
                 # Added neurons correspond to axis 1 in extension weight.
+                # Guard: if tensor rank leaves no dims to reduce, norm is ill-defined.
                 reduced_dims_extension = tuple(
                     dim for dim in range(extension_weight.dim()) if dim != 1
                 )
                 if len(reduced_dims_extension) == 0:
+                    warnings.warn(
+                        "gradmax_normalization: extension weight has no reducible "
+                        "dimensions, skipping.",
+                        UserWarning,
+                    )
                     return
 
                 # Existing neurons also correspond to axis 1 in base layer weight.
+                # Guard: same check for the base layer weight.
                 reduced_dims_existing = tuple(
                     dim for dim in range(layer_weight.dim()) if dim != 1
                 )
                 if len(reduced_dims_existing) == 0:
+                    warnings.warn(
+                        "gradmax_normalization: layer weight has no reducible "
+                        "dimensions, skipping.",
+                        UserWarning,
+                    )
                     return
 
+                # Guard: empty axis (e.g. shape [out, 0]), mean() would return NaN.
                 existing_norms = (layer_weight**2).sum(dim=reduced_dims_existing).sqrt()
                 if existing_norms.numel() == 0:
+                    warnings.warn(
+                        "gradmax_normalization: no existing neurons to compute "
+                        "reference norm, skipping.",
+                        UserWarning,
+                    )
                     return
+
+                # Guard: if all existing weights are zero, normalizing would
+                # collapse extension weights to zero, which is undesirable.
                 target_norm = existing_norms.mean() * float(gradmax_scale)
                 if target_norm <= 0:
+                    warnings.warn(
+                        "gradmax_normalization: target norm is zero (all existing "
+                        "weights are zero), skipping.",
+                        UserWarning,
+                    )
                     return
 
                 extension_norms = (

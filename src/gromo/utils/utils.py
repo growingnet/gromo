@@ -204,7 +204,6 @@ def activation_fn(fn_name: str) -> nn.Module:
     """
     known_activations = {
         "relu": nn.ReLU(),
-        "relu_fprime0_1": ReLUDerivativeOneAtZero(),
         "relu_derivative_one_at_zero": ReLUDerivativeOneAtZero(),
         "gelu": nn.GELU(),
         "selu": nn.SELU(),
