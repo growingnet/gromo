@@ -2792,8 +2792,8 @@ class GrowingModule(torch.nn.Module):
         (so by s ** 2 / (std(extended_input_layer) * std(extended_output_layer)))
 
         If normalization_type is "gradmax_normalization":
-        Let ``gradmax_scale`` be :math:`s` (default 1). Let :math:`c = s \\cdot \\text{mean}_i \\|W_i\\|`
-        where :math:`\\|W_i\\|` are the L2 (or Frobenius per channel) norms of the existing
+        Let ``gradmax_scale`` be :math:`s` (default 1). Let :math:`c = s \cdot \text{mean}_i \|W_i\|`
+        where :math:`\|W_i\|` are the L2 (or Frobenius per channel) norms of the existing
         slices of ``self.layer.weight`` along the input / fan-in axis (axis 1 for ``nn.Linear``).
         Each new column (added neuron) w of ``extended_input_layer.weight`` is rescaled as
         ``w <- w / ||w|| * c`` when ``||w|| > 0``.
