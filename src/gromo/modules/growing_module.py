@@ -624,7 +624,7 @@ class MergeGrowingModule(torch.nn.Module):
     def update_scaling_factor(self, scaling_factor: torch.Tensor | float) -> None:
         """
         Update the scaling factor of all next modules and
-        the _next_module_scaling_factor of the previous modules.
+        the output_extension_scaling of the previous modules.
         Does only work if previous and next modules are GrowingModule.
 
         Parameters
@@ -641,14 +641,16 @@ class MergeGrowingModule(torch.nn.Module):
             scaling_factor = scaling_factor.item()
         for module in self.previous_modules:
             if isinstance(module, GrowingModule):
-                module._scaling_factor_next_module.data[0] = scaling_factor
+                module.output_extension_scaling = scaling_factor  # type: ignore
             else:
                 raise TypeError(
                     f"Previous module must be a GrowingModule, got {type(module)}"
                 )
         for module in self.next_modules:
             if isinstance(module, GrowingModule):
-                module.__dict__["scaling_factor"].data[0] = scaling_factor
+                # Use the legacy aggregated setter to fan out to all sub-factors
+                # (matching the historical behaviour of update_scaling_factor).
+                module.scaling_factor = scaling_factor  # type: ignore
             else:
                 raise TypeError(
                     f"Next module must be a GrowingModule, got {type(module)}"
@@ -845,11 +847,21 @@ class GrowingModule(torch.nn.Module):
 
         # the optimal update used to compute v_projected
         self.optimal_delta_layer: torch.nn.Module | None = None
+        # Three independent scaling tensors:
+        #  * optimal_delta_scaling scales optimal_delta_layer
+        #  * input_extension_scaling scales extended_input_layer (this layer)
+        #  * output_extension_scaling scales extended_output_layer (this layer's
+        #    output extension, consumed by the next module's extended_forward)
+        self.optimal_delta_scaling: torch.Tensor = torch.zeros(1, device=self.device)
+        self.optimal_delta_scaling.requires_grad = True
+        self.input_extension_scaling: torch.Tensor = torch.zeros(1, device=self.device)
+        self.input_extension_scaling.requires_grad = True
+        self.output_extension_scaling: torch.Tensor = torch.zeros(1, device=self.device)
+        self.output_extension_scaling.requires_grad = True
+        # Legacy aggregated scalar; kept in sync by the scaling_factor setter so old
+        # callers reading `module.scaling_factor` keep working.
         self.scaling_factor: torch.Tensor = torch.zeros(1, device=self.device)
         self.scaling_factor.requires_grad = True
-        # to avoid having to link to the next module we get a copy of the scaling factor
-        # of the next module to use it in the extended_forward
-        self._scaling_factor_next_module = torch.zeros(1, device=self.device)
 
         self.extended_input_layer: torch.nn.Module | None = None
         self.extended_output_layer: torch.nn.Module | None = None
@@ -1142,30 +1154,44 @@ class GrowingModule(torch.nn.Module):
                 self._internal_store_pre_activity = value
         elif key == "previous_module" or key == "next_module":
             self.__dict__[key] = value
-        elif key == "scaling_factor":
+        elif key in (
+            "scaling_factor",
+            "optimal_delta_scaling",
+            "input_extension_scaling",
+            "output_extension_scaling",
+        ):
             if isinstance(value, torch.Tensor):
-                assert value.shape == (1,), "The scaling factor must be a scalar."
+                assert value.shape == (1,), f"{key} must be a scalar tensor."
                 torch.nn.Module.__setattr__(self, key, value)
             else:
-                assert isinstance(value, (int, float)), (
-                    "The scaling factor must be a scalar."
+                assert isinstance(value, (int, float)), f"{key} must be a scalar."
+                if key in self.__dict__:
+                    self.__dict__[key].data[0] = value
+                else:
+                    torch.nn.Module.__setattr__(
+                        self, key, torch.tensor([float(value)], device=self.device)
+                    )
+            if key == "scaling_factor":
+                # Legacy API: fan out to the three sub-factors with the historical
+                # coupling (delta scaled by value**2, extensions by value).
+                value_f = (
+                    value.item() if isinstance(value, torch.Tensor) else float(value)
                 )
-                self.__dict__[key].data[0] = value
-                # FIXME: should we not recreate the tensor? (problem with the gradient)
-            if self.previous_module is None:
-                pass
-            elif isinstance(self.previous_module, GrowingModule):
-                self.previous_module._scaling_factor_next_module.data[0] = (
-                    self.scaling_factor.item()
-                )
-            elif isinstance(self.previous_module, MergeGrowingModule):
-                # self.previous_module.update_scaling_factor(self.scaling_factor)
-                pass
-            else:
-                raise TypeError(
-                    f"Previous module must be a GrowingModule or MergeGrowingModule, "
-                    f"got {type(self.previous_module)}"
-                )
+                self.__dict__["optimal_delta_scaling"].data[0] = value_f**2
+                self.__dict__["input_extension_scaling"].data[0] = value_f
+                if self.previous_module is None:
+                    pass
+                elif isinstance(self.previous_module, GrowingModule):
+                    self.previous_module.__dict__["output_extension_scaling"].data[0] = (
+                        value_f
+                    )
+                elif isinstance(self.previous_module, MergeGrowingModule):
+                    pass
+                else:
+                    raise TypeError(
+                        f"Previous module must be a GrowingModule or "
+                        f"MergeGrowingModule, got {type(self.previous_module)}"
+                    )
         elif key == "weight":
             self.layer.weight = value
         elif key == "bias":
@@ -1296,7 +1322,10 @@ class GrowingModule(torch.nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Forward pass of the module with layer extension and layer update scaled
-        according to the scaling factor.
+        according to the scaling factors:
+        - `optimal_delta_layer` is scaled by `optimal_delta_scaling`
+        - `extended_input_layer` is scaled by `input_extension_scaling`
+        - `extended_output_layer` is scaled by `output_extension_scaling`
         WARNING: does not store the input and pre-activity tensors.
         WARNING: the scaling factor is squared for the optimal delta and
         linear for the extension. (Instead of linear for the optimal delta and
@@ -1327,11 +1356,8 @@ class GrowingModule(torch.nn.Module):
         """
         pre_activity = self.layer(x)
 
-        linear_factor = self.scaling_factor**2
-        sqrt_factor = self.scaling_factor
-
         if self.optimal_delta_layer is not None and use_optimal_delta:
-            pre_activity -= linear_factor * self.optimal_delta_layer(x)
+            pre_activity -= self.optimal_delta_scaling * self.optimal_delta_layer(x)
 
         if use_extended_input:
             if self.extended_input_layer:
@@ -1340,7 +1366,9 @@ class GrowingModule(torch.nn.Module):
                         f"x_ext must be provided got None for {self.name}."
                         f"As the input is extended, an extension is needed."
                     )
-                pre_activity += sqrt_factor * self.extended_input_layer(x_ext)
+                pre_activity += self.input_extension_scaling * self.extended_input_layer(
+                    x_ext
+                )
             else:
                 if x_ext is not None:  # TODO: and is not empty
                     warnings.warn(
@@ -1351,7 +1379,7 @@ class GrowingModule(torch.nn.Module):
 
         if self.extended_output_layer and use_extended_output:
             supplementary_pre_activity = (
-                self._scaling_factor_next_module * self.extended_output_layer(x)
+                self.output_extension_scaling * self.extended_output_layer(x)
             )
             activity, supplementary_activity = self._apply_extended_post_layer_function(
                 pre_activity, supplementary_pre_activity
@@ -1937,27 +1965,27 @@ class GrowingModule(torch.nn.Module):
     ) -> None:
         """
         Extend the layer output with the current layer output extension,
-        with the scaling factor of the next module if no scaling factor is provided.
+        with `self.output_extension_scaling` if no scaling factor is provided.
 
         Parameters
         ----------
         scaling_factor: float | torch.Tensor | None, optional
-            scaling factor to apply to the optimal delta
+            override for the output extension scale; defaults to
+            `self.output_extension_scaling`.
         extension_size: int, optional
             size of extension, by default 0
         """
         if scaling_factor is None:
-            scaling_factor = self._scaling_factor_next_module
+            scaling_factor = self.output_extension_scaling
         else:
             if isinstance(scaling_factor, (int, float, np.number)):
                 scaling_factor = torch.tensor(scaling_factor, device=self.device)
             if not (
-                abs(scaling_factor.item() - self._scaling_factor_next_module.item())
-                < 1e-4
+                abs(scaling_factor.item() - self.output_extension_scaling.item()) < 1e-4
             ):
                 warnings.warn(
                     f"Scaling factor {scaling_factor} is different from the one used"
-                    f" during the extended_forward {self._scaling_factor_next_module}."
+                    f" during the extended_forward {self.output_extension_scaling}."
                 )
         if extension_size > 0 or self.extended_output_layer is not None:
             assert isinstance(self.extended_output_layer, torch.nn.Module), (
@@ -2003,20 +2031,23 @@ class GrowingModule(torch.nn.Module):
         apply_delta: bool = True,
         apply_extension: bool = True,
         extension_size: int | None = None,
+        optimal_delta_scaling: float | torch.Tensor | None = None,
+        input_extension_scaling: float | torch.Tensor | None = None,
+        output_extension_scaling: float | torch.Tensor | None = None,
     ) -> None:
         """
         Apply the optimal delta and extend the layer with current
-        optimal delta and layer extension with the current scaling factor.
+        optimal delta and layer extension with the current scaling factors.
         This means that the layer input is extended with the current layer output
         extension and the previous layer output is extended with the previous layer
-        output extension both scaled by the current scaling factor.
+        output extension both scaled by the relevant extension scaling factors.
         This also means that the layer output is not extended.
 
         Parameters
         ----------
         scaling_factor: float | torch.Tensor | None
-            scaling factor to apply to the optimal delta,
-             if None use the current scaling factor
+            legacy aggregated scaling factor; sets `optimal_delta_scaling = value**2`
+            and both extension scalings to `value` (mirrors the historical coupling).
         apply_previous: bool
             if True apply the change to the previous layer, by default True
         apply_delta: bool
@@ -2026,6 +2057,13 @@ class GrowingModule(torch.nn.Module):
         extension_size: int | None
             size of the extension to apply, by default None and get automatically
             determined using `self.eigenvalues_extension.shape[0]`
+        optimal_delta_scaling: float | torch.Tensor | None
+            override for `self.optimal_delta_scaling` for this call (and
+            persisted on the module). When `None`, the current attribute is used.
+        input_extension_scaling: float | torch.Tensor | None
+            override for `self.input_extension_scaling`.
+        output_extension_scaling: float | torch.Tensor | None
+            override for `self.previous_module.output_extension_scaling`.
 
         Raises
         ------
@@ -2034,17 +2072,25 @@ class GrowingModule(torch.nn.Module):
         NotImplementedError
             if the previous module is not of type GrowingModule
         """
-        # print(f"==================== Applying change to {self.name} ====================")
         if scaling_factor is not None:
             self.scaling_factor = scaling_factor  # type: ignore
-            # this type problem is due to the use of the setter to change the scaling factor
-        linear_factor = self.scaling_factor**2
-        sqrt_factor = self.scaling_factor
+        if optimal_delta_scaling is not None:
+            self.optimal_delta_scaling = optimal_delta_scaling  # type: ignore
+        if input_extension_scaling is not None:
+            self.input_extension_scaling = input_extension_scaling  # type: ignore
+        if output_extension_scaling is not None and isinstance(
+            self.previous_module, GrowingModule
+        ):
+            self.previous_module.output_extension_scaling = output_extension_scaling  # type: ignore
+
+        delta_scale = self.optimal_delta_scaling
+        in_ext_scale = self.input_extension_scaling
+
         if apply_delta and self.optimal_delta_layer is not None:
             self.parameter_step(
-                delta_weights=-linear_factor * self.optimal_delta_layer.weight.data,
+                delta_weights=-delta_scale * self.optimal_delta_layer.weight.data,
                 delta_biases=(
-                    -linear_factor * self.optimal_delta_layer.bias.data
+                    -delta_scale * self.optimal_delta_layer.bias.data
                     if self.optimal_delta_layer.bias is not None
                     else None
                 ),
@@ -2055,13 +2101,13 @@ class GrowingModule(torch.nn.Module):
                     self.extended_input_layer.bias,
                     torch.zeros_like(self.extended_input_layer.bias),
                 ), "The bias of the input extension must be null."
-                if self.scaling_factor == 0:
+                if in_ext_scale.item() == 0:
                     warnings.warn(
-                        "The scaling factor is null. "
+                        "input_extension_scaling is null. "
                         "The input extension will have no effect."
                     )
                 self.layer_in_extension(
-                    weight=sqrt_factor * self.extended_input_layer.weight
+                    weight=in_ext_scale * self.extended_input_layer.weight
                 )
 
             if apply_previous and self.previous_module is not None:
@@ -2084,7 +2130,6 @@ class GrowingModule(torch.nn.Module):
                                 f" extension of size {extension_size} was requested."
                             )
                     self.previous_module._apply_output_changes(
-                        scaling_factor=self.scaling_factor,
                         extension_size=extension_size,
                     )
                 elif isinstance(self.previous_module, MergeGrowingModule):
