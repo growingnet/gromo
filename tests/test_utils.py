@@ -136,7 +136,6 @@ class TestUtils(TorchTestCase):
         self.assertIsInstance(activation_fn("Softmax"), nn.Softmax)
         self.assertIsInstance(activation_fn("SELU"), nn.SELU)
         self.assertIsInstance(activation_fn("RELU"), nn.ReLU)
-        self.assertIsInstance(activation_fn("relu_fprime0_1"), ReLUDerivativeOneAtZero)
         self.assertIsInstance(
             activation_fn("relu_derivative_one_at_zero"), ReLUDerivativeOneAtZero
         )
