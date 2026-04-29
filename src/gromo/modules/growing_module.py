@@ -892,8 +892,9 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"C({self.name})",
         )
-        # Empirical Fisher / gradient covariance E_s = E[ dA dA^T ] of the
-        # pre-activity, on the output-channel axis. Shape (cp, cp).
+        # Empirical Fisher / gradient covariance of the pre-activity on the
+        # output-channel axis: E[g g^T] for per-sample gradient vectors g,
+        # equivalently E[dA^T dA] for batched dA. Shape (cp, cp).
         self.covariance_loss_gradient = TensorStatistic(
             None,
             update_function=self.compute_covariance_loss_gradient_update,
@@ -1724,8 +1725,9 @@ class GrowingModule(torch.nn.Module):
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the empirical Fisher / gradient covariance
-        E_s := dA dA^T summed over the batch (and over spatial positions for
-        convolutional layers). Should be implemented by each layer type.
+        E_s := dA^T dA summed over the batch (and over spatial positions for
+        convolutional layers), i.e. the sum of per-sample outer products.
+        Should be implemented by each layer type.
 
         Returns
         -------
