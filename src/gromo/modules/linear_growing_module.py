@@ -634,6 +634,35 @@ class LinearGrowingModule(GrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
+    def compute_covariance_loss_gradient_update(
+        self,
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the empirical Fisher / gradient covariance
+        E_s := dA^T dA on the output-channel axis.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the gradient covariance, shape (out_features, out_features)
+        int
+            number of samples used to compute the update
+        """
+        assert self.store_pre_activity, (
+            f"The pre-activity must be stored to compute the update of the "
+            f"gradient covariance. (error in {self.name})"
+        )
+        desired_activation = self.pre_activity.grad
+        assert desired_activation is not None, (
+            f"The gradient of the pre-activity must be available to compute "
+            f"the update of the gradient covariance. (error in {self.name})"
+        )
+        flat = torch.flatten(desired_activation, 0, -2)
+        return (
+            torch.einsum("ij,ik->jk", flat, flat),
+            desired_activation.shape[0],
+        )
+
     def compute_n_update(self) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor N.
