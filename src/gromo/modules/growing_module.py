@@ -2907,22 +2907,14 @@ class GrowingModule(torch.nn.Module):
                     extension_weight.mul_(scales.view(*reshape_shape))
                     if self.eigenvalues_extension is not None:
                         ev = self.eigenvalues_extension
-                        if ev.numel() != scales.numel():
-                            warnings.warn(
-                                "gradmax_normalization: eigenvalues_extension length "
-                                f"({ev.numel()}) does not match number of extension slices "
-                                f"({scales.numel()}); leaving eigenvalues unchanged.",
-                                UserWarning,
-                            )
-                        else:
-                            ev.mul_(
-                                torch.sqrt(
-                                    scales.to(
-                                        device=ev.device,
-                                        dtype=ev.dtype,
-                                    )
+                        ev.mul_(
+                            torch.sqrt(
+                                scales.to(
+                                    device=ev.device,
+                                    dtype=ev.dtype,
                                 )
                             )
+                        )
             return
 
         # Determine target standard deviation
