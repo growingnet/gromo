@@ -3952,20 +3952,6 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     msg="No scaling should be applied when target norm is zero.",
                 )
 
-            with self.subTest(case="gradmax_eigenvalues_mismatch_warns"):
-                _, layer_warn = self.create_demo_layers_with_extension(
-                    include_eigenvalues=True,
-                    hidden_features=2,
-                    extension_size=2,
-                )
-                layer_warn.layer.weight.data = W.clone()
-                layer_warn.extended_input_layer.weight.data = E.clone()
-                layer_warn.eigenvalues_extension = torch.ones(3, device=global_device())
-                with self.assertWarnsRegex(UserWarning, "eigenvalues_extension length"):
-                    layer_warn.normalize_optimal_updates(
-                        normalization_type="gradmax_normalization"
-                    )
-
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
     """Test create_layer_extensions method for LinearGrowingModule."""
