@@ -337,6 +337,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.store_pre_activity = True
         self.second_layer.tensor_m_prev.init()
         self.second_layer.tensor_s_growth.init()
+        self.second_layer.covariance_loss_gradient.init()
 
         if self.hidden_neurons > 0:
             self.second_layer.cross_covariance.init()
@@ -353,6 +354,7 @@ class GrowingBlock(GrowingContainer):
         # growth part
         self.second_layer.tensor_m_prev.update()
         self.second_layer.tensor_s_growth.update()
+        self.second_layer.covariance_loss_gradient.update()
 
         if self.hidden_neurons > 0:
             self.second_layer.cross_covariance.update()
@@ -373,6 +375,7 @@ class GrowingBlock(GrowingContainer):
         self.second_layer.tensor_m_prev.reset()
         self.second_layer.cross_covariance.reset()
         self.second_layer.tensor_s_growth.reset()
+        self.second_layer.covariance_loss_gradient.reset()
 
     def delete_update(self, **kwargs: Any):
         """
