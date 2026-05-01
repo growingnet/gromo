@@ -2872,8 +2872,7 @@ class GrowingModule(torch.nn.Module):
         normalization_type : str
             type of normalization to use, one of 'equalize_second_layer',
             'equalize_extensions', 'match_extending_layer', 'weird_normalization',
-            'legacy_normalization'
-            'gradmax_normalization'
+            'legacy_normalization', 'gradmax_normalization'
         gradmax_scale : float
             For ``gradmax_normalization`` only: scalar :math:`s` in :math:`c = s \\cdot \\text{mean}(\\|W_i\\|)`.
             Must be positive. Default ``1.0``.
@@ -3059,7 +3058,7 @@ class GrowingModule(torch.nn.Module):
             input_extension_scale = _scale_to(self.extended_input_layer, std_target)
             output_extension_scale = delta_scale / input_extension_scale
         elif normalization_type == "match_extending_layer":
-            if self.previous_module is None or not hasattr(self.previous_module, "layer"):
+            if not isinstance(self.previous_module, GrowingModule):
                 raise ValueError(
                     "match_extending_layer requires a previous GrowingModule "
                     "with a .layer attribute."
@@ -3073,8 +3072,10 @@ class GrowingModule(torch.nn.Module):
             if self_std is None and self.extended_input_layer is not None:
                 self_std = self.get_fan_in_from_layer(self.extended_input_layer) ** -0.5
             prev_std = _std_of_layer(self.previous_module.layer)
+            assert isinstance(self_std, float), f"{type(self_std)} is not float"
             if prev_std is None and prev_ext is not None:
                 prev_std = self.get_fan_in_from_layer(prev_ext) ** -0.5
+            assert isinstance(prev_std, float), f"{type(prev_std)} is not float"
             input_extension_scale = _scale_to(self.extended_input_layer, self_std)
             output_extension_scale = _scale_to(prev_ext, prev_std)
             delta_scale = _scale_to(self.optimal_delta_layer, self_std)
