@@ -1700,6 +1700,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1730,6 +1731,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the empirical Fisher / gradient covariance as
+            preconditioner on the output side.
 
         Returns
         -------
@@ -1752,6 +1756,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             omega_zero=omega_zero,
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
+            use_fisher=use_fisher,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -2140,6 +2145,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2170,6 +2176,11 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the empirical Fisher / gradient covariance as
+            preconditioner. Not supported for FullConv2dGrowingModule because
+            the SVD output dimension is `out_channels * k_h * k_w`, not
+            `out_channels`.
 
         Returns
         -------
@@ -2180,8 +2191,17 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         Raises
         ------
         NotImplementedError
-            if the previous module is not of type Conv2dGrowingModule
+            if the previous module is not of type Conv2dGrowingModule, or if
+            ``use_fisher`` is True (not implemented for the Full variant).
         """
+        if use_fisher:
+            raise NotImplementedError(
+                "use_fisher=True is not supported for FullConv2dGrowingModule "
+                "because the output dimension of the SVD target is "
+                "out_channels * k_h * k_w, which does not match the "
+                "(out_channels, out_channels) shape of "
+                "covariance_loss_gradient."
+            )
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,

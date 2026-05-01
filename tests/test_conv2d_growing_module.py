@@ -928,6 +928,24 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         cov = self.demo.covariance_loss_gradient()
         self.assertShapeEqual(cov, (self.demo.out_channels, self.demo.out_channels))
 
+    def test_compute_optimal_delta_use_fisher(self):
+        """Smoke test: Conv2d compute_optimal_delta runs with use_fisher=True."""
+        self.demo.init_computation()
+        y = self.demo(self.input_x)
+        torch.norm(y).backward()
+        self.demo.update_computation()
+
+        self.demo.compute_optimal_delta(use_fisher=True)
+        self.assertShapeEqual(
+            self.demo.delta_raw,
+            (
+                self.demo.out_channels,
+                self.demo.in_channels
+                * self.demo.kernel_size[0]
+                * self.demo.kernel_size[1],
+            ),
+        )
+
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_delta(self, bias: bool = False):
         if bias:

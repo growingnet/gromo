@@ -2182,11 +2182,17 @@ class GrowingModule(torch.nn.Module):
         update: bool = True,
         dtype: torch.dtype = torch.float32,
         force_pseudo_inverse: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]:
         """
         Compute the optimal delta for the layer using current S and M tensors.
 
-        dW* = M S[-1]^-1 (if needed we use the pseudo-inverse)
+        With ``tensor_m`` shaped ``(in_features(+bias), out_features)``, the raw
+        optimal update returned by ``optimal_delta`` corresponds to
+        ``(S^-1 M)^T``, using the pseudo-inverse of ``S`` when needed.
+        When ``use_fisher`` is True, the empirical Fisher / gradient covariance
+        ``E_s = E[dA dA^T]`` is used as an output-feature left preconditioner, so
+        the update is correspondingly preconditioned on the output side.
 
         Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
         L(A + gamma * B * dW) = L(A) - gamma * d + o(gamma)
@@ -2201,6 +2207,10 @@ class GrowingModule(torch.nn.Module):
         force_pseudo_inverse: bool
             if True, use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible
+        use_fisher: bool
+            if True, use the empirical Fisher / gradient covariance as a left
+            preconditioner. Relies on the independence hypothesis from the math
+            notes (`@hyp:independence`).
 
         Returns
         -------
@@ -2210,9 +2220,16 @@ class GrowingModule(torch.nn.Module):
         """
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
+        tensor_covariance_loss_gradient = (
+            self.covariance_loss_gradient() if use_fisher else None
+        )
 
         self.delta_raw, parameter_update_decrease = optimal_delta(
-            tensor_s, tensor_m, dtype=dtype, force_pseudo_inverse=force_pseudo_inverse
+            tensor_s,
+            tensor_m,
+            dtype=dtype,
+            force_pseudo_inverse=force_pseudo_inverse,
+            tensor_covariance_loss_gradient=tensor_covariance_loss_gradient,
         )
 
         if self.use_bias:
@@ -2240,6 +2257,7 @@ class GrowingModule(torch.nn.Module):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Auxiliary function to compute the optimal added parameters (alpha, omega, k)
@@ -2268,6 +2286,9 @@ class GrowingModule(torch.nn.Module):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the covariance of the loss gradient as an additional
+            preconditioner when computing the neuron extension
 
         Returns
         -------
@@ -2288,11 +2309,16 @@ class GrowingModule(torch.nn.Module):
         # Determine matrix_s based on use_covariance
         matrix_s = self.tensor_s_growth() if use_covariance else None
 
+        # Determine matrix_e based on use_fisher (current layer's gradient covariance)
+        matrix_e = self.covariance_loss_gradient() if use_fisher else None
+
         saved_dtype = matrix_n.dtype
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)
         if matrix_s is not None and matrix_s.dtype != dtype:
             matrix_s = matrix_s.to(dtype=dtype)
+        if matrix_e is not None and matrix_e.dtype != dtype:
+            matrix_e = matrix_e.to(dtype=dtype)
 
         # Call tools function with primitive options
         alpha, omega, eigenvalues_extension = compute_optimal_added_parameters(
@@ -2304,6 +2330,7 @@ class GrowingModule(torch.nn.Module):
             alpha_zero=alpha_zero,
             omega_zero=omega_zero,
             ignore_singular_values=ignore_singular_values,
+            matrix_covariance_loss_gradient=matrix_e,
         )
 
         alpha = alpha.to(dtype=saved_dtype)
@@ -2324,6 +2351,7 @@ class GrowingModule(torch.nn.Module):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2355,6 +2383,9 @@ class GrowingModule(torch.nn.Module):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the covariance of the loss gradient as an additional
+            preconditioner when computing the neuron extension
 
         Returns
         -------
@@ -2403,6 +2434,7 @@ class GrowingModule(torch.nn.Module):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update and additional neurons.
@@ -2460,6 +2492,9 @@ class GrowingModule(torch.nn.Module):
         ignore_singular_values: bool
             Whether to ignore singular values and treat them as 1. When True, only the
             singular vectors are used for the update direction.
+        use_fisher: bool
+            Whether to use the covariance of the loss gradient as an additional
+            preconditioner for delta and neuron-extension computations.
 
         Returns
         -------
@@ -2479,7 +2514,7 @@ class GrowingModule(torch.nn.Module):
         # - compute_delta=False/use_projection=False: no natural-gradient step,
         #   so set the corresponding first-order term to zero.
         if compute_delta:
-            self.compute_optimal_delta(update=True, dtype=dtype)
+            self.compute_optimal_delta(update=True, dtype=dtype, use_fisher=use_fisher)
         else:
             self.optimal_delta_layer = None
             self.parameter_update_decrease = torch.tensor(
@@ -2488,7 +2523,9 @@ class GrowingModule(torch.nn.Module):
                 dtype=self.weight.dtype,
             )
             if use_projection and self.previous_module is not None:
-                self.compute_optimal_delta(update=False, dtype=dtype)
+                self.compute_optimal_delta(
+                    update=False, dtype=dtype, use_fisher=use_fisher
+                )
             else:
                 self.delta_raw = None
                 self.parameter_update_decrease = torch.tensor(
@@ -2511,6 +2548,7 @@ class GrowingModule(torch.nn.Module):
                 omega_zero=omega_zero,
                 use_projection=use_projection,
                 ignore_singular_values=ignore_singular_values,
+                use_fisher=use_fisher,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):

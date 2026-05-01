@@ -1222,6 +1222,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             "eigenvalues_extension",
             "tensor_m_prev",
             "cross_covariance",
+            "covariance_loss_gradient",
         ]
 
         # Set up test network using helper method
@@ -1289,6 +1290,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             use_projection=True,
             use_covariance=True,
             alpha_zero=False,
+            use_fisher=True,
         )
 
         self.assertShapeEqual(
@@ -1505,6 +1507,117 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         cov = layer.covariance_loss_gradient()
         self.assertShapeEqual(cov, (out_features, out_features))
+
+    def test_compute_optimal_delta_use_fisher(self):
+        """Smoke test: compute_optimal_delta runs with use_fisher=True."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        layer(x).pow(2).sum().backward()
+        layer.update_computation()
+
+        w, _, fo = layer.compute_optimal_delta(use_fisher=True, update=False)
+        self.assertShapeEqual(w, (out_features, in_features))
+        self.assertGreaterEqual(float(fo), 0.0)
+
+    def test_compute_optimal_added_parameters_use_fisher(self):
+        """Smoke test: rank-k extension runs with use_fisher=True."""
+        in_features, hidden, out_features, batch = 4, 3, 5, 8
+        layer1 = LinearGrowingModule(
+            in_features, hidden, device=global_device(), name="l1"
+        )
+        layer2 = LinearGrowingModule(
+            hidden,
+            out_features,
+            device=global_device(),
+            previous_module=layer1,
+            name="l2",
+        )
+        net = torch.nn.Sequential(layer1, layer2)
+
+        layer1.init_computation()
+        layer2.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        net(x).pow(2).sum().backward()
+        layer1.update_computation()
+        layer2.update_computation()
+
+        alpha_w, _alpha_b = layer2.compute_optimal_updates(use_fisher=True)
+        self.assertEqual(alpha_w.shape[1], in_features)
+        self.assertEqual(layer2.eigenvalues_extension.ndim, 1)
+
+    def test_compute_optimal_delta_use_fisher_closed_form(self):
+        r"""
+        Closed-form delta-test: rank-1 Fisher rescales the optimal delta by 1/||W||^2.
+
+        We use a single LinearGrowingModule of shape 1 -> 2, no bias, identity
+        post-activation, with weight ``W_0 = [[1], [1]]``. Inputs are the
+        balanced batch ``x = [+1, -1]`` so that the empirical second moment
+        ``hat_E[x^2] = 1``.  The loss is ``sum_i 1/2 * ||y_i||^2``; the
+        library normalises sums by `samples` on read.
+
+        Per-sample:
+            h_i = x_i in R,    nabla_s ell_i = W_0 * x_i in R^2.
+
+        Aggregated statistics (with hat_E[x^2] = 1):
+            tensor_s          (= bar_C_h)         = 1
+            tensor_m          (= G^T)             = W_0^T = [[1, 1]]
+            covariance_loss_gradient (= bar_E_s)  = W_0 W_0^T = [[1, 1], [1, 1]]
+                                                  (rank-1, exercises the pinv path)
+
+        Closed-form predictions for delta_raw (shape (cp, cm) = (2, 1)):
+            delta_no_fisher = G * bar_C_h^{-1}                 = W_0       = [[1], [1]]
+            delta_fisher    = bar_E_s^+ * G * bar_C_h^{-1}     = W_0 / ||W_0||^2 = [[0.5], [0.5]]
+        """
+        device = global_device()
+        layer = LinearGrowingModule(
+            1, 2, use_bias=False, device=device, name="closed_form_delta"
+        )
+        layer.layer.weight.data = torch.tensor([[1.0], [1.0]], device=device)
+        W0 = layer.layer.weight.data.clone()
+
+        layer.init_computation()
+        x = torch.tensor([[1.0], [-1.0]], device=device)
+        # Sanity-check: hat E[x^2] = 1 so that bar_C_h = 1.
+        assert torch.isclose((x.flatten() ** 2).mean(), torch.tensor(1.0, device=device))
+
+        y = layer(x)
+        loss = 0.5 * (y**2).sum()
+        loss.backward()
+        layer.update_computation()
+
+        # The recorded statistics must match the closed-form values described
+        # in the docstring; otherwise the rest of the test is meaningless.
+        self.assertAllClose(
+            layer.tensor_s(),
+            torch.tensor([[1.0]], device=device),
+        )
+        self.assertAllClose(layer.tensor_m(), W0.t())
+        self.assertAllClose(
+            layer.covariance_loss_gradient(),
+            W0 @ W0.t(),
+        )
+        # Independent check that bar_E_s is rank 1 (eigvals ~ {||W_0||^2, 0}).
+        eigvals = torch.linalg.eigvalsh(layer.covariance_loss_gradient())
+        assert float(eigvals[0]) < 1e-6 and abs(float(eigvals[1]) - 2.0) < 1e-6, (
+            f"Expected eigvals ~ (0, ||W_0||^2 = 2), got {eigvals.tolist()}"
+        )
+
+        # No-Fisher baseline: delta_raw = W_0.
+        delta_no_f, _, fo_no_f = layer.compute_optimal_delta(
+            use_fisher=False, update=False
+        )
+        self.assertAllClose(delta_no_f, W0)
+        self.assertGreater(float(fo_no_f), 0.0)
+
+        # Fisher: delta_raw = W_0 / ||W_0||^2.
+        delta_f, _, fo_f = layer.compute_optimal_delta(use_fisher=True, update=False)
+        norm_sq = float(W0.pow(2).sum())  # = 2
+        self.assertAllClose(delta_f, W0 / norm_sq)
+        self.assertGreater(float(fo_f), 0.0)
 
     def test_negative_parameter_update_decrease_paths(self):
         """Test that the layer emits the expected warning when parameter_update_decrease is negative.

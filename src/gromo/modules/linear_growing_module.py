@@ -937,6 +937,7 @@ class LinearGrowingModule(GrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -966,6 +967,9 @@ class LinearGrowingModule(GrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the covariance of the loss gradient as an additional
+            preconditioner when computing the neuron extension
 
         Returns
         -------
@@ -993,6 +997,7 @@ class LinearGrowingModule(GrowingModule):
             omega_zero=omega_zero,
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
+            use_fisher=use_fisher,
         )
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1], (
