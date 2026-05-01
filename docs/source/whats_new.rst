@@ -20,6 +20,8 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+
+- Add GradMax normalization details and associated tests for update scaling behavior (:gh:`242` by `Pako Maxence TEKOU`_)
 - Introduce decoupled scaling factors for GrowingModule behavior, separating scaling for the optimal-delta update, the input extension, and the output extension (:gh:`245` by `Théo Rudkiewicz`_).
 - Introduce VGG-like growing architecture support with the `VGG` class (:gh:`236` by `Hugo Mousset`_)
 - Adds support for selecting GroupNorm as the normalization layer in the ResNet container, alongside the existing BatchNorm option (:gh:`233` by `Théo Rudkiewicz`_).
@@ -136,3 +138,4 @@ API changes
 .. _Félix Houdouin: https://github.com/Edarfix
 .. _Hugo Mousset: https://github.com/hmousset
 .. _ferdinandlouapre: https://github.com/ferdinandlouapre
+.. _Pako Maxence TEKOU: https://github.com/maxencelebaron

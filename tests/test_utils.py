@@ -8,6 +8,7 @@ from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.training_utils import evaluate_dataset
 from gromo.utils.utils import (
+    ReLUDerivativeOneAtZero,
     activation_fn,
     batch_gradient_descent,
     calculate_true_positives,
@@ -135,8 +136,39 @@ class TestUtils(TorchTestCase):
         self.assertIsInstance(activation_fn("Softmax"), nn.Softmax)
         self.assertIsInstance(activation_fn("SELU"), nn.SELU)
         self.assertIsInstance(activation_fn("RELU"), nn.ReLU)
+        self.assertIsInstance(
+            activation_fn("relu_derivative_one_at_zero"), ReLUDerivativeOneAtZero
+        )
         with self.assertRaises(ValueError):
             activation_fn("UnknownActivation")
+
+    def test_relu_derivative_one_at_zero_backward(self) -> None:
+        """f'(0)=1 convention: gradient flows when pre-activation is exactly 0."""
+        m = ReLUDerivativeOneAtZero()
+        device = global_device()
+
+        # Forward matches standard ReLU everywhere.
+        x_fwd = torch.tensor([-2.0, 0.0, 0.5, 3.0], device=device)
+        self.assertTrue(torch.all(torch.eq(m(x_fwd), torch.relu(x_fwd))))
+
+        # At x == 0, our module passes gradient; nn.ReLU does not (PyTorch uses x > 0).
+        x = torch.zeros(3, requires_grad=True, device=device)
+        y = m(x)
+        y.sum().backward()
+        self.assertIsNotNone(x.grad)
+        self.assertTrue(torch.allclose(x.grad, torch.ones_like(x)))
+
+        z = torch.zeros(2, requires_grad=True, device=device)
+        torch.nn.ReLU()(z).sum().backward()
+        self.assertIsNotNone(z.grad)
+        self.assertTrue(torch.all(z.grad == 0.0))
+
+        x_neg = torch.tensor([-1.0, 0.0, 1.0], requires_grad=True, device=device)
+        y2 = m(x_neg)
+        y2.sum().backward()
+        self.assertIsNotNone(x_neg.grad)
+        expected = torch.tensor([0.0, 1.0, 1.0], device=device)
+        self.assertTrue(torch.allclose(x_neg.grad, expected))
 
     def test_mini_batch_gradient_descent(self) -> None:
         # Test on each available device
