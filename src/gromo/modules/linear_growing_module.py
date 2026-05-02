@@ -639,7 +639,7 @@ class LinearGrowingModule(GrowingModule):
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the empirical Fisher / gradient covariance
-        E_s := dA^T dA on the output-channel axis.
+        :math:`E_s := dA^T dA` on the output-channel axis.
 
         Returns
         -------

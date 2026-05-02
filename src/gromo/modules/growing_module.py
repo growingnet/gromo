@@ -1725,8 +1725,8 @@ class GrowingModule(torch.nn.Module):
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the empirical Fisher / gradient covariance
-        E_s := dA^T dA summed over the batch (and over spatial positions for
-        convolutional layers), i.e. the sum of per-sample outer products.
+        :math:`E_s = dA^T dA` summed over the batch (and over spatial positions
+        for convolutional layers), i.e. the sum of per-sample outer products.
         Should be implemented by each layer type.
 
         Returns
