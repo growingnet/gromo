@@ -3952,6 +3952,94 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
                     msg="No scaling should be applied when target norm is zero.",
                 )
 
+        with self.subTest(case="match_extending_layer"):
+            # match_extending_layer:
+            # Omega <- std(W_out)/std(Omega) * Omega => std(Omega_new) = std(W_out)
+            # Alpha <- std(W_in)/std(Alpha) * Alpha  => std(Alpha_new) = std(W_in)
+            # dW    <- std(W_out)/std(dW) * dW       => std(dW_new)    = std(W_out)
+            std_weights, std_delta, std_alpha, std_omega = 2.0, 3.0, 5.0, 7.0
+            layer_out = setup_layers_with_known_stds(
+                std_weights, std_delta, std_alpha, std_omega
+            )
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            std_weights_in = layer_out.previous_module.layer.weight.std().item()
+
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="match_extending_layer"
+            )
+
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="Omega should be scaled to std(W_out)",
+            )
+            assert isinstance(
+                layer_out.previous_module.extended_output_layer, torch.nn.Linear
+            )
+            self.assertAlmostEqual(
+                layer_out.previous_module.extended_output_layer.weight.std().item(),
+                std_weights_in,
+                places=5,
+                msg="Alpha should be scaled to std(W_in)",
+            )
+            assert isinstance(layer_out.optimal_delta_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.optimal_delta_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="dW should be scaled to std(W_out)",
+            )
+
+        with self.subTest(case="match_extending_layer_no_previous_module"):
+            layer_out = set_up_network_for_normalization_test()
+            layer_out.previous_module = None
+            with self.assertRaises(ValueError):
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="match_extending_layer"
+                )
+
+        with self.subTest(case="match_extending_layer_missing_components"):
+            # None components must be skipped without error.
+            layer_out = setup_layers_with_known_stds(2.0, 3.0, 5.0, 7.0)
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            prev = layer_out.previous_module
+
+            layer_out.optimal_delta_layer = None
+            layer_out.extended_input_layer = None
+
+            assert isinstance(prev.extended_output_layer, torch.nn.Linear)
+            alpha_std_before = prev.extended_output_layer.weight.std().item()
+
+            # Should not raise even though two of the three components are None.
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="match_extending_layer"
+            )
+
+            # Alpha is applied via scale_layer_extension which requires
+            # extended_input_layer to be set; here it stays untouched.
+            self.assertAlmostEqual(
+                prev.extended_output_layer.weight.std().item(),
+                alpha_std_before,
+                places=5,
+            )
+
+        with self.subTest(case="match_extending_layer_zero_std_previous_layer"):
+            # A previous layer whose weights have std == 0 (or no weights) should
+            # fall back to the kaiming-like std via the extension's fan-in instead
+            # of raising.
+            layer_out = setup_layers_with_known_stds(2.0, 3.0, 5.0, 7.0)
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            # Zero out the previous layer's weights to force the fallback path.
+            layer_out.previous_module.layer.weight.data.zero_()
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="match_extending_layer"
+                )
+
 
 class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
     """Test create_layer_extensions method for LinearGrowingModule."""
