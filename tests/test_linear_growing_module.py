@@ -1492,6 +1492,20 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertIsInstance(m_result, torch.Tensor)
         self.assertGreater(m_samples, 0)
 
+    def test_covariance_loss_gradient_shape(self):
+        """Minimal smoke test: covariance_loss_gradient is accessible and (cp, cp)."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        loss = layer(x).pow(2).sum()
+        loss.backward()
+        layer.update_computation()
+
+        cov = layer.covariance_loss_gradient()
+        self.assertShapeEqual(cov, (out_features, out_features))
+
     def test_negative_parameter_update_decrease_paths(self):
         """Test that the layer emits the expected warning when parameter_update_decrease is negative.
 

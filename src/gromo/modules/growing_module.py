@@ -892,6 +892,15 @@ class GrowingModule(torch.nn.Module):
             device=self.device,
             name=f"C({self.name})",
         )
+        # Empirical Fisher / gradient covariance of the pre-activity on the
+        # output-channel axis: E[g g^T] for per-sample gradient vectors g,
+        # equivalently E[dA^T dA] for batched dA. Shape (cp, cp).
+        self.covariance_loss_gradient = TensorStatistic(
+            None,
+            update_function=self.compute_covariance_loss_gradient_update,
+            device=self.device,
+            name=f"E({self.name})",
+        )
 
     @property
     def in_neurons(self) -> int:
@@ -1222,6 +1231,7 @@ class GrowingModule(torch.nn.Module):
         self.tensor_m.updated = False
         self.tensor_m_prev.updated = False
         self.cross_covariance.updated = False
+        self.covariance_loss_gradient.updated = False
         if isinstance(self.previous_module, GrowingModule):
             # TODO: change this condition by using self._allow_growing
             self.tensor_s_growth.updated = False
@@ -1700,6 +1710,29 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             update of the tensor N
+        int
+            number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            abstract method
+        """
+        raise NotImplementedError
+
+    def compute_covariance_loss_gradient_update(
+        self,
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the empirical Fisher / gradient covariance
+        :math:`E_s = dA^T dA` summed over the batch (and over spatial positions
+        for convolutional layers), i.e. the sum of per-sample outer products.
+        Should be implemented by each layer type.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the gradient covariance, shape (cp, cp)
         int
             number of samples used to compute the update
 
@@ -2493,6 +2526,7 @@ class GrowingModule(torch.nn.Module):
         self.store_pre_activity = True
         self.tensor_s.init()
         self.tensor_m.init()
+        self.covariance_loss_gradient.init()
         if self.previous_module is None:
             return
         elif isinstance(self.previous_module, GrowingModule):
@@ -2511,6 +2545,7 @@ class GrowingModule(torch.nn.Module):
         """
         self.tensor_s.update()
         self.tensor_m.update()
+        self.covariance_loss_gradient.update()
         if self.previous_module is None:
             return
         elif isinstance(self.previous_module, GrowingModule):
@@ -2530,6 +2565,7 @@ class GrowingModule(torch.nn.Module):
         self.store_pre_activity = False
         self.tensor_s.reset()
         self.tensor_m.reset()
+        self.covariance_loss_gradient.reset()
         if self.previous_module is None:
             return
         elif isinstance(self.previous_module, GrowingModule):

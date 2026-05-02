@@ -1058,6 +1058,34 @@ class Conv2dGrowingModule(GrowingModule):
             self.input.shape[0],
         )
 
+    def compute_covariance_loss_gradient_update(
+        self,
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the empirical Fisher / gradient covariance
+        E_s := sum_{i,h,w} dA_{i,a,h,w} dA_{i,b,h,w} on the output-channel axis.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the gradient covariance, shape (out_channels, out_channels)
+        int
+            number of samples used to compute the update
+        """
+        assert self.store_pre_activity, (
+            f"The pre-activity must be stored to compute the update of the "
+            f"gradient covariance. (error in {self.name})"
+        )
+        desired_activation = self.pre_activity.grad
+        assert isinstance(desired_activation, torch.Tensor), (
+            f"The gradient of the pre-activity must be a torch.Tensor "
+            f"(error in {self.name})."
+        )
+        return (
+            torch.einsum("iahw,ibhw->ab", desired_activation, desired_activation),
+            self.input.shape[0],
+        )
+
     # Layer edition
     def layer_of_tensor(
         self,
