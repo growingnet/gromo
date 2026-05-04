@@ -60,10 +60,10 @@ def optimal_delta(
     """
     Compute the optimal delta for the layer using current S and M tensors.
 
-    dW* = (S[-1]^-1 M)^T (if needed we use the pseudo-inverse). When the empirical
+    :math:`dW^* = (S[-1]^-1 M)^T` (if needed we use the pseudo-inverse). When the empirical
     Fisher / gradient covariance E_s is provided via
     ``tensor_covariance_loss_gradient``, the natural-gradient-like preconditioned
-    update is used instead: dW* = (S^-1 M E_s^-1)^T = E_s^-1 M^T S^-1.
+    update is used instead: :math:`dW^* = (S^-1 M E_s^-1)^T = E_s^-1 M^T S^-1`.
 
     Compute dW* (and dBias* if needed).
     L(A + gamma * B * dW) = L(A) - gamma * d + o(gamma)

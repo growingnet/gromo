@@ -2184,14 +2184,14 @@ class GrowingModule(torch.nn.Module):
         force_pseudo_inverse: bool = False,
         use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]:
-        """
+        r"""
         Compute the optimal delta for the layer using current S and M tensors.
 
         With ``tensor_m`` shaped ``(in_features(+bias), out_features)``, the raw
         optimal update returned by ``optimal_delta`` corresponds to
-        ``(S^-1 M)^T``, using the pseudo-inverse of ``S`` when needed.
+        :math:`(S^-1 M)^T`, using the pseudo-inverse of ``S`` when needed.
         When ``use_fisher`` is True, the empirical Fisher / gradient covariance
-        ``E_s = E[dA dA^T]`` is used as an output-feature left preconditioner, so
+        :math:`E_s = \mathbb{E}[dA dA^T]` is used as an output-feature left preconditioner, so
         the update is correspondingly preconditioned on the output side.
 
         Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
