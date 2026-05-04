@@ -29,22 +29,22 @@ class GrowingBlock(GrowingContainer):
 
     Parameters
     ----------
-    first_layer : GrowingModule
+    first_layer: GrowingModule
         first layer of the block
-    second_layer : GrowingModule
+    second_layer: GrowingModule
         second layer of the block
-    in_features : int
+    in_features: int
         number of input features, in case of convolutional layer,
         the number of channels
-    out_features : int
+    out_features: int
         number of output features
-    pre_activation : torch.nn.Module
+    pre_activation: torch.nn.Module
         activation function to use before the first layer
-    name : str
+    name: str
         name of the block
-    downsample : torch.nn.Module
+    downsample: torch.nn.Module
         operation to apply on the residual stream
-    device : torch.device | None
+    device: torch.device | None
         device to use for the block
     """
 
@@ -388,7 +388,7 @@ class GrowingBlock(GrowingContainer):
 
         Parameters
         ----------
-        factor : float
+        factor: float
             scaling factor
         """
         self.second_layer.set_scaling_factor(factor)
@@ -592,6 +592,9 @@ class GrowingBlock(GrowingContainer):
         input_extension_size: int | None = None,
         output_extension_init: str = "copy_uniform",
         input_extension_init: str = "copy_uniform",
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
+        noise_ratio: float = 0.001,
     ) -> None:
         """
         Create the layer input and output extensions of given sizes.
@@ -603,19 +606,30 @@ class GrowingBlock(GrowingContainer):
         Parameters
         ----------
         extension_size: int
-            size of the extension to create
+            Size of the extension to create.
         output_extension_size: int | None
-            size of the output extension to create, if None use extension_size
+            Size of the output extension to create, if ``None`` use
+            *extension_size*.
         input_extension_size: int | None
-            size of the input extension to create, if None use extension_size
+            Size of the input extension to create, if ``None`` use
+            *extension_size*.
         output_extension_init: str
-            Initialization method for the output extension. Possible values include
-            "copy_uniform", "kaiming", "zeros", or other supported initialization
-            strategies.
+            Initialisation method for the output extension.  Possible values
+            include ``"copy_uniform"``, ``"kaiming"``, ``"zeros"``.
         input_extension_init: str
-            Initialization method for the input extension. Possible values include
-            "copy_uniform", "kaiming", "zeros", or other supported initialization
-            strategies.
+            Initialisation method for the input extension.  Possible values
+            include ``"copy_uniform"``, ``"kaiming"``, ``"zeros"``.
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
+            Neuron-pairing strategy.  ``None`` (default) or
+            ``"vv_z_negz"``.
+        rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None
+            Variance-transfer rescaling strategy.  ``None`` (default),
+            ``"default_vt"``, ``"vt_constraint_old_shape"``, or
+            ``"vt_constraint_new_shape"``.
+        noise_ratio: float
+            Fraction of the standard deviation of the input extension weights
+            used as noise for symmetry breaking after neuron pairing.
+            Default ``0.001``.
         """
         self.second_layer.create_layer_extensions(
             extension_size=extension_size,
@@ -623,6 +637,61 @@ class GrowingBlock(GrowingContainer):
             input_extension_size=input_extension_size,
             output_extension_init=output_extension_init,
             input_extension_init=input_extension_init,
+            neuron_pairing=neuron_pairing,
+            rescaling=rescaling,
+            noise_ratio=noise_ratio,
+        )
+
+    def apply_rescaling(
+        self,
+        rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        extension_size: int | None = None,
+    ) -> None:
+        """Rescale existing weights via the second layer.
+
+        Delegates to ``self.second_layer.apply_rescaling``.  Intended for
+        the FOGRO path, where rescaling is called separately from extension
+        creation.
+
+        Parameters
+        ----------
+        rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None
+            Rescaling strategy.
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
+            Neuron-pairing strategy (needed to compute effective extension
+            size).
+        extension_size: int | None
+            Extension size override.
+        """
+        self.second_layer.apply_rescaling(
+            rescaling=rescaling,
+            neuron_pairing=neuron_pairing,
+            extension_size=extension_size,
+        )
+
+    def apply_neuron_pairing(
+        self,
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        noise_ratio: float = 0.001,
+    ) -> None:
+        """Apply neuron pairing via the second layer.
+
+        Delegates to ``self.second_layer.apply_neuron_pairing``.  Intended
+        for the FOGRO path, where pairing is called separately from
+        extension creation.
+
+        Parameters
+        ----------
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
+            Pairing strategy.
+        noise_ratio: float
+            Fraction of the standard deviation of the input extension weights
+            used as the noise level for symmetry breaking.  Default ``0.001``.
+        """
+        self.second_layer.apply_neuron_pairing(
+            neuron_pairing=neuron_pairing,
+            noise_ratio=noise_ratio,
         )
 
     def normalize_optimal_updates(self, **kwargs: Any) -> None:
@@ -650,11 +719,11 @@ class GrowingBlock(GrowingContainer):
 
         Parameters
         ----------
-        **kwargs : Any
-            method : str
+        **kwargs: Any
+            method: str
                 Method to use for determining the number of neurons to add.
                 Options are "fixed_proportional".
-            number_of_growth_steps : int
+            number_of_growth_steps: int
                 Number of growth steps planned, used only if method is "proportional".
 
         Returns
@@ -669,7 +738,7 @@ class GrowingBlock(GrowingContainer):
 
         Parameters
         ----------
-        **extension_kwargs : Any
+        **extension_kwargs: Any
             Keyword arguments for the extension procedure.
         """
         self.second_layer.complete_growth(**extension_kwargs)
@@ -681,36 +750,36 @@ class LinearGrowingBlock(GrowingBlock):
 
     Parameters
     ----------
-    in_features : int
+    in_features: int
         number of input channels
-    out_features : int
+    out_features: int
         number of output channels
-    hidden_features : int
+    hidden_features: int
         number of hidden features, if zero the block is the zero function
     target_hidden_features: int | None, optional
         target hidden features, by default None
-    activation : torch.nn.Module | None
+    activation: torch.nn.Module | None
         activation function to use, if None use the identity function
-    pre_activation : torch.nn.Module | None
+    pre_activation: torch.nn.Module | None
         activation function to use before the first layer,
         if None use the activation function
-    mid_activation : torch.nn.Module | None
+    mid_activation: torch.nn.Module | None
         activation function to use between the two layers,
         if None use the activation function
-    pre_addition_function : torch.nn.Module
+    pre_addition_function: torch.nn.Module
         activation function to use before the addition with the identity,
         if None use the identity function
-    name : str
+    name: str
         name of the block
-    kwargs_layer : dict | None
+    kwargs_layer: dict | None
         dictionary of arguments for the layers (e.g. bias, ...)
-    kwargs_first_layer : dict | None
+    kwargs_first_layer: dict | None
         dictionary of arguments for the first layer, if None use kwargs_layer
-    kwargs_second_layer : dict | None
+    kwargs_second_layer: dict | None
         dictionary of arguments for the second layer, if None use kwargs_layer
-    downsample : torch.nn.Module
+    downsample: torch.nn.Module
         operation to apply on the residual stream
-    device : torch.device | None
+    device: torch.device | None
         device to use for the block
     """
 
@@ -787,40 +856,40 @@ class Conv2dGrowingBlock(GrowingBlock):
 
     Parameters
     ----------
-    in_channels : int
+    in_channels: int
         number of input channels
-    out_channels : int
+    out_channels: int
         number of output channels
-    kernel_size : int | tuple[int, int] | None
+    kernel_size: int | tuple[int, int] | None
         size of the convolutional kernel
-    hidden_channels : int
+    hidden_channels: int
         number of hidden channels, if zero the block is the zero function
-    target_hidden_channels : int | None, optional
+    target_hidden_channels: int | None, optional
         target hidden channels, by default None
-    activation : torch.nn.Module | None
+    activation: torch.nn.Module | None
         activation function to use, if None use the identity function
-    pre_activation : torch.nn.Module | None
+    pre_activation: torch.nn.Module | None
         activation function to use before the first layer,
         if None use the activation function
-    mid_activation : torch.nn.Module | None
+    mid_activation: torch.nn.Module | None
         activation function to use between the two layers,
         if None use the activation function
-    pre_addition_function : torch.nn.Module
+    pre_addition_function: torch.nn.Module
         activation function to use before the addition with the identity,
         if None use the identity function
-    name : str
+    name: str
         name of the block
-    kwargs_layer : dict | None
+    kwargs_layer: dict | None
         dictionary of arguments for the layers (e.g. use_bias, ...)
-    kwargs_first_layer : dict | None
+    kwargs_first_layer: dict | None
         dictionary of arguments for the first layer, if None use kwargs_layer
-    kwargs_second_layer : dict | None
+    kwargs_second_layer: dict | None
         dictionary of arguments for the second layer, if None use kwargs_layer
-    downsample : torch.nn.Module
+    downsample: torch.nn.Module
         operation to apply on the residual stream
-    growing_conv_type : type[Conv2dGrowingModule]
+    growing_conv_type: type[Conv2dGrowingModule]
         type of convolutional growing module to use, default is RestrictedConv2dGrowingModule
-    device : torch.device | None
+    device: torch.device | None
         device to use for the block
 
     Raises

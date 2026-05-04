@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Iterator, Protocol, runtime_checkable
+from typing import Any, Iterator, Literal, Protocol, get_args, runtime_checkable
 
 import numpy as np
 import torch
@@ -212,15 +212,15 @@ class MergeGrowingModule(torch.nn.Module):
         elif verbose >= 2:
             txt = [
                 f"{self.__class__.__name__} module.",
-                f"\tPrevious modules : {self.previous_modules}",
-                f"\tNext modules : {self.next_modules}",
-                f"\tPost merge function : {self.post_merge_function}",
-                f"\tAllow growing : {self._allow_growing}",
-                f"\tStore input : {self.store_input}",
-                f"\tStore activity : {self.store_activity}",
-                f"\tTensor S : {self.tensor_s}",
-                f"\tPrevious tensor S : {self.previous_tensor_s}",
-                f"\tPrevious tensor M : {self.previous_tensor_m}",
+                f"\tPrevious modules: {self.previous_modules}",
+                f"\tNext modules: {self.next_modules}",
+                f"\tPost merge function: {self.post_merge_function}",
+                f"\tAllow growing: {self._allow_growing}",
+                f"\tStore input: {self.store_input}",
+                f"\tStore activity: {self.store_activity}",
+                f"\tTensor S: {self.tensor_s}",
+                f"\tPrevious tensor S: {self.previous_tensor_s}",
+                f"\tPrevious tensor M: {self.previous_tensor_m}",
             ]
             return "\n".join(txt)
         else:
@@ -235,7 +235,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        x : torch.Tensor
+        x: torch.Tensor
             input tensor
 
         Returns
@@ -497,7 +497,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        extension_size : int
+        extension_size: int
             size of extension
         """
         if isinstance(self.post_merge_function, torch.nn.Sequential):
@@ -576,7 +576,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        recurse : bool, optional
+        recurse: bool, optional
             use recursion, by default True
 
         Returns
@@ -591,7 +591,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        with_bias : bool, optional
+        with_bias: bool, optional
             add bias to the sum, by default False
 
         Returns
@@ -1107,7 +1107,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        factor : float
+        factor: float
             scaling factor
         """
         self.scaling_factor = factor  # type: ignore
@@ -1124,19 +1124,19 @@ class GrowingModule(torch.nn.Module):
         elif verbose >= 2:
             txt = [
                 f"{self.name} module with {self.number_of_parameters()} parameters.",
-                f"\tLayer : {self.layer}",
-                f"\tPost layer function : {self.post_layer_function}",
-                f"\tAllow growing : {self._allow_growing}",
-                f"\tStore input : {self.store_input}",
+                f"\tLayer: {self.layer}",
+                f"\tPost layer function: {self.post_layer_function}",
+                f"\tAllow growing: {self._allow_growing}",
+                f"\tStore input: {self.store_input}",
                 f"\t{self._internal_store_input=}",
-                f"\tStore pre-activity : {self.store_pre_activity}",
+                f"\tStore pre-activity: {self.store_pre_activity}",
                 f"\t{self._internal_store_pre_activity=}",
-                f"\tTensor S (internal) : {self._tensor_s}",
-                f"\tTensor S : {self.tensor_s}",
-                f"\tTensor M : {self.tensor_m}",
-                f"\tOptimal delta layer : {self.optimal_delta_layer}",
-                f"\tExtended input layer : {self.extended_input_layer}",
-                f"\tExtended output layer : {self.extended_output_layer}",
+                f"\tTensor S (internal): {self._tensor_s}",
+                f"\tTensor S: {self.tensor_s}",
+                f"\tTensor M: {self.tensor_m}",
+                f"\tOptimal delta layer: {self.optimal_delta_layer}",
+                f"\tExtended input layer: {self.extended_input_layer}",
+                f"\tExtended output layer: {self.extended_output_layer}",
             ]
             return "\n".join(txt)
         else:
@@ -1922,7 +1922,7 @@ class GrowingModule(torch.nn.Module):
         sub_select_previous: bool
             if True, sub-select the previous layer added parameters as well
         zeros_if_not_enough: bool
-            if True, will keep the all neurons and set the non selected ones to zero
+            if True, will keep all the neurons and set the non selected ones to zero
             (either first or last depending on zeros_fan_in and zeros_fan_out)
         zeros_fan_in: bool
             if True and zeros_if_not_enough is True, will set the non selected
@@ -2047,7 +2047,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        extension_size : int
+        extension_size: int
             size of extension
         """
         if isinstance(self.post_layer_function, torch.nn.Sequential):
@@ -2632,13 +2632,13 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        include_previous : bool, optional
+        include_previous: bool, optional
             delete the extended_output_layer of the previous layer, by default True
-        delete_delta : bool, optional
+        delete_delta: bool, optional
             delete the optimal_delta_layer of the module, by default True
-        delete_input : bool, optional
+        delete_input: bool, optional
             delete the extended_input_layer of this module, by default True
-        delete_output : bool, optional
+        delete_output: bool, optional
             delete the extended_output_layer of this layer, by default False
             warning: this does not delete the extended_input_layer of the next layer
 
@@ -2769,7 +2769,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        scale : float
+        scale: float
             The factor by which to scale the parameter update.
         """
         if self.optimal_delta_layer is not None:
@@ -2784,9 +2784,9 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        layer : torch.nn.Module
+        layer: torch.nn.Module
             The layer whose parameters are to be scaled.
-        scale : float
+        scale: float
             The factor by which to scale the layer's parameters.
 
         Returns
@@ -2815,13 +2815,13 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        scale : float | None
+        scale: float | None
             The factor by which to scale the layer extension.
             If not None, replace both scale_input and scale_output
             if they are not None.
-        scale_output : float | None
+        scale_output: float | None
             The factor by which to scale the layer output extension.
-        scale_input : float | None
+        scale_input: float | None
             The factor by which to scale the layer input extension.
             If not None, scale must be None.
 
@@ -2853,15 +2853,19 @@ class GrowingModule(torch.nn.Module):
         if self.eigenvalues_extension is not None:
             self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
 
-    @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Module) -> int:
+    def get_fan_in_from_layer(
+        self, layer: torch.nn.Module | None = None, num_neurons: int | None = None
+    ) -> int:
         """
-        Get the fan_in (number of input features) from a given layer.
+        Get the fan_in (number of input features) from a given layer
+        or from a given number of neurons.
 
         Parameters
         ----------
-        layer: torch.nn.Module
+        layer: torch.nn.Module | None
             layer to get the fan_in from
+        num_neurons: int | None
+            number of neurons in the layer
 
         Returns
         -------
@@ -2940,14 +2944,14 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        std_target : float | None
+        std_target: float | None
             target standard deviation for the weights of the updates. Ignored
             when ``normalization_type == "match_extending_layer"``.
-        normalization_type : str
+        normalization_type: str
             type of normalization to use, one of 'equalize_second_layer',
             'equalize_extensions', 'match_extending_layer', 'weird_normalization',
             'legacy_normalization', 'gradmax_normalization'
-        gradmax_scale : float
+        gradmax_scale: float
             For ``gradmax_normalization`` only: scalar :math:`s` in :math:`c = s \\cdot \\text{mean}(\\|W_i\\|)`.
             Must be positive. Default ``1.0``.
 
@@ -3223,6 +3227,275 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
+    # ------------------------------------------------------------------
+    # Variance-transfer rescaling and neuron pairing
+    # ------------------------------------------------------------------
+
+    _KNOWN_RESCALING_STRATEGIES_TYPE = Literal[
+        "default_vt", "vt_constraint_old_shape", "vt_constraint_new_shape"
+    ]
+    _KNOWN_NEURON_PAIRINGS_TYPE = Literal["vv_z_negz"]
+
+    @staticmethod
+    @torch.no_grad()
+    def _rescale_post_layer_function(
+        post_layer_fn: torch.nn.Module,
+        scale: float,
+    ) -> None:
+        """Rescale BatchNorm running statistics to match a weight scaling.
+
+        When existing weights are multiplied by *scale*, the BatchNorm
+        running mean must be multiplied by *scale* and the running variance
+        by *scale*^2 so that the normalised output remains consistent.
+
+        Parameters
+        ----------
+        post_layer_fn: torch.nn.Module
+            The post-layer function (may contain BatchNorm sub-modules).
+        scale: float
+            Multiplicative factor that was applied to the preceding layer's
+            weights.
+        """
+        for m in post_layer_fn.modules():
+            if isinstance(m, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d)):
+                if m.running_mean is not None:
+                    m.running_mean.mul_(scale)
+                if m.running_var is not None:
+                    m.running_var.mul_(scale**2)
+
+    @torch.no_grad()
+    def apply_rescaling(
+        self,
+        rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        extension_size: int | None = None,
+    ) -> None:
+        """Rescale existing weights in-place before extension concatenation.
+
+        Implements three variance-transfer strategies from [1]_:
+
+        * ``"default_vt"`` (Strategy A): beta = sqrt(fan_in_old / fan_in_new),
+          alpha = 1 (the previous layer input is not extended).
+        * ``"vt_constraint_old_shape"`` (Strategy B): alpha and beta chosen so
+          that V[W] = 1 / fan_in_old after rescaling.
+        * ``"vt_constraint_new_shape"`` (Strategy C): alpha and beta chosen so
+          that V[W] = 1 / fan_in_new after rescaling.
+
+        ``"none"`` is a no-op.
+
+        The current layer (*self*) is the one whose fan_in grows (Conv2 in a
+        block context).  The previous layer has its fan_out grow (Conv1).
+
+        Parameters
+        ----------
+        rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None
+            Rescaling strategy.  One of ``"default_vt"``,
+            ``"vt_constraint_old_shape"``, ``"vt_constraint_new_shape"``.
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
+            Neuron-pairing strategy that will be applied *after* rescaling.
+            Validated for unknown values but no longer influences the
+            fan-in computation — ``extension_size`` is the final size.
+            One of ``"none"``, ``"vv_z_negz"``.
+        extension_size: int | None
+            Final number of neurons in the extension (pairing included).
+            If ``None``, the size is read from the existing
+            ``extended_input_layer``.
+
+        Raises
+        ------
+        ValueError
+            If *rescaling* or *neuron_pairing* is not a recognised strategy.
+
+        References
+        ----------
+        .. [1] Yuan et al., "Accelerated Training via Incrementally
+           Growing Neural Networks using Variance Transfer and Learning Rate
+           Adaptation", 2024.
+        """
+        if rescaling is None:
+            return
+        if rescaling not in get_args(GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE):
+            raise ValueError(
+                f"Unknown rescaling strategy '{rescaling}'. "
+                f"Available: {get_args(GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE)}."
+            )
+        if neuron_pairing is not None and neuron_pairing not in get_args(
+            GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE
+        ):
+            raise ValueError(
+                f"Unknown neuron pairing '{neuron_pairing}'. "
+                f"Available: {get_args(GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE)}."
+            )
+
+        # When in_neurons == 0 (e.g. hidden_channels=0), there are no
+        # existing weights to rescale — nothing to do.
+        if self.in_neurons == 0:
+            return
+
+        # --- Determine extension size ---
+        if extension_size is not None:
+            ext_size = extension_size
+        elif self.extended_input_layer is not None:
+            # Input extension shape: (out, ext_channels, *kernel)
+            ext_size = self.extended_input_layer.weight.shape[1]
+        else:
+            ext_size = 0
+
+        # --- Fan-in values ---
+        fan_in_self_old = self.get_fan_in_from_layer(self.layer)
+
+        # --- Extended Fan-in values --
+        # ext_size is the final extension size, pairing included
+        fan_in_extension = self.get_fan_in_from_layer(num_neurons=ext_size)
+
+        fan_in_self_new = fan_in_self_old + fan_in_extension
+
+        assert isinstance(self.previous_module, GrowingModule), (
+            f"apply_rescaling requires a GrowingModule as previous_module, "
+            f"got {type(self.previous_module)}."
+        )
+        fan_in_prev = self.previous_module.get_fan_in_from_layer(
+            self.previous_module.layer
+        )
+
+        # --- Compute alpha (previous layer) and beta (current layer) ---
+        if rescaling == "default_vt":
+            alpha = 1.0
+            beta = (fan_in_self_old / fan_in_self_new) ** 0.5
+
+        elif rescaling == "vt_constraint_old_shape":
+            var_w_prev = self.previous_module.weight.var().item()
+            var_w_self = self.weight.var().item()
+            alpha = (1.0 / (fan_in_prev * var_w_prev) if var_w_prev > 0 else 1.0) ** 0.5
+            beta = (
+                1.0 / (fan_in_self_old * var_w_self) if var_w_self > 0 else 1.0
+            ) ** 0.5
+
+        elif rescaling == "vt_constraint_new_shape":
+            var_w_prev = self.previous_module.weight.var().item()
+            var_w_self = self.weight.var().item()
+            alpha = (1.0 / (fan_in_prev * var_w_prev) if var_w_prev > 0 else 1.0) ** 0.5
+            beta = (
+                1.0 / (fan_in_self_new * var_w_self) if var_w_self > 0 else 1.0
+            ) ** 0.5
+        else:
+            # this should not be reached
+            raise ValueError(
+                f"Unknown rescaling strategy '{rescaling}'. "
+                f"Available: {get_args(GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE)}."
+            )
+
+        # --- Mutate weights in-place ---
+        if alpha != 1.0:
+            self.previous_module.weight.data.mul_(alpha)
+            if self.previous_module.bias is not None:
+                self.previous_module.bias.data.mul_(alpha)
+            self._rescale_post_layer_function(
+                self.previous_module.post_layer_function, alpha
+            )
+
+        if beta != 1.0:
+            self.weight.data.mul_(beta)
+            if self.bias is not None:
+                self.bias.data.mul_(beta)
+            self._rescale_post_layer_function(self.post_layer_function, beta)
+
+    @torch.no_grad()
+    def apply_neuron_pairing(
+        self,
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        noise_ratio: float = 0.001,
+    ) -> None:
+        """Fill the second half of the extensions according to the pairing rule.
+
+        The extension layers are expected to already have their **final**
+        (even) size.  Only the first half (``[: dh // 2]`` rows / columns)
+        must be initialised; the second half is overwritten in place:
+
+        * Output extension (previous layer): V -> (V, V).
+          The first ``dh // 2`` rows are left untouched; the second
+          ``dh // 2`` rows are copies of the first half.
+        * Input extension (current layer): Z -> (Z, -Z).
+          The first ``dh_in // 2`` columns are left untouched; the second
+          ``dh_in // 2`` columns are negated copies of the first half.
+
+        At initialisation this ensures the net contribution of new neurons is
+        zero, preserving the function represented by the network.  A small
+        amount of noise is then added to the full input extension weight to
+        break the symmetry between paired neurons, allowing them to learn
+        different features during training.
+
+        Must be called **after** extensions are created and initialised.
+
+        Parameters
+        ----------
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
+            Pairing strategy.  One of ``"none"``, ``"vv_z_negz"``.
+        noise_ratio: float
+            Fraction of the standard deviation of the input extension weights
+            used as the noise level for symmetry breaking.  Set to ``0`` to
+            disable noise (exact function preservation).  Default ``0.001``.
+
+        Raises
+        ------
+        ValueError
+            If *neuron_pairing* is not a recognised strategy, or if one of
+            the extensions has an odd leading dimension.
+        RuntimeError
+            If the required extension layers do not exist.
+        """
+        if neuron_pairing is None:
+            return
+
+        if neuron_pairing not in get_args(GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE):
+            raise ValueError(
+                f"Unknown neuron pairing '{neuron_pairing}'. "
+                f"Available: {get_args(GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE)}."
+            )
+        assert isinstance(self.previous_module, GrowingModule), (
+            f"apply_neuron_pairing requires a GrowingModule as "
+            f"previous_module, got {type(self.previous_module)}."
+        )
+
+        # --- Output extension: V -> (V, V) ---
+        ext_out = self.previous_module.extended_output_layer
+        if ext_out is None:
+            raise RuntimeError(
+                "Cannot apply neuron pairing: previous module has "
+                "no extended_output_layer."
+            )
+        dh = ext_out.weight.shape[0]
+        if dh % 2 != 0:
+            raise ValueError(
+                f"apply_neuron_pairing requires an even-sized output "
+                f"extension, got dh={dh}."
+            )
+        half_out = dh // 2
+        ext_out.weight.data[half_out:].copy_(ext_out.weight.data[:half_out])
+        if ext_out.bias is not None:
+            ext_out.bias.data[half_out:].copy_(ext_out.bias.data[:half_out])
+
+        # --- Input extension: Z -> (Z, -Z) ---
+        ext_in = self.extended_input_layer
+        if ext_in is None:
+            raise RuntimeError(
+                "Cannot apply neuron pairing: current module has no extended_input_layer."
+            )
+        dh_in = ext_in.weight.shape[1]
+        if dh_in % 2 != 0:
+            raise ValueError(
+                f"apply_neuron_pairing requires an even-sized input "
+                f"extension, got dh_in={dh_in}."
+            )
+        half_in = dh_in // 2
+        ext_in.weight.data[:, half_in:].copy_(-ext_in.weight.data[:, :half_in])
+        # Input extension bias is always False (no bias on fan-in side)
+
+        # --- Symmetry-breaking noise on input extension ---
+        if noise_ratio > 0:
+            noise_std = noise_ratio * ext_in.weight.data.std()
+            ext_in.weight.data.add_(torch.randn_like(ext_in.weight.data) * noise_std)
+
     @torch.no_grad()
     def copy_uniform_initialization(
         self,
@@ -3293,36 +3566,74 @@ class GrowingModule(torch.nn.Module):
         input_extension_size: int | None = None,
         output_extension_init: str = "copy_uniform",
         input_extension_init: str = "copy_uniform",
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
+        noise_ratio: float = 0.001,
     ) -> None:
         """
         Create extension for layer input and output.
 
-        Create the layer input and output extensions of given sizes.
+        Create the layer input and output extensions of given sizes,
+        optionally rescaling existing weights and applying neuron pairing.
+
         Allow to have different sizes for input and output extensions,
         this is useful for example if you connect a convolutional layer
         to a linear layer.
 
+        The execution order is:
+
+        1. **Rescaling** — existing weights are rescaled in-place (before
+           extensions are created, so that ``copy_uniform`` init reads the
+           rescaled weights as reference).
+        2. **Extension creation** — physical extension layers are allocated
+           at their final (post-pairing) size.
+        3. **Initialisation** — the first half of each extension is
+           initialised when ``neuron_pairing`` is active, the full extension
+           otherwise.
+        4. **Neuron pairing** — the already-allocated second half of each
+           extension is filled in place via (V,V)/(Z,-Z).
+
         Parameters
         ----------
         extension_size: int
-            size of the extension to create
+            Size of the extension to create.
         output_extension_size: int | None
-            size of the output extension to create, if None use extension_size
+            Size of the output extension to create, if ``None`` use
+            *extension_size*.
         input_extension_size: int | None
-            size of the input extension to create, if None use extension_size
+            Size of the input extension to create, if ``None`` use
+            *extension_size*.
         output_extension_init: str
-            Initialization method for the output extension. Must be one of the keys in
-            `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
+            Initialisation method for the output extension.  Must be one of
+            the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
+            ``"zeros"``), default ``"copy_uniform"``.
         input_extension_init: str
-            Initialization method for the input extension. Must be one of the keys in
-            `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
+            Initialisation method for the input extension.  Must be one of
+            the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
+            ``"zeros"``), default ``"copy_uniform"``.
+        neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
+            Neuron-pairing strategy applied after initialisation.
+            ``"none"`` (default) or ``"vv_z_negz"``.
+            /!/ When ``neuron_pairing`` is active, ``extension_size`` (and
+            ``output_extension_size`` / ``input_extension_size``) is the
+            **final** size, pairing included, and must be even. A
+            ``ValueError`` is raised otherwise.
+        rescaling: _KNOWN_RESCALING_STRATEGIES_TYPE | None
+            Variance-transfer rescaling strategy applied before extension
+            creation.  ``"none"`` (default), ``"default_vt"``,
+            ``"vt_constraint_old_shape"``, or ``"vt_constraint_new_shape"``.
+        noise_ratio: float
+            Fraction of the standard deviation of the input extension weights
+            used as the noise level for symmetry breaking after neuron
+            pairing.  Set to ``0`` for exact function preservation.
+            Default ``0.001``.
 
         Notes
         -----
-        Additional initialization methods can be added by registering them in the
-        local `known_inits` dictionary of this method. Each initialization callable is
-        applied to the extension weight tensor and to the extension bias tensor, if the
-        layer has a bias.
+        Additional initialization methods can be added by registering them in
+        the local ``known_inits`` dictionary of this method.  Each
+        initialization callable is applied to the extension weight tensor and
+        to the extension bias tensor, if the layer has a bias.
 
         The callable must accept the following arguments:
 
@@ -3333,13 +3644,14 @@ class GrowingModule(torch.nn.Module):
         fan_in: int
             The fan_in of the layer, after including the extension.
 
-        An initialization callable may also modify the existing weights/biases, by
-        mutating `reference_tensor`.
+        An initialization callable may also modify the existing weights/biases,
+        by mutating ``reference_tensor``.
 
         Raises
         ------
         ValueError
-            if unknown initialization method
+            If unknown initialization method, rescaling strategy, or neuron
+            pairing.
         """
         if output_extension_size is None:
             output_extension_size = extension_size
@@ -3349,6 +3661,28 @@ class GrowingModule(torch.nn.Module):
             f"The layer {self.name} has no previous module."
             "Therefore, neuron addition is not possible."
         )
+
+        if neuron_pairing is not None:
+            for param_name, value in (
+                ("extension_size", extension_size),
+                ("output_extension_size", output_extension_size),
+                ("input_extension_size", input_extension_size),
+            ):
+                if value % 2 != 0:
+                    raise ValueError(
+                        f"neuron_pairing={neuron_pairing!r} requires an even "
+                        f"{param_name}, got {value}."
+                    )
+
+        # Step 1: Rescaling (before extensions, so copy_uniform reads
+        # rescaled weights as reference)
+        self.apply_rescaling(
+            rescaling=rescaling,
+            neuron_pairing=neuron_pairing,
+            extension_size=input_extension_size,
+        )
+
+        # Step 2: Create extension layers at their final size
         self.previous_module.create_layer_out_extension(output_extension_size)
         self.create_layer_in_extension(input_extension_size)
 
@@ -3366,6 +3700,12 @@ class GrowingModule(torch.nn.Module):
                     f"Available methods are: {list(known_inits.keys())}."
                 )
 
+        # Step 3: Initialize extensions. When pairing is active only the
+        # first half is initialised; the second half is filled by
+        # apply_neuron_pairing.
+        half_in = input_extension_size // 2 if neuron_pairing else None
+        half_out = output_extension_size // 2 if neuron_pairing else None
+
         # Initialize input extension
         layer_to_init = self.extended_input_layer
         assert isinstance(layer_to_init, torch.nn.Module), (
@@ -3376,9 +3716,18 @@ class GrowingModule(torch.nn.Module):
         base_fan_in = self.get_fan_in_from_layer(layer_to_init)
         ext_fan_in = self.get_fan_in_from_layer(self.layer)
 
-        init_fn(layer_to_init.weight, self.weight, base_fan_in + ext_fan_in)
+        if half_in is not None:
+            weight_view = layer_to_init.weight[:, :half_in]
+        else:
+            weight_view = layer_to_init.weight
+        init_fn(weight_view, self.weight, base_fan_in + ext_fan_in)
         if layer_to_init.bias is not None:
-            init_fn(layer_to_init.bias, self.bias, base_fan_in + ext_fan_in)
+            bias_view = (
+                layer_to_init.bias[:half_in]
+                if half_in is not None
+                else layer_to_init.bias
+            )
+            init_fn(bias_view, self.bias, base_fan_in + ext_fan_in)
 
         # Initialize output extension
         layer_to_init = self.previous_module.extended_output_layer
@@ -3392,9 +3741,24 @@ class GrowingModule(torch.nn.Module):
             self.previous_module.layer
         )
 
-        init_fn(layer_to_init.weight, self.previous_module.weight, prev_fan_in)
+        if half_out is not None:
+            weight_view = layer_to_init.weight[:half_out]
+        else:
+            weight_view = layer_to_init.weight
+        init_fn(weight_view, self.previous_module.weight, prev_fan_in)
         if layer_to_init.bias is not None:
-            init_fn(layer_to_init.bias, self.previous_module.bias, prev_fan_in)
+            bias_view = (
+                layer_to_init.bias[:half_out]
+                if half_out is not None
+                else layer_to_init.bias
+            )
+            init_fn(bias_view, self.previous_module.bias, prev_fan_in)
+
+        # Step 4: Neuron pairing — fill the second halves in place
+        self.apply_neuron_pairing(
+            neuron_pairing=neuron_pairing,
+            noise_ratio=noise_ratio,
+        )
 
     def missing_neurons(self) -> int:
         """
@@ -3433,10 +3797,10 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        method : str
+        method: str
             Method to use for determining the number of neurons to add.
             Options are "fixed_proportional".
-        number_of_growth_steps : int
+        number_of_growth_steps: int
             Number of growth steps planned, used only if method is "fixed_proportional".
 
         Returns
@@ -3469,7 +3833,7 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        extension_kwargs : Any
+        extension_kwargs: Any
             Additional arguments for creating layer extensions.
         """
         neurons_to_add = self.missing_neurons()

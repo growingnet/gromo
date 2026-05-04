@@ -27,6 +27,7 @@ Enhancements
 - Introduce VGG-like growing architecture support with the `VGG` class (:gh:`236` by `Hugo Mousset`_)
 - Add support for selecting GroupNorm as the normalization layer in the ResNet container, alongside the existing BatchNorm option (:gh:`233` by `Théo Rudkiewicz`_).
 - Add configurability to the ResNet container to allow using BatchNorm2d or disabling normalization entirely (:gh:`228` by `Théo Rudkiewicz`_)
+- Add variance-transfer (VT) weight rescaling and (V,V)/(Z,-Z) neuron pairing to the growing-module extension workflow (:gh:`237` by `Théo Rudkiewicz`_)
 - Add ``uv`` files, use ``uv sync --extra dev --extra test --extra doc`` to install the package with all dependencies (:gh:`226` by `Théo Rudkiewicz`_)
 - Use ``ruff`` for formatting (:gh:`227` by `Théo Rudkiewicz`_)
 - Change how size-dependent post_layer_function modules handle extended activities in the growing module framework (:gh:`224` by `Théo Rudkiewicz`_)
