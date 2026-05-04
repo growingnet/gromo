@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from gromo.utils.tensor_statistic import (
     TensorStatistic,
-    TensorStatiticWithEstimationError,
+    TensorStatisticWithEstimationError,
 )
 from gromo.utils.utils import reset_device, set_device
 
@@ -58,8 +58,8 @@ class TestTensorStatistic(TestCase):
         reset_device()
 
 
-class TestTensorStatiticWithEstimationError(TestTensorStatistic):
-    _tested_class = TensorStatiticWithEstimationError
+class TestTensorStatisticWithEstimationError(TestTensorStatistic):
+    _tested_class = TensorStatisticWithEstimationError
 
     def setUp(self) -> None:
         set_device("cuda" if torch.cuda.is_available() else "cpu")
@@ -78,7 +78,7 @@ class TestTensorStatiticWithEstimationError(TestTensorStatistic):
             TensorDataset(samples), batch_size=batch_size, shuffle=False
         )
 
-        mean_statistic = TensorStatiticWithEstimationError(
+        mean_statistic = TensorStatisticWithEstimationError(
             shape=None,
             update_function=lambda x: (x.sum(dim=0), x.size(0)),
             name="Mean with Error",
@@ -97,7 +97,7 @@ class TestTensorStatiticWithEstimationError(TestTensorStatistic):
         )  # this test pass most of the time, but can fail due to randomness
         # (if no seed is set)
 
-        cov_statistic = TensorStatiticWithEstimationError(
+        cov_statistic = TensorStatisticWithEstimationError(
             shape=None,
             update_function=lambda x: (
                 (x - mean_statistic()).T @ (x - mean_statistic()),
@@ -129,7 +129,7 @@ class TestTensorStatiticWithEstimationError(TestTensorStatistic):
             TensorDataset(samples), batch_size=batch_size, shuffle=False
         )
 
-        mean_statistic = TensorStatiticWithEstimationError(
+        mean_statistic = TensorStatisticWithEstimationError(
             shape=None,
             update_function=lambda x: (x.sum(dim=0), x.size(0)),
             name="Mean with Error",
