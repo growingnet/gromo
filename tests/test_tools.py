@@ -540,11 +540,15 @@ class TestTools(TorchTestCase):
         """Test basic functionality of compute_optimal_delta with normal and forced pseudo-inverse."""
         # Create test matrices
         tensor_s = torch.eye(3) * 2.0
+        gradient_covariance = torch.eye(2) * 0.5
         tensor_m = torch.randn(3, 2)
 
         # Test computation with either normal or forced pseudo-inverse
         delta, decrease = optimal_delta(
-            tensor_s, tensor_m, force_pseudo_inverse=force_pseudo_inverse
+            tensor_s,
+            tensor_m,
+            force_pseudo_inverse=force_pseudo_inverse,
+            tensor_covariance_loss_gradient=gradient_covariance,
         )
 
         # Verify output shapes
@@ -561,10 +565,16 @@ class TestTools(TorchTestCase):
         """Test dtype conversion in compute_optimal_delta."""
         # Create test matrices with same dtype
         tensor_s = torch.eye(3, dtype=torch.float64) * 2.0
+        gradient_covariance = torch.eye(2, dtype=torch.float64) * 0.5
         tensor_m = torch.randn(3, 2, dtype=torch.float64)
 
         # Test with specified dtype conversion
-        delta, decrease = optimal_delta(tensor_s, tensor_m, dtype=torch.float32)
+        delta, decrease = optimal_delta(
+            tensor_s,
+            tensor_m,
+            dtype=torch.float32,
+            tensor_covariance_loss_gradient=gradient_covariance,
+        )
 
         # Should preserve original dtype in output
         self.assertEqual(delta.dtype, torch.float64)  # Original tensor dtype

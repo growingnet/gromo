@@ -405,6 +405,7 @@ class GrowingBlock(GrowingContainer):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -441,6 +442,9 @@ class GrowingBlock(GrowingContainer):
         ignore_singular_values: bool
             If True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction. Default is False.
+        use_fisher: bool
+            If True, use the empirical Fisher / gradient covariance as
+            preconditioner on the output side. Default is False.
 
         Note
         ----
@@ -485,6 +489,7 @@ class GrowingBlock(GrowingContainer):
                 omega_zero=omega_zero,
                 use_projection=False,  # Must be False when hidden_neurons == 0
                 ignore_singular_values=ignore_singular_values,
+                use_fisher=use_fisher,
             )
         else:
             # When hidden_neurons > 0, delegate to second layer's
@@ -502,6 +507,7 @@ class GrowingBlock(GrowingContainer):
                 omega_zero=omega_zero,
                 use_projection=use_projection,
                 ignore_singular_values=ignore_singular_values,
+                use_fisher=use_fisher,
             )
 
     def apply_change(

@@ -55,11 +55,15 @@ def optimal_delta(
     tensor_m: torch.Tensor,
     dtype: torch.dtype = torch.float32,
     force_pseudo_inverse: bool = False,
+    tensor_covariance_loss_gradient: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute the optimal delta for the layer using current S and M tensors.
 
-    dW* = S[-1]^-1 M (if needed we use the pseudo-inverse)
+    :math:`dW^* = (S[-1]^-1 M)^T` (if needed we use the pseudo-inverse). When the empirical
+    Fisher / gradient covariance E_s is provided via
+    ``tensor_covariance_loss_gradient``, the natural-gradient-like preconditioned
+    update is used instead: :math:`dW^* = (S^-1 M E_s^-1)^T = E_s^-1 M^T S^-1`.
 
     Compute dW* (and dBias* if needed).
     L(A + gamma * B * dW) = L(A) - gamma * d + o(gamma)
@@ -76,6 +80,11 @@ def optimal_delta(
     force_pseudo_inverse: bool, optional
         if True, use the pseudo-inverse to compute the optimal delta even if the
         matrix is invertible, by default False
+    tensor_covariance_loss_gradient: torch.Tensor | None, optional
+        empirical Fisher E_s of shape (out_features, out_features). When provided
+        the preconditioned update dW* = E_s^-1 M^T S^-1 is returned. Note that
+        relying on this preconditioner silently uses the independence hypothesis
+        described in `first_order_optimization.typ` (`@hyp:independence`).
 
     Returns
     -------
@@ -93,6 +102,11 @@ def optimal_delta(
         tensor_s = tensor_s.to(dtype=dtype)
     if tensor_m.dtype != dtype:
         tensor_m = tensor_m.to(dtype=dtype)
+    if (
+        tensor_covariance_loss_gradient is not None
+        and tensor_covariance_loss_gradient.dtype != dtype
+    ):
+        tensor_covariance_loss_gradient = tensor_covariance_loss_gradient.to(dtype=dtype)
 
     delta_raw = None
     if not force_pseudo_inverse:
@@ -107,6 +121,20 @@ def optimal_delta(
         delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
 
     assert delta_raw is not None, "delta_raw should be computed by now."
+
+    if tensor_covariance_loss_gradient is not None:
+        applied_pinv = force_pseudo_inverse
+        if not applied_pinv:
+            try:
+                delta_raw = torch.linalg.solve(tensor_covariance_loss_gradient, delta_raw)
+            except torch.linalg.LinAlgError:
+                applied_pinv = True
+                warn(
+                    "Using the pseudo-inverse for the gradient covariance preconditioner."
+                )
+        if applied_pinv:
+            delta_raw = torch.linalg.pinv(tensor_covariance_loss_gradient) @ delta_raw
+
     assert delta_raw.isnan().sum() == 0, (
         "The optimal delta should not contain NaN values."
     )
@@ -119,7 +147,11 @@ def optimal_delta(
         if not force_pseudo_inverse:
             warn("Trying to use the pseudo-inverse with torch.float64.")
             return optimal_delta(
-                tensor_s, tensor_m, dtype=torch.float64, force_pseudo_inverse=True
+                tensor_s,
+                tensor_m,
+                dtype=torch.float64,
+                force_pseudo_inverse=True,
+                tensor_covariance_loss_gradient=tensor_covariance_loss_gradient,
             )
         else:
             warn("Failed to compute the optimal delta, set delta to zero.")
@@ -141,6 +173,7 @@ def compute_optimal_added_parameters(
     alpha_zero: bool = False,
     omega_zero: bool = False,
     ignore_singular_values: bool = False,
+    matrix_covariance_loss_gradient: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
@@ -166,6 +199,12 @@ def compute_optimal_added_parameters(
     ignore_singular_values : bool
         If True, ignore the actual singular values and treat them as 1 for computing alpha and
         omega, effectively only using the singular vectors for the update direction.
+    matrix_covariance_loss_gradient : torch.Tensor | None
+        Square matrix E_s of shape (t, t). If provided, the SVD target becomes
+        S^{-1/2} N E_s^{-1/2} and omega is left-multiplied by E_s^{-1/2}, which
+        applies the empirical-Fisher preconditioning to the rank-k extension.
+        Note that this silently uses the independence hypothesis described in
+        `first_order_optimization.typ` (`@hyp:independence`).
 
     Returns
     -------
@@ -182,7 +221,7 @@ def compute_optimal_added_parameters(
         If SVD of S^{-1/2} N fails.
     """
     # Validate inputs
-    n_1, _ = matrix_n.shape
+    n_1, n_2 = matrix_n.shape
 
     if matrix_s is not None:
         # validate S matrix
@@ -214,6 +253,26 @@ def compute_optimal_added_parameters(
         matrix_s_inverse_sqrt = torch.eye(
             n_1, device=matrix_n.device, dtype=matrix_n.dtype
         )
+
+    # Optional empirical-Fisher preconditioner on the output side.
+    matrix_e_inverse_sqrt: torch.Tensor | None = None
+    if matrix_covariance_loss_gradient is not None:
+        e_1, e_2 = matrix_covariance_loss_gradient.shape
+        assert e_1 == e_2, "The input matrix E must be square."
+        assert e_2 == n_2, (
+            f"The input matrices E and N must have compatible shapes."
+            f"(got {matrix_covariance_loss_gradient.shape=} and {matrix_n.shape=})"
+        )
+        if not torch.allclose(
+            matrix_covariance_loss_gradient, matrix_covariance_loss_gradient.t()
+        ):
+            matrix_covariance_loss_gradient = (
+                matrix_covariance_loss_gradient + matrix_covariance_loss_gradient.t()
+            ) / 2
+        matrix_e_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
+            matrix_covariance_loss_gradient, threshold=numerical_threshold
+        )
+        matrix_p = matrix_p @ matrix_e_inverse_sqrt
 
     # Compute the SVD of the product
     try:
@@ -247,6 +306,10 @@ def compute_optimal_added_parameters(
         sqrt_s = torch.sqrt(torch.abs(s))
     alpha = sqrt_s * (matrix_s_inverse_sqrt @ u)
     omega = sqrt_s[:, None] * v
+    if matrix_e_inverse_sqrt is not None:
+        # omega has shape (k, t); apply E^{-1/2} on the right so the eventual
+        # transposed result (t, k) is left-multiplied by E^{-1/2}.
+        omega = omega @ matrix_e_inverse_sqrt
 
     if alpha_zero:
         alpha = torch.zeros_like(alpha)
