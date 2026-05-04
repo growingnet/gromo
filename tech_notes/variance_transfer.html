@@ -1,0 +1,854 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="light">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="gromo icon" sizes="300x168" href="../_static/gromo_small.png" type="image/png">
+    <title>Variance-transfer initialization &#8212; GroMo 0.0.1-dev documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "light";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=55c26ed414f5f8a31ebb" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=55c26ed414f5f8a31ebb" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=7c1988a6" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=55c26ed414f5f8a31ebb"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=55c26ed414f5f8a31ebb" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=55c26ed414f5f8a31ebb" />
+
+    <script src="../_static/jquery.js?v=5d32c60e"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+    <script src="../_static/documentation_options.js?v=5baf466d"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script async="async" src="https://www.googletagmanager.com/gtag/js?id=XXXX"></script>
+    <script>
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){ dataLayer.push(arguments); }
+                gtag('consent', 'default', {
+                    'ad_storage': 'denied',
+                    'ad_user_data': 'denied',
+                    'ad_personalization': 'denied',
+                    'analytics_storage': 'denied'
+                });
+                gtag('js', new Date());
+                gtag('config', 'XXXX');
+            </script>
+    <script defer="defer" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'tech_notes/variance_transfer';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Extension initialization" href="initialization.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.0.1" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="light">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+    
+    <img src="../_static/logo_bg_white_small.png" class="logo__image only-light" alt="GroMo 0.0.1-dev documentation - Home"/>
+    <img src="../_static/logo_bg_white_small.png" class="logo__image only-dark pst-js-only" alt="GroMo 0.0.1-dev documentation - Home"/>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../auto_examples/index.html">
+    Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../whats_new.html">
+    Release notes
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../tech_notes.html">
+    Technical notes
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../auto_examples/index.html">
+    Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../whats_new.html">
+    Release notes
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../tech_notes.html">
+    Technical notes
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar"><svg class="pst-icon svg-inline--fa" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="growing_module.html">GrowingModule (GroMo)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="initialization.html">Extension initialization</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Variance-transfer initialization</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../tech_notes.html" class="nav-link">Technical notes</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Variance-transfer initialization</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="variance-transfer-initialization">
+<h1>Variance-transfer initialization<a class="headerlink" href="#variance-transfer-initialization" title="Link to this heading">#</a></h1>
+<p>This section describes the variance-transfer initialization scheme from
+<a class="reference internal" href="#yuan2023" id="id1"><span>[Yuan2023]</span></a>, adapted to the GroMo codebase.  It covers two independent
+mechanisms – <em>neuron pairing</em> for function preservation and <em>rescaling
+strategies</em> for variance stability – and their combined analysis.</p>
+<section id="setup-resnet-basicblock-structure">
+<h2>Setup: ResNet BasicBlock structure<a class="headerlink" href="#setup-resnet-basicblock-structure" title="Link to this heading">#</a></h2>
+<p>A <code class="docutils literal notranslate"><span class="pre">Conv2dGrowingBlock</span></code> consists of two convolution layers with a residual
+connection:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>x ───────────────────────────────────────────────────── (+) ── out
+ |                                                       ^
+ └─&gt; [PreAct] -&gt; [Conv1: W1] -&gt; [MidAct] -&gt; [Conv2: W2] ─┘
+</pre></div>
+</div>
+<p>with:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(W_1 \in \mathbb{R}^{h \times C_{\text{in}} \times k \times k}\)</span> (first
+conv, <code class="docutils literal notranslate"><span class="pre">in_channels</span></code> <span class="math notranslate nohighlight">\(\to\)</span> <code class="docutils literal notranslate"><span class="pre">hidden_channels</span></code>)</p></li>
+<li><p><span class="math notranslate nohighlight">\(W_2 \in \mathbb{R}^{C_{\text{out}} \times h \times k \times k}\)</span>
+(second conv, <code class="docutils literal notranslate"><span class="pre">hidden_channels</span></code> <span class="math notranslate nohighlight">\(\to\)</span> <code class="docutils literal notranslate"><span class="pre">out_channels</span></code>)</p></li>
+<li><p><span class="math notranslate nohighlight">\(h\)</span> is the current hidden channel count</p></li>
+<li><p><span class="math notranslate nohighlight">\(C_{\text{in}}, C_{\text{out}}\)</span> are fixed by the residual connection</p></li>
+</ul>
+<p>Growth <strong>adds neurons to the hidden dimension</strong> <span class="math notranslate nohighlight">\(h \to h'\)</span>:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(W_1\)</span> grows along its <strong>output</strong> dimension (more output channels)</p></li>
+<li><p><span class="math notranslate nohighlight">\(W_2\)</span> grows along its <strong>input</strong> dimension (more input channels)</p></li>
+</ul>
+</section>
+<section id="part-1-neuron-pairing-v-v-z-z">
+<h2>Part 1: Neuron pairing – <span class="math notranslate nohighlight">\((V,V)/(Z,-Z)\)</span><a class="headerlink" href="#part-1-neuron-pairing-v-v-z-z" title="Link to this heading">#</a></h2>
+<p>This section describes <strong>how new neurons are added</strong>, independently of how
+existing weights are rescaled (Part 2).</p>
+<section id="structure">
+<h3>Structure<a class="headerlink" href="#structure" title="Link to this heading">#</a></h3>
+<p>We add <span class="math notranslate nohighlight">\(\Delta h\)</span> hidden channel <strong>pairs</strong> so that
+<span class="math notranslate nohighlight">\(h_{t+1} = h_t + 2\Delta h\)</span>.  Each new neuron is duplicated into a pair
+whose net contribution cancels at initialization.</p>
+<p>New weight matrices:</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}V \in \mathbb{R}^{\Delta h \times C_{\text{in}} \times k \times k}
+\qquad\text{(output extension of Conv1)}\\Z \in \mathbb{R}^{C_{\text{out}} \times \Delta h \times k \times k}
+\qquad\text{(input extension of Conv2)}\end{aligned}\end{align} \]</div>
+<p>Assembled layers after growth (where <span class="math notranslate nohighlight">\(\alpha, \beta\)</span> are rescaling
+factors from Part 2):</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\begin{split}W_1^{(t+1)} =
+\begin{bmatrix}
+\alpha\, W_1^{(t)} \\
+V \\
+V
+\end{bmatrix}
+\in \mathbb{R}^{(h_t + 2\Delta h) \times C_{\text{in}} \times k \times k}\end{split}\\W_2^{(t+1)} =
+\begin{bmatrix}
+\beta\, W_2^{(t)} &amp; Z &amp; -Z
+\end{bmatrix}
+\in \mathbb{R}^{C_{\text{out}} \times (h_t + 2\Delta h) \times k \times k}\end{aligned}\end{align} \]</div>
+</section>
+<section id="function-preservation">
+<h3>Function preservation<a class="headerlink" href="#function-preservation" title="Link to this heading">#</a></h3>
+<p>The new neurons produce activations <span class="math notranslate nohighlight">\(\sigma(V * x)\)</span>, duplicated
+identically.  The second layer reads them via <span class="math notranslate nohighlight">\((Z, -Z)\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[Z \cdot \sigma(V * x) + (-Z) \cdot \sigma(V * x) = 0\]</div>
+<p>Therefore the block output is preserved up to rescaling:</p>
+<div class="math notranslate nohighlight">
+\[\text{Block}_{t+1}(x) = \alpha\,\beta\;\text{Block}_t(x)\]</div>
+<p>Exact function preservation requires <span class="math notranslate nohighlight">\(\alpha\,\beta = 1\)</span>.</p>
+</section>
+</section>
+<section id="part-2-rescaling-strategies">
+<h2>Part 2: Rescaling strategies<a class="headerlink" href="#part-2-rescaling-strategies" title="Link to this heading">#</a></h2>
+<p>Three strategies are supported for choosing the rescaling factors
+<span class="math notranslate nohighlight">\(\alpha\)</span> (Conv1) and <span class="math notranslate nohighlight">\(\beta\)</span> (Conv2).  They are <strong>independent</strong> of
+the neuron-pairing mechanism.</p>
+<section id="strategy-a-default-vt">
+<h3>Strategy A: <code class="docutils literal notranslate"><span class="pre">&quot;default_vt&quot;</span></code><a class="headerlink" href="#strategy-a-default-vt" title="Link to this heading">#</a></h3>
+<p>Default strategy from <a class="reference internal" href="#yuan2023" id="id2"><span>[Yuan2023]</span></a> (Section 3.1, Table 1).  Rescaling factors
+depend only on the width ratio, not on actual weight statistics.</p>
+<p>Conv1’s input (<span class="math notranslate nohighlight">\(C_{\text{in}}\)</span>) is not extended, so Conv1 is not
+rescaled:</p>
+<div class="math notranslate nohighlight">
+\[\alpha = 1, \qquad
+\beta = \sqrt{\frac{h_t}{h_{t+1}}}\]</div>
+</section>
+<section id="strategy-b-vt-constraint-old-shape">
+<h3>Strategy B: <code class="docutils literal notranslate"><span class="pre">&quot;vt_constraint_old_shape&quot;</span></code><a class="headerlink" href="#strategy-b-vt-constraint-old-shape" title="Link to this heading">#</a></h3>
+<p>From the paper Appendix (Theorem 1).  Uses <strong>actual weight statistics</strong> to
+enforce <span class="math notranslate nohighlight">\(\operatorname{Var}[W] = 1/\text{fan_in_old}\)</span> after rescaling:</p>
+<div class="math notranslate nohighlight">
+\[\alpha = \frac{1}{\sqrt{C_{\text{in}} \cdot k^2 \cdot
+         \operatorname{Var}[W_1^{(t)}]}}, \qquad
+\beta  = \frac{1}{\sqrt{h_t \cdot k^2 \cdot
+         \operatorname{Var}[W_2^{(t)}]}}\]</div>
+</section>
+<section id="strategy-c-vt-constraint-new-shape">
+<h3>Strategy C: <code class="docutils literal notranslate"><span class="pre">&quot;vt_constraint_new_shape&quot;</span></code><a class="headerlink" href="#strategy-c-vt-constraint-new-shape" title="Link to this heading">#</a></h3>
+<p>Like Strategy B but targets <span class="math notranslate nohighlight">\(1/\text{fan_in_new}\)</span> instead of
+<span class="math notranslate nohighlight">\(1/\text{fan\_in\_old}\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\alpha = \frac{1}{\sqrt{C_{\text{in}} \cdot k^2 \cdot
+         \operatorname{Var}[W_1^{(t)}]}}, \qquad
+\beta  = \frac{1}{\sqrt{h_{t+1} \cdot k^2 \cdot
+         \operatorname{Var}[W_2^{(t)}]}}\]</div>
+<p>Note: <span class="math notranslate nohighlight">\(\alpha\)</span> is the same as in Strategy B (Conv1’s fan-in does not
+change during growth).  Only <span class="math notranslate nohighlight">\(\beta\)</span> differs: <span class="math notranslate nohighlight">\(h_t\)</span> (B) vs
+<span class="math notranslate nohighlight">\(h_{t+1}\)</span> (C) in the denominator.</p>
+</section>
+<section id="summary-table">
+<h3>Summary table<a class="headerlink" href="#summary-table" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 35.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Strategy</p></th>
+<th class="head"><p><span class="math notranslate nohighlight">\(\alpha\)</span> (Conv1)</p></th>
+<th class="head"><p><span class="math notranslate nohighlight">\(\beta\)</span> (Conv2)</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>A: Default VT</p></td>
+<td><p><span class="math notranslate nohighlight">\(1\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\sqrt{h_t / h_{t+1}}\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>B: VT old shape</p></td>
+<td><p><span class="math notranslate nohighlight">\(1 / \sqrt{C_{\text{in}} k^2\, \operatorname{Var}[W_1]}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(1 / \sqrt{h_t\, k^2\, \operatorname{Var}[W_2]}\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>C: VT new shape</p></td>
+<td><p><span class="math notranslate nohighlight">\(1 / \sqrt{C_{\text{in}} k^2\, \operatorname{Var}[W_1]}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(1 / \sqrt{h_{t+1}\, k^2\, \operatorname{Var}[W_2]}\)</span></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="batchnorm-adjustment">
+<h3>BatchNorm adjustment<a class="headerlink" href="#batchnorm-adjustment" title="Link to this heading">#</a></h3>
+<p>When a layer’s weights are scaled by factor <span class="math notranslate nohighlight">\(c\)</span>, the BatchNorm running
+statistics must be adjusted accordingly:</p>
+<div class="math notranslate nohighlight">
+\[\mu \leftarrow c\,\mu, \qquad
+\sigma^2 \leftarrow c^2\,\sigma^2\]</div>
+</section>
+</section>
+<section id="part-3-combined-analysis">
+<h2>Part 3: Combined analysis<a class="headerlink" href="#part-3-combined-analysis" title="Link to this heading">#</a></h2>
+<p>This section analyses the resulting weight and activation variances after
+applying a rescaling strategy together with <span class="math notranslate nohighlight">\((V,V)/(Z,-Z)\)</span> neuron
+pairing.</p>
+<section id="definitions">
+<h3>Definitions<a class="headerlink" href="#definitions" title="Link to this heading">#</a></h3>
+<p>Consider the forward pass through one BasicBlock after a growth step.
+Let <span class="math notranslate nohighlight">\(x_{\text{pre}} = \sigma_{\text{pre}}(x)\)</span> be the pre-activated input
+to Conv1.</p>
+<p><strong>Hidden activations</strong> <span class="math notranslate nohighlight">\(u\)</span> (output of Conv1, input to Conv2):</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(u'\)</span>: component from old weights:
+<span class="math notranslate nohighlight">\(u' = \alpha\, W_1^{(t)} * x_{\text{pre}}\)</span></p></li>
+<li><p><span class="math notranslate nohighlight">\(u''\)</span>: component from new weights:
+<span class="math notranslate nohighlight">\(u'' = V * x_{\text{pre}}\)</span> (duplicated as <span class="math notranslate nohighlight">\((V, V)\)</span>)</p></li>
+</ul>
+<p>After mid-activation:
+<span class="math notranslate nohighlight">\(\sigma(u) = [\sigma(u'),\; \sigma(u''),\; \sigma(u'')]\)</span></p>
+<p><strong>Block output</strong> <span class="math notranslate nohighlight">\(y\)</span> (output of Conv2, before residual addition):</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(y' = \beta\, W_2^{(t)} \cdot \sigma(u')\)</span> (old pathway)</p></li>
+<li><p><span class="math notranslate nohighlight">\(y'' = Z \cdot \sigma(u'') + (-Z) \cdot \sigma(u'') = 0\)</span> (new pathway
+cancels at init)</p></li>
+</ul>
+<p>At initialization <span class="math notranslate nohighlight">\(y'' = 0\)</span>, so
+<span class="math notranslate nohighlight">\(y = y' = \alpha\,\beta\;\text{Block}_t(x)\)</span>.</p>
+</section>
+<section id="activation-variance">
+<h3>Activation variance<a class="headerlink" href="#activation-variance" title="Link to this heading">#</a></h3>
+<p>Assuming inputs have unit variance and weights are independent:</p>
+<p><strong>Hidden activations:</strong></p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\operatorname{Var}[u'] &amp;= \alpha^2\, C_{\text{in}}\, k^2\,
+\operatorname{Var}[W_1^{(t)}]\\\operatorname{Var}[u''] &amp;= C_{\text{in}}\, k^2\, \operatorname{Var}[V] = 1
+\quad\text{(by Kaiming init of } V \text{)}\end{aligned}\end{align} \]</div>
+<p><strong>Block output</strong> (old pathway):</p>
+<div class="math notranslate nohighlight">
+\[\operatorname{Var}[y'] = \beta^2\, h_t\, k^2\,
+\operatorname{Var}[W_2^{(t)}]\, \operatorname{Var}[\sigma(u')]\]</div>
+<p><strong>New pathway at init:</strong> <span class="math notranslate nohighlight">\(\operatorname{Var}[y'']_{\text{init}} = 0\)</span> (by
+<span class="math notranslate nohighlight">\((Z,-Z)\)</span> cancellation).</p>
+<p><strong>New pathway after first gradient step</strong> (symmetry broken):</p>
+<div class="math notranslate nohighlight">
+\[\operatorname{Var}[y'']_{\text{1st}} \approx 2\Delta h \cdot k^2 \cdot
+\operatorname{Var}[Z] \cdot \operatorname{Var}[\sigma(u'')]\]</div>
+<p>Since <span class="math notranslate nohighlight">\(y = y' + y''\)</span> and the two contributions are independent:</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\operatorname{Var}[y]_{\text{init}} &amp;= \operatorname{Var}[y']\\\operatorname{Var}[y]_{\text{1st}} &amp;= \operatorname{Var}[y'] +
+\operatorname{Var}[y'']_{\text{1st}}\end{aligned}\end{align} \]</div>
+</section>
+<section id="strategy-a">
+<h3>Strategy A<a class="headerlink" href="#strategy-a" title="Link to this heading">#</a></h3>
+<p>With <span class="math notranslate nohighlight">\(\alpha = 1\)</span> and <span class="math notranslate nohighlight">\(\beta = \sqrt{h_t/h_{t+1}}\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\operatorname{Var}[u'] = C_{\text{in}}\, k^2\,
+\operatorname{Var}[W_1^{(t)}]\]</div>
+<p>This equals 1 only if <span class="math notranslate nohighlight">\(\operatorname{Var}[W_1^{(t)}] =
+1/(C_{\text{in}} k^2)\)</span> already holds.
+Strategy A preserves variance across growth steps only if the weights already
+have the correct variance.</p>
+</section>
+<section id="strategy-b">
+<h3>Strategy B<a class="headerlink" href="#strategy-b" title="Link to this heading">#</a></h3>
+<p>By construction:</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\alpha^2\, \operatorname{Var}[W_1^{(t)}] &amp;= \frac{1}{C_{\text{in}} k^2}
+\implies \operatorname{Var}[u'] = 1\\\beta^2\, \operatorname{Var}[W_2^{(t)}] &amp;= \frac{1}{h_t\, k^2}
+\implies \operatorname{Var}[y'] = 1\end{aligned}\end{align} \]</div>
+<p>At init <span class="math notranslate nohighlight">\(\operatorname{Var}[y] = 1\)</span> (exact).
+After one gradient step:</p>
+<div class="math notranslate nohighlight">
+\[\operatorname{Var}[y]_{\text{1st}} = 1 + \frac{2\Delta h}{h_{t+1}} &gt; 1\]</div>
+<p>The excess shrinks as <span class="math notranslate nohighlight">\(\Delta h / h_{t+1} \to 0\)</span>.</p>
+<p><strong>Merged weight variances:</strong></p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\operatorname{Var}[W_1^{(t+1)}] &amp;= \frac{1}{C_{\text{in}} k^2}
+\quad\text{(exact)}\\\operatorname{Var}[W_2^{(t+1)}] &amp;\approx \frac{1}{h_{t+1}\, k^2}
+\quad\text{(approximate, improves as } \Delta h/h_t \to 0 \text{)}\end{aligned}\end{align} \]</div>
+</section>
+<section id="strategy-c">
+<h3>Strategy C<a class="headerlink" href="#strategy-c" title="Link to this heading">#</a></h3>
+<p>By construction:</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\alpha^2\, \operatorname{Var}[W_1^{(t)}] &amp;= \frac{1}{C_{\text{in}} k^2}
+\implies \operatorname{Var}[u'] = 1\\\beta^2\, \operatorname{Var}[W_2^{(t)}] &amp;= \frac{1}{h_{t+1}\, k^2}
+\implies \operatorname{Var}[y'] = \frac{h_t}{h_{t+1}}\end{aligned}\end{align} \]</div>
+<p>At init <span class="math notranslate nohighlight">\(\operatorname{Var}[y] = h_t/h_{t+1} &lt; 1\)</span>.
+After one gradient step:</p>
+<div class="math notranslate nohighlight">
+\[\operatorname{Var}[y]_{\text{1st}} = \frac{h_t}{h_{t+1}} +
+\frac{2\Delta h}{h_{t+1}} = \frac{h_t + 2\Delta h}{h_{t+1}} = 1
+\quad\text{(exact)}\]</div>
+<p><strong>Merged weight variances:</strong></p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\operatorname{Var}[W_1^{(t+1)}] &amp;= \frac{1}{C_{\text{in}} k^2}
+\quad\text{(exact)}\\\operatorname{Var}[W_2^{(t+1)}] &amp;= \frac{1}{h_{t+1}\, k^2}
+\quad\text{(exact)}\end{aligned}\end{align} \]</div>
+</section>
+<section id="summary-resulting-variances-after-growth">
+<h3>Summary: resulting variances after growth<a class="headerlink" href="#summary-resulting-variances-after-growth" title="Link to this heading">#</a></h3>
+<p><strong>Weight variances:</strong></p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 35.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Strategy</p></th>
+<th class="head"><p><span class="math notranslate nohighlight">\(\operatorname{Var}[W_1^{(t+1)}]\)</span></p></th>
+<th class="head"><p><span class="math notranslate nohighlight">\(\operatorname{Var}[W_2^{(t+1)}]\)</span></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>A</p></td>
+<td><p>depends on prior <span class="math notranslate nohighlight">\(\operatorname{Var}[W_1^{(t)}]\)</span></p></td>
+<td><p>depends on prior <span class="math notranslate nohighlight">\(\operatorname{Var}[W_2^{(t)}]\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>B</p></td>
+<td><p><span class="math notranslate nohighlight">\(= 1/(C_{\text{in}} k^2)\)</span> (exact)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\approx 1/(h_{t+1} k^2)\)</span> (approximate)</p></td>
+</tr>
+<tr class="row-even"><td><p>C</p></td>
+<td><p><span class="math notranslate nohighlight">\(= 1/(C_{\text{in}} k^2)\)</span> (exact)</p></td>
+<td><p><span class="math notranslate nohighlight">\(= 1/(h_{t+1} k^2)\)</span> (exact)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Activation variances:</strong></p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 16.7%" />
+<col style="width: 27.8%" />
+<col style="width: 27.8%" />
+<col style="width: 27.8%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"></th>
+<th class="head"><p><span class="math notranslate nohighlight">\(\operatorname{Var}[y]_{\text{init}}\)</span></p></th>
+<th class="head"><p><span class="math notranslate nohighlight">\(\operatorname{Var}[y]_{\text{1st step}}\)</span></p></th>
+<th class="head"><p>Trade-off</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>A</p></td>
+<td><p>depends on prior weights</p></td>
+<td><p>depends on prior weights</p></td>
+<td><p>no correction</p></td>
+</tr>
+<tr class="row-odd"><td><p>B</p></td>
+<td><p><span class="math notranslate nohighlight">\(1\)</span> (exact)</p></td>
+<td><p><span class="math notranslate nohighlight">\(1 + 2\Delta h / h_{t+1}\)</span> (&gt; 1)</p></td>
+<td><p>stable at init, slight excess after</p></td>
+</tr>
+<tr class="row-even"><td><p>C</p></td>
+<td><p><span class="math notranslate nohighlight">\(h_t / h_{t+1}\)</span> (&lt; 1)</p></td>
+<td><p><span class="math notranslate nohighlight">\(1\)</span> (exact)</p></td>
+<td><p>small init deficit, exact after 1 step</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+<section id="implementation">
+<h2>Implementation<a class="headerlink" href="#implementation" title="Link to this heading">#</a></h2>
+<p>The variance-transfer features are exposed through
+<a class="reference internal" href="../generated/gromo.modules.growing_module.GrowingModule.html#gromo.modules.growing_module.GrowingModule.create_layer_extensions" title="gromo.modules.growing_module.GrowingModule.create_layer_extensions"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_layer_extensions()</span></code></a> via
+two parameters:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">rescaling</span></code>: one of <code class="docutils literal notranslate"><span class="pre">None</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;default_vt&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;vt_constraint_old_shape&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;vt_constraint_new_shape&quot;</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">neuron_pairing</span></code>: one of <code class="docutils literal notranslate"><span class="pre">None</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;vv_z_negz&quot;</span></code></p></li>
+</ul>
+<p>These can also be called independently as standalone methods for the FOGRO
+growth path, where extensions are created by
+<code class="docutils literal notranslate"><span class="pre">compute_optimal_added_parameters</span></code> and trimmed by
+<code class="docutils literal notranslate"><span class="pre">sub_select_optimal_added_parameters</span></code> before rescaling and pairing are
+applied:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="../generated/gromo.modules.growing_module.GrowingModule.html#gromo.modules.growing_module.GrowingModule.apply_rescaling" title="gromo.modules.growing_module.GrowingModule.apply_rescaling"><code class="xref py py-meth docutils literal notranslate"><span class="pre">apply_rescaling()</span></code></a></p></li>
+<li><p><a class="reference internal" href="../generated/gromo.modules.growing_module.GrowingModule.html#gromo.modules.growing_module.GrowingModule.apply_neuron_pairing" title="gromo.modules.growing_module.GrowingModule.apply_neuron_pairing"><code class="xref py py-meth docutils literal notranslate"><span class="pre">apply_neuron_pairing()</span></code></a></p></li>
+</ul>
+<p>All parameters default to <code class="docutils literal notranslate"><span class="pre">None</span></code>, preserving full backward compatibility.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading">#</a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="yuan2023" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>Yuan2023<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id1">1</a>,<a role="doc-backlink" href="#id2">2</a>)</span>
+<p>Yuan et al., “Accelerated Training via Incrementally Growing
+Neural Networks using Variance Transfer and Learning Rate Adaptation”,
+NeurIPS 2023.</p>
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="initialization.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Extension initialization</p>
+      </div>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#setup-resnet-basicblock-structure">Setup: ResNet BasicBlock structure</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#part-1-neuron-pairing-v-v-z-z">Part 1: Neuron pairing – <span class="math notranslate nohighlight">\((V,V)/(Z,-Z)\)</span></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#structure">Structure</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#function-preservation">Function preservation</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#part-2-rescaling-strategies">Part 2: Rescaling strategies</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#strategy-a-default-vt">Strategy A: <code class="docutils literal notranslate"><span class="pre">"default_vt"</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#strategy-b-vt-constraint-old-shape">Strategy B: <code class="docutils literal notranslate"><span class="pre">"vt_constraint_old_shape"</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#strategy-c-vt-constraint-new-shape">Strategy C: <code class="docutils literal notranslate"><span class="pre">"vt_constraint_new_shape"</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#summary-table">Summary table</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#batchnorm-adjustment">BatchNorm adjustment</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#part-3-combined-analysis">Part 3: Combined analysis</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#definitions">Definitions</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#activation-variance">Activation variance</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#strategy-a">Strategy A</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#strategy-b">Strategy B</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#strategy-c">Strategy C</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#summary-resulting-variances-after-growth">Summary: resulting variances after growth</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#implementation">Implementation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#references">References</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=55c26ed414f5f8a31ebb"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=55c26ed414f5f8a31ebb"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024-2026 GroMo contributors.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

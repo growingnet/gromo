@@ -71,7 +71,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="GrowingModule (GroMo)" href="tech_notes.html" />
+    <link rel="next" title="Technical notes" href="tech_notes.html" />
     <link rel="prev" title="gromo.utils.tools.compute_mask_tensor_t" href="generated/gromo.utils.tools.compute_mask_tensor_t.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -397,6 +397,7 @@
 <li><p>Introduce VGG-like growing architecture support with the <cite>VGG</cite> class (<a class="reference external" href="https://github.com/growingnet/gromo/issues/236">#236</a> by <a class="reference external" href="https://github.com/hmousset">Hugo Mousset</a>)</p></li>
 <li><p>Add support for selecting GroupNorm as the normalization layer in the ResNet container, alongside the existing BatchNorm option (<a class="reference external" href="https://github.com/growingnet/gromo/issues/233">#233</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>).</p></li>
 <li><p>Add configurability to the ResNet container to allow using BatchNorm2d or disabling normalization entirely (<a class="reference external" href="https://github.com/growingnet/gromo/issues/228">#228</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
+<li><p>Add variance-transfer (VT) weight rescaling and (V,V)/(Z,-Z) neuron pairing to the growing-module extension workflow (<a class="reference external" href="https://github.com/growingnet/gromo/issues/237">#237</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Add <code class="docutils literal notranslate"><span class="pre">uv</span></code> files, use <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">sync</span> <span class="pre">--extra</span> <span class="pre">dev</span> <span class="pre">--extra</span> <span class="pre">test</span> <span class="pre">--extra</span> <span class="pre">doc</span></code> to install the package with all dependencies (<a class="reference external" href="https://github.com/growingnet/gromo/issues/226">#226</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Use <code class="docutils literal notranslate"><span class="pre">ruff</span></code> for formatting (<a class="reference external" href="https://github.com/growingnet/gromo/issues/227">#227</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Change how size-dependent post_layer_function modules handle extended activities in the growing module framework (<a class="reference external" href="https://github.com/growingnet/gromo/issues/224">#224</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
@@ -531,7 +532,7 @@
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">GrowingModule (GroMo)</p>
+        <p class="prev-next-title">Technical notes</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

@@ -581,33 +581,33 @@ those the first set is to initialize the computation of those.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 4 parameters.
-        Layer : Linear(in_features=1, out_features=2, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=1, out_features=2, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 LinearGrowingModule(second_layer) module with 3 parameters.
-        Layer : Linear(in_features=2, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=2, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 </pre></div>
 </div>
 <p>Above you can see that nothing is stored in the model.</p>
@@ -619,33 +619,33 @@ LinearGrowingModule(second_layer) module with 3 parameters.
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 4 parameters.
-        Layer : Linear(in_features=1, out_features=2, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : True
+        Layer: Linear(in_features=1, out_features=2, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: True
         self._internal_store_input=True
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 LinearGrowingModule(second_layer) module with 3 parameters.
-        Layer : Linear(in_features=2, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : True
+        Layer: Linear(in_features=2, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: True
         self._internal_store_input=True
-        Store pre-activity : True
+        Store pre-activity: True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 </pre></div>
 </div>
 <p>Above you can see that one the computation are initialised, we see that
@@ -675,33 +675,33 @@ estimated over 1000 samples.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 4 parameters.
-        Layer : Linear(in_features=1, out_features=2, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : True
+        Layer: Linear(in_features=1, out_features=2, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: True
         self._internal_store_input=True
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 LinearGrowingModule(second_layer) module with 3 parameters.
-        Layer : Linear(in_features=2, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : True
+        Layer: Linear(in_features=2, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: True
         self._internal_store_input=True
-        Store pre-activity : True
+        Store pre-activity: True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 1000 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 1000 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 </pre></div>
 </div>
 <p>Then we can compute the natural gradient step and the new neurons to add
@@ -716,33 +716,33 @@ correspond to the natural gradient step.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 4 parameters.
-        Layer : Linear(in_features=1, out_features=2, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : True
+        Layer: Linear(in_features=1, out_features=2, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: True
         self._internal_store_input=True
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : Linear(in_features=1, out_features=1, bias=True)
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 1000 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: Linear(in_features=1, out_features=1, bias=True)
 LinearGrowingModule(second_layer) module with 3 parameters.
-        Layer : Linear(in_features=2, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : True
+        Layer: Linear(in_features=2, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: True
         self._internal_store_input=True
-        Store pre-activity : True
+        Store pre-activity: True
         self._internal_store_pre_activity=True
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 1000 samples
-        Optimal delta layer : Linear(in_features=2, out_features=1, bias=True)
-        Extended input layer : Linear(in_features=1, out_features=1, bias=True)
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 1000 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 1000 samples
+        Optimal delta layer: Linear(in_features=2, out_features=1, bias=True)
+        Extended input layer: Linear(in_features=1, out_features=1, bias=True)
+        Extended output layer: None
 </pre></div>
 </div>
 <p>Once the updates are computed we can stop computing statistics and
@@ -753,33 +753,33 @@ storing them. This is done by calling the <code class="docutils literal notransl
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 4 parameters.
-        Layer : Linear(in_features=1, out_features=2, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : True
+        Layer: Linear(in_features=1, out_features=2, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: True
         self._internal_store_input=True
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : Linear(in_features=1, out_features=1, bias=True)
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: Linear(in_features=1, out_features=1, bias=True)
 LinearGrowingModule(second_layer) module with 3 parameters.
-        Layer : Linear(in_features=2, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=2, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
-        Optimal delta layer : Linear(in_features=2, out_features=1, bias=True)
-        Extended input layer : Linear(in_features=1, out_features=1, bias=True)
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
+        Optimal delta layer: Linear(in_features=2, out_features=1, bias=True)
+        Extended input layer: Linear(in_features=1, out_features=1, bias=True)
+        Extended output layer: None
 </pre></div>
 </div>
 <p>Here we can see that the first layer still store the input. To correct
@@ -790,33 +790,33 @@ it we can simply set <code class="docutils literal notranslate"><span class="pre
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 4 parameters.
-        Layer : Linear(in_features=1, out_features=2, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=1, out_features=2, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : Linear(in_features=1, out_features=1, bias=True)
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: Linear(in_features=1, out_features=1, bias=True)
 LinearGrowingModule(second_layer) module with 3 parameters.
-        Layer : Linear(in_features=2, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=2, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
-        Optimal delta layer : Linear(in_features=2, out_features=1, bias=True)
-        Extended input layer : Linear(in_features=1, out_features=1, bias=True)
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (3, 3) with 0 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (3, 1) with 0 samples
+        Optimal delta layer: Linear(in_features=2, out_features=1, bias=True)
+        Extended input layer: Linear(in_features=1, out_features=1, bias=True)
+        Extended output layer: None
 </pre></div>
 </div>
 </section>
@@ -881,33 +881,33 @@ model. This is done by calling the <code class="docutils literal notranslate"><s
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 6 parameters.
-        Layer : Linear(in_features=1, out_features=3, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=1, out_features=3, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 3) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : Linear(in_features=1, out_features=1, bias=True)
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 3) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: Linear(in_features=1, out_features=1, bias=True)
 LinearGrowingModule(second_layer) module with 4 parameters.
-        Layer : Linear(in_features=3, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=3, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (4, 1) with 0 samples
-        Optimal delta layer : Linear(in_features=2, out_features=1, bias=True)
-        Extended input layer : Linear(in_features=1, out_features=1, bias=True)
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (4, 1) with 0 samples
+        Optimal delta layer: Linear(in_features=2, out_features=1, bias=True)
+        Extended input layer: Linear(in_features=1, out_features=1, bias=True)
+        Extended output layer: None
 </pre></div>
 </div>
 <p>We can then delete the <code class="docutils literal notranslate"><span class="pre">extended_output_layer</span></code>,
@@ -919,33 +919,33 @@ needed anymore.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 6 parameters.
-        Layer : Linear(in_features=1, out_features=3, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=1, out_features=3, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 3) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 3) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 LinearGrowingModule(second_layer) module with 4 parameters.
-        Layer : Linear(in_features=3, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=3, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (4, 1) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (4, 1) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 </pre></div>
 </div>
 </section>
@@ -967,36 +967,36 @@ PyTorch model. You can train it, evaluate it, etc.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LinearGrowingModule(first_layer) module with 6 parameters.
-        Layer : Linear(in_features=1, out_features=3, bias=True)
-        Post layer function : GELU(approximate=&#39;none&#39;)
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=1, out_features=3, bias=True)
+        Post layer function: GELU(approximate=&#39;none&#39;)
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor S : S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
-        Tensor M : M(LinearGrowingModule(first_layer)) tensor of shape (2, 3) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor S: S(LinearGrowingModule(first_layer)) tensor of shape (2, 2) with 0 samples
+        Tensor M: M(LinearGrowingModule(first_layer)) tensor of shape (2, 3) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 LinearGrowingModule(second_layer) module with 4 parameters.
-        Layer : Linear(in_features=3, out_features=1, bias=True)
-        Post layer function : Identity()
-        Allow growing : False
-        Store input : False
+        Layer: Linear(in_features=3, out_features=1, bias=True)
+        Post layer function: Identity()
+        Allow growing: False
+        Store input: False
         self._internal_store_input=False
-        Store pre-activity : False
+        Store pre-activity: False
         self._internal_store_pre_activity=False
-        Tensor S (internal) : S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
-        Tensor S : S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
-        Tensor M : M(LinearGrowingModule(second_layer)) tensor of shape (4, 1) with 0 samples
-        Optimal delta layer : None
-        Extended input layer : None
-        Extended output layer : None
+        Tensor S (internal): S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
+        Tensor S: S(LinearGrowingModule(second_layer)) tensor of shape (4, 4) with 0 samples
+        Tensor M: M(LinearGrowingModule(second_layer)) tensor of shape (4, 1) with 0 samples
+        Optimal delta layer: None
+        Extended input layer: None
+        Extended output layer: None
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.290 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.405 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-growing-module-tutorial-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/e11074a616c6f41be8f9d214bdfcdd37/plot_growing_module_tutorial.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_growing_module_tutorial.ipynb</span></code></a></p>

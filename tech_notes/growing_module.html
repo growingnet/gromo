@@ -1,0 +1,588 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="light">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="gromo icon" sizes="300x168" href="../_static/gromo_small.png" type="image/png">
+    <title>GrowingModule (GroMo) &#8212; GroMo 0.0.1-dev documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "light";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=55c26ed414f5f8a31ebb" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=55c26ed414f5f8a31ebb" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=7c1988a6" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=55c26ed414f5f8a31ebb"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=55c26ed414f5f8a31ebb" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=55c26ed414f5f8a31ebb" />
+
+    <script src="../_static/jquery.js?v=5d32c60e"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+    <script src="../_static/documentation_options.js?v=5baf466d"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script async="async" src="https://www.googletagmanager.com/gtag/js?id=XXXX"></script>
+    <script>
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){ dataLayer.push(arguments); }
+                gtag('consent', 'default', {
+                    'ad_storage': 'denied',
+                    'ad_user_data': 'denied',
+                    'ad_personalization': 'denied',
+                    'analytics_storage': 'denied'
+                });
+                gtag('js', new Date());
+                gtag('config', 'XXXX');
+            </script>
+    <script defer="defer" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'tech_notes/growing_module';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Extension initialization" href="initialization.html" />
+    <link rel="prev" title="Technical notes" href="../tech_notes.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.0.1" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="light">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+    
+    <img src="../_static/logo_bg_white_small.png" class="logo__image only-light" alt="GroMo 0.0.1-dev documentation - Home"/>
+    <img src="../_static/logo_bg_white_small.png" class="logo__image only-dark pst-js-only" alt="GroMo 0.0.1-dev documentation - Home"/>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../auto_examples/index.html">
+    Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../whats_new.html">
+    Release notes
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../tech_notes.html">
+    Technical notes
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../auto_examples/index.html">
+    Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../whats_new.html">
+    Release notes
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../tech_notes.html">
+    Technical notes
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar"><svg class="pst-icon svg-inline--fa" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">GrowingModule (GroMo)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="initialization.html">Extension initialization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="variance_transfer.html">Variance-transfer initialization</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../tech_notes.html" class="nav-link">Technical notes</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">GrowingModule (GroMo)</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="growingmodule-gromo">
+<h1>GrowingModule (GroMo)<a class="headerlink" href="#growingmodule-gromo" title="Link to this heading">#</a></h1>
+<p>This is the documentation of the growing method described in <a class="reference internal" href="../index.html#tmlr24" id="id1"><span>[TMLR24]</span></a>.</p>
+<p>We propose to build growing networks using <cite>GroMo</cite> inherited from <cite>torch.nn.Module</cite>. We have two types of modules, the standard <cite>GrowingModule</cite> and the <cite>AdditionGrowingModule</cite>. The first one is a connection that contains the parameters of the network. The second one aims to connect multiple <cite>GrowingModule</cite> together.</p>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">#</a></h2>
+<p>To compute the special updates (<em>i.e.</em> the ones that are different from classical gradient descent) we need to store tensor statistics. Those are computed using the <cite>TensorStatistics</cite> class as they are averaged over possibly multiple machine batches.</p>
+<p>Here is a list of statistics that can be useful:</p>
+<ul class="simple">
+<li><p><cite>S local</cite>: the tensor <span class="math notranslate nohighlight">\(S_{-1}\)</span> for the natural gradient</p></li>
+<li><p><cite>M</cite>: the tensor <span class="math notranslate nohighlight">\(M_{-1}\)</span> for the natural gradient</p></li>
+<li><p><cite>S growth</cite>: the tensor <span class="math notranslate nohighlight">\(S_{-2}\)</span> to compute the new weights</p></li>
+<li><p><cite>M prev</cite>: the tensor <span class="math notranslate nohighlight">\(M_{-2}\)</span> to compute the new weights</p></li>
+<li><p><cite>cross covariance</cite>: the cross covariance <span class="math notranslate nohighlight">\(P\)</span> to compute the new weights</p></li>
+</ul>
+<section id="intermediate-quantities">
+<h3>Intermediate quantities<a class="headerlink" href="#intermediate-quantities" title="Link to this heading">#</a></h3>
+<p>To compute those statistics we need to access some intermediate quantities:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(a\)</span>: the pre-activation of the layer</p></li>
+<li><p><span class="math notranslate nohighlight">\(\nabla_{a} \mathcal{L}\)</span>: the gradient of the loss with respect to the pre-activation</p></li>
+<li><p><span class="math notranslate nohighlight">\(b_{-1}\)</span>: the activation of the previous layer</p></li>
+<li><p><span class="math notranslate nohighlight">\(b_{-2}\)</span>: the activation of two layers before</p></li>
+</ul>
+<p>We store those quantities in the <cite>GroMo</cite> module directly. Depending on the situation it can be stored in different places but it is transparent for the user as we surcharge <cite>input</cite> and <cite>pre_activity</cite> to access those quantities in the same way.</p>
+<a class="reference internal image-reference" href="../_images/gromo_links.png"><img alt="Where are quantities stored ?" class="align-center" src="../_images/gromo_links.png" style="width: 800px; height: 565px;" />
+</a>
+<p>When we link only <cite>GrowingModule</cite> modules together, the quantities are stored in the <cite>GrowingModule</cite> module. When we link <cite>GrowingModule</cite> with <cite>AdditionGrowingModule</cite> the quantities are stored in the <cite>AdditionGrowingModule</cite>.  This is due to the fact that we use the <cite>AdditionGrowingModule</cite> when we connect multiple <cite>GrowingModule</cite> together and we do not want to store the same quantities multiple times. Hence we store them in the <cite>AdditionGrowingModule</cite> and we can access them from the <cite>GrowingModule</cite>. Note that we perform the activation after the addition in the <cite>AdditionGrowingModule</cite> so that we can access the pre-activity of the previous layer as the input of the next layer.</p>
+</section>
+<section id="statistical-quantities">
+<h3>Statistical quantities<a class="headerlink" href="#statistical-quantities" title="Link to this heading">#</a></h3>
+<p>The computation of all statistic has the same structure.</p>
+<ol class="arabic simple">
+<li><p>Firstly the statistic is created as an instance of <cite>TensorStatistics</cite>.</p></li>
+<li><p>Then we use our network to compute intermediate quantities. During this forward pass we store the intermediate quantities as explained above and we set the statistics as not updated. This is to ensure that we do not update a statistic multiple times with the same data.</p></li>
+<li><p>We call the method <cite>update</cite> of the statistic to update it with the intermediate quantities. This includes updating the number of samples seen to compute the current statistic.</p></li>
+<li><p>We can then access the statistic by calling it (i.e. using <cite>__call__</cite>).</p></li>
+</ol>
+<p>The previously mentioned statistics (<cite>S local</cite>, <cite>M</cite>, <cite>S growth</cite>, <cite>M prev</cite>, <cite>cross covariance</cite>) are transparently accessible in the <cite>GrowingModule</cite>. However they are not necessarily stored in the <cite>GrowingModule</cite>. In the case of a <cite>GrowingModule</cite>,  (<cite>M</cite>, <cite>M prev</cite>, <cite>cross covariance</cite>) are computed in the <cite>GrowingModule</cite>. <cite>S local</cite> is computed either in the previous module if it is an <cite>AdditionGrowingModule</cite> or in the <cite>GrowingModule</cite> if it is a <cite>GrowingModule</cite> (this is due to the fact that all next modules of an addition module require the same <cite>S local</cite>). The computation of <cite>S growth</cite> done directly in the module with the input of the previous module (However due to the fact that in the case of fully-connected layers (<cite>nn.Linear</cite>) the <cite>S growth</cite> is exactly the <cite>S local</cite> of the previous module, we do not recompute it, and simply point to the S local tensor of the previous module). (Note that here we talk about the <cite>S growth</cite> used by the current layer to compute new weights. Indeed, the layer still needs to compute a <cite>S growth</cite> but which is used by the next layer to compute its new weights).</p>
+<p><cite>S local</cite> and <cite>S growth</cite> (for the next module) tensors are computed using the input of the module. <cite>cross covariance</cite> is computed using the input of the module and of the previous module. <cite>M</cite> is computed using the input and the output gradient of the module. <cite>M prev</cite> is computed using the input of the previous module and the output gradient of the current module.</p>
+</section>
+<section id="updates">
+<h3>Updates<a class="headerlink" href="#updates" title="Link to this heading">#</a></h3>
+<p>Once the statistics are computed we can compute the optimal updates. First the natural gradient using the <cite>S local</cite> and <cite>M</cite> tensors that get stored in the <cite>optimal_delta_layer</cite> attribute of the module. Then we can compute the tensor <cite>N</cite> using the <cite>cross covariance</cite> and <cite>M prev</cite> tensors. Finally we can compute the new weights using the <cite>S growth</cite> and <cite>N</cite> tensors. Those new weights are stored in the <cite>layer_in_extension</cite> attribute of the current module and in the <cite>layer_out_extension</cite> attribute of the previous module.</p>
+</section>
+<section id="wrap-up">
+<h3>Wrap-up<a class="headerlink" href="#wrap-up" title="Link to this heading">#</a></h3>
+<p>If we take an example with two growing modules and look at most of the objects that are computed we have the following graph:</p>
+<a class="reference internal image-reference" href="../_images/gromo_statistics.png"><img alt="computation graph of the statistics" class="align-center" src="../_images/gromo_statistics.png" style="width: 800px; height: 565px;" />
+</a>
+<p>The first step is to compute the statistics (the objects written in black) and which are directly computed from intermediate quantities of the network (the gray arrows indicate the dependencies of each statistic). Then we can compute the optimal parameter update (represented by <cite>optimal_delta_layer</cite> and represented in purple). Finally we can compute the new weights using the method <cite>compute_optimal_added_parameters</cite> (represented in red) which store the result in the <cite>layer_in_extension</cite> attribute of the current module and in the <cite>layer_out_extension</cite> attribute of the previous module.</p>
+</section>
+</section>
+<section id="growing-a-layer">
+<h2>Growing a layer<a class="headerlink" href="#growing-a-layer" title="Link to this heading">#</a></h2>
+<section id="sequential-case">
+<h3>Sequential case<a class="headerlink" href="#sequential-case" title="Link to this heading">#</a></h3>
+<p>To grow a layer of neurons, we need new incoming connections and new outgoing connections. If we look at the section with two modules <cite>M1</cite> and <cite>M2</cite> with a layer of neurons in between, we can grow the layer of neurons by adding new outgoing connections in <cite>M1</cite> (noted <cite>O1</cite>) and new incoming connections in <cite>M2</cite> (noted <cite>I2</cite>). To compute the new weights with the TINY/FoGro method we can use the method <cite>compute_optimal_added_parameters</cite> in <cite>M2</cite> that will also update the module <cite>M1</cite> if the option <cite>update_previous</cite> is set to <cite>True</cite>.</p>
+<p>You can then use the <cite>extended_forward</cite> method to compute the forward pass with the new weights. More precisely, the <cite>extended_forward</cite> with integrating the <cite>scaling_factor</cite> (noted <span class="math notranslate nohighlight">\(\gamma\)</span>) to the forward pass:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(\texttt{extended\_forward}(x) = (M1(x), \gamma  O1(x))\)</span></p></li>
+<li><p><span class="math notranslate nohighlight">\(\texttt{extended\_forward}(M1(x), \gamma  O1(x)) = M2(M1(x)) + \gamma^2  I2(O1(x))\)</span></p></li>
+</ul>
+<p>Once satisfied with the extension and the scaling factor, they are incorporated in the forward pass by using the method <cite>apply_change</cite> in <cite>M2</cite> with the option <cite>apply_previous</cite> set to <cite>True</cite>.</p>
+</section>
+</section>
+<section id="glossary">
+<h2>Glossary<a class="headerlink" href="#glossary" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>Machine batch / Statistical batch: often in ML we use batch of data to estimate quantities and to process data together to make computation faster. For example, in stochastic gradient descent we estimate the gradient on a batch of examples that is computed at the same time. In our case we can compute multiple examples at the same time and do it multiple times to compute a statistic. We refer to the first one to machine batch and to the second as statistical batch.</p></li>
+</ul>
+</section>
+<section id="bibliography">
+<h2>Bibliography<a class="headerlink" href="#bibliography" title="Link to this heading">#</a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="esann2025" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>ESANN2025<span class="fn-bracket">]</span></span>
+<p>Stella Douka, Manon Verbockhaven, Théo Rudkiewicz, Stéphane Rivaud,
+François P. Landes, Sylvain Chevallier and Guillaume Charpiat.
+Growth strategies for arbitrary DAG neural architectures. ESANN 2025 -
+33th European Symposium on Artificial Neural Networks, 2025, Bruges, Belgium.</p>
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../tech_notes.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Technical notes</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="initialization.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Extension initialization</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#attributes">Attributes</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#intermediate-quantities">Intermediate quantities</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#statistical-quantities">Statistical quantities</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#updates">Updates</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#wrap-up">Wrap-up</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#growing-a-layer">Growing a layer</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sequential-case">Sequential case</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#glossary">Glossary</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#bibliography">Bibliography</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=55c26ed414f5f8a31ebb"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=55c26ed414f5f8a31ebb"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024-2026 GroMo contributors.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
