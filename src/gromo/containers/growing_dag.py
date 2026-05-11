@@ -657,7 +657,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
     def update_nodes(
         self, nodes: list[str] | Mapping, node_attributes: dict[str, dict]
     ) -> None:
-        """Create new merge modules for nodes based on incoming and outgoing edges
+        r"""Create new merge modules for nodes based on incoming and outgoing edges
 
         Parameters
         ----------
@@ -875,9 +875,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             assert self.get_node_module(prev_node)
             assert self.get_node_module(next_node)
 
-            self.get_edge_module(prev_node, next_node).previous_module = (
-                self.get_node_module(prev_node)
-            )
+            self.get_edge_module(
+                prev_node, next_node
+            ).previous_module = self.get_node_module(prev_node)
             self.get_edge_module(prev_node, next_node).next_module = self.get_node_module(
                 next_node
             )
@@ -1102,7 +1102,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     assert torch.all(
                         bottleneck[node_module._name]
                         == pre_activities_grad[node_module._name]
-                    ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
+                    ), (
+                        "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
+                    )
 
         # Reset tensors and remove hooks
         self.reset_computation()
@@ -1209,7 +1211,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         list[dict]
             list of dictionaries with all possible new one-hop connections and their attributes
         """
-
         one_hop_edges = []
         new_node = f"{len(self.nodes) - 1}@{self._name}"
         for prev_node, succ in successors.items():
@@ -1411,9 +1412,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 module_input = output[previous_node]
                 activity = module(module_input)
 
-                assert (
-                    activity.shape[1] == self.nodes[node]["size"]
-                ), f"{activity.shape[1]=} != {self.nodes[node]['size']=} for {node=}"
+                assert activity.shape[1] == self.nodes[node]["size"], (
+                    f"{activity.shape[1]=} != {self.nodes[node]['size']=} for {node=}"
+                )
 
                 if node in output:
                     output[node] = output[node].add(activity)

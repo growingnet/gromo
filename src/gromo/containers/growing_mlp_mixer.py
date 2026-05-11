@@ -89,9 +89,9 @@ class GrowingMLPBlock(GrowingContainer):
             y_ext = self.dropout(y_ext)
         y, _ = self.second_layer.extended_forward(y, y_ext)
 
-        assert (
-            _ is None
-        ), f"The output of layer 2 {self.second_layer.name} should not be extended."
+        assert _ is None, (
+            f"The output of layer 2 {self.second_layer.name} should not be extended."
+        )
         del y_ext
 
         y = self.dropout(y)

@@ -1592,7 +1592,9 @@ class TestGrowingDAG(TorchTestCase):
         )
         self.assertEqual(expansion.growth_history[mock_global_step]["1"], 0)
 
-        expansion._Expansion__update_growth_history(nodes_added=["1", "2"], current_step=mock_global_step)  # type: ignore
+        expansion._Expansion__update_growth_history(
+            nodes_added=["1", "2"], current_step=mock_global_step
+        )  # type: ignore
         self.assertEqual(expansion.growth_history[mock_global_step]["1"], 2)
         self.assertNotIn("2", expansion.growth_history[mock_global_step])
 

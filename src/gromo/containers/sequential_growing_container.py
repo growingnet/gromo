@@ -111,9 +111,9 @@ class SequentialGrowingModel(GrowingModel):
         """
         information = {}
         for i, layer in enumerate(self._growing_layers):
-            assert isinstance(
-                layer.parameter_update_decrease, torch.Tensor
-            ), "parameter_update_decrease should be a tensor"
+            assert isinstance(layer.parameter_update_decrease, torch.Tensor), (
+                "parameter_update_decrease should be a tensor"
+            )
             layer_information = {
                 "update_value": layer.first_order_improvement.item(),
                 "parameter_improvement": layer.parameter_update_decrease.item(),

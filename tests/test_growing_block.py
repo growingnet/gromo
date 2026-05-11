@@ -1661,6 +1661,107 @@ class TestLinearGrowingBlock(TorchTestCase):
             msg="Second layer extension weights std should match original weights std",
         )
 
+    def test_normalize_optimal_updates_match_extending_layer(self):
+        """
+        Test ``normalize_optimal_updates`` with ``match_extending_layer``.
+
+        Each update component should match the std of the layer it modifies:
+        - ``second_layer.extended_input_layer`` (Omega) -> std(second_layer.weight)
+        - ``first_layer.extended_output_layer``  (Alpha) -> std(first_layer.weight)
+        - ``second_layer.optimal_delta_layer``   (dW)    -> std(second_layer.weight)
+        """
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+        block.first_layer.weight.data *= 2.0
+        block.second_layer.weight.data *= 0.1
+
+        block.create_layer_extensions(self.added_features)
+        assert isinstance(block.first_layer.extended_output_layer, torch.nn.Linear)
+        assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
+
+        block.second_layer.optimal_delta_layer = torch.nn.Linear(
+            block.second_layer.in_features,
+            block.second_layer.out_features,
+            bias=block.second_layer.use_bias,
+            device=self.device,
+        )
+
+        first_std = block.first_layer.weight.std().item()
+        second_std = block.second_layer.weight.std().item()
+
+        block.normalize_optimal_updates(normalization_type="match_extending_layer")
+
+        self.assertAlmostEqual(
+            block.second_layer.extended_input_layer.weight.std().item(),
+            second_std,
+            places=2,
+            msg="Omega should match std(second_layer.weight)",
+        )
+        self.assertAlmostEqual(
+            block.first_layer.extended_output_layer.weight.std().item(),
+            first_std,
+            places=2,
+            msg="Alpha should match std(first_layer.weight)",
+        )
+        assert isinstance(block.second_layer.optimal_delta_layer, torch.nn.Linear)
+        self.assertAlmostEqual(
+            block.second_layer.optimal_delta_layer.weight.std().item(),
+            second_std,
+            places=2,
+            msg="dW should match std(second_layer.weight)",
+        )
+
+    def test_normalize_optimal_updates_match_extending_layer_empty_layers(self):
+        """
+        Test ``match_extending_layer`` fallback when inner layers have no weights.
+
+        A block with ``hidden_features=0`` has empty weights in both inner
+        layers, so the target std for each component must come from the
+        kaiming-like fallback ``get_fan_in_from_layer(extension) ** -0.5``.
+        """
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            device=self.device,
+        )
+
+        block.create_layer_extensions(self.added_features)
+        assert isinstance(block.first_layer.extended_output_layer, torch.nn.Linear)
+        assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
+
+        block.normalize_optimal_updates(normalization_type="match_extending_layer")
+
+        expected_second_std = (
+            block.second_layer.get_fan_in_from_layer(
+                block.second_layer.extended_input_layer
+            )
+            ** -0.5
+        )
+        expected_first_std = (
+            block.first_layer.get_fan_in_from_layer(
+                block.first_layer.extended_output_layer
+            )
+            ** -0.5
+        )
+
+        self.assertAlmostEqual(
+            block.second_layer.extended_input_layer.weight.std().item(),
+            expected_second_std,
+            places=5,
+            msg="Omega should match kaiming fallback of second_layer's fan-in",
+        )
+        self.assertAlmostEqual(
+            block.first_layer.extended_output_layer.weight.std().item(),
+            expected_first_std,
+            places=5,
+            msg="Alpha should match kaiming fallback of first_layer's fan-in",
+        )
+
     def test_weights_statistics(self):
         """Test that weights_statistics method runs and returns a dictionary."""
 

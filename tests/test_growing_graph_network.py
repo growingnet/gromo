@@ -262,19 +262,19 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.assertEqual(edge_module.bias.shape, (self.out_features,))
 
     def test_find_amplitude_factor(self) -> None:
-        self.net.dag.get_edge_module("1", self.net.dag.end).extended_input_layer = (
-            torch.nn.Linear(
-                in_features=self.net.neurons,
-                out_features=self.out_features,
-                device=global_device(),
-            )
+        self.net.dag.get_edge_module(
+            "1", self.net.dag.end
+        ).extended_input_layer = torch.nn.Linear(
+            in_features=self.net.neurons,
+            out_features=self.out_features,
+            device=global_device(),
         )
-        self.net.dag.get_edge_module(self.net.dag.root, "1").extended_output_layer = (
-            torch.nn.Linear(
-                in_features=self.in_features,
-                out_features=self.net.neurons,
-                device=global_device(),
-            )
+        self.net.dag.get_edge_module(
+            self.net.dag.root, "1"
+        ).extended_output_layer = torch.nn.Linear(
+            in_features=self.in_features,
+            out_features=self.net.neurons,
+            device=global_device(),
         )
         self.net.loss_fn = torch.nn.L1Loss()
 
@@ -567,13 +567,13 @@ class TestGrowingGraphNetwork(TorchTestCase):
                 device=self.net_conv.device,
             )
         )
-        self.net.dag.get_edge_module(start_linear, "1").extended_input_layer = (
-            torch.nn.Linear(
-                in_features=1,
-                out_features=self.net_conv.neurons,
-                bias=False,
-                device=self.net_conv.device,
-            )
+        self.net.dag.get_edge_module(
+            start_linear, "1"
+        ).extended_input_layer = torch.nn.Linear(
+            in_features=1,
+            out_features=self.net_conv.neurons,
+            bias=False,
+            device=self.net_conv.device,
         )
 
         # First dag

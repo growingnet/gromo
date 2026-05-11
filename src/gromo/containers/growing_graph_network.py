@@ -389,7 +389,6 @@ class GrowingGraphNetwork(GrowingContainer):
         ValueError
             if bottleneck and activities are of type str and there are no previous or next modules
         """
-
         node_module = self.dag.get_node_module(expansion.expanding_node)
         linear_alpha_layer = isinstance(node_module, LinearMergeGrowingModule)
         if isinstance(expansion, InterMergeExpansion):
@@ -435,8 +434,22 @@ class GrowingGraphNetwork(GrowingContainer):
                 f"Inappropriate type for `bottlenecks` variable. Expected dict[str, torch.Tensor] or str. Got {type(bottleneck_keys)}"
             )
 
-        total_in_features = sum([edge.in_features if isinstance(edge, LinearGrowingModule) else edge.in_channels for edge in expansion.in_edges])  # type: ignore
-        total_out_features = sum([edge.out_features if isinstance(edge, LinearGrowingModule) else edge.out_channels for edge in expansion.out_edges])  # type: ignore
+        total_in_features = sum(
+            [
+                edge.in_features
+                if isinstance(edge, LinearGrowingModule)
+                else edge.in_channels
+                for edge in expansion.in_edges
+            ]
+        )  # type: ignore
+        total_out_features = sum(
+            [
+                edge.out_features
+                if isinstance(edge, LinearGrowingModule)
+                else edge.out_channels
+                for edge in expansion.out_edges
+            ]
+        )  # type: ignore
         in_edges = sum(int(edge.use_bias) for edge in expansion.in_edges)  # type:ignore
 
         # Initialize alpha and omega weights
@@ -566,7 +579,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 in_features = prev_edge_module.in_features
             elif isinstance(prev_edge_module, Conv2dGrowingModule):
                 in_features = prev_edge_module.in_channels
-            prev_edge_module._scaling_factor_next_module[0] = 1
+            prev_edge_module.output_extension_scaling = 1  # type: ignore
 
             _weight = alpha[:, i : i + in_features, ...]
             _weight = _weight.view((active_neurons, *prev_edge_module.weight.shape[1:]))
@@ -658,7 +671,6 @@ class GrowingGraphNetwork(GrowingContainer):
         ValueError
             if bottleneck and activities are of type str and there are no previous or next modules
         """
-
         new_edge_module = self.dag.get_edge_module(
             expansion.previous_node, expansion.next_node
         )
@@ -838,19 +850,19 @@ class GrowingGraphNetwork(GrowingContainer):
             print info, by default False
         """
         if amplitude_factor:
-            assert (
-                dev_dataloader is not None
-            ), "Development DataLoader should be given if amplitude_factor is True"
+            assert dev_dataloader is not None, (
+                "Development DataLoader should be given if amplitude_factor is True"
+            )
         if evaluate:
-            assert (
-                train_dataloader is not None
-            ), "Train DataLoader should be given if evaluate is True"
-            assert (
-                dev_dataloader is not None
-            ), "Development DataLoader should be given if evaluate is True"
-            assert (
-                val_dataloader is not None
-            ), "Validation DataLoader should be given if evaluate is True"
+            assert train_dataloader is not None, (
+                "Train DataLoader should be given if evaluate is True"
+            )
+            assert dev_dataloader is not None, (
+                "Development DataLoader should be given if evaluate is True"
+            )
+            assert val_dataloader is not None, (
+                "Validation DataLoader should be given if evaluate is True"
+            )
         # Execute all graph growth options
         for expansion in actions:
             # Create a new edge
@@ -1081,7 +1093,7 @@ class GrowingGraphNetwork(GrowingContainer):
             edge_module = self.dag.get_edge_module(prev_node, next_node)
 
             edge_module.scaling_factor = factor
-            edge_module._scaling_factor_next_module.data[0] = factor
+            edge_module.output_extension_scaling = factor  # type: ignore
             edge_module.apply_change(scaling_factor=factor, apply_previous=False)
             if edge_module.extended_output_layer is not None:
                 new_neurons = self.chosen_action.metrics["active_neurons"]
@@ -1155,7 +1167,7 @@ class GrowingGraphNetwork(GrowingContainer):
         """Iterator of network parameters
 
         Returns
-        ------
+        -------
         Iterator
             parameters iterator
         """

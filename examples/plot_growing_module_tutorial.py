@@ -272,9 +272,9 @@ def extended_evaluate_model(
     batch_limit: int = -1,
     device: torch.device = global_device(),
 ) -> float:
-    assert (
-        loss_function.reduction == "sum"
-    ), "The loss function should not be averaged over the batch"
+    assert loss_function.reduction == "sum", (
+        "The loss function should not be averaged over the batch"
+    )
     growing_model.eval()
     nb_sample = 0
     total_loss = torch.tensor(0.0, device=device)

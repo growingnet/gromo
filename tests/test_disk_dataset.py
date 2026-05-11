@@ -34,7 +34,7 @@ class TestDiskDataset(unittest.TestCase):
             )
             items = list(ds)
             self.assertEqual(len(items), 3)
-            xs, ys = zip(*items)
+            xs, ys = zip(*items, strict=True)
             for i in range(len(items)):
                 expected_x = torch.cat([in_a[i], in_b[i]])
                 self.assertTrue(torch.allclose(xs[i], expected_x))

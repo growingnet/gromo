@@ -470,7 +470,7 @@ class TestConv2dMergeGrowingModule(TorchTestCase):
         )
 
         # Use setattr to bypass type checking for test purposes
-        setattr(m, "input_size", None)
+        m.input_size = None
 
         # Set previous modules - should auto-set input_size
         m.set_previous_modules([self.prev])
@@ -687,6 +687,10 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         self.assertEqual(
             layer.get_fan_in_from_layer(torch.nn.Conv2d(2, 3, kernel_size=(7, 5))),
             2 * 7 * 5,
+        )
+        self.assertEqual(
+            layer.get_fan_in_from_layer(num_neurons=4),
+            4 * layer.kernel_size[0] * layer.kernel_size[1],
         )
 
     def test_init(self):
@@ -915,6 +919,36 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
             + 1
         )
         self.assertShapeEqual(self.demo_b.tensor_m(), (f, self.demo_b.out_channels))
+
+    def test_covariance_loss_gradient_shape(self):
+        """Minimal smoke test: covariance_loss_gradient is accessible and (cp, cp)."""
+        self.demo.init_computation()
+
+        y = self.demo(self.input_x)
+        loss = torch.norm(y)
+        loss.backward()
+        self.demo.update_computation()
+
+        cov = self.demo.covariance_loss_gradient()
+        self.assertShapeEqual(cov, (self.demo.out_channels, self.demo.out_channels))
+
+    def test_compute_optimal_delta_use_fisher(self):
+        """Smoke test: Conv2d compute_optimal_delta runs with use_fisher=True."""
+        self.demo.init_computation()
+        y = self.demo(self.input_x)
+        torch.norm(y).backward()
+        self.demo.update_computation()
+
+        self.demo.compute_optimal_delta(use_fisher=True)
+        self.assertShapeEqual(
+            self.demo.delta_raw,
+            (
+                self.demo.out_channels,
+                self.demo.in_channels
+                * self.demo.kernel_size[0]
+                * self.demo.kernel_size[1],
+            ),
+        )
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_delta(self, bias: bool = False):
@@ -1375,7 +1409,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             self.demo.kernel_size[0] * self.demo.kernel_size[1],
             hin * win,
         )
-        for i, (t, t_th) in enumerate(zip(tensor_t.shape, size_theoretic)):
+        for i, (t, t_th) in enumerate(zip(tensor_t.shape, size_theoretic, strict=True)):
             self.assertEqual(t, t_th, f"Error for dim {i}: should be {t_th}, got {t}")
 
     def test_tensor_m_prev_update(self):

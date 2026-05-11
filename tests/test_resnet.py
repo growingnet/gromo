@@ -2,13 +2,17 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from gromo.containers.resnet import ResNetBasicBlock, init_full_resnet_structure
+from gromo.containers.resnet import (
+    ResNetBasicBlock,
+    init_full_resnet_structure,
+)
 from gromo.utils.utils import global_device
 from tests.unittest_tools import unittest_parametrize
 
 
 if TYPE_CHECKING:
     from gromo.containers.growing_block import Conv2dGrowingBlock
+    from gromo.modules.growing_normalisation import NormKwargs
 
 
 try:
@@ -165,6 +169,118 @@ class TestResNet(TorchTestCase):
                 number_of_blocks_per_stage=2,
             )
 
+    def test_stage2_first_block_stride_with_skip_first_downsample(
+        self,
+        use_preactivation: bool = True,
+    ):
+        """Test stage-2 first-block stride and spatial size with explicit skip policy."""
+        device = global_device()
+
+        def get_stage2_stride_and_output_size(
+            model: ResNetBasicBlock,
+            input_hw: int,
+        ) -> tuple[tuple[int, int], tuple[int, int]]:
+            stage2_first_block = model.stages[1][0]  # type: ignore[index]
+            stride = stage2_first_block.first_layer.layer.stride  # type: ignore[attr-defined]
+
+            x = torch.randn(2, 3, input_hw, input_hw, device=device)
+            x = model.pre_net(x)
+            x = model.stages[0](x)
+            x = stage2_first_block(x)
+            output_size = x.shape[-2:]
+            return stride, output_size
+
+        model_skip = init_full_resnet_structure(
+            input_shape=(3, 8, 8),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            small_inputs=True,
+            skip_first_downsample=True,
+            device=device,
+        )
+        stride_skip, output_size_skip = get_stage2_stride_and_output_size(model_skip, 8)
+        self.assertEqual(stride_skip, (1, 1))
+        self.assertEqual(output_size_skip, (8, 8))
+
+        model_downsample = init_full_resnet_structure(
+            input_shape=(3, 8, 8),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            small_inputs=True,
+            skip_first_downsample=False,
+            device=device,
+        )
+        stride_downsample, output_size_downsample = get_stage2_stride_and_output_size(
+            model_downsample,
+            8,
+        )
+
+        self.assertEqual(stride_downsample, (2, 2))
+        self.assertEqual(output_size_downsample, (4, 4))
+
+    def test_stage2_first_block_stride_default_skip_first_downsample(
+        self,
+        use_preactivation: bool = True,
+    ):
+        """Test default skip_first_downsample behavior inferred from input size."""
+        device = global_device()
+
+        def get_stage2_stride_and_output_size(
+            model: ResNetBasicBlock,
+            input_hw: int,
+        ) -> tuple[tuple[int, int], tuple[int, int]]:
+            stage2_first_block = model.stages[1][0]  # type: ignore[index]
+            stride = stage2_first_block.first_layer.layer.stride  # type: ignore[attr-defined]
+
+            x = torch.randn(2, 3, input_hw, input_hw, device=device)
+            x = model.pre_net(x)
+            x = model.stages[0](x)
+            x = stage2_first_block(x)
+            output_size = x.shape[-2:]
+            return stride, output_size
+
+        model_small_default = init_full_resnet_structure(
+            input_shape=(3, 8, 8),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            device=device,
+        )
+        small_stride, small_output_size = get_stage2_stride_and_output_size(
+            model_small_default,
+            8,
+        )
+
+        self.assertTrue(model_small_default.small_inputs)
+        self.assertEqual(small_stride, (1, 1))
+        self.assertEqual(small_output_size, (8, 8))
+
+        model_large_default = init_full_resnet_structure(
+            input_shape=(3, 64, 64),
+            out_features=10,
+            number_of_blocks_per_stage=1,
+            nb_stages=2,
+            inplanes=1,
+            use_preactivation=use_preactivation,
+            device=device,
+        )
+        large_stride, large_output_size = get_stage2_stride_and_output_size(
+            model_large_default,
+            64,
+        )
+
+        self.assertFalse(model_large_default.small_inputs)
+        self.assertEqual(large_stride, (2, 2))
+        self.assertEqual(large_output_size, (8, 8))
+
     @unittest_parametrize(({"use_preactivation": True}, {"use_preactivation": False}))
     def test_forward_backward(self, use_preactivation: bool = True):
         """Test forward and backward pass of the ResNet model."""
@@ -182,6 +298,126 @@ class TestResNet(TorchTestCase):
         self.assertShapeEqual(output, (4, 10), "Output shape should be (4, 10)")
         loss = output.sum()
         loss.backward()  # Check that backward pass works without error
+
+    def test_normalization_configuration_forward(self):
+        """Test forward passes with no normalization and custom BatchNorm kwargs."""
+        device = global_device()
+        x = torch.randn(2, 3, 32, 32, device=device)
+
+        with self.subTest(normalization="invalid"):
+            with self.assertRaises(ValueError):
+                init_full_resnet_structure(
+                    input_shape=(3, 32, 32),
+                    out_features=7,
+                    number_of_blocks_per_stage=1,
+                    reduction_factor=0.5,
+                    inplanes=8,
+                    nb_stages=2,
+                    normalization="invalid",  # type: ignore[arg-type]
+                    device=device,
+                )
+
+        with self.subTest(normalization="none"):
+            for preactivation in [True, False]:
+                model_no_norm = init_full_resnet_structure(
+                    input_shape=(3, 32, 32),
+                    out_features=7,
+                    number_of_blocks_per_stage=1,
+                    reduction_factor=0.5,
+                    inplanes=8,
+                    nb_stages=2,
+                    use_preactivation=preactivation,
+                    normalization=None,
+                    device=device,
+                )
+                norm_layers = [
+                    module
+                    for module in model_no_norm.modules()
+                    if isinstance(module, torch.nn.BatchNorm2d)
+                ]
+                self.assertEqual(norm_layers, [])
+                output = model_no_norm(x)
+                self.assertShapeEqual(output, (2, 7))
+
+        with self.subTest(normalization="batch"):
+            normalization_kwargs: NormKwargs = {
+                "eps": 1e-3,
+                "momentum": 0.25,
+                "affine": False,
+                "track_running_stats": False,
+            }
+            model_batch_norm = init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                out_features=7,
+                number_of_blocks_per_stage=1,
+                reduction_factor=0.5,
+                inplanes=8,
+                nb_stages=2,
+                normalization="batch",
+                normalization_kwargs=normalization_kwargs,
+                device=device,
+            )
+            norm_layers = [
+                module
+                for module in model_batch_norm.modules()
+                if isinstance(module, torch.nn.BatchNorm2d)
+            ]
+            self.assertGreater(len(norm_layers), 0)
+            for norm_layer in norm_layers:
+                self.assertEqual(norm_layer.eps, normalization_kwargs["eps"])
+                self.assertEqual(
+                    norm_layer.momentum,
+                    normalization_kwargs["momentum"],
+                )
+                self.assertEqual(norm_layer.affine, normalization_kwargs["affine"])
+                self.assertEqual(
+                    norm_layer.track_running_stats,
+                    normalization_kwargs["track_running_stats"],
+                )
+            output = model_batch_norm(x)
+            self.assertShapeEqual(output, (2, 7))
+
+        with self.subTest(normalization="group"):
+            normalization_kwargs: NormKwargs = {
+                "eps": 1e-2,
+                "num_groups": 2,
+                "momentum": 0.25,
+                "affine": False,
+                "track_running_stats": False,
+            }
+            model_group_norm = init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                out_features=7,
+                number_of_blocks_per_stage=1,
+                reduction_factor=0.5,
+                inplanes=8,
+                nb_stages=2,
+                normalization="group",
+                normalization_kwargs=normalization_kwargs,
+                device=device,
+            )
+            output = model_group_norm(x)
+            self.assertIsInstance(output, torch.Tensor)
+
+        with self.subTest(normalization="batch_classical_downsample"):
+            model_classical_batch_norm = init_full_resnet_structure(
+                input_shape=(3, 32, 32),
+                out_features=7,
+                number_of_blocks_per_stage=1,
+                reduction_factor=0.5,
+                inplanes=8,
+                nb_stages=2,
+                normalization="batch",
+                use_preactivation=False,
+                device=device,
+            )
+            downsample = model_classical_batch_norm.stages[1][0].downsample  # type: ignore[index]
+            self.assertIsInstance(downsample, torch.nn.Sequential)
+            self.assertTrue(
+                any(isinstance(module, torch.nn.BatchNorm2d) for module in downsample)
+            )
+            output = model_classical_batch_norm(x)
+            self.assertShapeEqual(output, (2, 7))
 
     def test_append_block(self):
         """

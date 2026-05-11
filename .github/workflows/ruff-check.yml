@@ -31,6 +31,6 @@ jobs:
         run: |
           ruff check --output-format=github src tests examples
 
-      # - name: Run ruff formatting check
-      #   run: |
-      #     ruff format --check src
+      - name: Run ruff formatting check
+        run: |
+          ruff format --check src tests examples

@@ -1006,12 +1006,12 @@ class Conv2dGrowingModule(GrowingModule):
         int
             number of samples used to compute the update
         """
-        assert (
-            self.store_input
-        ), f"The input must be stored to compute the update of S. (error in {self.name})"
-        assert (
-            self.input is not None
-        ), f"The input must be stored to compute the update of S. (error in {self.name})"
+        assert self.store_input, (
+            f"The input must be stored to compute the update of S. (error in {self.name})"
+        )
+        assert self.input is not None, (
+            f"The input must be stored to compute the update of S. (error in {self.name})"
+        )
         unfolded_extended_input = self.unfolded_extended_input
         return (
             torch.einsum(
@@ -1058,6 +1058,34 @@ class Conv2dGrowingModule(GrowingModule):
             self.input.shape[0],
         )
 
+    def compute_covariance_loss_gradient_update(
+        self,
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the empirical Fisher / gradient covariance
+        E_s := sum_{i,h,w} dA_{i,a,h,w} dA_{i,b,h,w} on the output-channel axis.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the gradient covariance, shape (out_channels, out_channels)
+        int
+            number of samples used to compute the update
+        """
+        assert self.store_pre_activity, (
+            f"The pre-activity must be stored to compute the update of the "
+            f"gradient covariance. (error in {self.name})"
+        )
+        desired_activation = self.pre_activity.grad
+        assert isinstance(desired_activation, torch.Tensor), (
+            f"The gradient of the pre-activity must be a torch.Tensor "
+            f"(error in {self.name})."
+        )
+        return (
+            torch.einsum("iahw,ibhw->ab", desired_activation, desired_activation),
+            self.input.shape[0],
+        )
+
     # Layer edition
     def layer_of_tensor(
         self,
@@ -1090,9 +1118,9 @@ class Conv2dGrowingModule(GrowingModule):
                 f"the main layer bias ({self.use_bias =}) is not None."
             )
         for i in (0, 1):
-            assert (
-                weight.shape[2 + i] == self.layer.kernel_size[i]
-            ), f"{weight.shape[2 + i]=} should be equal to {self.layer.kernel_size[i]=}"
+            assert weight.shape[2 + i] == self.layer.kernel_size[i], (
+                f"{weight.shape[2 + i]=} should be equal to {self.layer.kernel_size[i]=}"
+            )
 
         new_layer = torch.nn.Conv2d(
             weight.shape[1],
@@ -1121,13 +1149,13 @@ class Conv2dGrowingModule(GrowingModule):
         weight: torch.Tensor
             weight of the extension of shape (out_channels, K, kernel_size[0], kernel_size[1])
         """
-        assert (
-            weight.shape[0] == self.out_channels
-        ), f"{weight.shape[0]=} should be equal to {self.out_channels=}"
+        assert weight.shape[0] == self.out_channels, (
+            f"{weight.shape[0]=} should be equal to {self.out_channels=}"
+        )
         for i in (0, 1):
-            assert (
-                weight.shape[2 + i] == self.layer.kernel_size[i]
-            ), f"{weight.shape[2 + i]=} should be equal to {self.layer.kernel_size[i]=}"
+            assert weight.shape[2 + i] == self.layer.kernel_size[i], (
+                f"{weight.shape[2 + i]=} should be equal to {self.layer.kernel_size[i]=}"
+            )
 
         # TODO: check this is working
         self.layer = self.layer_of_tensor(
@@ -1171,20 +1199,20 @@ class Conv2dGrowingModule(GrowingModule):
         bias: torch.Tensor | None
             bias of the extension of shape (K) if needed
         """
-        assert (
-            weight.shape[1] == self.in_channels
-        ), f"{weight.shape[1]=} should be equal to {self.in_channels=}"
-        assert (
-            bias is None or bias.shape[0] == weight.shape[0]
-        ), f"{bias.shape[0]=} should be equal to {weight.shape[0]=}"
+        assert weight.shape[1] == self.in_channels, (
+            f"{weight.shape[1]=} should be equal to {self.in_channels=}"
+        )
+        assert bias is None or bias.shape[0] == weight.shape[0], (
+            f"{bias.shape[0]=} should be equal to {weight.shape[0]=}"
+        )
 
         if self.use_bias:
-            assert (
-                bias is not None
-            ), "The bias of the extension should be provided because the layer has a bias"
-            assert (
-                self.layer.bias is not None
-            ), "The bias of the current layer should not be None because the layer has a bias"
+            assert bias is not None, (
+                "The bias of the extension should be provided because the layer has a bias"
+            )
+            assert self.layer.bias is not None, (
+                "The bias of the current layer should not be None because the layer has a bias"
+            )
             self.layer = self.layer_of_tensor(
                 weight=torch.cat((self.weight, weight), dim=0),
                 bias=torch.cat((self.layer.bias, bias), dim=0),
@@ -1265,9 +1293,9 @@ class Conv2dGrowingModule(GrowingModule):
                 f"and of the mask tensor T are not updated."
             )
 
-        assert (
-            len(new_size) == 2
-        ), f"The input size should be a tuple of two integers, but got {new_size=}."
+        assert len(new_size) == 2, (
+            f"The input size should be a tuple of two integers, but got {new_size=}."
+        )
         self._input_size = new_size
         return self._input_size
 
@@ -1278,25 +1306,35 @@ class Conv2dGrowingModule(GrowingModule):
         self.update_input_size()
         super(Conv2dGrowingModule, self).update_computation()
 
-    @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Conv2d) -> int:  # type: ignore
+    def get_fan_in_from_layer(  # type: ignore
+        self, layer: torch.nn.Conv2d | None = None, num_neurons: int | None = None
+    ) -> int:
         """
-        Get the fan_in (number of input features) from a given layer.
+        Get the fan_in (number of input features) from a given layer
+        or from the number of neurons (input channels).
 
         Parameters
         ----------
-        layer: torch.nn.Conv2d
+        layer: torch.nn.Conv2d | None
             layer to get the fan_in from
+        num_neurons: int | None
+            number of neurons in the layer
 
         Returns
         -------
         int
             fan_in of the layer
         """
-        assert isinstance(
-            layer, torch.nn.Conv2d
-        ), f"The layer should be a torch.nn.Conv2d but got {type(layer)}."
-        return layer.in_channels * layer.kernel_size[0] * layer.kernel_size[1]
+        if layer is not None:
+            assert isinstance(layer, torch.nn.Conv2d), (
+                f"The layer should be a torch.nn.Conv2d but got {type(layer)}."
+            )
+            return layer.in_channels * layer.kernel_size[0] * layer.kernel_size[1]
+        else:
+            assert num_neurons is not None, (
+                "Either layer or num_neurons should be provided."
+            )
+            return num_neurons * self.kernel_size[0] * self.kernel_size[1]
 
     def create_layer_in_extension(self, extension_size: int) -> None:
         """
@@ -1617,9 +1655,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         torch.Tensor
             N
         """
-        assert (
-            self.tensor_m_prev() is not None
-        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        assert self.tensor_m_prev() is not None, (
+            f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        )
         assert self.cross_covariance() is not None, (
             f"The cross covariance should be computed before the "
             f"tensor N for {self.name}."
@@ -1637,9 +1675,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             f"(..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias})"
             f" but got {self.cross_covariance().shape}."
         )
-        assert (
-            self.delta_raw is not None
-        ), f"The optimal delta should be computed before the tensor N for {self.name}."
+        assert self.delta_raw is not None, (
+            f"The optimal delta should be computed before the tensor N for {self.name}."
+        )
         assert isinstance(self.delta_raw, torch.Tensor), (
             f"The optimal delta should be a tensor for {self.name}, "
             f"is {type(self.delta_raw)}."
@@ -1672,6 +1710,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1702,6 +1741,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the empirical Fisher / gradient covariance as
+            preconditioner on the output side.
 
         Returns
         -------
@@ -1724,6 +1766,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             omega_zero=omega_zero,
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
+            use_fisher=use_fisher,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -1731,9 +1774,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             f"alpha and omega should have the same number of added neurons {k}."
             f"but got {alpha.shape} and {omega.shape}."
         )
-        assert (
-            omega.shape[0] == self.out_channels
-        ), "omega should have the same number of output features as the layer."
+        assert omega.shape[0] == self.out_channels, (
+            "omega should have the same number of output features as the layer."
+        )
         assert isinstance(self.previous_module, GrowingModule)
 
         if self.previous_module.use_bias:
@@ -1766,9 +1809,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, "
             f"{self.kernel_size[1]}) but got {omega.shape}."
         )
-        assert (
-            alpha.shape[0] == k
-        ), f"alpha should have shape ({k}, ...) but got {alpha.shape}."
+        assert alpha.shape[0] == k, (
+            f"alpha should have shape ({k}, ...) but got {alpha.shape}."
+        )
 
         self.extended_input_layer = self.linear_layer_of_tensor(
             omega,
@@ -2086,16 +2129,16 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         torch.Tensor
             N
         """
-        assert (
-            self.tensor_m_prev() is not None
-        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        assert self.tensor_m_prev() is not None, (
+            f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        )
         assert self.cross_covariance() is not None, (
             f"The cross covariance should be computed before "
             f"the tensor N for {self.name}."
         )
-        assert (
-            self.delta_raw is not None
-        ), f"The optimal delta should be computed before the tensor N for {self.name}."
+        assert self.delta_raw is not None, (
+            f"The optimal delta should be computed before the tensor N for {self.name}."
+        )
         return -self.tensor_m_prev() + torch.einsum(
             "abe, ce -> bca", self.cross_covariance(), self.delta_raw
         ).flatten(start_dim=-2)
@@ -2112,6 +2155,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2142,6 +2186,11 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the empirical Fisher / gradient covariance as
+            preconditioner. Not supported for FullConv2dGrowingModule because
+            the SVD output dimension is `out_channels * k_h * k_w`, not
+            `out_channels`.
 
         Returns
         -------
@@ -2152,8 +2201,17 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         Raises
         ------
         NotImplementedError
-            if the previous module is not of type Conv2dGrowingModule
+            if the previous module is not of type Conv2dGrowingModule, or if
+            ``use_fisher`` is True (not implemented for the Full variant).
         """
+        if use_fisher:
+            raise NotImplementedError(
+                "use_fisher=True is not supported for FullConv2dGrowingModule "
+                "because the output dimension of the SVD target is "
+                "out_channels * k_h * k_w, which does not match the "
+                "(out_channels, out_channels) shape of "
+                "covariance_loss_gradient."
+            )
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,
@@ -2213,9 +2271,9 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, "
             f"{self.kernel_size[1]}) but got {omega.shape}."
         )
-        assert (
-            alpha.shape[0] == k
-        ), f"alpha should have shape ({k}, ...) but got {alpha.shape}."
+        assert alpha.shape[0] == k, (
+            f"alpha should have shape ({k}, ...) but got {alpha.shape}."
+        )
 
         self.extended_input_layer = self.layer_of_tensor(
             omega,

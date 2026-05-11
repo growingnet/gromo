@@ -1,7 +1,63 @@
-from typing import Callable
+"""Growing normalization layers and shared normalization configuration types."""
+
+from typing import Callable, Literal, TypeAlias, TypedDict
 
 import torch
 import torch.nn as nn
+
+
+# ---------------------------------------------------------------------------
+# Shared normalization configuration types
+# ---------------------------------------------------------------------------
+
+NormalizationType: TypeAlias = Literal["batch", "group", "layer"]
+#: Normalization types supported across growing containers.
+
+
+class NormKwargs(TypedDict, total=False):
+    """Optional normalization keyword arguments (superset of all norm types).
+
+    Each normalization type uses only the relevant keys:
+
+    - ``"batch"``: ``eps``, ``momentum``, ``affine``, ``track_running_stats``
+    - ``"group"``: ``num_groups``, ``eps``, ``affine``
+    - ``"layer"``: ``eps``, ``elementwise_affine``, ``bias``
+    """
+
+    # BatchNorm keys
+    eps: float
+    momentum: float
+    affine: bool
+    track_running_stats: bool
+    # GroupNorm key
+    num_groups: int
+    # LayerNorm keys
+    elementwise_affine: bool
+    bias: bool
+
+
+class CompleteNormKwargs(TypedDict):
+    """Complete normalization configuration (all keys required)."""
+
+    eps: float
+    momentum: float
+    affine: bool
+    track_running_stats: bool
+    num_groups: int
+    elementwise_affine: bool
+    bias: bool
+
+
+base_norm_kwargs: CompleteNormKwargs = {
+    "eps": 1e-5,
+    "momentum": 0.1,
+    "affine": True,
+    "track_running_stats": True,
+    "num_groups": 1,
+    "elementwise_affine": True,
+    "bias": True,
+}
+#: Default normalization kwargs used when no overrides are provided.
 
 
 class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
@@ -104,7 +160,7 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             if new_values.device != device:
                 new_values = new_values.to(device)
             if new_values.dtype != current_param.dtype:
-                new_values.to(dtype=current_param.dtype)
+                new_values = new_values.to(dtype=current_param.dtype)
 
         # Concatenate old and new values
         assert new_values is not None  # Type hint for mypy
@@ -188,9 +244,9 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
 
         # Extend running statistics if enabled
         if getattr(self, "track_running_stats", False):
-            assert isinstance(
-                self.running_mean, torch.Tensor
-            ), "running_mean is not initialized while track_running_stats is True"
+            assert isinstance(self.running_mean, torch.Tensor), (
+                "running_mean is not initialized while track_running_stats is True"
+            )
             device = self.running_mean.device
             self._extend_parameter(
                 "running_mean",
@@ -325,7 +381,7 @@ class GrowingLayerNorm(nn.LayerNorm):
     def _extend_parameter(
         self,
         param_name: str,
-        additional_last_dim: int,
+        additional_first_dim: int,
         new_values: torch.Tensor | None,
         default_value_fn: Callable,
         device: torch.device,
@@ -336,8 +392,8 @@ class GrowingLayerNorm(nn.LayerNorm):
             return
 
         required_shape = (
-            *tuple(current_param.shape[:-1]),
-            additional_last_dim,
+            additional_first_dim,
+            *tuple(current_param.shape[1:]),
         )
 
         if new_values is None:
@@ -352,11 +408,11 @@ class GrowingLayerNorm(nn.LayerNorm):
             if new_values.device != device:
                 new_values = new_values.to(device)
             if new_values.dtype != current_param.dtype:
-                new_values.to(dtype=current_param.dtype)
+                new_values = new_values.to(dtype=current_param.dtype)
 
         assert new_values is not None
         with torch.no_grad():
-            extended_param = torch.cat([current_param.detach(), new_values], dim=-1)
+            extended_param = torch.cat([current_param.detach(), new_values], dim=0)
 
         if as_parameter:
             setattr(self, param_name, nn.Parameter(extended_param))
@@ -365,42 +421,41 @@ class GrowingLayerNorm(nn.LayerNorm):
 
     def grow(
         self,
-        additional_last_dim: int,
+        additional_first_dim: int,
         new_weights: torch.Tensor | None = None,
         new_biases: torch.Tensor | None = None,
     ) -> None:
-        """Grow the LayerNorm by increasing the last dimension
+        """Grow the LayerNorm by increasing the first (channel) dimension
 
         Parameters
         ----------
-        additional_last_dim : int
-            number of additional features to add to last dimension
+        additional_first_dim : int
+            number of additional channels to add to the first dimension
         new_weights : torch.Tensor | None, optional
-            custom weights for the new features, if None defaults to ones, by default None
+            custom weights for the new channels, if None defaults to ones, by default None
         new_biases : torch.Tensor | None, optional
-            custom bias for the new features, if None defaults to zeros, by default None
+            custom bias for the new channels, if None defaults to zeros, by default None
 
         Raises
         ------
         ValueError
-            if the `additional_last_dim` is not positive
+            if the `additional_first_dim` is not positive
         """
-        if additional_last_dim <= 0:
+        if additional_first_dim <= 0:
             raise ValueError(
-                f"additional_last_dim must be positive, got {additional_last_dim}"
+                f"additional_first_dim must be positive, got {additional_first_dim}"
             )
 
         # Compute new normalized_shape without mutating yet
-        old = (
-            (self.normalized_shape,)
-            if isinstance(self.normalized_shape, int)
-            else tuple(int(v) for v in self.normalized_shape)
-        )
-        new_normalized_shape = (*tuple(old[:-1]), old[-1] + additional_last_dim)
+        old = tuple(int(v) for v in self.normalized_shape)
+        new_normalized_shape = (old[0] + additional_first_dim, *old[1:])
 
         # Validate custom tensor shapes before any mutation
         if getattr(self, "elementwise_affine", False):
-            weight_required_shape = (*tuple(self.weight.shape[:-1]), additional_last_dim)
+            weight_required_shape = (
+                additional_first_dim,
+                *tuple(self.weight.shape[1:]),
+            )
             if (
                 new_weights is not None
                 and tuple(new_weights.shape) != weight_required_shape
@@ -411,7 +466,10 @@ class GrowingLayerNorm(nn.LayerNorm):
                 )
 
             if getattr(self, "bias", None) is not None and new_biases is not None:
-                bias_required_shape = (*tuple(self.bias.shape[:-1]), additional_last_dim)
+                bias_required_shape = (
+                    additional_first_dim,
+                    *tuple(self.bias.shape[1:]),
+                )
                 if tuple(new_biases.shape) != bias_required_shape:
                     raise ValueError(
                         f"new_bias must have shape {bias_required_shape}, "
@@ -428,7 +486,7 @@ class GrowingLayerNorm(nn.LayerNorm):
 
             self._extend_parameter(
                 "weight",
-                additional_last_dim,
+                additional_first_dim,
                 new_weights,
                 torch.ones,
                 device,
@@ -437,7 +495,7 @@ class GrowingLayerNorm(nn.LayerNorm):
             if getattr(self, "bias", None) is not None:
                 self._extend_parameter(
                     "bias",
-                    additional_last_dim,
+                    additional_first_dim,
                     new_biases,
                     torch.zeros,
                     device,
@@ -561,7 +619,7 @@ class GrowingGroupNorm(nn.GroupNorm):
             if new_values.device != device:
                 new_values = new_values.to(device)
             if new_values.dtype != current_param.dtype:
-                new_values.to(dtype=current_param.dtype)
+                new_values = new_values.to(dtype=current_param.dtype)
 
         assert new_values is not None
         with torch.no_grad():
