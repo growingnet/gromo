@@ -1673,7 +1673,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             device=self.device,
         )
         block.first_layer.weight.data *= 2.0
