@@ -469,6 +469,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         layer = self.demo_layers[True][0]
         self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(3, 1)), 3)
         self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(2, 3)), 2)
+        self.assertEqual(layer.get_fan_in_from_layer(num_neurons=4), 4)
 
     def test_apply_change_with_sized_post_layer_function(self):
         """

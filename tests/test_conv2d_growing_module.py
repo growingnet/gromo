@@ -688,6 +688,10 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
             layer.get_fan_in_from_layer(torch.nn.Conv2d(2, 3, kernel_size=(7, 5))),
             2 * 7 * 5,
         )
+        self.assertEqual(
+            layer.get_fan_in_from_layer(num_neurons=4),
+            4 * layer.kernel_size[0] * layer.kernel_size[1],
+        )
 
     def test_init(self):
         # no bias
