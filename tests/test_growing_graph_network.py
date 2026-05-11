@@ -559,13 +559,13 @@ class TestGrowingGraphNetwork(TorchTestCase):
             ):
                 opt.metrics["active_neurons"] = self.neurons
                 opt.expand()
-        self.net_conv.dag.get_edge_module("1", end).extended_output_layer = (
-            torch.nn.Conv2d(
-                in_channels=self.net_conv.neurons,
-                out_channels=1,
-                kernel_size=self.kernel_size,
-                device=self.net_conv.device,
-            )
+        self.net_conv.dag.get_edge_module(
+            "1", end
+        ).extended_output_layer = torch.nn.Conv2d(
+            in_channels=self.net_conv.neurons,
+            out_channels=1,
+            kernel_size=self.kernel_size,
+            device=self.net_conv.device,
         )
         self.net.dag.get_edge_module(
             start_linear, "1"
