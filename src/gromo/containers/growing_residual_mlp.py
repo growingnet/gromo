@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.utils import compute_tensor_stats
 
@@ -166,7 +167,7 @@ class GrowingResidualBlock(GrowingContainer):
         return layer_information
 
 
-class GrowingResidualMLP(GrowingContainer):
+class GrowingResidualMLP(SequentialGrowingModel):
     """Represent a Residual MLP
 
     Parameters
@@ -230,11 +231,8 @@ class GrowingResidualMLP(GrowingContainer):
 
         # final projection
         self.projection = nn.Linear(num_features, out_features, device=self.device)
-        self.set_growing_layers()
-
-    def set_growing_layers(self):
-        """Reference all growable layers of the model in the _growing_layers private attribute"""
-        self._growing_layers = [block.second_layer for block in self.blocks]
+        self._growable_layers = [block.second_layer for block in self.blocks]
+        self.set_growing_layers(scheduling_method="all")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function

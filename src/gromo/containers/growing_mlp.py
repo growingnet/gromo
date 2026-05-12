@@ -3,11 +3,11 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from gromo.containers.growing_container import GrowingModel
+from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-class GrowingMLP(GrowingModel):
+class GrowingMLP(SequentialGrowingModel):
     """
     Represents a growing MLP network.
 
@@ -98,14 +98,8 @@ class GrowingMLP(GrowingModel):
             )
         )
 
-        self.set_growing_layers()
-
-    def set_growing_layers(self, index: int | None = None) -> None:
-        """Reference all growable layers of the model in the _growing_layers private attribute"""
-        if index is not None:
-            self._growing_layers = [self.layers[index]]  # type: ignore
-        else:
-            self._growing_layers = list(self.layers[1:])  # type: ignore
+        self._growable_layers = list(self.layers[1:])
+        self.set_growing_layers(scheduling_method="all")
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -151,24 +145,6 @@ class GrowingMLP(GrowingModel):
         for layer in self.layers:
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
-
-    def update_information(self) -> dict[str, Any]:
-        """Update information for all growing layers including first order improvement
-
-        Returns
-        -------
-        dict[str, Any]
-            information dictionary
-        """
-        information = {}
-        for i, layer in enumerate(self._growing_layers):
-            layer_information = {
-                "update_value": layer.first_order_improvement,
-                "parameter_improvement": layer.parameter_update_decrease,
-                "eigenvalues_extension": layer.eigenvalues_extension,
-            }
-            information[i] = layer_information
-        return information
 
     def normalise(self, verbose: bool = False) -> None:
         """Normalize the weight of the model
