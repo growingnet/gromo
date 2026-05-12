@@ -146,6 +146,23 @@ class GrowingMLP(SequentialGrowingModel):
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
 
+    def update_information(self) -> dict[str, Any]:
+        """Update information for all growing layers including first order improvement
+        Returns
+        -------
+        dict[str, Any]
+            information dictionary
+        """
+        information = {}
+        for i, layer in enumerate(self._growing_layers):
+            layer_information = {
+                "update_value": layer.first_order_improvement,
+                "parameter_improvement": layer.parameter_update_decrease,
+                "eigenvalues_extension": layer.eigenvalues_extension,
+            }
+            information[i] = layer_information
+        return information
+
     def normalise(self, verbose: bool = False) -> None:
         """Normalize the weight of the model
 
