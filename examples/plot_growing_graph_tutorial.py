@@ -39,9 +39,12 @@ First, we import the necessary libraries:
 """
 
 ###############################################################################
+import math
 import operator
 import random
 
+import matplotlib.cm as mpl_cm
+import matplotlib.colors as mpl_colors
 import matplotlib.pyplot as plt
 import networkx as nx
 import torch
@@ -49,6 +52,7 @@ import torch.utils.data
 from helpers.synthetic_data import MultiSinDataloader
 
 from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.growing_dag import GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.modules.growing_module import MergeGrowingModule
 from gromo.utils.training_utils import evaluate_model, gradient_descent
@@ -451,6 +455,50 @@ def grow(
 
 
 ###############################################################################
+def plot_graph(dag: GrowingDAG) -> None:
+    """Plot an explanatory version of the DAG
+
+    Parameters
+    ----------
+    dag : GrowingDAG
+        the growing dag
+    """
+
+    def size_to_color(size):
+        cmap = mpl_cm.Reds  # type: ignore
+        norm = mpl_colors.Normalize(vmin=0, vmax=100)
+        rgba = cmap(norm(size))
+        return mpl_colors.rgb2hex(rgba)
+
+    pos = nx.planar_layout(dag)
+
+    default_blue = "#1F78B4"
+    colors = [
+        size_to_color(dag.nodes[n]["size"])
+        if n not in (dag.root, dag.end)
+        else default_blue
+        for n in dag.nodes
+    ]
+    sizes = [math.sqrt(dag.nodes[n]["size"]) * 100 for n in dag.nodes]
+    labels = {n: n.split("@")[0] for n in dag.nodes}
+    edge_labels = {
+        (u, v): str(list(dag.get_edge_module(u, v).weight.shape)) for u, v in dag.edges
+    }
+
+    nx.draw(
+        dag,
+        pos,
+        node_color=colors,
+        node_size=sizes,
+        labels=labels,
+        with_labels=True,
+        arrows=True,
+    )
+    nx.draw_networkx_edge_labels(dag, pos, edge_labels=edge_labels)
+    plt.show()
+
+
+###############################################################################
 # Step 5: Create the Initial Model
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
@@ -563,8 +611,7 @@ for step in range(growth_steps):
     grow(model, train_data_loader, val_data_loader, criterion)
     print("Model after growing:")
     print(model)
-    nx.draw(model.growing_dag.dag, pos=nx.planar_layout(model.growing_dag.dag))
-    plt.show()
+    plot_graph(model.growing_dag.dag)
 
     test_loss, _ = evaluate_model(model, test_data_loader, criterion, device=device)
     current_step = (step + 1) * (intermediate_epochs + 1)
