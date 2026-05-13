@@ -148,6 +148,7 @@ class GrowingMLP(SequentialGrowingModel):
 
     def update_information(self) -> dict[str, Any]:
         """Update information for all growing layers including first order improvement
+
         Returns
         -------
         dict[str, Any]
