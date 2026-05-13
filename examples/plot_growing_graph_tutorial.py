@@ -500,7 +500,7 @@ def plot_graph(dag: GrowingDAG) -> None:
 
 ###############################################################################
 # Step 5: Create the Initial Model
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ---------------------------------
 #
 # We initialise a ``GraphModel`` with:
 #
@@ -533,7 +533,7 @@ print(model)
 
 ###############################################################################
 # Step 6: Training Loop with Growth
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ----------------------------------
 #
 # We alternate between:
 #
@@ -550,40 +550,46 @@ print(model)
 # - Test loss should decrease monotonically across growth steps.
 #
 # We present the growth history:
-# - Growth Step 1:
-# Maximum bottleneck node: `end`
-# Candidate actions increasing information throughput to node `end`:
-# 1. Create new node `1` from `start` to `end`
-# Chose action (1)
-# - Growth Step 2:
-# Maximum bottleneck node: `1`
-# Candidate actions increasing information throughput to node `1`:
-# 1. Create node `2` from `start` to `1`
-# 2. Add neurons to node `1`
-# Chose action (2)
-# - Growth step 3:
-# Maximum bottleneck node: `1`
-# Candidate actions increasing information throughput to node `1`:
-# 1. Create node `2` from `start` to `1`
-# 2. Add neurons to node `1`
-# Chose action (1)
-# - Growth step 4:
-# Maximum bottleneck node: `1`
-# Candidate actions increasing information throughput to node `1`:
-# 1. Create node `3` from `2` to `1`
-# 2. Add neurons to node `1`
-# 3. Add neurons to node `2`
-# Chose action (1)
 #
-# Final DAG structure:
-# Nodes (5):
-#   start@dag (layer type: linear, hidden size: 10, activation: None)
-#   end@dag (layer type: linear, hidden size: 3, activation: [SELU()])
-#   1@dag (layer type: linear, hidden size: 20, activation: [Identity(), SELU()])
-#   2@dag (layer type: linear, hidden size: 10, activation: [Identity(), SELU()])
-#   3@dag (layer type: linear, hidden size: 10, activation: [Identity(), SELU()])
-# Edges (7):
-#   start@dag->end@dag, start@dag->1@dag, start@dag->2@dag, 1@dag->end@dag, 2@dag->1@dag, 2@dag->3@dag, 3@dag->1@dag
+# **Growth Step 1** — Maximum bottleneck node: ``end``.
+# Candidate actions increasing information throughput to node ``end``:
+# 1. create new node ``1`` from ``start`` to ``end``.
+#
+# Chose action (1).
+#
+# **Growth Step 2** — Maximum bottleneck node: ``1``.
+# Candidate actions increasing information throughput to node ``1``:
+# 1. create node ``2`` from ``start`` to ``1``,
+# 2. add neurons to node ``1``.
+#
+# Chose action (2).
+#
+# **Growth Step 3** — Maximum bottleneck node: ``1``.
+# Candidate actions increasing information throughput to node ``1``:
+# 1. create node ``2`` from ``start`` to ``1``,
+# 2. add neurons to node ``1``.
+#
+# Chose action (1).
+#
+# **Growth Step 4** — Maximum bottleneck node: ``1``.
+# Candidate actions increasing information throughput to node ``1``:
+# 1. create node ``3`` from ``2`` to ``1``,
+# 2. add neurons to node ``1``,
+# 3. add neurons to node ``2``.
+#
+# Chose action (1).
+#
+# Final DAG structure::
+#
+#   Nodes (5):
+#     start@dag (layer type: linear, hidden size: 10, activation: None)
+#     end@dag (layer type: linear, hidden size: 3, activation: [SELU()])
+#     1@dag (layer type: linear, hidden size: 20, activation: [Identity(), SELU()])
+#     2@dag (layer type: linear, hidden size: 10, activation: [Identity(), SELU()])
+#     3@dag (layer type: linear, hidden size: 10, activation: [Identity(), SELU()])
+#   Edges (7):
+#     start@dag->end@dag, start@dag->1@dag, start@dag->2@dag,
+#     1@dag->end@dag, 2@dag->1@dag, 2@dag->3@dag, 3@dag->1@dag
 
 ###############################################################################
 growth_steps = 4
@@ -665,7 +671,7 @@ for step in range(growth_steps):
 
 ###############################################################################
 # Step 7: Visualise Training Progress
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ------------------------------------
 #
 # The figure below tracks two quantities across training steps:
 #
