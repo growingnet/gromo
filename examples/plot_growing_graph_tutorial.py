@@ -217,7 +217,7 @@ def update_computation(
     model: GraphModel,
     dataloader: torch.utils.data.DataLoader,
     criterion: torch.nn.Module,
-) -> tuple[dict]:
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
     """Run a forward-backward pass and collect per-node statistics.
 
     Parameters
@@ -231,7 +231,7 @@ def update_computation(
 
     Returns
     -------
-    tuple[dict]
+    tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]
         pre_activities_grad : dict[str, Tensor]
             Concatenated pre-activation gradients for every non-root node.
         inputs : dict[str, Tensor]
