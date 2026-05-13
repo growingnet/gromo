@@ -181,7 +181,8 @@ def grow(
     train_loader : torch.utils.data.DataLoader
         DataLoader providing batches of (input, target) pairs.
     layer_to_grow : int
-        Index of the layer to grow (1-indexed).
+        Index of the layer to grow (1-indexed over growable layers,
+        i.e. excludes the input layer and follows the ordering of _growable_layers).
 
     Notes
     -----
@@ -196,7 +197,7 @@ def grow(
     criterion_sum = torch.nn.MSELoss(reduction="sum")
     criterion_mean = torch.nn.MSELoss(reduction="mean")
 
-    model.set_growing_layers(layer_to_grow)
+    model.set_growing_layers(index=layer_to_grow)
     compute_statistics(
         model,
         train_loader,
