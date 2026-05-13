@@ -278,24 +278,23 @@ def update_computation(
 
 
 ###############################################################################
+# For a node :math:`v`, the bottleneck vector is:
+#
+# .. math::
+#
+#     b_v = \nabla_{z_v} \mathcal{L}
+#           - \sum_{e \in \text{in}(v)} \Delta W_e^* \, a_{\text{src}(e)}
+#
+# where :math:`\Delta W_e^*` is the optimal weight increment for edge
+# :math:`e` computed by ``compute_optimal_delta()``.  A large
+# :math:`\|b_v\|` means that no currently proposed weight change can
+# explain the gradient at :math:`v`, i.e. the node is a bottleneck.
 def calculate_bottleneck(
     model: GraphModel,
     pre_activities_grad: dict,
     inputs: dict,
 ) -> dict[str, torch.Tensor]:
     """Compute the expressivity bottleneck for each node.
-
-    For a node :math:`v`, the bottleneck vector is:
-
-    .. math::
-
-        b_v = \\nabla_{z_v} \\mathcal{L}
-              - \\sum_{e \\in \\text{in}(v)} \\Delta W_e^* \\, a_{\\text{src}(e)}
-
-    where :math:`\\Delta W_e^*` is the optimal weight increment for edge
-    :math:`e` computed by ``compute_optimal_delta()``.  A large
-    :math:`\\|b_v\\|` means that no currently proposed weight change can
-    explain the gradient at :math:`v`, i.e. the node is a bottleneck.
 
     Parameters
     ----------
