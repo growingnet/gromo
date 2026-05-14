@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Example for `GrowingGraphNetwork` and `GrowingDAG` usage (:gh:`252` by `Stella Douka`_)
 - Add an empirical Fisher (loss-gradient covariance) as an optional preconditioner for both optimal-delta weight updates and rank-k neuron extension computations (:gh:`250` by `Théo Rudkiewicz`_).
 - Add GradMax normalization details and associated tests for update scaling behavior (:gh:`242` by `Pako Maxence TEKOU`_)
 - Introduce an empirical Fisher / loss-gradient covariance statistic to GrowingModule-based layers (:gh:`249` by `Théo Rudkiewicz`_).
