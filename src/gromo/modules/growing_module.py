@@ -2333,6 +2333,9 @@ class GrowingModule(torch.nn.Module):
             matrix_covariance_loss_gradient=matrix_e,
         )
 
+        if ignore_singular_values:
+            eigenvalues_extension = eigenvalues_extension**0.5
+
         alpha = alpha.to(dtype=saved_dtype)
         omega = omega.to(dtype=saved_dtype)
         eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
