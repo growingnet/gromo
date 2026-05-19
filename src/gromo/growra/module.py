@@ -13,10 +13,15 @@ via the FOGRO pipeline (see :mod:`gromo.growra.container`).
 from __future__ import annotations
 
 import warnings
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
 from torch import functional as torch_functional
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from gromo.containers.growing_block import Conv2dGrowingBlock, LinearGrowingBlock
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
@@ -42,8 +47,12 @@ class GrowRALinear(LinearGrowingBlock):
         Original linear layer (will be frozen).
     rank : int
         Initial rank. Default 0 (no adaptation).
-    alpha : float
-        Scaling factor. Effective scaling is ``alpha / rank``.
+    scaling : float | Callable[[int], float]
+        Scaling factor applied to the adapter output. A float gives a fixed
+        scaling regardless of rank (default ``1.0``, rank-invariant). A
+        callable receives the current rank and returns the scaling factor —
+        useful for rank-adaptive schedules such as RSLoRA
+        (``lambda r: r ** -0.5``).
     dropout : float
         Dropout probability applied to the input before the adapter path.
         Disabled (``p=0.0``) by default.
@@ -64,7 +73,7 @@ class GrowRALinear(LinearGrowingBlock):
         self,
         linear: nn.Linear | LinearGrowingModule,
         rank: int = 0,
-        alpha: float = 1.0,
+        scaling: float | Callable[[int], float] = 1.0,
         dropout: float = 0.0,
         use_dora: bool = False,
         target_rank: int | None = None,
@@ -73,7 +82,12 @@ class GrowRALinear(LinearGrowingBlock):
         name: str = "growra_block",
     ):
         linear.requires_grad_(False)
-        self.alpha = alpha
+        self._raw_scaling: float | Callable[[int], float] = scaling
+        if callable(scaling):
+            self.scaling_fn: Callable[[int], float] = scaling
+        else:
+            _s = float(scaling)
+            self.scaling_fn = lambda _: _s
         if device is None:
             device = linear.weight.device
 
@@ -111,10 +125,10 @@ class GrowRALinear(LinearGrowingBlock):
 
     @property
     def scaling(self) -> float:
-        """Effective scaling factor ``alpha / rank``."""
+        """Effective scaling factor applied to the adapter output."""
         if self.rank == 0:
             return 0.0
-        return self.alpha / self.rank
+        return self.scaling_fn(self.rank)
 
     @property
     def weight(self) -> torch.Tensor:
@@ -241,9 +255,10 @@ class GrowRALinear(LinearGrowingBlock):
     def extra_repr(self) -> str:
         """Return extra representation string."""
         dropout_p = self.dropout.p
+        scaling_str = "adaptive" if callable(self._raw_scaling) else self._raw_scaling
         s = (
             f"in_features={self.in_features}, out_features={self.out_features}, "
-            f"rank={self.rank}, alpha={self.alpha}"
+            f"rank={self.rank}, scaling={scaling_str}"
         )
         if self.use_dora:
             s += ", use_dora=True"
@@ -266,8 +281,10 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         Original convolution layer (will be frozen).
     rank : int
         Initial rank (hidden channels). Default 0.
-    alpha : float
-        Scaling factor. Effective scaling is ``alpha / rank``.
+    scaling : float | Callable[[int], float]
+        Scaling factor applied to the adapter output. A float gives a fixed
+        scaling regardless of rank (default ``1.0``, rank-invariant). A
+        callable receives the current rank and returns the scaling factor.
     dropout : float
         Dropout probability applied to the input before the adapter path.
         Disabled (``p=0.0``) by default.
@@ -288,7 +305,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         self,
         conv: nn.Conv2d | Conv2dGrowingModule,
         rank: int = 0,
-        alpha: float = 1.0,
+        scaling: float | Callable[[int], float] = 1.0,
         dropout: float = 0.0,
         use_dora: bool = False,
         target_rank: int | None = None,
@@ -304,7 +321,12 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             device = underlying.weight.device
         self.in_channels = underlying.in_channels
         self.out_channels = underlying.out_channels
-        self.alpha = alpha
+        self._raw_scaling: float | Callable[[int], float] = scaling
+        if callable(scaling):
+            self.scaling_fn: Callable[[int], float] = scaling
+        else:
+            _s = float(scaling)
+            self.scaling_fn = lambda _: _s
 
         conv.requires_grad_(False)
 
@@ -354,10 +376,10 @@ class GrowRAConv2d(Conv2dGrowingBlock):
 
     @property
     def scaling(self) -> float:
-        """Effective scaling factor ``alpha / rank``."""
+        """Effective scaling factor applied to the adapter output."""
         if self.rank == 0:
             return 0.0
-        return self.alpha / self.rank
+        return self.scaling_fn(self.rank)
 
     @property
     def weight(self) -> torch.Tensor:
@@ -524,9 +546,10 @@ class GrowRAConv2d(Conv2dGrowingBlock):
     def extra_repr(self) -> str:
         """Return extra representation string."""
         dropout_p = self.dropout.p
+        scaling_str = "adaptive" if callable(self._raw_scaling) else self._raw_scaling
         s = (
             f"in_channels={self.in_channels}, out_channels={self.out_channels}, "
-            f"rank={self.rank}, alpha={self.alpha}"
+            f"rank={self.rank}, scaling={scaling_str}"
         )
         if self.use_dora:
             s += ", use_dora=True"

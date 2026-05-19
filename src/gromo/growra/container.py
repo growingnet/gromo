@@ -17,8 +17,14 @@ Typical usage::
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
 import torch.nn as nn
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.growra.module import (
@@ -95,7 +101,7 @@ def _matches_target(
 
 def _inject_growra_inplace(
     model: nn.Module,
-    alpha: float,
+    scaling: float | Callable[[int], float],
     dropout: float,
     use_dora: bool,
     target_modules: list[str] | None,
@@ -106,7 +112,7 @@ def _inject_growra_inplace(
     ----------
     model : nn.Module
         Model to modify.
-    alpha : float
+    scaling : float | Callable[[int], float]
         Scaling factor.
     dropout : float
         Dropout probability for the adapter path.
@@ -139,7 +145,7 @@ def _inject_growra_inplace(
             replacement: nn.Module = GrowRALinear(
                 module,
                 rank=0,
-                alpha=alpha,
+                scaling=scaling,
                 dropout=dropout,
                 use_dora=use_dora,
                 name=f"growra_{full_name}",
@@ -148,7 +154,7 @@ def _inject_growra_inplace(
             replacement = GrowRAConv2d(
                 module,
                 rank=0,
-                alpha=alpha,
+                scaling=scaling,
                 dropout=dropout,
                 use_dora=use_dora,
                 name=f"growra_{full_name}",
@@ -205,7 +211,7 @@ class GrowRAModel(SequentialGrowingModel):
     def __init__(
         self,
         model: nn.Module,
-        alpha: float = 1.0,
+        scaling: float | Callable[[int], float] = 1.0,
         dropout: float = 0.0,
         use_dora: bool = False,
         target_modules: list[str] | None = None,
@@ -232,13 +238,13 @@ class GrowRAModel(SequentialGrowingModel):
         # Inject rank-0 GrowRA wrappers into the model
         _inject_growra_inplace(
             model,
-            alpha=alpha,
+            scaling=scaling,
             dropout=dropout,
             use_dora=use_dora,
             target_modules=target_modules,
         )
         self.model = model
-        self.alpha = alpha
+        self._raw_scaling: float | Callable[[int], float] = scaling
         self.dropout = dropout
         self.use_dora = use_dora
 
@@ -313,9 +319,10 @@ class GrowRAModel(SequentialGrowingModel):
     def extra_repr(self) -> str:
         """Return extra representation string."""
         n = len(self.growra_modules())
+        scaling_str = "adaptive" if callable(self._raw_scaling) else self._raw_scaling
         s = (
             f"in_features={self.in_features}, out_features={self.out_features}, "
-            f"alpha={self.alpha}, growra_modules={n}"
+            f"scaling={scaling_str}, growra_modules={n}"
         )
         if self.use_dora:
             s += ", use_dora=True"
@@ -331,7 +338,7 @@ class GrowRAModel(SequentialGrowingModel):
 
 def get_growra_model(
     model: nn.Module,
-    alpha: float = 1.0,
+    scaling: float | Callable[[int], float] = 1.0,
     dropout: float = 0.0,
     use_dora: bool = False,
     target_modules: list[str] | None = None,
@@ -351,8 +358,10 @@ def get_growra_model(
     ----------
     model : nn.Module
         Pretrained model to adapt. Modified in-place.
-    alpha : float
-        Scaling factor.
+    scaling : float | Callable[[int], float]
+        Scaling factor applied to every adapter output. A float gives a fixed
+        scaling regardless of rank (default ``1.0``, rank-invariant). A
+        callable receives the current rank and returns the scaling factor.
     dropout : float
         Dropout probability applied to the input before the adapter path.
         Default ``0.0`` (no dropout).
@@ -377,11 +386,11 @@ def get_growra_model(
     >>> import torch.nn as nn
     >>> from gromo.growra.container import get_growra_model
     >>> base = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 5))
-    >>> model = get_growra_model(base, alpha=1.0)
+    >>> model = get_growra_model(base, scaling=1.0)
     """
     return GrowRAModel(
         model=model,
-        alpha=alpha,
+        scaling=scaling,
         dropout=dropout,
         use_dora=use_dora,
         target_modules=target_modules,
@@ -487,7 +496,9 @@ def get_growra_state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
                 module.second_layer.weight.data.clone()
             )
             growra_state[f"{prefix}rank"] = torch.tensor(module.rank)
-            growra_state[f"{prefix}alpha"] = torch.tensor(module.alpha)
+            growra_state[f"{prefix}scaling"] = torch.tensor(
+                module.scaling_fn(max(1, module.rank))
+            )
             growra_state[f"{prefix}use_dora"] = torch.tensor(module.use_dora)
             if module.use_dora and module.magnitude is not None:
                 growra_state[f"{prefix}magnitude"] = module.magnitude.data.clone()
@@ -512,7 +523,9 @@ def load_growra_state_dict(model: nn.Module, state: dict[str, torch.Tensor]) -> 
                 A_data = state[key_a]
                 B_data = state[f"{prefix}second_layer.weight"]
                 new_rank = A_data.shape[0]
-                module.alpha = state[f"{prefix}alpha"].item()
+                _s = state[f"{prefix}scaling"].item()
+                module._raw_scaling = _s
+                module.scaling_fn = lambda _, s=_s: s
                 use_dora_key = f"{prefix}use_dora"
                 if use_dora_key in state and bool(state[use_dora_key].item()):
                     if not module.use_dora:

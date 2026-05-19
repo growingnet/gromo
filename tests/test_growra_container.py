@@ -123,12 +123,12 @@ class TestAsGrowraModel(TestCase):
             if isinstance(m, GrowRALinear):
                 self.assertEqual(m.rank, 0)
 
-    def test_alpha_propagated(self):
+    def test_scaling_propagated(self):
         model = _make_simple_model()
-        lora_model = get_growra_model(model, alpha=3.0)
+        lora_model = get_growra_model(model, scaling=3.0)
         for m in lora_model.modules():
             if isinstance(m, GrowRALinear):
-                self.assertEqual(m.alpha, 3.0)
+                self.assertAlmostEqual(m.scaling_fn(1), 3.0)
 
     def test_target_modules_filtering(self):
         model = nn.Sequential(_linear(10, 20), nn.ReLU(), _linear(20, 5))
@@ -421,7 +421,7 @@ class TestEndToEnd(TestCase):
     def test_full_growth_pipeline(self):
         model = nn.Sequential(_linear(8, 16), nn.ReLU(), _linear(16, 4))
         x = _randn(5, 8)
-        lora_model = get_growra_model(model, alpha=1.0)
+        lora_model = get_growra_model(model)
 
         data = [(_randn(8, 8), _randn(8, 4)) for _ in range(2)]
         _grow(lora_model, data, added_rank=2)

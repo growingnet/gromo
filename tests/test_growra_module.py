@@ -57,12 +57,12 @@ class TestGrowingGrowraLinearInit(TestCase):
 
     def test_basic_init(self):
         linear = _linear(10, 20)
-        lora = GrowRALinear(linear, rank=4, alpha=2.0)
+        lora = GrowRALinear(linear, rank=4, scaling=0.5)
         self.assertIsInstance(lora, LinearGrowingBlock)
         self.assertEqual(lora.in_features, 10)
         self.assertEqual(lora.out_features, 20)
         self.assertEqual(lora.rank, 4)
-        self.assertEqual(lora.alpha, 2.0)
+        self.assertAlmostEqual(lora.scaling, 0.5)
 
     def test_init_rank_zero(self):
         linear = _linear(5, 3)
@@ -86,13 +86,26 @@ class TestGrowingGrowraLinearInit(TestCase):
 
     def test_scaling_property(self):
         linear = _linear(10, 20)
-        lora = GrowRALinear(linear, rank=4, alpha=2.0)
+        lora = GrowRALinear(linear, rank=4, scaling=0.5)
         self.assertAlmostEqual(lora.scaling, 0.5)
 
     def test_scaling_property_larger(self):
         linear = _linear(10, 20)
-        lora = GrowRALinear(linear, rank=4, alpha=8.0)
+        lora = GrowRALinear(linear, rank=4, scaling=2.0)
         self.assertAlmostEqual(lora.scaling, 2.0)
+
+    def test_scaling_default_rank_invariant(self):
+        """Default scaling=1.0 gives scaling=1 regardless of rank."""
+        linear = _linear(10, 20)
+        for rank in (1, 4, 16):
+            lora = GrowRALinear(linear, rank=rank)
+            self.assertAlmostEqual(lora.scaling, 1.0, msg=f"rank={rank}")
+
+    def test_scaling_callable(self):
+        """Callable scaling is evaluated at the current rank."""
+        linear = _linear(10, 20)
+        lora = GrowRALinear(linear, rank=4, scaling=lambda r: r**-0.5)
+        self.assertAlmostEqual(lora.scaling, 4**-0.5, places=5)
 
     def test_first_second_layer_properties(self):
         linear = _linear(10, 20)
@@ -115,12 +128,12 @@ class TestGrowingGrowraLinearInit(TestCase):
 
     def test_extra_repr(self):
         linear = _linear(10, 20)
-        lora = GrowRALinear(linear, rank=4, alpha=2.0)
+        lora = GrowRALinear(linear, rank=4, scaling=0.5)
         r = lora.extra_repr()
         self.assertIn("in_features=10", r)
         self.assertIn("out_features=20", r)
         self.assertIn("rank=4", r)
-        self.assertIn("alpha=2.0", r)
+        self.assertIn("scaling=0.5", r)
 
 
 class TestGrowingGrowraLinearForward(TestCase):
@@ -177,18 +190,17 @@ class TestGrowingGrowraLinearForward(TestCase):
         self.assertIsNone(lora.linear.weight.grad)
 
     def test_forward_numerical_correctness(self):
-        """output == linear(x) + (alpha/rank) * B(A(x)) exactly."""
+        """output == linear(x) + scaling * B(A(x)) exactly."""
         linear = _linear(10, 20)
-        rank, alpha = 4, 2.0
-        lora = GrowRALinear(linear, rank=rank, alpha=alpha)
+        sc = 0.5
+        lora = GrowRALinear(linear, rank=4, scaling=sc)
         nn.init.normal_(lora.first_layer.weight)
         nn.init.normal_(lora.second_layer.weight)
         x = _randn(5, 10)
         with torch.no_grad():
             expected = (
                 linear(x)
-                + (alpha / rank)
-                * (lora.second_layer.weight @ lora.first_layer.weight @ x.T).T
+                + sc * (lora.second_layer.weight @ lora.first_layer.weight @ x.T).T
             )
             actual = lora(x)
         self.assertTrue(torch.allclose(actual, expected, atol=1e-5))
@@ -211,7 +223,7 @@ class TestGrowingGrowraLinearMerge(TestCase):
     def test_merge_output_matches_forward(self):
         """Merged layer should produce same output as LoRA forward."""
         linear = _linear(10, 20)
-        lora = GrowRALinear(linear, rank=4, alpha=4.0)
+        lora = GrowRALinear(linear, rank=4, scaling=0.5)
         nn.init.normal_(lora.first_layer.weight)
         nn.init.normal_(lora.second_layer.weight)
         x = _randn(8, 10)
@@ -291,7 +303,7 @@ class TestFOGROGrowthPipeline(TestCase):
 
     def _make_lora(self, rank=0):
         linear = _linear(self.in_features, self.out_features)
-        return GrowRALinear(linear, rank=rank, alpha=1.0)
+        return GrowRALinear(linear, rank=rank)
 
     def test_init_computation(self):
         lora = self._make_lora(rank=0)
@@ -508,7 +520,7 @@ class TestGrowingGrowraLinearWithLinearGrowingModule(TestCase):
         lgm = LinearGrowingModule(
             in_features=10, out_features=20, name="test", device=global_device()
         )
-        lora = GrowRALinear(lgm, rank=4, alpha=2.0)
+        lora = GrowRALinear(lgm, rank=4, scaling=0.5)
         self.assertEqual(lora.in_features, 10)
         self.assertEqual(lora.out_features, 20)
         self.assertEqual(lora.rank, 4)
@@ -586,11 +598,11 @@ class TestGrowingGrowraConv2dInit(TestCase):
 
     def test_basic_init(self):
         conv = _conv2d(3, 16, kernel_size=3, padding=1)
-        lora = GrowRAConv2d(conv, rank=4, alpha=2.0)
+        lora = GrowRAConv2d(conv, rank=4, scaling=0.5)
         self.assertEqual(lora.in_channels, 3)
         self.assertEqual(lora.out_channels, 16)
         self.assertEqual(lora.rank, 4)
-        self.assertEqual(lora.alpha, 2.0)
+        self.assertAlmostEqual(lora.scaling, 0.5)
 
     def test_init_rank_zero(self):
         conv = _conv2d(3, 16, kernel_size=3, padding=1)
@@ -614,7 +626,7 @@ class TestGrowingGrowraConv2dInit(TestCase):
 
     def test_scaling(self):
         conv = _conv2d(3, 16, kernel_size=3, padding=1)
-        lora = GrowRAConv2d(conv, rank=4, alpha=8.0)
+        lora = GrowRAConv2d(conv, rank=4, scaling=2.0)
         self.assertAlmostEqual(lora.scaling, 2.0)
 
     def test_weight_bias_properties(self):
@@ -625,7 +637,7 @@ class TestGrowingGrowraConv2dInit(TestCase):
 
     def test_extra_repr(self):
         conv = _conv2d(3, 16, kernel_size=3, padding=1)
-        lora = GrowRAConv2d(conv, rank=4, alpha=2.0)
+        lora = GrowRAConv2d(conv, rank=4)
         r = lora.extra_repr()
         self.assertIn("in_channels=3", r)
         self.assertIn("out_channels=16", r)
@@ -713,7 +725,7 @@ class TestGrowingGrowraConv2dFOGRO(TestCase):
 
     def test_fogro_pipeline_rank_zero(self):
         conv = _conv2d(3, 8, kernel_size=3, padding=1)
-        lora = GrowRAConv2d(conv, rank=0, alpha=1.0)
+        lora = GrowRAConv2d(conv, rank=0)
 
         lora.init_computation()
 
@@ -741,7 +753,7 @@ class TestGrowingGrowraConv2dFOGRO(TestCase):
 
     def test_forward_after_growth(self):
         conv = _conv2d(3, 8, kernel_size=3, padding=1)
-        lora = GrowRAConv2d(conv, rank=0, alpha=1.0)
+        lora = GrowRAConv2d(conv, rank=0)
 
         lora.init_computation()
         x = _randn(4, 3, 8, 8)
@@ -916,7 +928,7 @@ class TestGrowraDropoutConv2d(TestCase):
             name="test_merge",
             device=global_device(),
         )
-        lora = GrowRAConv2d(cgm, rank=2, alpha=1.0)
+        lora = GrowRAConv2d(cgm, rank=2)
         merged = lora.merge()
         self.assertIsInstance(merged, nn.Conv2d)
         self.assertEqual(merged.weight.shape[0], 8)
@@ -924,7 +936,7 @@ class TestGrowraDropoutConv2d(TestCase):
     def test_merge_no_bias(self):
         """merge_lora on conv without bias (line 389->391 False branch)."""
         conv = _conv2d(3, 8, 3, padding=1, bias=False)
-        lora = GrowRAConv2d(conv, rank=2, alpha=1.0)
+        lora = GrowRAConv2d(conv, rank=2)
         merged = lora.merge()
         self.assertIsNone(merged.bias)
 
@@ -971,7 +983,7 @@ class TestDoRALinear(TestCase):
         self.assertIn("use_dora=True", lora.extra_repr())
 
     def test_merge_matches_forward(self):
-        lora = GrowRALinear(_linear(10, 20), rank=4, alpha=4.0, use_dora=True)
+        lora = GrowRALinear(_linear(10, 20), rank=4, use_dora=True)
         nn.init.normal_(lora.first_layer.weight)
         nn.init.normal_(lora.second_layer.weight)
         with torch.no_grad():
@@ -1077,7 +1089,7 @@ class TestGrowRAMatchesPEFT(TestCase):
     def test_rank_zero_equals_base(self):
         """At rank=0 GrowRA output equals the frozen base — same as PEFT's init."""
         linear = _linear(10, 20)
-        growra = GrowRALinear(copy.deepcopy(linear), rank=0, alpha=1.0)
+        growra = GrowRALinear(copy.deepcopy(linear), rank=0)
         x = _randn(4, 10)
         with torch.no_grad():
             self.assertTrue(torch.allclose(growra(x), linear(x)))
@@ -1085,21 +1097,22 @@ class TestGrowRAMatchesPEFT(TestCase):
     @unittest.skipUnless(HAS_PEFT, "peft is not installed")
     def test_forward_matches_peft_lora(self):
         """Identical A/B weights → identical forward output."""
-        in_f, out_f, rank, alpha = 10, 20, 4, 4.0
+        in_f, out_f, rank = 10, 20, 4
+        peft_alpha = 4.0  # PEFT lora_alpha; effective scaling = peft_alpha/rank = 1.0
         linear = _linear(in_f, out_f)
 
         # --- PEFT side ---
         peft_model = get_peft_model(
             _SimpleModel(copy.deepcopy(linear)),
-            LoraConfig(r=rank, lora_alpha=alpha, target_modules=["fc"], bias="none"),
+            LoraConfig(r=rank, lora_alpha=peft_alpha, target_modules=["fc"], bias="none"),
         )
         peft_mod = _find_peft_lora_module(peft_model)
         # Non-zero B so the adapter actually contributes to the output
         nn.init.normal_(peft_mod.lora_A["default"].weight)
         nn.init.normal_(peft_mod.lora_B["default"].weight)
 
-        # --- GrowRA side — same frozen base weights ---
-        growra = GrowRALinear(copy.deepcopy(linear), rank=rank, alpha=alpha)
+        # --- GrowRA side — same frozen base weights, scaling = peft_alpha/rank ---
+        growra = GrowRALinear(copy.deepcopy(linear), rank=rank, scaling=peft_alpha / rank)
         with torch.no_grad():
             growra.first_layer.weight.copy_(
                 peft_mod.lora_A["default"].weight.to(growra.first_layer.weight.device)
@@ -1123,18 +1136,19 @@ class TestGrowRAMatchesPEFT(TestCase):
     @unittest.skipUnless(HAS_PEFT, "peft is not installed")
     def test_scaling_matches(self):
         """alpha / rank scaling is identical between GrowRA and PEFT."""
-        in_f, out_f, rank, alpha = 8, 16, 2, 8.0
+        in_f, out_f, rank = 8, 16, 2
+        peft_alpha = 8.0  # effective scaling = peft_alpha/rank = 4.0
         linear = _linear(in_f, out_f)
 
         peft_model = get_peft_model(
             _SimpleModel(copy.deepcopy(linear)),
-            LoraConfig(r=rank, lora_alpha=alpha, target_modules=["fc"], bias="none"),
+            LoraConfig(r=rank, lora_alpha=peft_alpha, target_modules=["fc"], bias="none"),
         )
         peft_mod = _find_peft_lora_module(peft_model)
         nn.init.ones_(peft_mod.lora_A["default"].weight)
         nn.init.ones_(peft_mod.lora_B["default"].weight)
 
-        growra = GrowRALinear(copy.deepcopy(linear), rank=rank, alpha=alpha)
+        growra = GrowRALinear(copy.deepcopy(linear), rank=rank, scaling=peft_alpha / rank)
         with torch.no_grad():
             growra.first_layer.weight.copy_(
                 peft_mod.lora_A["default"].weight.to(growra.first_layer.weight.device)
