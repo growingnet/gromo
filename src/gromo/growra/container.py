@@ -7,7 +7,7 @@ saving, and loading LoRA parameters.
 
 Typical usage::
 
-    from gromo.containers.lora_growth_container import get_growing_lora_model
+    from gromo.growra.container import get_growing_lora_model
     import torch.nn as nn
 
     pretrained = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 5))
@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 
 from gromo.containers.sequential_growing_container import SequentialGrowingModel
-from gromo.modules.lora_growth_module import (
+from gromo.growra.module import (
     GrowingLoRAConv2d,
     GrowingLoRALinear,
     _Conv2dLayerType,
@@ -169,8 +169,8 @@ class LoRAGrowingModel(SequentialGrowingModel):
     """Growing model wrapping a pretrained network with LoRA adapters.
 
     All targeted linear and convolutional layers are replaced in-place with
-    :class:`~gromo.modules.lora_growth_module.GrowingLoRALinear` /
-    :class:`~gromo.modules.lora_growth_module.GrowingLoRAConv2d` wrappers
+    :class:`~gromo.growra.module.GrowingLoRALinear` /
+    :class:`~gromo.growra.module.GrowingLoRAConv2d` wrappers
     whose LoRA rank starts at 0. Original weights are frozen.
 
     The LoRA layers are registered as ``_growable_layers`` /
@@ -375,7 +375,7 @@ def get_growing_lora_model(
     Examples
     --------
     >>> import torch.nn as nn
-    >>> from gromo.containers.lora_growth_container import get_growing_lora_model
+    >>> from gromo.growra.container import get_growing_lora_model
     >>> base = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 5))
     >>> model = get_growing_lora_model(base, alpha=1.0)
     """

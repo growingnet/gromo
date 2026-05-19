@@ -15,13 +15,13 @@ import torch
 import torch.nn as nn
 
 from gromo.containers.growing_block import LinearGrowingBlock
-from gromo.containers.lora_growth_container import (
+from gromo.growra.container import (
     get_growing_lora_model,
     get_lora_modules,
 )
+from gromo.growra.module import GrowingLoRAConv2d, GrowingLoRALinear
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
-from gromo.modules.lora_growth_module import GrowingLoRAConv2d, GrowingLoRALinear
 from gromo.utils.utils import global_device, set_device
 
 

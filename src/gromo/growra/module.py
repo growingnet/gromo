@@ -7,7 +7,7 @@ a frozen original layer and add a trainable low-rank adaptation::
     output = original(x) + scaling * B(A(x))
 
 where A and B are growing modules from gromo.  The rank starts at 0 and grows
-via the FOGRO pipeline (see :mod:`gromo.containers.lora_growth_container`).
+via the FOGRO pipeline (see :mod:`gromo.growra.container`).
 """
 
 from __future__ import annotations

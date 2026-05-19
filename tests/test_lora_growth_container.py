@@ -14,7 +14,7 @@ from unittest import TestCase
 import torch
 import torch.nn as nn
 
-from gromo.containers.lora_growth_container import (
+from gromo.growra.container import (
     LoRAGrowingModel,
     _matches_target,
     get_growing_lora_model,
@@ -22,7 +22,7 @@ from gromo.containers.lora_growth_container import (
     get_lora_parameters,
     merge_all_lora,
 )
-from gromo.modules.lora_growth_module import GrowingLoRAConv2d, GrowingLoRALinear
+from gromo.growra.module import GrowingLoRAConv2d, GrowingLoRALinear
 from gromo.utils.utils import global_device
 
 
@@ -632,7 +632,7 @@ class TestLoadLoRAStateDictCoverage(TestCase):
                 return self.lora(x)
 
         model = TopLevel()
-        from gromo.containers.lora_growth_container import merge_all_lora
+        from gromo.growra.container import merge_all_lora
 
         merge_all_lora(model)
         self.assertIsInstance(model.lora, nn.Linear)
