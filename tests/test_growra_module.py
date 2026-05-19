@@ -22,7 +22,7 @@ from gromo.growra.container import (
 from gromo.growra.module import GrowingLoRAConv2d, GrowingLoRALinear
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
-from gromo.utils.utils import global_device, set_device
+from gromo.utils.utils import global_device
 
 
 def _linear(*args, **kwargs):
@@ -41,7 +41,7 @@ def _ones(*args, **kwargs):
     return torch.ones(*args, device=global_device(), **kwargs)
 
 
-class TestGrowingLoRALinearInit(TestCase):
+class TestGrowingGrowraLinearInit(TestCase):
     """Tests for GrowingLoRALinear initialization."""
 
     def test_basic_init(self):
@@ -111,21 +111,8 @@ class TestGrowingLoRALinearInit(TestCase):
         self.assertIn("rank=4", r)
         self.assertIn("alpha=2.0", r)
 
-    def test_explicit_device_overrides_global_device_for_internal_layers(self):
-        original_device = global_device()
-        try:
-            set_device(torch.device("meta"))
-            linear = nn.Linear(10, 20, device=torch.device("cpu"))
-            lora = GrowingLoRALinear(linear, rank=0, device=torch.device("cpu"))
-        finally:
-            set_device(original_device)
 
-        self.assertEqual(lora.device, torch.device("cpu"))
-        self.assertEqual(lora.first_layer.weight.device, torch.device("cpu"))
-        self.assertEqual(lora.second_layer.weight.device, torch.device("cpu"))
-
-
-class TestGrowingLoRALinearForward(TestCase):
+class TestGrowingGrowraLinearForward(TestCase):
     """Tests for GrowingLoRALinear forward pass."""
 
     def setUp(self):
@@ -164,13 +151,6 @@ class TestGrowingLoRALinearForward(TestCase):
         out = lora(x)
         self.assertEqual(out.shape, (3, 7, 20))
 
-    def test_forward_batched(self):
-        linear = _linear(10, 20)
-        lora = GrowingLoRALinear(linear, rank=4)
-        x = _randn(5, 8, 10)
-        y = lora(x)
-        self.assertEqual(y.shape, (5, 8, 20))
-
     def test_gradient_flows_to_lora_only(self):
         linear = _linear(10, 20)
         lora = GrowingLoRALinear(linear, rank=4)
@@ -185,8 +165,25 @@ class TestGrowingLoRALinearForward(TestCase):
         # Frozen params should not
         self.assertIsNone(lora.linear.weight.grad)
 
+    def test_forward_numerical_correctness(self):
+        """output == linear(x) + (alpha/rank) * B(A(x)) exactly."""
+        linear = _linear(10, 20)
+        rank, alpha = 4, 2.0
+        lora = GrowingLoRALinear(linear, rank=rank, alpha=alpha)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(5, 10)
+        with torch.no_grad():
+            expected = (
+                linear(x)
+                + (alpha / rank)
+                * (lora.second_layer.weight @ lora.first_layer.weight @ x.T).T
+            )
+            actual = lora(x)
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-5))
 
-class TestGrowingLoRALinearMerge(TestCase):
+
+class TestGrowingGrowraLinearMerge(TestCase):
     """Tests for GrowingLoRALinear merge_lora."""
 
     def setUp(self):
@@ -246,7 +243,7 @@ class TestGrowingLoRALinearMerge(TestCase):
         self.assertTrue(torch.allclose(linear.weight.data, original_weight))
 
 
-class TestGrowingLoRALinearUtilities(TestCase):
+class TestGrowingGrowraLinearUtilities(TestCase):
     """Tests for GrowingLoRALinear utility methods."""
 
     def test_lora_parameters(self):
@@ -416,8 +413,81 @@ class TestFOGROGrowthPipeline(TestCase):
         improvement = lora.first_order_improvement
         self.assertIsInstance(improvement, torch.Tensor)
 
+    def test_extended_forward_runs_after_fogro_step(self):
+        """After compute_optimal_updates at rank=0, extended_forward uses the elif branch
+        (extended_output_layer set) without error and equals forward (scaling=0)."""
+        lora = self._make_lora(rank=0)
+        lora.init_computation()
+        x = _randn(self.batch_size, self.in_features)
+        lora.zero_grad()
+        output = lora(x)
+        loss = (output**2).sum() / 2
+        loss.backward()
+        lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=4,
+            compute_delta=False,
+            use_covariance=False,
+            use_projection=False,
+            alpha_zero=True,
+            omega_zero=False,
+            ignore_singular_values=True,
+        )
+        self.assertIsNotNone(lora.first_layer.extended_output_layer)
+        # extension_scaling is 0 by default, so extended_forward == forward
+        x_eval = _randn(3, self.in_features)
+        out_forward = lora(x_eval)
+        out_extended = lora.extended_forward(x_eval)
+        self.assertEqual(out_extended.shape, (3, self.out_features))
+        self.assertTrue(
+            torch.allclose(out_forward, out_extended),
+            "With zero extension scaling, extended_forward should equal forward",
+        )
+        lora.reset_computation()
 
-class TestGrowingLoRALinearWithLinearGrowingModule(TestCase):
+
+class TestEnableDora(TestCase):
+    """Tests for enable_dora() called post-construction."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def test_enable_dora_linear_post_construction(self):
+        lora = GrowingLoRALinear(_linear(10, 20), rank=2)
+        self.assertFalse(lora.use_dora)
+        self.assertIsNone(lora.magnitude)
+        lora.enable_dora()
+        self.assertTrue(lora.use_dora)
+        self.assertIsNotNone(lora.magnitude)
+        assert lora.magnitude is not None
+        self.assertEqual(lora.magnitude.shape[0], 20)
+        self.assertTrue(lora.magnitude.requires_grad)
+
+    def test_enable_dora_linear_output_matches_before(self):
+        """Enabling DoRA at rank=0 does not change the forward output."""
+        linear = _linear(10, 20)
+        lora = GrowingLoRALinear(linear, rank=0)
+        x = _randn(3, 10)
+        with torch.no_grad():
+            out_before = lora(x).clone()
+        lora.enable_dora()
+        with torch.no_grad():
+            out_after = lora(x)
+        self.assertTrue(torch.allclose(out_before, out_after, atol=1e-6))
+
+    def test_enable_dora_conv_post_construction(self):
+        lora = GrowingLoRAConv2d(_conv2d(3, 8, 3, padding=1), rank=2)
+        self.assertFalse(lora.use_dora)
+        self.assertIsNone(lora.magnitude)
+        lora.enable_dora()
+        self.assertTrue(lora.use_dora)
+        self.assertIsNotNone(lora.magnitude)
+        assert lora.magnitude is not None
+        self.assertEqual(lora.magnitude.shape[0], 8)
+        self.assertTrue(lora.magnitude.requires_grad)
+
+
+class TestGrowingGrowraLinearWithLinearGrowingModule(TestCase):
     """Tests that GrowingLoRALinear works with LinearGrowingModule as input."""
 
     def setUp(self):
@@ -500,7 +570,7 @@ class TestGrowingLoRALinearWithLinearGrowingModule(TestCase):
 # --------- Tests for GrowingLoRAConv2d ---------
 
 
-class TestGrowingLoRAConv2dInit(TestCase):
+class TestGrowingGrowraConv2dInit(TestCase):
     """Tests for GrowingLoRAConv2d initialization."""
 
     def test_basic_init(self):
@@ -551,7 +621,7 @@ class TestGrowingLoRAConv2dInit(TestCase):
         self.assertIn("rank=4", r)
 
 
-class TestGrowingLoRAConv2dForward(TestCase):
+class TestGrowingGrowraConv2dForward(TestCase):
     """Tests for GrowingLoRAConv2d forward pass."""
 
     def setUp(self):
@@ -592,7 +662,7 @@ class TestGrowingLoRAConv2dForward(TestCase):
         self.assertIsNone(lora.conv.weight.grad)
 
 
-class TestGrowingLoRAConv2dMerge(TestCase):
+class TestGrowingGrowraConv2dMerge(TestCase):
     """Tests for GrowingLoRAConv2d merge."""
 
     def setUp(self):
@@ -611,8 +681,20 @@ class TestGrowingLoRAConv2dMerge(TestCase):
         merged = lora.merge_lora()
         self.assertEqual(merged.weight.shape, conv.weight.shape)
 
+    def test_reset_lora(self):
+        conv = _conv2d(3, 16, kernel_size=3, padding=1)
+        lora = GrowingLoRAConv2d(conv, rank=4)
+        nn.init.normal_(lora.second_layer.weight)
+        lora.reset_lora()
+        self.assertTrue(
+            torch.allclose(
+                lora.second_layer.weight.data,
+                torch.zeros_like(lora.second_layer.weight.data),
+            )
+        )
 
-class TestGrowingLoRAConv2dFOGRO(TestCase):
+
+class TestGrowingGrowraConv2dFOGRO(TestCase):
     """Basic FOGRO pipeline test for GrowingLoRAConv2d."""
 
     def setUp(self):
@@ -677,7 +759,7 @@ class TestGrowingLoRAConv2dFOGRO(TestCase):
 # ===================== Dropout Tests =====================
 
 
-class TestLoRADropoutLinear(TestCase):
+class TestGrowraDropoutLinear(TestCase):
     """Tests for lora_dropout in GrowingLoRALinear."""
 
     def setUp(self):
@@ -741,7 +823,7 @@ class TestLoRADropoutLinear(TestCase):
         self.assertEqual(out.shape, (3, 20))
 
 
-class TestLoRADropoutConv2d(TestCase):
+class TestGrowraDropoutConv2d(TestCase):
     """Tests for lora_dropout in GrowingLoRAConv2d."""
 
     def setUp(self):

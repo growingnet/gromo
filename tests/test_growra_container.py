@@ -102,7 +102,7 @@ class TestMatchesTarget(TestCase):
 # ===================== get_growing_lora_model / LoRAGrowingModel Tests =====================
 
 
-class TestAsLoraModel(TestCase):
+class TestAsGrowraModel(TestCase):
     """Tests for the get_growing_lora_model factory and LoRAGrowingModel class."""
 
     def test_returns_lora_growing_model(self):
@@ -189,7 +189,7 @@ class TestAsLoraModel(TestCase):
         self.assertEqual(len(lora_model._growing_layers), 2)
 
 
-class TestAsLoraModelNested(TestCase):
+class TestAsGrowraModelNested(TestCase):
     """Test get_growing_lora_model on nested model structures."""
 
     def test_nested_modules(self):
@@ -229,7 +229,7 @@ class TestAsLoraModelNested(TestCase):
 # ===================== Utility Function Tests =====================
 
 
-class TestGetLoraParameters(TestCase):
+class TestGetGrowraParameters(TestCase):
     def test_collects_all_lora_params(self):
         model = _make_simple_model()
         lora_model = get_growing_lora_model(model)
@@ -256,7 +256,7 @@ class TestGetLoraParameters(TestCase):
         )
 
 
-class TestGetLoraModules(TestCase):
+class TestGetGrowraModules(TestCase):
     def test_finds_modules(self):
         model = _make_simple_model()
         lora_model = get_growing_lora_model(model)
@@ -277,7 +277,7 @@ class TestGetLoraModules(TestCase):
         )
 
 
-class TestMergeAllLora(TestCase):
+class TestMergeAllGrowra(TestCase):
     def setUp(self):
         torch.manual_seed(42)
 
@@ -310,7 +310,7 @@ class TestMergeAllLora(TestCase):
         self.assertEqual(len(get_lora_modules(lora_model.model)), 0)
 
 
-class TestLoraStateDict(TestCase):
+class TestGrowraStateDict(TestCase):
     def setUp(self):
         torch.manual_seed(42)
 
@@ -422,14 +422,6 @@ class TestEndToEnd(TestCase):
             f"Max diff: {(out_before - out_after).abs().max().item()}",
         )
 
-    def test_parameter_count_efficiency(self):
-        model = nn.Sequential(_linear(512, 512), nn.ReLU(), _linear(512, 512))
-        lora_model = get_growing_lora_model(model)
-        # After growth the LoRA params will be small; at rank=0 they are 0
-        # Just verify the standalone getter works
-        params = get_lora_parameters(lora_model)
-        self.assertIsInstance(params, list)
-
     def test_full_growth_pipeline(self):
         model = nn.Sequential(_linear(8, 16), nn.ReLU(), _linear(16, 4))
         x = _randn(5, 8)
@@ -485,7 +477,7 @@ class TestOriginalWeightsUnchanged(TestCase):
 # ===================== Conv2d Tests =====================
 
 
-class TestAsLoraModelConv2d(TestCase):
+class TestAsGrowraModelConv2d(TestCase):
     def setUp(self):
         torch.manual_seed(42)
 
@@ -547,7 +539,7 @@ class TestAsLoraModelConv2d(TestCase):
 # ===================== Dropout / Extra Coverage Tests =====================
 
 
-class TestLoRADropoutContainer(TestCase):
+class TestGrowraDropoutContainer(TestCase):
     """Tests covering lora_dropout propagation through the container."""
 
     def setUp(self):
@@ -584,7 +576,7 @@ class TestLoRADropoutContainer(TestCase):
         self.assertEqual(lora_model.out_features, 5)
 
 
-class TestLoadLoRAStateDictCoverage(TestCase):
+class TestLoadGrowraStateDictCoverage(TestCase):
     """Edge-case coverage for load_lora_state_dict."""
 
     def setUp(self):
@@ -707,3 +699,176 @@ class TestDoRAContainer(TestCase):
         for module in lora_model2.lora_modules():
             self.assertTrue(module.use_dora)
             self.assertIsNotNone(module.magnitude)
+
+
+# ===================== _matches_target Conv2d Tests =====================
+
+
+class TestMatchesTargetConv2d(TestCase):
+    def test_matches_conv2d_by_type(self):
+        self.assertTrue(_matches_target("conv", _conv2d(3, 8, 3), None, (nn.Conv2d,)))
+
+    def test_rejects_linear_for_conv2d_target(self):
+        self.assertFalse(_matches_target("fc", _linear(10, 5), None, (nn.Conv2d,)))
+
+    def test_matches_conv2d_by_name(self):
+        self.assertTrue(
+            _matches_target("layer1.conv", _conv2d(3, 8, 3), ["conv"], (nn.Conv2d,))
+        )
+
+    def test_rejects_conv2d_wrong_name(self):
+        self.assertFalse(
+            _matches_target("layer1.fc", _conv2d(3, 8, 3), ["conv"], (nn.Conv2d,))
+        )
+
+    def test_matches_mixed_types(self):
+        """target_types containing both Linear and Conv2d should match either."""
+        self.assertTrue(
+            _matches_target("fc", _linear(10, 5), None, (nn.Linear, nn.Conv2d))
+        )
+        self.assertTrue(
+            _matches_target("conv", _conv2d(3, 8, 3), None, (nn.Linear, nn.Conv2d))
+        )
+
+
+# ===================== Double-wrapping guard Tests =====================
+
+
+class TestInjectGrowraDoubleWrapGuard(TestCase):
+    """_inject_lora_inplace must not wrap a layer that is a descendant of an already-wrapped one."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def test_no_double_wrapping_in_nested_sequential(self):
+        """Inner linear inside a Sequential that itself contains a linear must be wrapped once."""
+        model = nn.Sequential(
+            nn.Sequential(_linear(10, 20), nn.ReLU()),
+            _linear(20, 5),
+        )
+        lora_model = get_growing_lora_model(model)
+        # Total wraps == number of linear layers, no double-wrapping
+        lora_count = sum(
+            1 for m in lora_model.modules() if isinstance(m, GrowingLoRALinear)
+        )
+        self.assertEqual(lora_count, 2)
+
+    def test_already_wrapped_layer_not_re_wrapped(self):
+        """A GrowingLoRALinear already in the model is itself a descendant of the top model;
+        calling get_growing_lora_model on a model that already contains LoRA wrappers
+        should not wrap the inner linear again."""
+        inner = _linear(10, 20)
+        lora_inner = GrowingLoRALinear(inner, rank=0)
+
+        class ModelWithLoRA(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.lora = lora_inner
+                self.head = _linear(20, 5)
+
+            def forward(self, x):
+                return self.head(self.lora(x))
+
+        model = ModelWithLoRA()
+        lora_model = get_growing_lora_model(model, target_modules=["head"])
+        # Only 'head' should be wrapped; lora_inner should remain untouched
+        self.assertIsInstance(lora_model.model.lora, GrowingLoRALinear)
+        self.assertIsInstance(lora_model.model.head, GrowingLoRALinear)
+        # The inner .linear of lora_inner must not have been re-wrapped
+        self.assertIsInstance(lora_model.model.lora.linear, nn.Linear)
+
+
+# ===================== Conv2d load_lora_state_dict expansion Tests =====================
+
+
+class TestLoadGrowraStateDictConv2dExpansion(TestCase):
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def _grow_conv_model(self, lora_model, added_rank=2):
+        data = [(_randn(2, 3, 8, 8), _randn(2, 16, 8, 8)) for _ in range(2)]
+        for m in lora_model.lora_modules():
+            m.init_computation()
+        for x, y in data:
+            lora_model.zero_grad()
+            nn.functional.mse_loss(lora_model(x), y).backward()
+            for m in lora_model.lora_modules():
+                m.update_computation()
+        for m in lora_model.lora_modules():
+            m.compute_optimal_updates(
+                compute_delta=False,
+                use_covariance=False,
+                use_projection=False,
+                alpha_zero=True,
+                omega_zero=False,
+                ignore_singular_values=True,
+            )
+            m.sub_select_optimal_added_parameters(keep_neurons=added_rank)
+            m.apply_change(scaling_factor=1.0, extension_size=added_rank)
+            m.reset_computation()
+
+    def _make_conv_lora(self):
+        model = nn.Sequential(
+            _conv2d(3, 8, kernel_size=3, padding=1),
+            nn.ReLU(),
+            _conv2d(8, 16, kernel_size=3, padding=1),
+        )
+        return get_growing_lora_model(model)
+
+    def test_load_conv2d_grown_state_expands_rank(self):
+        """load_lora_state_dict expands Conv2d rank and copies weights correctly."""
+        lora_model = self._make_conv_lora()
+        self._grow_conv_model(lora_model, added_rank=2)
+
+        for m in lora_model.lora_modules():
+            self.assertEqual(m.rank, 2)
+
+        state = lora_model.lora_state_dict()
+
+        lora_model2 = self._make_conv_lora()
+        lora_model2.load_lora_state_dict(state)
+
+        for m1, m2 in zip(
+            lora_model.lora_modules(), lora_model2.lora_modules(), strict=True
+        ):
+            self.assertEqual(m2.rank, 2)
+            self.assertTrue(torch.allclose(m1.first_layer.weight, m2.first_layer.weight))
+            self.assertTrue(
+                torch.allclose(m1.second_layer.weight, m2.second_layer.weight)
+            )
+
+    def test_load_conv2d_grown_state_forward_matches(self):
+        """After loading, forward output matches when the base convs are the same."""
+        lora_model = self._make_conv_lora()
+        self._grow_conv_model(lora_model, added_rank=2)
+        # Set non-trivial B weights so the output is interesting
+        for m in lora_model.lora_modules():
+            nn.init.normal_(m.second_layer.weight)
+        state = lora_model.lora_state_dict()
+
+        lora_model2 = self._make_conv_lora()
+        lora_model2.load_lora_state_dict(state)
+        # The two fresh models have different random base-conv weights; align them
+        # so the only difference would be a bad LoRA load.
+        with torch.no_grad():
+            for m1, m2 in zip(
+                lora_model.lora_modules(), lora_model2.lora_modules(), strict=True
+            ):
+                m2.conv.weight.copy_(m1.conv.weight)
+                if m1.conv.bias is not None:
+                    m2.conv.bias.copy_(m1.conv.bias)
+
+        x = _randn(2, 3, 8, 8)
+        with torch.no_grad():
+            out1 = lora_model(x)
+            out2 = lora_model2(x)
+        self.assertTrue(torch.allclose(out1, out2, atol=1e-5))
+
+    def test_load_conv2d_same_rank_no_error(self):
+        """load_lora_state_dict at same rank does not error for Conv2d."""
+        model = nn.Sequential(_conv2d(3, 8, kernel_size=3, padding=1))
+        lora_model = get_growing_lora_model(model)
+        state = lora_model.lora_state_dict()
+        model2 = nn.Sequential(_conv2d(3, 8, kernel_size=3, padding=1))
+        lora_model2 = get_growing_lora_model(model2)
+        lora_model2.load_lora_state_dict(state)  # should not raise

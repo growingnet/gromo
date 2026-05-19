@@ -517,18 +517,31 @@ def load_lora_state_dict(model: nn.Module, lora_state: dict[str, torch.Tensor]) 
                 if use_dora_key in lora_state and bool(lora_state[use_dora_key].item()):
                     if not module.use_dora:
                         module.enable_dora()
-                if new_rank > module.rank and isinstance(module, GrowingLoRALinear):
-                    added = new_rank - module.rank
-                    module.first_layer.add_parameters(
-                        matrix_extension=None,
-                        bias_extension=None,
-                        added_out_features=added,
-                    )
-                    module.second_layer.add_parameters(
-                        matrix_extension=None,
-                        bias_extension=None,
-                        added_in_features=added,
-                    )
+                if new_rank > module.rank:
+                    if isinstance(module, GrowingLoRALinear):
+                        added = new_rank - module.rank
+                        module.first_layer.add_parameters(
+                            matrix_extension=None,
+                            bias_extension=None,
+                            added_out_features=added,
+                        )
+                        module.second_layer.add_parameters(
+                            matrix_extension=None,
+                            bias_extension=None,
+                            added_in_features=added,
+                        )
+                    else:
+                        added = new_rank - module.rank
+                        dev_a = module.first_layer.weight.device
+                        dev_b = module.second_layer.weight.device
+                        # A (first_layer): add output channels — new rows only
+                        module.first_layer.layer_out_extension(
+                            A_data[module.rank :].to(dev_a)
+                        )
+                        # B (second_layer): add input channels — new columns only
+                        module.second_layer.layer_in_extension(
+                            B_data[:, module.rank :].to(dev_b)
+                        )
                 with torch.no_grad():
                     module.first_layer.weight.copy_(
                         A_data.to(module.first_layer.weight.device)

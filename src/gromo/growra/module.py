@@ -516,6 +516,11 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
             params.append(self.magnitude)
         return params
 
+    def reset_lora(self) -> None:
+        """Reset LoRA to zero output."""
+        nn.init.kaiming_uniform_(self.first_layer.weight)
+        nn.init.zeros_(self.second_layer.weight)
+
     def extra_repr(self) -> str:
         """Return extra representation string."""
         dropout_p = self.lora_dropout.p
