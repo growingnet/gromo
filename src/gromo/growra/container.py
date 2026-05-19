@@ -1,18 +1,18 @@
 """
-Container-level LoRA utilities for gromo.
+Container-level GrowRA utilities for gromo.
 
-Provides :class:`LoRAGrowingModel` and :func:`get_growing_lora_model` to inject growing
-LoRA adapters into a pretrained model, as well as utilities for extracting,
-saving, and loading LoRA parameters.
+Provides :class:`GrowRAModel` and :func:`get_growra_model` to inject growing
+adapters into a pretrained model, as well as utilities for extracting,
+saving, and loading adapter parameters.
 
 Typical usage::
 
-    from gromo.growra.container import get_growing_lora_model
+    from gromo.growra.container import get_growra_model
     import torch.nn as nn
 
     pretrained = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 5))
-    model = get_growing_lora_model(pretrained, alpha=1.0)
-    # ... train model a few steps using model.lora_parameters() as optimizer params ...
+    model = get_growra_model(pretrained, alpha=1.0)
+    # ... train model a few steps using model.growra_parameters() as optimizer params ...
 """
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ import torch.nn as nn
 
 from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.growra.module import (
-    GrowingLoRAConv2d,
-    GrowingLoRALinear,
+    GrowRAConv2d,
+    GrowRALinear,
     _Conv2dLayerType,
+    _GrowRATypes,
     _LinearLayerType,
-    _LoRATypes,
 )
 
 
@@ -54,7 +54,7 @@ def _infer_features(model: nn.Module) -> tuple[int, int]:
     if first is None or last is None:
         raise ValueError(
             "Cannot infer in_features / out_features from the model. "
-            "Pass them explicitly to get_growing_lora_model()."
+            "Pass them explicitly to get_growra_model()."
         )
 
     in_f = first.in_features if isinstance(first, _LinearLayerType) else first.in_channels
@@ -93,23 +93,23 @@ def _matches_target(
     return any(t in name for t in target_modules)
 
 
-def _inject_lora_inplace(
+def _inject_growra_inplace(
     model: nn.Module,
     alpha: float,
-    lora_dropout: float,
+    dropout: float,
     use_dora: bool,
     target_modules: list[str] | None,
 ) -> None:
-    """Replace targeted layers with LoRA wrappers in-place (rank 0).
+    """Replace targeted layers with GrowRA wrappers in-place (rank 0).
 
     Parameters
     ----------
     model : nn.Module
         Model to modify.
     alpha : float
-        LoRA scaling factor.
-    lora_dropout : float
-        Dropout probability for the LoRA path.
+        Scaling factor.
+    dropout : float
+        Dropout probability for the adapter path.
     use_dora : bool
         Whether to enable DoRA magnitude reparameterization.
     target_modules : list of str or None
@@ -136,22 +136,22 @@ def _inject_lora_inplace(
             attr_name = parts[1]
 
         if isinstance(module, _LinearLayerType):
-            replacement: nn.Module = GrowingLoRALinear(
+            replacement: nn.Module = GrowRALinear(
                 module,
                 rank=0,
                 alpha=alpha,
-                lora_dropout=lora_dropout,
+                dropout=dropout,
                 use_dora=use_dora,
-                name=f"lora_{full_name}",
+                name=f"growra_{full_name}",
             )
         else:
-            replacement = GrowingLoRAConv2d(
+            replacement = GrowRAConv2d(
                 module,
                 rank=0,
                 alpha=alpha,
-                lora_dropout=lora_dropout,
+                dropout=dropout,
                 use_dora=use_dora,
-                name=f"lora_{full_name}",
+                name=f"growra_{full_name}",
             )
         replacements.append((parent, attr_name, replacement))
         wrapped_names.add(full_name)
@@ -161,25 +161,25 @@ def _inject_lora_inplace(
 
 
 # ---------------------------------------------------------------------------
-# LoRAGrowingModel
+# GrowRAModel
 # ---------------------------------------------------------------------------
 
 
-class LoRAGrowingModel(SequentialGrowingModel):
-    """Growing model wrapping a pretrained network with LoRA adapters.
+class GrowRAModel(SequentialGrowingModel):
+    """Growing model wrapping a pretrained network with GrowRA adapters.
 
     All targeted linear and convolutional layers are replaced in-place with
-    :class:`~gromo.growra.module.GrowingLoRALinear` /
-    :class:`~gromo.growra.module.GrowingLoRAConv2d` wrappers
-    whose LoRA rank starts at 0. Original weights are frozen.
+    :class:`~gromo.growra.module.GrowRALinear` /
+    :class:`~gromo.growra.module.GrowRAConv2d` wrappers
+    whose rank starts at 0. Original weights are frozen.
 
-    The LoRA layers are registered as ``_growable_layers`` /
+    The adapter layers are registered as ``_growable_layers`` /
     ``_growing_layers`` so that all
     :class:`~gromo.containers.growing_container.GrowingContainer` growth
     methods (``init_computation``, ``compute_optimal_updates``,
     ``set_growing_layers``, …) work directly on this object.
 
-    Prefer the factory function :func:`get_growing_lora_model` over instantiating this
+    Prefer the factory function :func:`get_growra_model` over instantiating this
     class directly.
 
     Parameters
@@ -187,9 +187,9 @@ class LoRAGrowingModel(SequentialGrowingModel):
     model : nn.Module
         Fully trained model to adapt. Modified in-place.
     alpha : float
-        LoRA scaling factor (``effective_scaling = alpha / rank``).
-    lora_dropout : float
-        Dropout probability applied to the input before the LoRA path.
+        Scaling factor (``effective_scaling = alpha / rank``).
+    dropout : float
+        Dropout probability applied to the input before the adapter path.
         Default ``0.0`` (no dropout).
     target_modules : list of str or None
         If provided, only wrap layers whose full name contains one of these
@@ -206,14 +206,14 @@ class LoRAGrowingModel(SequentialGrowingModel):
         self,
         model: nn.Module,
         alpha: float = 1.0,
-        lora_dropout: float = 0.0,
+        dropout: float = 0.0,
         use_dora: bool = False,
         target_modules: list[str] | None = None,
         in_features: int | None = None,
         out_features: int | None = None,
         device: torch.device | str | None = None,
     ) -> None:
-        # Freeze original weights before injecting LoRA
+        # Freeze original weights before injecting adapters
         for p in model.parameters():
             p.requires_grad = False
 
@@ -229,24 +229,24 @@ class LoRAGrowingModel(SequentialGrowingModel):
             in_features=in_features, out_features=out_features, device=device
         )
 
-        # Inject rank-0 LoRA wrappers into the model
-        _inject_lora_inplace(
+        # Inject rank-0 GrowRA wrappers into the model
+        _inject_growra_inplace(
             model,
             alpha=alpha,
-            lora_dropout=lora_dropout,
+            dropout=dropout,
             use_dora=use_dora,
             target_modules=target_modules,
         )
         self.model = model
         self.alpha = alpha
-        self.lora_dropout = lora_dropout
+        self.dropout = dropout
         self.use_dora = use_dora
 
-        # Register LoRA modules as growable / growing layers
-        lora_mods: list[GrowingLoRALinear | GrowingLoRAConv2d] = [
-            m for m in model.modules() if isinstance(m, _LoRATypes)
+        # Register adapter modules as growable / growing layers
+        growra_mods: list[GrowRALinear | GrowRAConv2d] = [
+            m for m in model.modules() if isinstance(m, _GrowRATypes)
         ]
-        self._growable_layers = lora_mods  # type: ignore[assignment]
+        self._growable_layers = growra_mods  # type: ignore[assignment]
         self._growing_layers = []
         self.set_growing_layers(scheduling_method="all")
 
@@ -268,7 +268,7 @@ class LoRAGrowingModel(SequentialGrowingModel):
         NotImplementedError
         """
         raise NotImplementedError(
-            "extended_forward is not supported for LoRAGrowingModel. "
+            "extended_forward is not supported for GrowRAModel. "
             "Use the FOGRO growth pipeline (fogro_growth_step) instead."
         )
 
@@ -276,51 +276,51 @@ class LoRAGrowingModel(SequentialGrowingModel):
     # Convenience accessors
     # ------------------------------------------------------------------
 
-    def lora_modules(self) -> list[GrowingLoRALinear | GrowingLoRAConv2d]:
-        """Return all LoRA adapter modules in the wrapped model."""
-        return [m for m in self.model.modules() if isinstance(m, _LoRATypes)]
+    def growra_modules(self) -> list[GrowRALinear | GrowRAConv2d]:
+        """Return all adapter modules in the wrapped model."""
+        return [m for m in self.model.modules() if isinstance(m, _GrowRATypes)]
 
-    def lora_parameters(self) -> list[nn.Parameter]:
-        """Return all trainable LoRA parameters (A and B weight matrices)."""
+    def growra_parameters(self) -> list[nn.Parameter]:
+        """Return all trainable adapter parameters (A and B weight matrices)."""
         params: list[nn.Parameter] = []
-        for m in self.lora_modules():
-            params.extend(m.lora_parameters())
+        for m in self.growra_modules():
+            params.extend(m.growra_parameters())
         return params
 
-    def merge_lora(self) -> "LoRAGrowingModel":
-        """Merge all LoRA adapters back into the original layers.
+    def merge(self) -> "GrowRAModel":
+        """Merge all adapters back into the original layers.
 
         After merging, the model no longer has any growable layers.
 
         Returns
         -------
-        LoRAGrowingModel
-            Self, with LoRA wrappers replaced by merged plain layers.
+        GrowRAModel
+            Self, with adapter wrappers replaced by merged plain layers.
         """
-        merge_all_lora(self.model)
+        merge_all_growra(self.model)
         self._growable_layers = []
         self._growing_layers = []
         return self
 
-    def lora_state_dict(self) -> dict[str, torch.Tensor]:
-        """Extract LoRA parameters as a portable state dict."""
-        return get_lora_state_dict(self.model)
+    def growra_state_dict(self) -> dict[str, torch.Tensor]:
+        """Extract adapter parameters as a portable state dict."""
+        return get_growra_state_dict(self.model)
 
-    def load_lora_state_dict(self, lora_state: dict[str, torch.Tensor]) -> None:
-        """Load LoRA parameters from a state dict."""
-        load_lora_state_dict(self.model, lora_state)
+    def load_growra_state_dict(self, state: dict[str, torch.Tensor]) -> None:
+        """Load adapter parameters from a state dict."""
+        load_growra_state_dict(self.model, state)
 
     def extra_repr(self) -> str:
         """Return extra representation string."""
-        n = len(self.lora_modules())
+        n = len(self.growra_modules())
         s = (
             f"in_features={self.in_features}, out_features={self.out_features}, "
-            f"alpha={self.alpha}, lora_modules={n}"
+            f"alpha={self.alpha}, growra_modules={n}"
         )
         if self.use_dora:
             s += ", use_dora=True"
-        if self.lora_dropout > 0.0:
-            s += f", lora_dropout={self.lora_dropout}"
+        if self.dropout > 0.0:
+            s += f", dropout={self.dropout}"
         return s
 
 
@@ -329,22 +329,22 @@ class LoRAGrowingModel(SequentialGrowingModel):
 # ---------------------------------------------------------------------------
 
 
-def get_growing_lora_model(
+def get_growra_model(
     model: nn.Module,
     alpha: float = 1.0,
-    lora_dropout: float = 0.0,
+    dropout: float = 0.0,
     use_dora: bool = False,
     target_modules: list[str] | None = None,
     in_features: int | None = None,
     out_features: int | None = None,
     device: torch.device | str | None = None,
-) -> LoRAGrowingModel:
-    """Wrap a pretrained model with growing LoRA adapters.
+) -> GrowRAModel:
+    """Wrap a pretrained model with growing GrowRA adapters.
 
     Analogous to PEFT's ``get_peft_model`` but returns a
-    :class:`LoRAGrowingModel` (a
+    :class:`GrowRAModel` (a
     :class:`~gromo.containers.sequential_growing_container.SequentialGrowingModel`).
-    LoRA rank starts at 0 and grows via the FOGRO pipeline — no ``rank``
+    Rank starts at 0 and grows via the FOGRO pipeline — no ``rank``
     argument is needed.
 
     Parameters
@@ -352,9 +352,9 @@ def get_growing_lora_model(
     model : nn.Module
         Pretrained model to adapt. Modified in-place.
     alpha : float
-        LoRA scaling factor.
-    lora_dropout : float
-        Dropout probability applied to the input before the LoRA path.
+        Scaling factor.
+    dropout : float
+        Dropout probability applied to the input before the adapter path.
         Default ``0.0`` (no dropout).
     use_dora : bool
         Whether to enable DoRA magnitude reparameterization.
@@ -370,19 +370,19 @@ def get_growing_lora_model(
 
     Returns
     -------
-    LoRAGrowingModel
+    GrowRAModel
 
     Examples
     --------
     >>> import torch.nn as nn
-    >>> from gromo.growra.container import get_growing_lora_model
+    >>> from gromo.growra.container import get_growra_model
     >>> base = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 5))
-    >>> model = get_growing_lora_model(base, alpha=1.0)
+    >>> model = get_growra_model(base, alpha=1.0)
     """
-    return LoRAGrowingModel(
+    return GrowRAModel(
         model=model,
         alpha=alpha,
-        lora_dropout=lora_dropout,
+        dropout=dropout,
         use_dora=use_dora,
         target_modules=target_modules,
         in_features=in_features,
@@ -392,12 +392,12 @@ def get_growing_lora_model(
 
 
 # ---------------------------------------------------------------------------
-# Standalone utilities (work on any nn.Module containing LoRA wrappers)
+# Standalone utilities (work on any nn.Module containing GrowRA adapters)
 # ---------------------------------------------------------------------------
 
 
-def get_lora_parameters(model: nn.Module) -> list[nn.Parameter]:
-    """Collect all trainable LoRA parameters from a model.
+def get_growra_parameters(model: nn.Module) -> list[nn.Parameter]:
+    """Collect all trainable adapter parameters from a model.
 
     Parameters
     ----------
@@ -409,15 +409,15 @@ def get_lora_parameters(model: nn.Module) -> list[nn.Parameter]:
     """
     params: list[nn.Parameter] = []
     for module in model.modules():
-        if isinstance(module, _LoRATypes):
-            params.extend(module.lora_parameters())
+        if isinstance(module, _GrowRATypes):
+            params.extend(module.growra_parameters())
     return params
 
 
-def get_lora_modules(
+def get_growra_modules(
     model: nn.Module,
-) -> list[GrowingLoRALinear | GrowingLoRAConv2d]:
-    """Collect all LoRA modules from a model.
+) -> list[GrowRALinear | GrowRAConv2d]:
+    """Collect all GrowRA adapter modules from a model.
 
     Parameters
     ----------
@@ -425,15 +425,15 @@ def get_lora_modules(
 
     Returns
     -------
-    list of GrowingLoRALinear | GrowingLoRAConv2d
+    list of GrowRALinear | GrowRAConv2d
     """
-    return [m for m in model.modules() if isinstance(m, _LoRATypes)]
+    return [m for m in model.modules() if isinstance(m, _GrowRATypes)]
 
 
-def merge_all_lora(model: nn.Module) -> nn.Module:
-    """Merge all LoRA weights back into the original model layers.
+def merge_all_growra(model: nn.Module) -> nn.Module:
+    """Merge all adapter weights back into the original model layers.
 
-    Replaces each LoRA wrapper with a plain ``nn.Linear`` or ``nn.Conv2d``
+    Replaces each adapter wrapper with a plain ``nn.Linear`` or ``nn.Conv2d``
     whose weights incorporate the learned low-rank adaptation.
 
     Parameters
@@ -443,12 +443,12 @@ def merge_all_lora(model: nn.Module) -> nn.Module:
     Returns
     -------
     nn.Module
-        Same object with LoRA wrappers replaced by merged layers.
+        Same object with adapter wrappers replaced by merged layers.
     """
     replacements: list[tuple[nn.Module, str, nn.Module]] = []
 
     for full_name, module in model.named_modules():
-        if isinstance(module, _LoRATypes):
+        if isinstance(module, _GrowRATypes):
             parts = full_name.rsplit(".", 1)
             if len(parts) == 1:
                 parent = model
@@ -456,7 +456,7 @@ def merge_all_lora(model: nn.Module) -> nn.Module:
             else:
                 parent = dict(model.named_modules())[parts[0]]
                 attr_name = parts[1]
-            replacements.append((parent, attr_name, module.merge_lora()))
+            replacements.append((parent, attr_name, module.merge()))
 
     for parent, attr_name, merged in replacements:
         setattr(parent, attr_name, merged)
@@ -464,8 +464,8 @@ def merge_all_lora(model: nn.Module) -> nn.Module:
     return model
 
 
-def get_lora_state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
-    """Extract only the LoRA parameters from the model state dict.
+def get_growra_state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
+    """Extract only the adapter parameters from the model state dict.
 
     Parameters
     ----------
@@ -474,51 +474,51 @@ def get_lora_state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
     Returns
     -------
     dict
-        State dict containing LoRA-related keys (weights, rank, alpha).
+        State dict containing adapter-related keys (weights, rank, alpha).
     """
-    lora_state = {}
+    growra_state: dict[str, torch.Tensor] = {}
     for name, module in model.named_modules():
-        if isinstance(module, _LoRATypes):
+        if isinstance(module, _GrowRATypes):
             prefix = f"{name}." if name else ""
-            lora_state[f"{prefix}first_layer.weight"] = (
+            growra_state[f"{prefix}first_layer.weight"] = (
                 module.first_layer.weight.data.clone()
             )
-            lora_state[f"{prefix}second_layer.weight"] = (
+            growra_state[f"{prefix}second_layer.weight"] = (
                 module.second_layer.weight.data.clone()
             )
-            lora_state[f"{prefix}rank"] = torch.tensor(module.rank)
-            lora_state[f"{prefix}alpha"] = torch.tensor(module.alpha)
-            lora_state[f"{prefix}use_dora"] = torch.tensor(module.use_dora)
+            growra_state[f"{prefix}rank"] = torch.tensor(module.rank)
+            growra_state[f"{prefix}alpha"] = torch.tensor(module.alpha)
+            growra_state[f"{prefix}use_dora"] = torch.tensor(module.use_dora)
             if module.use_dora and module.magnitude is not None:
-                lora_state[f"{prefix}magnitude"] = module.magnitude.data.clone()
-    return lora_state
+                growra_state[f"{prefix}magnitude"] = module.magnitude.data.clone()
+    return growra_state
 
 
-def load_lora_state_dict(model: nn.Module, lora_state: dict[str, torch.Tensor]) -> None:
-    """Load LoRA parameters into a model.
+def load_growra_state_dict(model: nn.Module, state: dict[str, torch.Tensor]) -> None:
+    """Load adapter parameters into a model.
 
     Parameters
     ----------
     model : nn.Module
-        Model with LoRA layers (must have matching structure).
-    lora_state : dict
-        State dict from :func:`get_lora_state_dict`.
+        Model with GrowRA layers (must have matching structure).
+    state : dict
+        State dict from :func:`get_growra_state_dict`.
     """
     for name, module in model.named_modules():
-        if isinstance(module, _LoRATypes):
+        if isinstance(module, _GrowRATypes):
             prefix = f"{name}." if name else ""
             key_a = f"{prefix}first_layer.weight"
-            if key_a in lora_state:
-                A_data = lora_state[key_a]
-                B_data = lora_state[f"{prefix}second_layer.weight"]
+            if key_a in state:
+                A_data = state[key_a]
+                B_data = state[f"{prefix}second_layer.weight"]
                 new_rank = A_data.shape[0]
-                module.alpha = lora_state[f"{prefix}alpha"].item()
+                module.alpha = state[f"{prefix}alpha"].item()
                 use_dora_key = f"{prefix}use_dora"
-                if use_dora_key in lora_state and bool(lora_state[use_dora_key].item()):
+                if use_dora_key in state and bool(state[use_dora_key].item()):
                     if not module.use_dora:
                         module.enable_dora()
                 if new_rank > module.rank:
-                    if isinstance(module, GrowingLoRALinear):
+                    if isinstance(module, GrowRALinear):
                         added = new_rank - module.rank
                         module.first_layer.add_parameters(
                             matrix_extension=None,
@@ -550,7 +550,7 @@ def load_lora_state_dict(model: nn.Module, lora_state: dict[str, torch.Tensor]) 
                         B_data.to(module.second_layer.weight.device)
                     )
                     magnitude_key = f"{prefix}magnitude"
-                    if magnitude_key in lora_state and module.magnitude is not None:
+                    if magnitude_key in state and module.magnitude is not None:
                         module.magnitude.copy_(
-                            lora_state[magnitude_key].to(module.magnitude.device)
+                            state[magnitude_key].to(module.magnitude.device)
                         )

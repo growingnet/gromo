@@ -1,7 +1,7 @@
 """
-Growing LoRA module classes for gromo.
+GrowRA module classes for gromo.
 
-Defines :class:`GrowingLoRALinear` and :class:`GrowingLoRAConv2d`, which wrap
+Defines :class:`GrowRALinear` and :class:`GrowRAConv2d`, which wrap
 a frozen original layer and add a trainable low-rank adaptation::
 
     output = original(x) + scaling * B(A(x))
@@ -23,16 +23,16 @@ from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-# Types accepted as the "original layer" for linear LoRA
+# Types accepted as the "original layer" for linear GrowRA
 _LinearLayerType = (nn.Linear, LinearGrowingModule)
-# Types accepted as the "original layer" for conv LoRA
+# Types accepted as the "original layer" for conv GrowRA
 _Conv2dLayerType = (nn.Conv2d, Conv2dGrowingModule)
 
 
-class GrowingLoRALinear(LinearGrowingBlock):
-    """LoRA block for nn.Linear (or LinearGrowingModule) using gromo.
+class GrowRALinear(LinearGrowingBlock):
+    """GrowRA block for nn.Linear (or LinearGrowingModule).
 
-    The LoRA decomposition is ``W_original + scaling * B @ A`` where A and B
+    The decomposition is ``W_original + scaling * B @ A`` where A and B
     are the two internal layers of this ``LinearGrowingBlock``. The frozen
     original layer is used as the residual/downsample path.
 
@@ -41,19 +41,19 @@ class GrowingLoRALinear(LinearGrowingBlock):
     linear : nn.Linear | LinearGrowingModule
         Original linear layer (will be frozen).
     rank : int
-        Initial LoRA rank. Default 0 (no adaptation).
+        Initial rank. Default 0 (no adaptation).
     alpha : float
         Scaling factor. Effective scaling is ``alpha / rank``.
-    lora_dropout : float
-        Dropout probability applied to the input before the LoRA path.
+    dropout : float
+        Dropout probability applied to the input before the adapter path.
         Disabled (``p=0.0``) by default.
     use_dora : bool
         If ``True``, use DoRA-style magnitude reparameterization on top of the
-        LoRA direction update.
+        adapter direction update.
     target_rank : int | None
         Target rank for the growing block.
     activation : torch.nn.Module | None
-        Activation between A and B. Default ``nn.Identity()`` to match LoRA.
+        Activation between A and B. Default ``nn.Identity()``.
     device : torch.device | None
         Device for parameters.
     name : str
@@ -65,12 +65,12 @@ class GrowingLoRALinear(LinearGrowingBlock):
         linear: nn.Linear | LinearGrowingModule,
         rank: int = 0,
         alpha: float = 1.0,
-        lora_dropout: float = 0.0,
+        dropout: float = 0.0,
         use_dora: bool = False,
         target_rank: int | None = None,
         activation: torch.nn.Module | None = None,
         device: torch.device | None = None,
-        name: str = "lora_block",
+        name: str = "growra_block",
     ):
         linear.requires_grad_(False)
         self.alpha = alpha
@@ -98,7 +98,7 @@ class GrowingLoRALinear(LinearGrowingBlock):
                 device=device,
             )
         self.linear = linear
-        self.lora_dropout = nn.Dropout(p=lora_dropout)
+        self.dropout = nn.Dropout(p=dropout)
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
         if use_dora:
@@ -106,7 +106,7 @@ class GrowingLoRALinear(LinearGrowingBlock):
 
     @property
     def rank(self) -> int:
-        """Current LoRA rank (hidden dimension)."""
+        """Current rank (hidden dimension)."""
         return self.hidden_neurons
 
     @property
@@ -171,10 +171,10 @@ class GrowingLoRALinear(LinearGrowingBlock):
             return base_out
         if self.use_dora:
             return base_out
-        x_lora = self.lora_dropout(x)
-        block_out = super().forward(x_lora)
-        lora_out = block_out - self.linear(x_lora)
-        return base_out + self.scaling * lora_out
+        x_drop = self.dropout(x)
+        block_out = super().forward(x_drop)
+        adapter_out = block_out - self.linear(x_drop)
+        return base_out + self.scaling * adapter_out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Extended forward including computed optimal growth directions.
@@ -197,14 +197,14 @@ class GrowingLoRALinear(LinearGrowingBlock):
             if self.rank == 0 and self.first_layer.extended_output_layer is None:
                 return base_out
             return base_out
-        x_lora = self.lora_dropout(x)
-        block_out = super().extended_forward(x_lora)
+        x_drop = self.dropout(x)
+        block_out = super().extended_forward(x_drop)
         if self.rank == 0 and self.first_layer.extended_output_layer is None:
             return base_out
-        return base_out + self.scaling * (block_out - self.linear(x_lora))
+        return base_out + self.scaling * (block_out - self.linear(x_drop))
 
-    def merge_lora(self) -> nn.Linear:
-        """Merge LoRA into the original layer.
+    def merge(self) -> nn.Linear:
+        """Merge adapter into the original layer.
 
         Returns
         -------
@@ -224,8 +224,8 @@ class GrowingLoRALinear(LinearGrowingBlock):
                 merged.bias.copy_(self.linear.bias)
         return merged
 
-    def lora_parameters(self) -> list[nn.Parameter]:
-        """Return only the trainable LoRA parameters (A and B layers)."""
+    def growra_parameters(self) -> list[nn.Parameter]:
+        """Return only the trainable adapter parameters (A and B layers)."""
         params = list(self.first_layer.parameters()) + list(
             self.second_layer.parameters()
         )
@@ -233,14 +233,14 @@ class GrowingLoRALinear(LinearGrowingBlock):
             params.append(self.magnitude)
         return params
 
-    def reset_lora(self) -> None:
-        """Reset LoRA to zero output."""
+    def reset_adapter(self) -> None:
+        """Reset adapter to zero output."""
         nn.init.kaiming_uniform_(self.first_layer.weight)
         nn.init.zeros_(self.second_layer.weight)
 
     def extra_repr(self) -> str:
         """Return extra representation string."""
-        dropout_p = self.lora_dropout.p
+        dropout_p = self.dropout.p
         s = (
             f"in_features={self.in_features}, out_features={self.out_features}, "
             f"rank={self.rank}, alpha={self.alpha}"
@@ -248,16 +248,16 @@ class GrowingLoRALinear(LinearGrowingBlock):
         if self.use_dora:
             s += ", use_dora=True"
         if dropout_p > 0.0:
-            s += f", lora_dropout={dropout_p}"
+            s += f", dropout={dropout_p}"
         return s
 
 
-class GrowingLoRAConv2d(Conv2dGrowingBlock):
-    """LoRA wrapper for nn.Conv2d (or Conv2dGrowingModule) using gromo.
+class GrowRAConv2d(Conv2dGrowingBlock):
+    """GrowRA wrapper for nn.Conv2d (or Conv2dGrowingModule).
 
-    The LoRA decomposition is ``Conv_original(x) + scaling * B(A(x))``
+    The decomposition is ``Conv_original(x) + scaling * B(A(x))``
     where A and B are ``Conv2dGrowingModule`` instances composed via a
-    ``Conv2dGrowingBlock``. The hidden channels equal the LoRA rank and
+    ``Conv2dGrowingBlock``. The hidden channels equal the rank and
     start at 0 by default.
 
     Parameters
@@ -265,15 +265,15 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
     conv : nn.Conv2d | Conv2dGrowingModule
         Original convolution layer (will be frozen).
     rank : int
-        Initial LoRA rank (hidden channels). Default 0.
+        Initial rank (hidden channels). Default 0.
     alpha : float
         Scaling factor. Effective scaling is ``alpha / rank``.
-    lora_dropout : float
-        Dropout probability applied to the input before the LoRA path.
+    dropout : float
+        Dropout probability applied to the input before the adapter path.
         Disabled (``p=0.0``) by default.
     use_dora : bool
         If ``True``, use DoRA-style magnitude reparameterization on top of the
-        LoRA direction update.
+        adapter direction update.
     target_rank : int | None
         Target rank for the growing block.
     activation : torch.nn.Module | None
@@ -289,12 +289,12 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
         conv: nn.Conv2d | Conv2dGrowingModule,
         rank: int = 0,
         alpha: float = 1.0,
-        lora_dropout: float = 0.0,
+        dropout: float = 0.0,
         use_dora: bool = False,
         target_rank: int | None = None,
         activation: torch.nn.Module | None = None,
         device: torch.device | None = None,
-        name: str = "lora_conv_block",
+        name: str = "growra_conv_block",
     ):
         if isinstance(conv, Conv2dGrowingModule):
             underlying = conv.layer
@@ -341,7 +341,7 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
                 device=device,
             )
         self.conv = conv
-        self.lora_dropout = nn.Dropout(p=lora_dropout)
+        self.dropout = nn.Dropout(p=dropout)
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
         if use_dora:
@@ -349,7 +349,7 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
 
     @property
     def rank(self) -> int:
-        """Current LoRA rank (hidden channels)."""
+        """Current rank (hidden channels)."""
         return self.hidden_neurons
 
     @property
@@ -438,10 +438,10 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
             return base_out
         if self.use_dora:
             return base_out
-        x_lora = self.lora_dropout(x)
-        block_out = super().forward(x_lora)
-        lora_out = block_out - self.conv(x_lora)
-        return base_out + self.scaling * lora_out
+        x_drop = self.dropout(x)
+        block_out = super().forward(x_drop)
+        adapter_out = block_out - self.conv(x_drop)
+        return base_out + self.scaling * adapter_out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Extended forward including computed optimal growth directions.
@@ -471,14 +471,14 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
             if self.rank == 0 and self.first_layer.extended_output_layer is None:
                 return base_out
             return base_out
-        x_lora = self.lora_dropout(x)
-        block_out = super().extended_forward(x_lora)
+        x_drop = self.dropout(x)
+        block_out = super().extended_forward(x_drop)
         if self.rank == 0 and self.first_layer.extended_output_layer is None:
             return base_out
-        return base_out + self.scaling * (block_out - self.conv(x_lora))
+        return base_out + self.scaling * (block_out - self.conv(x_drop))
 
-    def merge_lora(self) -> nn.Conv2d:
-        """Merge LoRA into the original convolution layer.
+    def merge(self) -> nn.Conv2d:
+        """Merge adapter into the original convolution layer.
 
         Note: merging is only exact when both A and B use the same
         kernel_size, stride, padding, and dilation as the original.
@@ -507,8 +507,8 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
                 merged.bias.copy_(orig.bias)
         return merged
 
-    def lora_parameters(self) -> list[nn.Parameter]:
-        """Return only the trainable LoRA parameters (A and B layers)."""
+    def growra_parameters(self) -> list[nn.Parameter]:
+        """Return only the trainable adapter parameters (A and B layers)."""
         params = list(self.first_layer.parameters()) + list(
             self.second_layer.parameters()
         )
@@ -516,14 +516,14 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
             params.append(self.magnitude)
         return params
 
-    def reset_lora(self) -> None:
-        """Reset LoRA to zero output."""
+    def reset_adapter(self) -> None:
+        """Reset adapter to zero output."""
         nn.init.kaiming_uniform_(self.first_layer.weight)
         nn.init.zeros_(self.second_layer.weight)
 
     def extra_repr(self) -> str:
         """Return extra representation string."""
-        dropout_p = self.lora_dropout.p
+        dropout_p = self.dropout.p
         s = (
             f"in_channels={self.in_channels}, out_channels={self.out_channels}, "
             f"rank={self.rank}, alpha={self.alpha}"
@@ -531,9 +531,9 @@ class GrowingLoRAConv2d(Conv2dGrowingBlock):
         if self.use_dora:
             s += ", use_dora=True"
         if dropout_p > 0.0:
-            s += f", lora_dropout={dropout_p}"
+            s += f", dropout={dropout_p}"
         return s
 
 
-# Union type for any LoRA wrapper
-_LoRATypes = (GrowingLoRALinear, GrowingLoRAConv2d)
+# Union type for any GrowRA adapter
+_GrowRATypes = (GrowRALinear, GrowRAConv2d)
