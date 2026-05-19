@@ -767,9 +767,9 @@ class LinearGrowingModule(GrowingModule):
         new_layer = torch.nn.Linear(
             weight.shape[1], weight.shape[0], bias=(bias is not None), device=self.device
         )
-        new_layer.weight = torch.nn.Parameter(weight.to(self.device))
+        new_layer.weight = torch.nn.Parameter(weight)
         if bias is not None:
-            new_layer.bias = torch.nn.Parameter(bias.to(self.device))
+            new_layer.bias = torch.nn.Parameter(bias)
         return new_layer
 
     def add_parameters(  # type: ignore
