@@ -11,7 +11,7 @@ Typical usage::
     import torch.nn as nn
 
     pretrained = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 5))
-    model = get_growra_model(pretrained, alpha=1.0)
+    model = get_growra_model(pretrained)
     # ... train model a few steps using model.growra_parameters() as optimizer params ...
 """
 
@@ -43,6 +43,16 @@ from gromo.growra.module import (
 
 def _infer_features(model: nn.Module) -> tuple[int, int]:
     """Infer in_features and out_features from the first and last layers.
+
+    Parameters
+    ----------
+    model : nn.Module
+        Model to inspect.
+
+    Returns
+    -------
+    tuple[int, int]
+        ``(in_features, out_features)`` inferred from the first and last layer.
 
     Raises
     ------
@@ -82,10 +92,10 @@ def _matches_target(
         Full dotted name of the module.
     module : nn.Module
         The module instance.
-    target_modules : list of str or None
+    target_modules : list[str] | None
         If provided, only modules whose name contains one of these strings are
         targeted. If None, all modules of target_types are targeted.
-    target_types : tuple of type
+    target_types : tuple[type, ...]
         Layer types to match.
 
     Returns
@@ -118,7 +128,7 @@ def _inject_growra_inplace(
         Dropout probability for the adapter path.
     use_dora : bool
         Whether to enable DoRA magnitude reparameterization.
-    target_modules : list of str or None
+    target_modules : list[str] | None
         Name filter; ``None`` wraps all linear / conv layers.
     """
     all_types = _LinearLayerType + _Conv2dLayerType
@@ -192,19 +202,23 @@ class GrowRAModel(SequentialGrowingModel):
     ----------
     model : nn.Module
         Fully trained model to adapt. Modified in-place.
-    alpha : float
-        Scaling factor (``effective_scaling = alpha / rank``).
+    scaling : float | Callable[[int], float]
+        Scaling factor applied to every adapter output. A float gives a fixed
+        scaling (default ``1.0``, rank-invariant). A callable receives the
+        current rank and returns the scaling factor.
     dropout : float
         Dropout probability applied to the input before the adapter path.
         Default ``0.0`` (no dropout).
-    target_modules : list of str or None
+    use_dora : bool
+        Whether to enable DoRA magnitude reparameterization.
+    target_modules : list[str] | None
         If provided, only wrap layers whose full name contains one of these
         strings. Wraps all linear / conv layers when ``None``.
-    in_features : int or None
+    in_features : int | None
         Input feature size (inferred from the first layer when ``None``).
-    out_features : int or None
+    out_features : int | None
         Output feature size (inferred from the last layer when ``None``).
-    device : torch.device or str or None
+    device : torch.device | str | None
         Device for the container metadata.
     """
 
@@ -268,6 +282,18 @@ class GrowRAModel(SequentialGrowingModel):
         self, x: torch.Tensor, mask: dict | None = None
     ) -> torch.Tensor:
         """Not supported for arbitrary wrapped models.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor.
+        mask : dict | None
+            Ignored; present for interface compatibility.
+
+        Returns
+        -------
+        torch.Tensor
+            Never returns; always raises.
 
         Raises
         ------
@@ -367,14 +393,14 @@ def get_growra_model(
         Default ``0.0`` (no dropout).
     use_dora : bool
         Whether to enable DoRA magnitude reparameterization.
-    target_modules : list of str or None
+    target_modules : list[str] | None
         Name filter for which layers to wrap. ``None`` wraps all linear / conv
         layers.
-    in_features : int or None
+    in_features : int | None
         Override for the model input dimension (inferred when ``None``).
-    out_features : int or None
+    out_features : int | None
         Override for the model output dimension (inferred when ``None``).
-    device : torch.device or str or None
+    device : torch.device | str | None
         Device for the container metadata.
 
     Returns
@@ -414,7 +440,7 @@ def get_growra_parameters(model: nn.Module) -> list[nn.Parameter]:
 
     Returns
     -------
-    list of nn.Parameter
+    list[nn.Parameter]
     """
     params: list[nn.Parameter] = []
     for module in model.modules():
@@ -434,7 +460,7 @@ def get_growra_modules(
 
     Returns
     -------
-    list of GrowRALinear | GrowRAConv2d
+    list[GrowRALinear | GrowRAConv2d]
     """
     return [m for m in model.modules() if isinstance(m, _GrowRATypes)]
 
@@ -482,8 +508,8 @@ def get_growra_state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
 
     Returns
     -------
-    dict
-        State dict containing adapter-related keys (weights, rank, alpha).
+    dict[str, torch.Tensor]
+        State dict containing adapter-related keys (weights, rank, scaling).
     """
     growra_state: dict[str, torch.Tensor] = {}
     for name, module in model.named_modules():
@@ -512,7 +538,7 @@ def load_growra_state_dict(model: nn.Module, state: dict[str, torch.Tensor]) -> 
     ----------
     model : nn.Module
         Model with GrowRA layers (must have matching structure).
-    state : dict
+    state : dict[str, torch.Tensor]
         State dict from :func:`get_growra_state_dict`.
     """
     for name, module in model.named_modules():
