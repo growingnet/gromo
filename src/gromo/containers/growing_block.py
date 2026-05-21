@@ -322,6 +322,7 @@ class GrowingBlock(GrowingContainer):
             self.second_layer.tensor_s_growth.updated = False
             self.second_layer.tensor_m_prev.updated = False
             self.second_layer.cross_covariance.updated = False
+            self.second_layer.covariance_loss_gradient.updated = False
         else:
             out = self.pre_activation(x)
             out = self.first_layer(out)
