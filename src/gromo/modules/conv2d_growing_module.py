@@ -446,13 +446,15 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             self.previous_tensor_m = None
 
     def construct_full_activity(self) -> torch.Tensor:
-        """Construct the full activity tensor B from the input of all previous modules.
-        B = (B_1, B_2, ..., B_k) in (n, )
+        """Construct the full activity tensor B from the unfolded inputs of all previous modules.
+        B = (B_1, B_2, ..., B_k) concatenated along the per-patch feature dimension (dim 1),
+        where each B_i has shape (n, in_channels_i * kH * kW [+1 if bias], nb_patch).
+        The result has shape (n, total_in_features, nb_patch).
 
         Returns
         -------
         torch.Tensor
-            full activity tensor B concatenated from all previous modules' inputs
+            full activity tensor B concatenated along the per-batch feature dimension
 
         Raises
         ------
