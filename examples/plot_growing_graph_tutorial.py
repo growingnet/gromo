@@ -238,13 +238,12 @@ def update_computation(
             Concatenated input activations for every node.
     """
     all_nodes = list(model.growing_dag.dag.nodes)
+    root_key = model.growing_dag.dag.root
 
     pre_activities_grad = {
-        node: torch.empty(0)
-        for node in all_nodes
-        if (node != model.growing_dag.dag.root) and ("start" not in node)
+        node: [] for node in all_nodes if (node != root_key) and ("start" not in node)
     }
-    inputs = {node: torch.empty(0) for node in all_nodes}
+    inputs = {node: [] for node in all_nodes}
 
     for X, Y in dataloader:
         X, Y = X.to(model.device), Y.to(model.device)
@@ -260,20 +259,21 @@ def update_computation(
             assert node_module.activity is not None
 
             activity = node_module.activity.clone().detach().cpu()
-            inputs[node_module._name] = torch.cat((inputs[node_module._name], activity))
+            inputs[node_module._name].append(activity)
 
-            if node_module._name == model.growing_dag.dag.root:
+            if node_module._name == root_key:
                 continue
             assert node_module.pre_activity is not None
             assert node_module.pre_activity.grad is not None
 
-            pre_activities_grad[node_module._name] = torch.cat(
-                (
-                    pre_activities_grad[node_module._name],
-                    node_module.pre_activity.grad.clone().detach().cpu(),
-                )
+            pre_activities_grad[node_module._name].append(
+                node_module.pre_activity.grad.clone().detach().cpu()
             )
 
+    pre_activities_grad = {
+        k: torch.cat(v) if v else torch.empty(0) for k, v in pre_activities_grad.items()
+    }
+    inputs = {k: torch.cat(v) if v else torch.empty(0) for k, v in inputs.items()}
     return pre_activities_grad, inputs
 
 
