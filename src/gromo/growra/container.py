@@ -554,6 +554,15 @@ def load_growra_state_dict(model: nn.Module, state: dict[str, torch.Tensor]) -> 
         Model with GrowRA layers (must have matching structure).
     state : dict[str, torch.Tensor]
         State dict from :func:`get_growra_state_dict`.
+
+    Raises
+    ------
+    KeyError
+        If ``first_layer.weight`` is present for a module but
+        ``second_layer.weight`` or ``scaling`` is missing (malformed state).
+    ValueError
+        If the rank stored in the state is smaller than the module's current
+        rank (rank reduction is not supported).
     """
     for name, module in model.named_modules():
         if isinstance(module, _GrowRATypes):
