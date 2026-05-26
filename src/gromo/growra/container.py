@@ -279,30 +279,41 @@ class GrowRAModel(SequentialGrowingModel):
         return self.model(*args, **kwargs)
 
     def extended_forward(  # type: ignore[override]
-        self, x: torch.Tensor, mask: dict | None = None
+        self,
+        x: torch.Tensor,
+        mask: dict | None = None,  # noqa: ARG002
     ) -> torch.Tensor:
-        """Not supported for arbitrary wrapped models.
+        """Run the wrapped model with each GrowRA adapter in extended mode.
+
+        Uses forward hooks to replace each adapter's ``forward`` output with its
+        ``extended_forward`` output (which includes the optimal-delta correction
+        and the proposed new neurons) while leaving the rest of the wrapped model
+        untouched.  Hooks are always removed, even if the forward pass raises.
 
         Parameters
         ----------
         x : torch.Tensor
-            Input tensor.
+            Input tensor forwarded to ``self.model``.
         mask : dict | None
-            Ignored; present for interface compatibility.
+            Unused; present for ``GrowingContainer`` interface compatibility.
 
         Returns
         -------
         torch.Tensor
-            Never returns; always raises.
-
-        Raises
-        ------
-        NotImplementedError
+            Model output computed with extended adapter activations.
         """
-        raise NotImplementedError(
-            "extended_forward is not supported for GrowRAModel. "
-            "Use the FOGRO growth pipeline (fogro_growth_step) instead."
-        )
+        handles = []
+        for m in self.growra_modules():
+
+            def _hook(_mod, inp, _out, _m=m):
+                return _m.extended_forward(inp[0])
+
+            handles.append(m.register_forward_hook(_hook))
+        try:
+            return self.model(x)
+        finally:
+            for h in handles:
+                h.remove()
 
     # ------------------------------------------------------------------
     # Convenience accessors

@@ -866,3 +866,121 @@ class TestLoadGrowraStateDictConv2dExpansion(TestCase):
         model2 = nn.Sequential(_conv2d(3, 8, kernel_size=3, padding=1))
         lora_model2 = get_growra_model(model2)
         lora_model2.load_growra_state_dict(state)  # should not raise
+
+
+# ===================== extended_forward Tests =====================
+
+
+class TestGrowRAModelExtendedForward(TestCase):
+    def setUp(self):
+        torch.manual_seed(42)
+
+    def test_output_shape_rank_zero(self):
+        """extended_forward returns the same shape as forward at rank 0."""
+        model = _make_simple_model()
+        lora_model = get_growra_model(model)
+        x = _randn(3, 10)
+        with torch.no_grad():
+            out_fwd = lora_model(x)
+            out_ext = lora_model.extended_forward(x)
+        self.assertEqual(out_fwd.shape, out_ext.shape)
+
+    def test_equals_forward_at_rank_zero_no_directions(self):
+        """With no growth directions computed, extended_forward == forward."""
+        model = _make_simple_model()
+        lora_model = get_growra_model(model)
+        x = _randn(3, 10)
+        with torch.no_grad():
+            out_fwd = lora_model(x)
+            out_ext = lora_model.extended_forward(x)
+        self.assertTrue(torch.allclose(out_fwd, out_ext))
+
+    def test_hooks_removed_after_call(self):
+        """Forward hooks installed by extended_forward must be cleaned up."""
+        model = _make_simple_model()
+        lora_model = get_growra_model(model)
+        x = _randn(3, 10)
+        lora_model.extended_forward(x)
+        # If hooks were not removed, forward would call extended_forward again,
+        # producing a different result; running forward normally must still work.
+        with torch.no_grad():
+            out1 = lora_model(x)
+            out2 = lora_model(x)
+        self.assertTrue(torch.allclose(out1, out2))
+        # Also verify no hooks are registered on any GrowRA module
+        for m in lora_model.growra_modules():
+            self.assertEqual(len(m._forward_hooks), 0)
+
+    def test_differs_from_forward_after_compute_optimal_updates(self):
+        """After computing growth directions at rank > 0, extended_forward diverges from forward."""
+        model = _make_simple_model()
+        lora_model = get_growra_model(model)
+        x, y = _randn(8, 10), _randn(8, 5)
+        data = [(x, y)] * 2
+
+        # Grow to rank 2 first: at rank 0 tensor_m is empty so no valid directions.
+        _grow(lora_model, data, added_rank=2)
+
+        # Compute growth directions from rank 2.
+        # alpha_zero=False so the incoming weights (alpha) of new neurons are non-zero,
+        # making extended_forward visibly different from forward.
+        for m in lora_model.growra_modules():
+            m.init_computation()
+        lora_model.zero_grad()
+        nn.functional.mse_loss(lora_model(x), y).backward()
+        for m in lora_model.growra_modules():
+            m.update_computation()
+        for m in lora_model.growra_modules():
+            m.compute_optimal_updates(
+                compute_delta=False,
+                use_covariance=False,
+                use_projection=False,
+                alpha_zero=False,
+                omega_zero=False,
+                ignore_singular_values=True,
+            )
+        for m in lora_model.growra_modules():
+            m.reset_computation()
+
+        # scaling_factor defaults to 0; set it to expose the extension contribution.
+        lora_model.set_scaling_factor(1.0)
+
+        with torch.no_grad():
+            out_fwd = lora_model(x)
+            out_ext = lora_model.extended_forward(x)
+        self.assertFalse(
+            torch.allclose(out_fwd, out_ext),
+            "extended_forward should differ from forward when growth directions are set",
+        )
+
+    def test_hooks_removed_after_exception(self):
+        """Hooks must be removed even if an exception occurs inside the model forward."""
+
+        class BrokenModel(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc = _linear(4, 4)
+
+            def forward(self, x):
+                raise RuntimeError("intentional error")
+
+        inner = BrokenModel()
+        lora_model = get_growra_model(inner, in_features=4, out_features=4)
+        x = _randn(2, 4)
+        with self.assertRaises(RuntimeError):
+            lora_model.extended_forward(x)
+        for m in lora_model.growra_modules():
+            self.assertEqual(len(m._forward_hooks), 0)
+
+    def test_extended_forward_conv2d(self):
+        """extended_forward works for Conv2d adapters."""
+        model = nn.Sequential(
+            _conv2d(3, 8, 3, padding=1), nn.ReLU(), _conv2d(8, 16, 3, padding=1)
+        )
+        lora_model = get_growra_model(model)
+        x = _randn(2, 3, 8, 8)
+        with torch.no_grad():
+            out_fwd = lora_model(x)
+            out_ext = lora_model.extended_forward(x)
+        self.assertEqual(out_fwd.shape, out_ext.shape)
+        self.assertTrue(torch.allclose(out_fwd, out_ext))

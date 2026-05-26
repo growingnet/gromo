@@ -215,7 +215,9 @@ class GrowRALinear(LinearGrowingBlock):
         block_out = super().extended_forward(x_drop)
         if self.rank == 0 and self.first_layer.extended_output_layer is None:
             return base_out
-        return base_out + self.scaling * (block_out - self.linear(x_drop))
+        # Use scaling_fn(max(1, rank)) so rank-0 extensions get a non-zero factor.
+        ext_scaling = self.scaling_fn(max(1, self.rank))
+        return base_out + ext_scaling * (block_out - self.linear(x_drop))
 
     def merge(self) -> nn.Linear:
         """Merge adapter into the original layer.
@@ -497,7 +499,8 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         block_out = super().extended_forward(x_drop)
         if self.rank == 0 and self.first_layer.extended_output_layer is None:
             return base_out
-        return base_out + self.scaling * (block_out - self.conv(x_drop))
+        ext_scaling = self.scaling_fn(max(1, self.rank))
+        return base_out + ext_scaling * (block_out - self.conv(x_drop))
 
     def merge(self) -> nn.Conv2d:
         """Merge adapter into the original convolution layer.
