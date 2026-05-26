@@ -484,6 +484,7 @@ def plot_graph(dag: GrowingDAG) -> None:
         (u, v): str(list(dag.get_edge_module(u, v).weight.shape)) for u, v in dag.edges
     }
 
+    plt.figure()
     nx.draw(
         dag,
         pos,
