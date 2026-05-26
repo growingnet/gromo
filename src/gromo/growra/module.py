@@ -177,18 +177,24 @@ class GrowRALinear(LinearGrowingBlock):
         """
         if not self.use_dora:
             base_out = self.linear(x)
+            x_drop = self.dropout(x)
+            block_out = super().forward(x_drop)
+            adapter_out = block_out - self.linear(x_drop)
+            if self.rank == 0:
+                # scaling is 0 at rank 0, which would block gradients through the adapter
+                # path and zero out Fisher statistics. adapter_out is numerically zero
+                # (empty weight matrices), so the output is unchanged.
+                return base_out + adapter_out
+            return base_out + self.scaling * adapter_out
         else:
-            base_out = torch_functional.F.linear(
-                x, self._effective_weight(), self.linear.bias
-            )
-        if self.rank == 0 and not self.first_layer.store_input:
-            return base_out
-        if self.use_dora:
-            return base_out
-        x_drop = self.dropout(x)
-        block_out = super().forward(x_drop)
-        adapter_out = block_out - self.linear(x_drop)
-        return base_out + self.scaling * adapter_out
+            out = torch_functional.F.linear(x, self._effective_weight(), self.linear.bias)
+            if self.first_layer.store_input:
+                # DoRA forward bypasses A/B, so Fisher stats don't accumulate.
+                # Connect the A/B gradient path with zero output contribution so
+                # tensor_s and tensor_m_prev are populated during backward.
+                shadow = super().forward(self.dropout(x))
+                out = out + (shadow - shadow.detach())
+            return out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Extended forward including computed optimal growth directions.
@@ -202,15 +208,20 @@ class GrowRALinear(LinearGrowingBlock):
         -------
         torch.Tensor
         """
-        if not self.use_dora:
-            base_out = self.linear(x)
-        else:
-            base_out = torch_functional.F.linear(
-                x, self._effective_weight(), self.linear.bias
-            )
-            if self.rank == 0 and self.first_layer.extended_output_layer is None:
-                return base_out
-            return base_out
+        if self.use_dora:
+            assert self.magnitude is not None
+            A_ext = self.first_layer.extended_output_layer
+            B_ext = self.second_layer.extended_input_layer
+            if A_ext is None or B_ext is None:
+                return torch_functional.F.linear(
+                    x, self._effective_weight(), self.linear.bias
+                )
+            ext_scaling = self.scaling_fn(max(1, self.rank))
+            W = self.linear.weight + self._delta_weight()
+            W = W + ext_scaling * (B_ext.weight @ A_ext.weight)
+            W_dora = self.magnitude[:, None] * (W / self._weight_norm(W))
+            return torch_functional.F.linear(x, W_dora, self.linear.bias)
+        base_out = self.linear(x)
         x_drop = self.dropout(x)
         block_out = super().extended_forward(x_drop)
         if self.rank == 0 and self.first_layer.extended_output_layer is None:
@@ -321,8 +332,8 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             underlying = conv
         if device is None:
             device = underlying.weight.device
-        self.in_channels = underlying.in_channels
-        self.out_channels = underlying.out_channels
+        self.in_channels: int = int(underlying.in_channels)
+        self.out_channels: int = int(underlying.out_channels)
         self._raw_scaling: float | Callable[[int], float] = scaling
         if callable(scaling):
             self.scaling_fn: Callable[[int], float] = scaling
@@ -411,6 +422,9 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             return torch.zeros_like(orig.weight)
         a_w = self.first_layer.weight
         b_w = self.second_layer.weight
+        assert b_w.shape[-2:] == (1, 1), (
+            f"_delta_weight assumes 1x1 B kernel, got {b_w.shape}"
+        )
         b_mat = b_w.squeeze(-1).squeeze(-1)
         a_flat = a_w.view(a_w.shape[0], -1)
         delta_flat = b_mat @ a_flat
@@ -447,9 +461,18 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         """
         if not self.use_dora:
             base_out = self.conv(x)
+            x_drop = self.dropout(x)
+            block_out = super().forward(x_drop)
+            adapter_out = block_out - self.conv(x_drop)
+            if self.rank == 0:
+                # scaling is 0 at rank 0, which would block gradients through the adapter
+                # path and zero out Fisher statistics. adapter_out is numerically zero
+                # (empty weight matrices), so the output is unchanged.
+                return base_out + adapter_out
+            return base_out + self.scaling * adapter_out
         else:
             orig = self._conv_base()
-            base_out = torch_functional.F.conv2d(
+            out = torch_functional.F.conv2d(
                 x,
                 self._effective_weight(),
                 orig.bias,
@@ -458,14 +481,13 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 orig.dilation,
                 orig.groups,
             )
-        if self.rank == 0 and not self.first_layer.store_input:
-            return base_out
-        if self.use_dora:
-            return base_out
-        x_drop = self.dropout(x)
-        block_out = super().forward(x_drop)
-        adapter_out = block_out - self.conv(x_drop)
-        return base_out + self.scaling * adapter_out
+            if self.first_layer.store_input:
+                # DoRA forward bypasses A/B, so Fisher stats don't accumulate.
+                # Connect the A/B gradient path with zero output contribution so
+                # tensor_s and tensor_m_prev are populated during backward.
+                shadow = super().forward(self.dropout(x))
+                out = out + (shadow - shadow.detach())
+            return out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Extended forward including computed optimal growth directions.
@@ -479,22 +501,40 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         -------
         torch.Tensor
         """
-        if not self.use_dora:
-            base_out = self.conv(x)
-        else:
+        if self.use_dora:
+            assert self.magnitude is not None
             orig = self._conv_base()
-            base_out = torch_functional.F.conv2d(
+            A_ext = self.first_layer.extended_output_layer
+            B_ext = self.second_layer.extended_input_layer
+            if A_ext is None or B_ext is None:
+                return torch_functional.F.conv2d(
+                    x,
+                    self._effective_weight(),
+                    orig.bias,
+                    orig.stride,
+                    orig.padding,
+                    orig.dilation,
+                    orig.groups,
+                )
+            ext_scaling = self.scaling_fn(max(1, self.rank))
+            W = orig.weight + self._delta_weight()
+            assert B_ext.weight.shape[-2:] == (1, 1), (
+                f"B_ext kernel must be 1x1, got {B_ext.weight.shape}"
+            )
+            b_ext_mat = B_ext.weight.squeeze(-1).squeeze(-1)
+            a_ext_flat = A_ext.weight.view(A_ext.weight.shape[0], -1)
+            W = W + ext_scaling * (b_ext_mat @ a_ext_flat).view_as(orig.weight)
+            W_dora = self.magnitude[:, None, None, None] * (W / self._weight_norm(W))
+            return torch_functional.F.conv2d(
                 x,
-                self._effective_weight(),
+                W_dora,
                 orig.bias,
                 orig.stride,
                 orig.padding,
                 orig.dilation,
                 orig.groups,
             )
-            if self.rank == 0 and self.first_layer.extended_output_layer is None:
-                return base_out
-            return base_out
+        base_out = self.conv(x)
         x_drop = self.dropout(x)
         block_out = super().extended_forward(x_drop)
         if self.rank == 0 and self.first_layer.extended_output_layer is None:

@@ -135,7 +135,10 @@ def _inject_growra_inplace(
     replacements: list[tuple[nn.Module, str, nn.Module]] = []
     wrapped_names: set[str] = set()
 
-    for full_name, module in model.named_modules():
+    all_named = list(model.named_modules())
+    named_dict = dict(all_named)
+
+    for full_name, module in all_named:
         if not isinstance(module, all_types):
             continue
         if not _matches_target(full_name, module, target_modules, all_types):
@@ -148,7 +151,7 @@ def _inject_growra_inplace(
             parent = model
             attr_name = parts[0]
         else:
-            parent = dict(model.named_modules())[parts[0]]
+            parent = named_dict[parts[0]]
             attr_name = parts[1]
 
         if isinstance(module, _LinearLayerType):
@@ -556,51 +559,66 @@ def load_growra_state_dict(model: nn.Module, state: dict[str, torch.Tensor]) -> 
         if isinstance(module, _GrowRATypes):
             prefix = f"{name}." if name else ""
             key_a = f"{prefix}first_layer.weight"
-            if key_a in state:
-                A_data = state[key_a]
-                B_data = state[f"{prefix}second_layer.weight"]
-                new_rank = A_data.shape[0]
-                _s = state[f"{prefix}scaling"].item()
-                module._raw_scaling = _s
-                module.scaling_fn = lambda _, s=_s: s
-                use_dora_key = f"{prefix}use_dora"
-                if use_dora_key in state and bool(state[use_dora_key].item()):
-                    if not module.use_dora:
-                        module.enable_dora()
-                if new_rank > module.rank:
-                    if isinstance(module, GrowRALinear):
-                        added = new_rank - module.rank
-                        module.first_layer.add_parameters(
-                            matrix_extension=None,
-                            bias_extension=None,
-                            added_out_features=added,
-                        )
-                        module.second_layer.add_parameters(
-                            matrix_extension=None,
-                            bias_extension=None,
-                            added_in_features=added,
-                        )
-                    else:
-                        added = new_rank - module.rank
-                        dev_a = module.first_layer.weight.device
-                        dev_b = module.second_layer.weight.device
-                        # A (first_layer): add output channels — new rows only
-                        module.first_layer.layer_out_extension(
-                            A_data[module.rank :].to(dev_a)
-                        )
-                        # B (second_layer): add input channels — new columns only
-                        module.second_layer.layer_in_extension(
-                            B_data[:, module.rank :].to(dev_b)
-                        )
-                with torch.no_grad():
-                    module.first_layer.weight.copy_(
-                        A_data.to(module.first_layer.weight.device)
+            key_b = f"{prefix}second_layer.weight"
+            key_s = f"{prefix}scaling"
+            if key_a not in state:
+                continue
+            if key_b not in state or key_s not in state:
+                raise KeyError(
+                    f"State dict has '{key_a}' but is missing '{key_b}' or '{key_s}'. "
+                    "State dict is malformed."
+                )
+            A_data = state[key_a]
+            B_data = state[key_b]
+            new_rank = A_data.shape[0]
+            if new_rank < module.rank:
+                raise ValueError(
+                    f"Cannot load rank {new_rank} into module '{name}' which already "
+                    f"has rank {module.rank}. Rank reduction is not supported."
+                )
+            _s = state[key_s].item()
+            # NOTE: callable scaling (e.g. RSLoRA) is replaced with the scalar
+            # evaluated at the saved rank. The adaptive schedule is not preserved.
+            module._raw_scaling = _s
+            module.scaling_fn = lambda _, s=_s: s
+            use_dora_key = f"{prefix}use_dora"
+            if use_dora_key in state and bool(state[use_dora_key].item()):
+                if not module.use_dora:
+                    module.enable_dora()
+            if new_rank > module.rank:
+                if isinstance(module, GrowRALinear):
+                    added = new_rank - module.rank
+                    module.first_layer.add_parameters(
+                        matrix_extension=None,
+                        bias_extension=None,
+                        added_out_features=added,
                     )
-                    module.second_layer.weight.copy_(
-                        B_data.to(module.second_layer.weight.device)
+                    module.second_layer.add_parameters(
+                        matrix_extension=None,
+                        bias_extension=None,
+                        added_in_features=added,
                     )
-                    magnitude_key = f"{prefix}magnitude"
-                    if magnitude_key in state and module.magnitude is not None:
-                        module.magnitude.copy_(
-                            state[magnitude_key].to(module.magnitude.device)
-                        )
+                else:
+                    added = new_rank - module.rank
+                    dev_a = module.first_layer.weight.device
+                    dev_b = module.second_layer.weight.device
+                    # A (first_layer): add output channels — new rows only
+                    module.first_layer.layer_out_extension(
+                        A_data[module.rank :].to(dev_a)
+                    )
+                    # B (second_layer): add input channels — new columns only
+                    module.second_layer.layer_in_extension(
+                        B_data[:, module.rank :].to(dev_b)
+                    )
+            with torch.no_grad():
+                module.first_layer.weight.copy_(
+                    A_data.to(module.first_layer.weight.device)
+                )
+                module.second_layer.weight.copy_(
+                    B_data.to(module.second_layer.weight.device)
+                )
+                magnitude_key = f"{prefix}magnitude"
+                if magnitude_key in state and module.magnitude is not None:
+                    module.magnitude.copy_(
+                        state[magnitude_key].to(module.magnitude.device)
+                    )

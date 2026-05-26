@@ -607,6 +607,32 @@ class TestLoadGrowraStateDictCoverage(TestCase):
         for m in lora_model.growra_modules():
             self.assertEqual(m.rank, 0)
 
+    def test_load_malformed_state_raises_key_error(self):
+        """State dict with first_layer.weight but missing second_layer.weight raises KeyError."""
+        model = nn.Sequential(_linear(10, 20), nn.ReLU())
+        lora_model = get_growra_model(model)
+        bad_state = {"0.first_layer.weight": torch.zeros(2, 10)}
+        with self.assertRaises(KeyError):
+            lora_model.load_growra_state_dict(bad_state)
+
+    def test_load_rank_reduction_raises_value_error(self):
+        """Loading a state with smaller rank than current raises ValueError."""
+        model = nn.Sequential(_linear(10, 20), nn.ReLU())
+        lora_model = get_growra_model(model)
+        data = [(_randn(4, 10), _randn(4, 20))]
+        _grow(lora_model, data, added_rank=4)
+        # Build a state dict at rank 2 (less than current rank 4)
+        rank2_state = lora_model.growra_state_dict()
+        for key in list(rank2_state):
+            if "first_layer.weight" in key:
+                rank2_state[key] = rank2_state[key][:2]
+            elif "second_layer.weight" in key:
+                rank2_state[key] = rank2_state[key][:, :2]
+            elif key.endswith("rank"):
+                rank2_state[key] = torch.tensor(2)
+        with self.assertRaises(ValueError):
+            lora_model.load_growra_state_dict(rank2_state)
+
     def test_merge_all_growra_top_level_module(self):
         """merge_all_growra works when a LoRA wrapper is at the top level (no dot in name)."""
         linear = _linear(4, 8)

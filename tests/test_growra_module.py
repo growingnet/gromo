@@ -643,6 +643,12 @@ class TestGrowingGrowraConv2dInit(TestCase):
         self.assertIn("out_channels=16", r)
         self.assertIn("rank=4", r)
 
+    def test_scaling_callable(self):
+        """Callable scaling is stored and evaluated at the current rank."""
+        conv = _conv2d(3, 16, kernel_size=3, padding=1)
+        lora = GrowRAConv2d(conv, rank=4, scaling=lambda r: 1.0 / r)
+        self.assertAlmostEqual(lora.scaling, 0.25)
+
 
 class TestGrowingGrowraConv2dForward(TestCase):
     """Tests for GrowRAConv2d forward pass."""
@@ -971,6 +977,34 @@ class TestDoRALinear(TestCase):
         out = lora.extended_forward(x)
         self.assertEqual(out.shape, (3, 20))
 
+    def test_extended_forward_dora_with_directions(self):
+        """DoRA extended_forward incorporates computed growth directions."""
+        lora = GrowRALinear(_linear(10, 20), rank=2, use_dora=True)
+        x = _randn(4, 10)
+        lora.init_computation()
+        lora.zero_grad()
+        lora(x).sum().backward()
+        lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=2,
+            compute_delta=False,
+            use_covariance=False,
+            use_projection=False,
+            alpha_zero=False,
+            omega_zero=False,
+            ignore_singular_values=True,
+        )
+        lora.reset_computation()
+        self.assertIsNotNone(lora.first_layer.extended_output_layer)
+        with torch.no_grad():
+            out_fwd = lora(x)
+            out_ext = lora.extended_forward(x)
+        self.assertEqual(out_ext.shape, (4, 20))
+        self.assertFalse(
+            torch.allclose(out_fwd, out_ext),
+            "DoRA extended_forward must incorporate growth directions",
+        )
+
     def test_magnitude_is_trainable(self):
         lora = GrowRALinear(_linear(10, 20), rank=4, use_dora=True)
         self.assertIsNotNone(lora.magnitude)
@@ -1023,6 +1057,34 @@ class TestDoRAConv2d(TestCase):
         x = _randn(2, 3, 8, 8)
         out = lora.extended_forward(x)
         self.assertEqual(out.shape, (2, 8, 8, 8))
+
+    def test_extended_forward_dora_with_directions(self):
+        """DoRA Conv2d extended_forward incorporates computed growth directions."""
+        lora = GrowRAConv2d(_conv2d(3, 8, 3, padding=1), rank=2, use_dora=True)
+        x = _randn(2, 3, 8, 8)
+        lora.init_computation()
+        lora.zero_grad()
+        lora(x).sum().backward()
+        lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=2,
+            compute_delta=False,
+            use_covariance=False,
+            use_projection=False,
+            alpha_zero=False,
+            omega_zero=False,
+            ignore_singular_values=True,
+        )
+        lora.reset_computation()
+        self.assertIsNotNone(lora.first_layer.extended_output_layer)
+        with torch.no_grad():
+            out_fwd = lora(x)
+            out_ext = lora.extended_forward(x)
+        self.assertEqual(out_ext.shape, (2, 8, 8, 8))
+        self.assertFalse(
+            torch.allclose(out_fwd, out_ext),
+            "DoRA Conv2d extended_forward must incorporate growth directions",
+        )
 
     def test_magnitude_is_trainable(self):
         lora = GrowRAConv2d(_conv2d(3, 8, 3, padding=1), rank=4, use_dora=True)
