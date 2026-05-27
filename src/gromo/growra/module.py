@@ -13,25 +13,51 @@ via the FOGRO pipeline (see :mod:`gromo.growra.container`).
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 import torch
 import torch.nn as nn
 from torch import functional as torch_functional
 
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
 from gromo.containers.growing_block import Conv2dGrowingBlock, LinearGrowingBlock
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.modules.growing_module import SupportsExtendedForward
 
 
 # Types accepted as the "original layer" for linear GrowRA
 _LinearLayerType = (nn.Linear, LinearGrowingModule)
 # Types accepted as the "original layer" for conv GrowRA
 _Conv2dLayerType = (nn.Conv2d, Conv2dGrowingModule)
+
+
+class Scaling(nn.Module, SupportsExtendedForward):
+    """Scale a tensor before residual addition and during extended forward."""
+
+    def __init__(
+        self,
+        scaling_fn: Callable[[int], float],
+        rank_getter: Callable[[], int],
+    ) -> None:
+        super().__init__()
+        self.scaling_fn = scaling_fn
+        self.rank_getter = rank_getter
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        scale = 1.0 if self.rank_getter() == 0 else self.scaling_fn(self.rank_getter())
+        return x * scale
+
+    def extended_forward(
+        self,
+        x: torch.Tensor | None,
+        x_ext: torch.Tensor | None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        scale = self.scaling_fn(max(1, self.rank_getter()))
+        if x is not None:
+            x = x * scale
+        if x_ext is not None:
+            x_ext = x_ext * scale
+        return x, x_ext
 
 
 class GrowRALinear(LinearGrowingBlock):
@@ -71,7 +97,7 @@ class GrowRALinear(LinearGrowingBlock):
 
     def __init__(
         self,
-        linear: nn.Linear | LinearGrowingModule,
+        linear: nn.Linear | LineaSupportsExtendedForwardrGrowingModule,
         rank: int = 0,
         scaling: float | Callable[[int], float] = 1.0,
         dropout: float = 0.0,
@@ -94,6 +120,8 @@ class GrowRALinear(LinearGrowingBlock):
         if activation is None:
             activation = nn.Identity()
 
+        dropout_module = nn.Dropout(p=dropout)
+
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -106,13 +134,15 @@ class GrowRALinear(LinearGrowingBlock):
                 hidden_features=rank,
                 target_hidden_features=target_rank,
                 activation=activation,
+                pre_activation=dropout_module,
+                pre_addition_function=Scaling(self.scaling_fn, lambda: self.rank),
                 name=name,
                 kwargs_layer={"use_bias": False},
                 downsample=linear,
                 device=device,
             )
         self.linear = linear
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = dropout_module
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
         if use_dora:
@@ -176,23 +206,14 @@ class GrowRALinear(LinearGrowingBlock):
             Output of shape ``(..., out_features)``.
         """
         if not self.use_dora:
-            base_out = self.linear(x)
-            x_drop = self.dropout(x)
-            block_out = super().forward(x_drop)
-            adapter_out = block_out - self.linear(x_drop)
-            if self.rank == 0:
-                # scaling is 0 at rank 0, which would block gradients through the adapter
-                # path and zero out Fisher statistics. adapter_out is numerically zero
-                # (empty weight matrices), so the output is unchanged.
-                return base_out + adapter_out
-            return base_out + self.scaling * adapter_out
+            return super().forward(x)
         else:
             out = torch_functional.F.linear(x, self._effective_weight(), self.linear.bias)
             if self.first_layer.store_input:
                 # DoRA forward bypasses A/B, so Fisher stats don't accumulate.
                 # Connect the A/B gradient path with zero output contribution so
                 # tensor_s and tensor_m_prev are populated during backward.
-                shadow = super().forward(self.dropout(x))
+                shadow = super().forward(x)
                 out = out + (shadow - shadow.detach())
             return out
 
@@ -221,14 +242,7 @@ class GrowRALinear(LinearGrowingBlock):
             W = W + ext_scaling * (B_ext.weight @ A_ext.weight)
             W_dora = self.magnitude[:, None] * (W / self._weight_norm(W))
             return torch_functional.F.linear(x, W_dora, self.linear.bias)
-        base_out = self.linear(x)
-        x_drop = self.dropout(x)
-        block_out = super().extended_forward(x_drop)
-        if self.rank == 0 and self.first_layer.extended_output_layer is None:
-            return base_out
-        # Use scaling_fn(max(1, rank)) so rank-0 extensions get a non-zero factor.
-        ext_scaling = self.scaling_fn(max(1, self.rank))
-        return base_out + ext_scaling * (block_out - self.linear(x_drop))
+        return super().extended_forward(x)
 
     def merge(self) -> nn.Linear:
         """Merge adapter into the original layer.
@@ -346,6 +360,8 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         if activation is None:
             activation = nn.Identity()
 
+        dropout_module = nn.Dropout(p=dropout)
+
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -358,6 +374,8 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 hidden_channels=rank,
                 target_hidden_channels=target_rank,
                 activation=activation,
+                pre_activation=dropout_module,
+                pre_addition_function=Scaling(self.scaling_fn, lambda: self.rank),
                 name=name,
                 kwargs_first_layer={
                     "use_bias": False,
@@ -376,7 +394,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 device=device,
             )
         self.conv = conv
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = dropout_module
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
         if use_dora:
@@ -460,16 +478,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             Output of shape ``(N, C_out, H_out, W_out)``.
         """
         if not self.use_dora:
-            base_out = self.conv(x)
-            x_drop = self.dropout(x)
-            block_out = super().forward(x_drop)
-            adapter_out = block_out - self.conv(x_drop)
-            if self.rank == 0:
-                # scaling is 0 at rank 0, which would block gradients through the adapter
-                # path and zero out Fisher statistics. adapter_out is numerically zero
-                # (empty weight matrices), so the output is unchanged.
-                return base_out + adapter_out
-            return base_out + self.scaling * adapter_out
+            return super().forward(x)
         else:
             orig = self._conv_base()
             out = torch_functional.F.conv2d(
@@ -485,7 +494,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 # DoRA forward bypasses A/B, so Fisher stats don't accumulate.
                 # Connect the A/B gradient path with zero output contribution so
                 # tensor_s and tensor_m_prev are populated during backward.
-                shadow = super().forward(self.dropout(x))
+                shadow = super().forward(x)
                 out = out + (shadow - shadow.detach())
             return out
 
@@ -534,13 +543,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 orig.dilation,
                 orig.groups,
             )
-        base_out = self.conv(x)
-        x_drop = self.dropout(x)
-        block_out = super().extended_forward(x_drop)
-        if self.rank == 0 and self.first_layer.extended_output_layer is None:
-            return base_out
-        ext_scaling = self.scaling_fn(max(1, self.rank))
-        return base_out + ext_scaling * (block_out - self.conv(x_drop))
+        return super().extended_forward(x)
 
     def merge(self) -> nn.Conv2d:
         """Merge adapter into the original convolution layer.
