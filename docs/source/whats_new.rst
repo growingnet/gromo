@@ -21,6 +21,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Adds ``GrowRALinear`` and ``GrowRAConv2d`` adapter classes, and the ``GrowRAModel`` / ``get_growra_model`` container that injects growable adapters into any pretrained model (:gh:`255` by `Hugo Mousset`_).
+- Example for `GrowingGraphNetwork` and `GrowingDAG` usage (:gh:`252` by `Stella Douka`_)
 - Add an empirical Fisher (loss-gradient covariance) as an optional preconditioner for both optimal-delta weight updates and rank-k neuron extension computations (:gh:`250` by `Théo Rudkiewicz`_).
 - Add GradMax normalization details and associated tests for update scaling behavior (:gh:`242` by `Pako Maxence TEKOU`_)
 - Introduce an empirical Fisher / loss-gradient covariance statistic to GrowingModule-based layers (:gh:`249` by `Théo Rudkiewicz`_).

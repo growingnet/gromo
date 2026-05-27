@@ -3,6 +3,7 @@ Linear growing module
 =====================
 
 .. automodule:: gromo.modules.linear_growing_module
+   :no-index:
 
 .. currentmodule:: gromo.modules.linear_growing_module
 
