@@ -634,6 +634,35 @@ class LinearGrowingModule(GrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
+    def compute_covariance_loss_gradient_update(
+        self,
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the empirical Fisher / gradient covariance
+        :math:`E_s := dA^T dA` on the output-channel axis.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the gradient covariance, shape (out_features, out_features)
+        int
+            number of samples used to compute the update
+        """
+        assert self.store_pre_activity, (
+            f"The pre-activity must be stored to compute the update of the "
+            f"gradient covariance. (error in {self.name})"
+        )
+        desired_activation = self.pre_activity.grad
+        assert desired_activation is not None, (
+            f"The gradient of the pre-activity must be available to compute "
+            f"the update of the gradient covariance. (error in {self.name})"
+        )
+        flat = torch.flatten(desired_activation, 0, -2)
+        return (
+            torch.einsum("ij,ik->jk", flat, flat),
+            desired_activation.shape[0],
+        )
+
     def compute_n_update(self) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor N.
@@ -908,6 +937,7 @@ class LinearGrowingModule(GrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -937,6 +967,9 @@ class LinearGrowingModule(GrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the covariance of the loss gradient as an additional
+            preconditioner when computing the neuron extension
 
         Returns
         -------
@@ -964,6 +997,7 @@ class LinearGrowingModule(GrowingModule):
             omega_zero=omega_zero,
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
+            use_fisher=use_fisher,
         )
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1], (
@@ -1009,25 +1043,35 @@ class LinearGrowingModule(GrowingModule):
 
         return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
 
-    @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Linear) -> int:  # type: ignore
+    def get_fan_in_from_layer(  # type: ignore
+        self, layer: torch.nn.Linear | None = None, num_neurons: int | None = None
+    ) -> int:
         """
-        Get the fan_in (number of input features) from a given layer.
+        Get the fan_in (number of input features) from a given layer
+            or from a given number of neurons.
 
         Parameters
         ----------
-        layer: torch.nn.Linear
+        layer: torch.nn.Linear | None
             layer to get the fan_in from
+        num_neurons: int | None
+            number of neurons in the layer
 
         Returns
         -------
         int
             fan_in of the layer
         """
-        assert isinstance(layer, torch.nn.Linear), (
-            f"The layer should be a torch.nn.Linear but got {type(layer)}."
-        )
-        return layer.in_features
+        if layer is not None:
+            assert isinstance(layer, torch.nn.Linear), (
+                f"The layer should be a torch.nn.Linear but got {type(layer)}."
+            )
+            return layer.in_features
+        else:
+            assert num_neurons is not None, (
+                "Either layer or num_neurons should be provided."
+            )
+            return num_neurons
 
     def create_layer_in_extension(self, extension_size: int) -> None:
         """

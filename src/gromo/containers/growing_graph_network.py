@@ -579,7 +579,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 in_features = prev_edge_module.in_features
             elif isinstance(prev_edge_module, Conv2dGrowingModule):
                 in_features = prev_edge_module.in_channels
-            prev_edge_module._scaling_factor_next_module[0] = 1
+            prev_edge_module.output_extension_scaling = 1  # type: ignore
 
             _weight = alpha[:, i : i + in_features, ...]
             _weight = _weight.view((active_neurons, *prev_edge_module.weight.shape[1:]))
@@ -1093,7 +1093,7 @@ class GrowingGraphNetwork(GrowingContainer):
             edge_module = self.dag.get_edge_module(prev_node, next_node)
 
             edge_module.scaling_factor = factor
-            edge_module._scaling_factor_next_module.data[0] = factor
+            edge_module.output_extension_scaling = factor  # type: ignore
             edge_module.apply_change(scaling_factor=factor, apply_previous=False)
             if edge_module.extended_output_layer is not None:
                 new_neurons = self.chosen_action.metrics["active_neurons"]
