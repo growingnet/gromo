@@ -13,7 +13,7 @@ via the FOGRO pipeline (see :mod:`gromo.growra.container`).
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -21,8 +21,12 @@ from torch import functional as torch_functional
 
 from gromo.containers.growing_block import Conv2dGrowingBlock, LinearGrowingBlock
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
-from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.modules.growing_module import SupportsExtendedForward
+from gromo.modules.linear_growing_module import LinearGrowingModule
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 # Types accepted as the "original layer" for linear GrowRA
@@ -44,6 +48,7 @@ class Scaling(nn.Module, SupportsExtendedForward):
         self.rank_getter = rank_getter
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply scaling to ``x``; returns ``x`` unchanged when rank is 0."""
         scale = 1.0 if self.rank_getter() == 0 else self.scaling_fn(self.rank_getter())
         return x * scale
 
@@ -52,6 +57,7 @@ class Scaling(nn.Module, SupportsExtendedForward):
         x: torch.Tensor | None,
         x_ext: torch.Tensor | None,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply scaling to both ``x`` and ``x_ext`` using at least rank 1."""
         scale = self.scaling_fn(max(1, self.rank_getter()))
         if x is not None:
             x = x * scale
@@ -97,7 +103,7 @@ class GrowRALinear(LinearGrowingBlock):
 
     def __init__(
         self,
-        linear: nn.Linear | LineaSupportsExtendedForwardrGrowingModule,
+        linear: nn.Linear | LinearGrowingModule,
         rank: int = 0,
         scaling: float | Callable[[int], float] = 1.0,
         dropout: float = 0.0,
