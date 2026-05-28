@@ -257,6 +257,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 "shape": value.get("shape"),
                 "kernel_size": self.kernel_size,
                 "activation": self.activation if node != self.root else "id",
+                "use_layer_norm": self.use_layer_norm if node != self.root else False,
             }
             for node, value in self.nodes.items()
         }
@@ -2026,9 +2027,9 @@ class Expansion:
     def evaluate(
         self,
         model: GrowingContainer,
-        train_dataloader: torch.utils.data.DataLoader,
-        dev_dataloader: torch.utils.data.DataLoader,
-        val_dataloader: torch.utils.data.DataLoader,
+        train_dataloader: torch.utils.data.DataLoader | None,
+        dev_dataloader: torch.utils.data.DataLoader | None,
+        val_dataloader: torch.utils.data.DataLoader | None,
         loss_fn: Callable,
     ) -> None:
         """Evaluate GrowingContainer based on GrowingDAG expansion and save metrics
@@ -2037,32 +2038,38 @@ class Expansion:
         ----------
         model : GrowingContainer
             container to be evaluated
-        train_dataloader : torch.utils.data.DataLoader
-            train dataloader
-        dev_dataloader : torch.utils.data.DataLoader
-            development dataloader
-        val_dataloader : torch.utils.data.DataLoader
-            validation dataloader
+        train_dataloader : torch.utils.data.DataLoader | None
+            train dataloader, skipped if None
+        dev_dataloader : torch.utils.data.DataLoader | None
+            development dataloader, skipped if None
+        val_dataloader : torch.utils.data.DataLoader | None
+            validation dataloader, skipped if None but skipping the validation is not recommended
         loss_fn : Callable
             loss function
         """
         mask = self.create_mask()
-        acc_train, loss_train = evaluate_extended_dataset(
-            model, train_dataloader, loss_fn=loss_fn, mask=mask
-        )
-        acc_dev, loss_dev = evaluate_extended_dataset(
-            model, dev_dataloader, loss_fn=loss_fn, mask=mask
-        )
-        acc_val, loss_val = evaluate_extended_dataset(
-            model, val_dataloader, loss_fn=loss_fn, mask=mask
-        )
 
-        self.metrics["loss_train"] = loss_train
-        self.metrics["loss_dev"] = loss_dev
-        self.metrics["loss_val"] = loss_val
-        self.metrics["acc_train"] = acc_train
-        self.metrics["acc_dev"] = acc_dev
-        self.metrics["acc_val"] = acc_val
+        if train_dataloader is not None:
+            acc_train, loss_train = evaluate_extended_dataset(
+                model, train_dataloader, loss_fn=loss_fn, mask=mask
+            )
+            self.metrics["loss_train"] = loss_train
+            self.metrics["acc_train"] = acc_train
+
+        if dev_dataloader is not None:
+            acc_dev, loss_dev = evaluate_extended_dataset(
+                model, dev_dataloader, loss_fn=loss_fn, mask=mask
+            )
+            self.metrics["loss_dev"] = loss_dev
+            self.metrics["acc_dev"] = acc_dev
+
+        if val_dataloader is not None:
+            acc_val, loss_val = evaluate_extended_dataset(
+                model, val_dataloader, loss_fn=loss_fn, mask=mask
+            )
+            self.metrics["loss_val"] = loss_val
+            self.metrics["acc_val"] = acc_val
+
         edges = []
         for prev_node, next_node in self.dag.edges:
             if (prev_node, next_node) in self.new_edges or (
@@ -2073,9 +2080,10 @@ class Expansion:
                 edges.append((prev_node, next_node))
         nb_params = self.dag.count_parameters(edges=edges)
         self.metrics["nb_params"] = nb_params
-        self.metrics["BIC"] = compute_BIC(
-            nb_params, loss_val, n=len(val_dataloader.dataset)
-        )
+        if val_dataloader is not None:
+            self.metrics["BIC"] = compute_BIC(
+                nb_params, loss_val, n=len(val_dataloader.dataset)
+            )
 
     def __repr__(self) -> str:
         if self.type == ExpansionType.NEW_EDGE:
