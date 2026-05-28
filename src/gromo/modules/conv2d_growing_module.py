@@ -975,8 +975,8 @@ class Conv2dGrowingModule(GrowingModule):
                 return torch.zeros(
                     n,
                     0,
-                    self.out_height,
                     self.out_width,
+                    self.out_height,
                     device=self.device,
                     requires_grad=True,
                 )
@@ -985,8 +985,8 @@ class Conv2dGrowingModule(GrowingModule):
                 return torch.zeros(
                     n,
                     self.out_channels,
-                    self.out_height,
                     self.out_width,
+                    self.out_height,
                     device=self.device,
                     requires_grad=True,
                 )

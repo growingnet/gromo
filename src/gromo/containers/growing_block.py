@@ -69,9 +69,9 @@ class GrowingBlock(GrowingContainer):
         super(GrowingBlock, self).__init__(
             in_features=in_features,
             out_features=out_features,
+            device=device,
         )
         self.name = name
-        self.device = device
 
         self.pre_activation: torch.nn.Module = pre_activation
         self.first_layer: GrowingModule = first_layer
@@ -824,6 +824,7 @@ class LinearGrowingBlock(GrowingBlock):
                 out_features=hidden_features,
                 name=f"{name}(first_layer)",
                 post_layer_function=mid_activation,
+                device=device,
                 **kwargs_first_layer,
             )
             second_layer = LinearGrowingModule(
@@ -833,6 +834,7 @@ class LinearGrowingBlock(GrowingBlock):
                 post_layer_function=pre_addition_function,
                 target_in_features=target_hidden_features,
                 previous_module=first_layer,
+                device=device,
                 **kwargs_second_layer,
             )
         super(LinearGrowingBlock, self).__init__(
