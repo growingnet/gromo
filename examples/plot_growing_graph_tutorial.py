@@ -39,9 +39,12 @@ First, we import the necessary libraries:
 """
 
 ###############################################################################
+import math
 import operator
 import random
 
+import matplotlib.cm as mpl_cm
+import matplotlib.colors as mpl_colors
 import matplotlib.pyplot as plt
 import networkx as nx
 import torch
@@ -49,6 +52,7 @@ import torch.utils.data
 from helpers.synthetic_data import MultiSinDataloader
 
 from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.growing_dag import GrowingDAG
 from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.modules.growing_module import MergeGrowingModule
 from gromo.utils.training_utils import evaluate_model, gradient_descent
@@ -213,7 +217,7 @@ def update_computation(
     model: GraphModel,
     dataloader: torch.utils.data.DataLoader,
     criterion: torch.nn.Module,
-) -> tuple[dict]:
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
     """Run a forward-backward pass and collect per-node statistics.
 
     Parameters
@@ -227,20 +231,19 @@ def update_computation(
 
     Returns
     -------
-    tuple[dict]
+    tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]
         pre_activities_grad : dict[str, Tensor]
             Concatenated pre-activation gradients for every non-root node.
         inputs : dict[str, Tensor]
             Concatenated input activations for every node.
     """
     all_nodes = list(model.growing_dag.dag.nodes)
+    root_key = model.growing_dag.dag.root
 
     pre_activities_grad = {
-        node: torch.empty(0)
-        for node in all_nodes
-        if (node != model.growing_dag.dag.root) and ("start" not in node)
+        node: [] for node in all_nodes if (node != root_key) and ("start" not in node)
     }
-    inputs = {node: torch.empty(0) for node in all_nodes}
+    inputs = {node: [] for node in all_nodes}
 
     for X, Y in dataloader:
         X, Y = X.to(model.device), Y.to(model.device)
@@ -256,42 +259,42 @@ def update_computation(
             assert node_module.activity is not None
 
             activity = node_module.activity.clone().detach().cpu()
-            inputs[node_module._name] = torch.cat((inputs[node_module._name], activity))
+            inputs[node_module._name].append(activity)
 
-            if node_module._name == model.growing_dag.dag.root:
+            if node_module._name == root_key:
                 continue
             assert node_module.pre_activity is not None
             assert node_module.pre_activity.grad is not None
 
-            pre_activities_grad[node_module._name] = torch.cat(
-                (
-                    pre_activities_grad[node_module._name],
-                    node_module.pre_activity.grad.clone().detach().cpu(),
-                )
+            pre_activities_grad[node_module._name].append(
+                node_module.pre_activity.grad.clone().detach().cpu()
             )
 
+    pre_activities_grad = {
+        k: torch.cat(v) if v else torch.empty(0) for k, v in pre_activities_grad.items()
+    }
+    inputs = {k: torch.cat(v) if v else torch.empty(0) for k, v in inputs.items()}
     return pre_activities_grad, inputs
 
 
 ###############################################################################
+# For a node :math:`v`, the bottleneck vector is:
+#
+# .. math::
+#
+#     b_v = \nabla_{z_v} \mathcal{L}
+#           - \sum_{e \in \text{in}(v)} \Delta W_e^* \, a_{\text{src}(e)}
+#
+# where :math:`\Delta W_e^*` is the optimal weight increment for edge
+# :math:`e` computed by ``compute_optimal_delta()``.  A large
+# :math:`\|b_v\|` means that no currently proposed weight change can
+# explain the gradient at :math:`v`, i.e. the node is a bottleneck.
 def calculate_bottleneck(
     model: GraphModel,
     pre_activities_grad: dict,
     inputs: dict,
 ) -> dict[str, torch.Tensor]:
     """Compute the expressivity bottleneck for each node.
-
-    For a node :math:`v`, the bottleneck vector is:
-
-    .. math::
-
-        b_v = \\nabla_{z_v} \\mathcal{L}
-              - \\sum_{e \\in \\text{in}(v)} \\Delta W_e^* \\, a_{\\text{src}(e)}
-
-    where :math:`\\Delta W_e^*` is the optimal weight increment for edge
-    :math:`e` computed by ``compute_optimal_delta()``.  A large
-    :math:`\\|b_v\\|` means that no currently proposed weight change can
-    explain the gradient at :math:`v`, i.e. the node is a bottleneck.
 
     Parameters
     ----------
@@ -451,8 +454,53 @@ def grow(
 
 
 ###############################################################################
+def plot_graph(dag: GrowingDAG) -> None:
+    """Plot an explanatory version of the DAG
+
+    Parameters
+    ----------
+    dag : GrowingDAG
+        the growing dag
+    """
+
+    def size_to_color(size):
+        cmap = mpl_cm.Reds  # type: ignore
+        norm = mpl_colors.Normalize(vmin=0, vmax=100)
+        rgba = cmap(norm(size))
+        return mpl_colors.rgb2hex(rgba)
+
+    pos = nx.planar_layout(dag)
+
+    default_blue = "#1F78B4"
+    colors = [
+        size_to_color(dag.nodes[n]["size"])
+        if n not in (dag.root, dag.end)
+        else default_blue
+        for n in dag.nodes
+    ]
+    sizes = [math.sqrt(dag.nodes[n]["size"]) * 100 for n in dag.nodes]
+    labels = {n: n.split("@")[0] for n in dag.nodes}
+    edge_labels = {
+        (u, v): str(list(dag.get_edge_module(u, v).weight.shape)) for u, v in dag.edges
+    }
+
+    plt.figure()
+    nx.draw(
+        dag,
+        pos,
+        node_color=colors,
+        node_size=sizes,
+        labels=labels,
+        with_labels=True,
+        arrows=True,
+    )
+    nx.draw_networkx_edge_labels(dag, pos, edge_labels=edge_labels)
+    plt.show()
+
+
+###############################################################################
 # Step 5: Create the Initial Model
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ---------------------------------
 #
 # We initialise a ``GraphModel`` with:
 #
@@ -485,7 +533,7 @@ print(model)
 
 ###############################################################################
 # Step 6: Training Loop with Growth
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ----------------------------------
 #
 # We alternate between:
 #
@@ -500,6 +548,48 @@ print(model)
 # - The validation-based candidate ranking prevents the growth from over-fitting
 #   to the training statistics.
 # - Test loss should decrease monotonically across growth steps.
+#
+# We present the growth history:
+#
+# **Growth Step 1** — Maximum bottleneck node: ``end``.
+# Candidate actions increasing information throughput to node ``end``:
+# 1. create new node ``1`` from ``start`` to ``end``.
+#
+# Chose action (1).
+#
+# **Growth Step 2** — Maximum bottleneck node: ``1``.
+# Candidate actions increasing information throughput to node ``1``:
+# 1. create node ``2`` from ``start`` to ``1``,
+# 2. add neurons to node ``1``.
+#
+# Chose action (2).
+#
+# **Growth Step 3** — Maximum bottleneck node: ``1``.
+# Candidate actions increasing information throughput to node ``1``:
+# 1. create node ``2`` from ``start`` to ``1``,
+# 2. add neurons to node ``1``.
+#
+# Chose action (1).
+#
+# **Growth Step 4** — Maximum bottleneck node: ``1``.
+# Candidate actions increasing information throughput to node ``1``:
+# 1. create node ``3`` from ``2`` to ``1``,
+# 2. add neurons to node ``1``,
+# 3. add neurons to node ``2``.
+#
+# Chose action (1).
+#
+# Final DAG structure::
+#
+#   Nodes (5):
+#     start@dag (layer type: linear, hidden size: 10, activation: None)
+#     end@dag (layer type: linear, hidden size: 3, activation: [SELU()])
+#     1@dag (layer type: linear, hidden size: 20, activation: [Identity(), SELU()])
+#     2@dag (layer type: linear, hidden size: 10, activation: [Identity(), SELU()])
+#     3@dag (layer type: linear, hidden size: 10, activation: [Identity(), SELU()])
+#   Edges (7):
+#     start@dag->end@dag, start@dag->1@dag, start@dag->2@dag,
+#     1@dag->end@dag, 2@dag->1@dag, 2@dag->3@dag, 3@dag->1@dag
 
 ###############################################################################
 growth_steps = 4
@@ -563,8 +653,7 @@ for step in range(growth_steps):
     grow(model, train_data_loader, val_data_loader, criterion)
     print("Model after growing:")
     print(model)
-    nx.draw(model.growing_dag.dag, pos=nx.planar_layout(model.growing_dag.dag))
-    plt.show()
+    plot_graph(model.growing_dag.dag)
 
     test_loss, _ = evaluate_model(model, test_data_loader, criterion, device=device)
     current_step = (step + 1) * (intermediate_epochs + 1)
@@ -582,7 +671,7 @@ for step in range(growth_steps):
 
 ###############################################################################
 # Step 7: Visualise Training Progress
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ------------------------------------
 #
 # The figure below tracks two quantities across training steps:
 #
