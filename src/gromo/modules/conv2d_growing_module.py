@@ -446,13 +446,15 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             self.previous_tensor_m = None
 
     def construct_full_activity(self) -> torch.Tensor:
-        """Construct the full activity tensor B from the input of all previous modules.
-        B = (B_1, B_2, ..., B_k) in (n, )
+        """Construct the full activity tensor B from the unfolded inputs of all previous modules.
+        B = (B_1, B_2, ..., B_k) concatenated along the per-patch feature dimension (dim 1),
+        where each B_i has shape (n, in_channels_i * kH * kW [+1 if bias], nb_patch).
+        The result has shape (n, total_in_features, nb_patch).
 
         Returns
         -------
         torch.Tensor
-            full activity tensor B concatenated from all previous modules' inputs
+            full activity tensor B concatenated along the per-batch feature dimension
 
         Raises
         ------
@@ -973,8 +975,8 @@ class Conv2dGrowingModule(GrowingModule):
                 return torch.zeros(
                     n,
                     0,
-                    self.out_height,
                     self.out_width,
+                    self.out_height,
                     device=self.device,
                     requires_grad=True,
                 )
@@ -983,8 +985,8 @@ class Conv2dGrowingModule(GrowingModule):
                 return torch.zeros(
                     n,
                     self.out_channels,
-                    self.out_height,
                     self.out_width,
+                    self.out_height,
                     device=self.device,
                     requires_grad=True,
                 )
@@ -1055,6 +1057,34 @@ class Conv2dGrowingModule(GrowingModule):
             torch.einsum(
                 "iam, icm -> ac", self.unfolded_extended_input, desired_activation
             ),
+            self.input.shape[0],
+        )
+
+    def compute_covariance_loss_gradient_update(
+        self,
+    ) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the empirical Fisher / gradient covariance
+        E_s := sum_{i,h,w} dA_{i,a,h,w} dA_{i,b,h,w} on the output-channel axis.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the gradient covariance, shape (out_channels, out_channels)
+        int
+            number of samples used to compute the update
+        """
+        assert self.store_pre_activity, (
+            f"The pre-activity must be stored to compute the update of the "
+            f"gradient covariance. (error in {self.name})"
+        )
+        desired_activation = self.pre_activity.grad
+        assert isinstance(desired_activation, torch.Tensor), (
+            f"The gradient of the pre-activity must be a torch.Tensor "
+            f"(error in {self.name})."
+        )
+        return (
+            torch.einsum("iahw,ibhw->ab", desired_activation, desired_activation),
             self.input.shape[0],
         )
 
@@ -1278,25 +1308,35 @@ class Conv2dGrowingModule(GrowingModule):
         self.update_input_size()
         super(Conv2dGrowingModule, self).update_computation()
 
-    @staticmethod
-    def get_fan_in_from_layer(layer: torch.nn.Conv2d) -> int:  # type: ignore
+    def get_fan_in_from_layer(  # type: ignore
+        self, layer: torch.nn.Conv2d | None = None, num_neurons: int | None = None
+    ) -> int:
         """
-        Get the fan_in (number of input features) from a given layer.
+        Get the fan_in (number of input features) from a given layer
+        or from the number of neurons (input channels).
 
         Parameters
         ----------
-        layer: torch.nn.Conv2d
+        layer: torch.nn.Conv2d | None
             layer to get the fan_in from
+        num_neurons: int | None
+            number of neurons in the layer
 
         Returns
         -------
         int
             fan_in of the layer
         """
-        assert isinstance(layer, torch.nn.Conv2d), (
-            f"The layer should be a torch.nn.Conv2d but got {type(layer)}."
-        )
-        return layer.in_channels * layer.kernel_size[0] * layer.kernel_size[1]
+        if layer is not None:
+            assert isinstance(layer, torch.nn.Conv2d), (
+                f"The layer should be a torch.nn.Conv2d but got {type(layer)}."
+            )
+            return layer.in_channels * layer.kernel_size[0] * layer.kernel_size[1]
+        else:
+            assert num_neurons is not None, (
+                "Either layer or num_neurons should be provided."
+            )
+            return num_neurons * self.kernel_size[0] * self.kernel_size[1]
 
     def create_layer_in_extension(self, extension_size: int) -> None:
         """
@@ -1672,6 +1712,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1702,6 +1743,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the empirical Fisher / gradient covariance as
+            preconditioner on the output side.
 
         Returns
         -------
@@ -1724,6 +1768,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             omega_zero=omega_zero,
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
+            use_fisher=use_fisher,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -2112,6 +2157,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         omega_zero: bool = False,
         use_projection: bool = True,
         ignore_singular_values: bool = False,
+        use_fisher: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2142,6 +2188,11 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool
             if True, ignore singular values and treat them as 1, only using singular
             vectors for the update direction
+        use_fisher: bool
+            if True, use the empirical Fisher / gradient covariance as
+            preconditioner. Not supported for FullConv2dGrowingModule because
+            the SVD output dimension is `out_channels * k_h * k_w`, not
+            `out_channels`.
 
         Returns
         -------
@@ -2152,8 +2203,17 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         Raises
         ------
         NotImplementedError
-            if the previous module is not of type Conv2dGrowingModule
+            if the previous module is not of type Conv2dGrowingModule, or if
+            ``use_fisher`` is True (not implemented for the Full variant).
         """
+        if use_fisher:
+            raise NotImplementedError(
+                "use_fisher=True is not supported for FullConv2dGrowingModule "
+                "because the output dimension of the SVD target is "
+                "out_channels * k_h * k_w, which does not match the "
+                "(out_channels, out_channels) shape of "
+                "covariance_loss_gradient."
+            )
         alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
             numerical_threshold=numerical_threshold,
             statistical_threshold=statistical_threshold,

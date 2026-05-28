@@ -16,6 +16,7 @@ from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.modules.growing_dropout import GrowingDropout2d
 from gromo.modules.growing_normalisation import (
     CompleteNormKwargs,
     GrowingBatchNorm2d,
@@ -42,6 +43,10 @@ class ResNetBasicBlock(SequentialGrowingModel):
         Device to run the model on.
     activation : nn.Module
         Activation function to use.
+    dropout_rate : float
+        Dropout rate.
+        If greater than 0, WideRestNet-style dropout
+        will be added before the second convolution in each block.
     input_block_kernel_size : int
         Kernel size for the input block.
     output_block_kernel_size : int
@@ -84,6 +89,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         out_features: int = 1000,
         device: torch.device | str | None = None,
         activation: nn.Module = nn.ReLU(),
+        dropout_rate: float = 0.0,  # Set to non 0 for WideResNet;
         input_block_kernel_size: int = 3,
         output_block_kernel_size: int = 3,
         hidden_channels: tuple[int, ...] = (0, 0, 0, 0),
@@ -99,6 +105,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
             in_features=in_features, out_features=out_features, device=device
         )
         self.activation = activation.to(device)
+        self.dropout_rate = dropout_rate
         self.small_inputs = small_inputs
         self.use_preactivation = use_preactivation
         self.inplanes = inplanes
@@ -430,7 +437,8 @@ class ResNetBasicBlock(SequentialGrowingModel):
             "stride": output_block_stride,
         }
         mid_activation = nn.Sequential(
-            *self._build_norm_activation_layers(hidden_channels, growing=True)
+            *self._build_norm_activation_layers(hidden_channels, growing=True),
+            GrowingDropout2d(self.dropout_rate),
         )
 
         if self.use_preactivation:
@@ -612,6 +620,7 @@ def init_full_resnet_structure(
     out_features: int = 1000,
     device: torch.device | str | None = None,
     activation: nn.Module = nn.ReLU(),
+    dropout_rate: float = 0.0,
     input_block_kernel_size: int = 3,
     output_block_kernel_size: int = 3,
     reduction_factor: float = 1 / 64,
@@ -644,6 +653,9 @@ def init_full_resnet_structure(
         Device to run the model on.
     activation : nn.Module
         Activation function to use.
+    dropout_rate : float
+        If greater than 0, WideRestNet-style dropout
+        will be added before the second convolution in each block.
     input_block_kernel_size : int
         Kernel size for the input block.
     output_block_kernel_size : int
@@ -776,6 +788,7 @@ def init_full_resnet_structure(
         out_features=out_features,
         device=device,
         activation=activation,
+        dropout_rate=dropout_rate,
         input_block_kernel_size=input_block_kernel_size,
         output_block_kernel_size=output_block_kernel_size,
         hidden_channels=initial_hidden_channels,
@@ -843,7 +856,8 @@ if __name__ == "__main__":
     print(f"Number of parameters (classical): {classical_params}")
 
     # Compare with torchvision ResNet-18
-    import torchvision.models as models  # pyright: ignore[reportMissingImports]
+    # pyright: ignore[reportMissingImports]
+    import torchvision.models as models
 
     torchvision_resnet18 = models.resnet18(weights=None)
     torchvision_params = sum(p.numel() for p in torchvision_resnet18.parameters())

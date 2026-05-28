@@ -3,6 +3,7 @@ Tools
 =====
 
 .. automodule:: gromo.utils.tools
+   :no-index:
 
 .. currentmodule:: gromo.utils.tools
 

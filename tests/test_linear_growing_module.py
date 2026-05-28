@@ -93,18 +93,19 @@ def theoretical_s_1(n: int, c: int) -> tuple[torch.Tensor, ...]:
 
     Returns
     -------
-    x1:
-        input tensor 1
-    x2:
-        input tensor 2
-    is1:
-        theoretical value of the tensor nS for x1
-    is2:
-        theoretical value of the tensor 2nS for (x1, x2)
-    os1:
-        theoretical value of the tensor nS for the output of W(x1)
-    os2:
-        theoretical value of the tensor 2nS for the output of W((x1, x2))
+    tuple[torch.Tensor, ...]
+        x1:
+            input tensor 1
+        x2:
+            input tensor 2
+        is1:
+            theoretical value of the tensor nS for x1
+        is2:
+            theoretical value of the tensor 2nS for (x1, x2)
+        os1:
+            theoretical value of the tensor nS for the output of W(x1)
+        os2:
+            theoretical value of the tensor 2nS for the output of W((x1, x2))
     """
     # Pre-compute common values to avoid redundant calculations
     device = global_device()
@@ -469,6 +470,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         layer = self.demo_layers[True][0]
         self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(3, 1)), 3)
         self.assertEqual(layer.get_fan_in_from_layer(torch.nn.Linear(2, 3)), 2)
+        self.assertEqual(layer.get_fan_in_from_layer(num_neurons=4), 4)
 
     def test_apply_change_with_sized_post_layer_function(self):
         """
@@ -1222,6 +1224,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             "eigenvalues_extension",
             "tensor_m_prev",
             "cross_covariance",
+            "covariance_loss_gradient",
         ]
 
         # Set up test network using helper method
@@ -1289,6 +1292,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             use_projection=True,
             use_covariance=True,
             alpha_zero=False,
+            use_fisher=True,
         )
 
         self.assertShapeEqual(
@@ -1491,6 +1495,131 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         self.assertIsInstance(m_result, torch.Tensor)
         self.assertGreater(m_samples, 0)
+
+    def test_covariance_loss_gradient_shape(self):
+        """Minimal smoke test: covariance_loss_gradient is accessible and (cp, cp)."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        loss = layer(x).pow(2).sum()
+        loss.backward()
+        layer.update_computation()
+
+        cov = layer.covariance_loss_gradient()
+        self.assertShapeEqual(cov, (out_features, out_features))
+
+    def test_compute_optimal_delta_use_fisher(self):
+        """Smoke test: compute_optimal_delta runs with use_fisher=True."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        layer(x).pow(2).sum().backward()
+        layer.update_computation()
+
+        w, _, fo = layer.compute_optimal_delta(use_fisher=True, update=False)
+        self.assertShapeEqual(w, (out_features, in_features))
+        self.assertGreaterEqual(float(fo), 0.0)
+
+    def test_compute_optimal_added_parameters_use_fisher(self):
+        """Smoke test: rank-k extension runs with use_fisher=True."""
+        in_features, hidden, out_features, batch = 4, 3, 5, 8
+        layer1 = LinearGrowingModule(
+            in_features, hidden, device=global_device(), name="l1"
+        )
+        layer2 = LinearGrowingModule(
+            hidden,
+            out_features,
+            device=global_device(),
+            previous_module=layer1,
+            name="l2",
+        )
+        net = torch.nn.Sequential(layer1, layer2)
+
+        layer1.init_computation()
+        layer2.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        net(x).pow(2).sum().backward()
+        layer1.update_computation()
+        layer2.update_computation()
+
+        alpha_w, _alpha_b = layer2.compute_optimal_updates(use_fisher=True)
+        self.assertEqual(alpha_w.shape[1], in_features)
+        self.assertEqual(layer2.eigenvalues_extension.ndim, 1)
+
+    def test_compute_optimal_delta_use_fisher_closed_form(self):
+        r"""
+        Closed-form delta-test: rank-1 Fisher rescales the optimal delta by 1/||W||^2.
+
+        We use a single LinearGrowingModule of shape 1 -> 2, no bias, identity
+        post-activation, with weight ``W_0 = [[1], [1]]``. Inputs are the
+        balanced batch ``x = [+1, -1]`` so that the empirical second moment
+        ``hat_E[x^2] = 1``.  The loss is ``sum_i 1/2 * ||y_i||^2``; the
+        library normalises sums by `samples` on read.
+
+        Per-sample:
+            h_i = x_i in R,    nabla_s ell_i = W_0 * x_i in R^2.
+
+        Aggregated statistics (with hat_E[x^2] = 1):
+            tensor_s          (= bar_C_h)         = 1
+            tensor_m          (= G^T)             = W_0^T = [[1, 1]]
+            covariance_loss_gradient (= bar_E_s)  = W_0 W_0^T = [[1, 1], [1, 1]]
+                                                  (rank-1, exercises the pinv path)
+
+        Closed-form predictions for delta_raw (shape (cp, cm) = (2, 1)):
+            delta_no_fisher = G * bar_C_h^{-1}                 = W_0       = [[1], [1]]
+            delta_fisher    = bar_E_s^+ * G * bar_C_h^{-1}     = W_0 / ||W_0||^2 = [[0.5], [0.5]]
+        """
+        device = global_device()
+        layer = LinearGrowingModule(
+            1, 2, use_bias=False, device=device, name="closed_form_delta"
+        )
+        layer.layer.weight.data = torch.tensor([[1.0], [1.0]], device=device)
+        W0 = layer.layer.weight.data.clone()
+
+        layer.init_computation()
+        x = torch.tensor([[1.0], [-1.0]], device=device)
+        # Sanity-check: hat E[x^2] = 1 so that bar_C_h = 1.
+        assert torch.isclose((x.flatten() ** 2).mean(), torch.tensor(1.0, device=device))
+
+        y = layer(x)
+        loss = 0.5 * (y**2).sum()
+        loss.backward()
+        layer.update_computation()
+
+        # The recorded statistics must match the closed-form values described
+        # in the docstring; otherwise the rest of the test is meaningless.
+        self.assertAllClose(
+            layer.tensor_s(),
+            torch.tensor([[1.0]], device=device),
+        )
+        self.assertAllClose(layer.tensor_m(), W0.t())
+        self.assertAllClose(
+            layer.covariance_loss_gradient(),
+            W0 @ W0.t(),
+        )
+        # Independent check that bar_E_s is rank 1 (eigvals ~ {||W_0||^2, 0}).
+        eigvals = torch.linalg.eigvalsh(layer.covariance_loss_gradient())
+        assert float(eigvals[0]) < 1e-6 and abs(float(eigvals[1]) - 2.0) < 1e-6, (
+            f"Expected eigvals ~ (0, ||W_0||^2 = 2), got {eigvals.tolist()}"
+        )
+
+        # No-Fisher baseline: delta_raw = W_0.
+        delta_no_f, _, fo_no_f = layer.compute_optimal_delta(
+            use_fisher=False, update=False
+        )
+        self.assertAllClose(delta_no_f, W0)
+        self.assertGreater(float(fo_no_f), 0.0)
+
+        # Fisher: delta_raw = W_0 / ||W_0||^2.
+        delta_f, _, fo_f = layer.compute_optimal_delta(use_fisher=True, update=False)
+        norm_sq = float(W0.pow(2).sum())  # = 2
+        self.assertAllClose(delta_f, W0 / norm_sq)
+        self.assertGreater(float(fo_f), 0.0)
 
     def test_negative_parameter_update_decrease_paths(self):
         """Test that the layer emits the expected warning when parameter_update_decrease is negative.
@@ -3135,12 +3264,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
 
         # Test input feature addition
         try:
-            layer.add_parameters(
-                matrix_extension=torch.randn(3, 2, device=global_device()),
-                bias_extension=None,
-                added_in_features=2,
-                added_out_features=0,
-            )
+            with self.assertWarns(UserWarning):
+                # The size has been changed but it is up to the user to change the connected layers.
+                layer.add_parameters(
+                    matrix_extension=torch.randn(3, 2, device=global_device()),
+                    bias_extension=None,
+                    added_in_features=2,
+                    added_out_features=0,
+                )
             self.assertEqual(layer.weight.shape[1], original_weight_shape[1] + 2)
         except (AssertionError, ValueError, RuntimeError):
             pass  # Configs where addition may fail.
@@ -3150,12 +3281,14 @@ class TestLinearMergeGrowingModule(TestLinearGrowingModuleBase):
 
         # Test output feature addition
         try:
-            layer.add_parameters(
-                matrix_extension=torch.randn(2, 4, device=global_device()),
-                bias_extension=torch.randn(2, device=global_device()),
-                added_in_features=0,
-                added_out_features=2,
-            )
+            with self.assertWarns(UserWarning):
+                # The size has been changed but it is up to the user to change the connected layers.
+                layer.add_parameters(
+                    matrix_extension=torch.randn(2, 4, device=global_device()),
+                    bias_extension=torch.randn(2, device=global_device()),
+                    added_in_features=0,
+                    added_out_features=2,
+                )
             self.assertEqual(layer.weight.shape[0], 3 + 2)
         except (AssertionError, ValueError, RuntimeError):
             pass  # Configs where addition may fail.
@@ -3778,6 +3911,266 @@ class TestScalingMethods(TestLinearGrowingModuleBase):
             with self.assertRaises(ValueError):
                 layer_out.normalize_optimal_updates(
                     std_target=None, normalization_type="equalize_extensions"
+                )
+
+        with self.subTest(case="gradmax_normalization"):
+            # Match Linear shapes: layer_out.weight is (out_features, in_features),
+            # extended_input_layer.weight is (out_features, extension_size).
+            _, layer_out = self.create_demo_layers_with_extension(
+                include_eigenvalues=True,
+                hidden_features=2,
+                extension_size=2,
+            )
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            out_f, in_f = layer_out.layer.weight.shape
+            ext_k = layer_out.extended_input_layer.weight.shape[1]
+            self.assertEqual(in_f, 2)
+            self.assertEqual(ext_k, 2)
+
+            # Existing input columns: norms 3 and 4 => mean c = 3.5.
+            W = torch.zeros(out_f, in_f, device=global_device())
+            W[0, 0] = 3.0
+            W[1, 1] = 4.0
+            layer_out.layer.weight.data = W
+
+            # Extension columns: nonzero norms so each is rescaled to c.
+            E = torch.zeros(out_f, ext_k, device=global_device())
+            E[0, 0] = 3.0
+            E[1, 0] = 4.0
+            E[0, 1] = 4.0
+            E[1, 1] = 3.0
+            layer_out.extended_input_layer.weight.data = E
+
+            col_norm = torch.tensor([5.0, 5.0], device=global_device())
+            target_norm = torch.tensor(3.5, device=global_device())
+            scales = target_norm / col_norm
+            ev_before = torch.tensor([100.0, 400.0], device=global_device())
+            layer_out.eigenvalues_extension = ev_before.clone()
+
+            layer_out.normalize_optimal_updates(
+                normalization_type="gradmax_normalization"
+            )
+
+            new_col_norms = layer_out.extended_input_layer.weight.norm(dim=0)
+            self.assertTrue(
+                torch.allclose(
+                    new_col_norms,
+                    torch.full_like(new_col_norms, target_norm),
+                    atol=1e-6,
+                ),
+                msg=(
+                    "Each added-neuron vector should be normalized "
+                    "to the mean norm of existing input-column weight vectors."
+                ),
+            )
+            assert layer_out.eigenvalues_extension is not None
+            expected_ev = ev_before * torch.sqrt(scales)
+            self.assertTrue(
+                torch.allclose(
+                    layer_out.eigenvalues_extension,
+                    expected_ev,
+                    atol=1e-5,
+                ),
+                msg="eigenvalues_extension should rescale by sqrt(column scale).",
+            )
+
+            with self.assertRaises(ValueError):
+                layer_out.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization",
+                    gradmax_scale=0.0,
+                )
+
+            # c = s * mean(||W_i||): s=2 doubles column target norms (3.5 -> 7).
+            E_reset = torch.zeros(out_f, ext_k, device=global_device())
+            E_reset[0, 0] = 3.0
+            E_reset[1, 0] = 4.0
+            E_reset[0, 1] = 4.0
+            E_reset[1, 1] = 3.0
+            layer_out.extended_input_layer.weight.data = E_reset
+            layer_out.eigenvalues_extension = ev_before.clone()
+            layer_out.normalize_optimal_updates(
+                normalization_type="gradmax_normalization",
+                gradmax_scale=2.0,
+            )
+            self.assertTrue(
+                torch.allclose(
+                    layer_out.extended_input_layer.weight.norm(dim=0),
+                    torch.full((ext_k,), 7.0, device=global_device()),
+                    atol=1e-5,
+                ),
+                msg="gradmax_scale should multiply c = mean(||W_i||).",
+            )
+
+            with self.subTest(case="gradmax_missing_extension_raises"):
+                _, layer_missing_ext = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_missing_ext.extended_input_layer = None
+                with self.assertRaises(ValueError):
+                    layer_missing_ext.normalize_optimal_updates(
+                        normalization_type="gradmax_normalization"
+                    )
+
+            with self.subTest(case="gradmax_extension_dim_one_returns"):
+                _, layer_ext_dim_one = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+
+                class DummyExtension(torch.nn.Module):
+                    def __init__(self) -> None:
+                        super().__init__()
+                        self.weight = torch.nn.Parameter(
+                            torch.tensor(1.0, device=global_device())
+                        )
+
+                layer_ext_dim_one.extended_input_layer = DummyExtension()
+                layer_ext_dim_one.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+
+            with self.subTest(case="gradmax_existing_dim_one_returns"):
+                _, layer_existing_dim_one = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+
+                class DummyLayer(torch.nn.Module):
+                    def __init__(self) -> None:
+                        super().__init__()
+                        self.weight = torch.nn.Parameter(
+                            torch.tensor(1.0, device=global_device())
+                        )
+
+                layer_existing_dim_one.layer = DummyLayer()
+                layer_existing_dim_one.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+
+            with self.subTest(case="gradmax_empty_existing_norms_returns"):
+                _, layer_empty_existing = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_empty_existing.layer.weight.data = torch.empty(
+                    (2, 0), device=global_device()
+                )
+                layer_empty_existing.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+
+            with self.subTest(case="gradmax_zero_target_norm_returns"):
+                _, layer_zero_target = self.create_demo_layers_with_extension(
+                    include_eigenvalues=True,
+                    hidden_features=2,
+                    extension_size=2,
+                )
+                layer_zero_target.layer.weight.data.zero_()
+                before_extension = (
+                    layer_zero_target.extended_input_layer.weight.detach().clone()
+                )
+                layer_zero_target.normalize_optimal_updates(
+                    normalization_type="gradmax_normalization"
+                )
+                self.assertTrue(
+                    torch.allclose(
+                        layer_zero_target.extended_input_layer.weight,
+                        before_extension,
+                    ),
+                    msg="No scaling should be applied when target norm is zero.",
+                )
+
+        with self.subTest(case="match_extending_layer"):
+            # match_extending_layer:
+            # Omega <- std(W_out)/std(Omega) * Omega => std(Omega_new) = std(W_out)
+            # Alpha <- std(W_in)/std(Alpha) * Alpha  => std(Alpha_new) = std(W_in)
+            # dW    <- std(W_out)/std(dW) * dW       => std(dW_new)    = std(W_out)
+            std_weights, std_delta, std_alpha, std_omega = 2.0, 3.0, 5.0, 7.0
+            layer_out = setup_layers_with_known_stds(
+                std_weights, std_delta, std_alpha, std_omega
+            )
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            std_weights_in = layer_out.previous_module.layer.weight.std().item()
+
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="match_extending_layer"
+            )
+
+            assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.extended_input_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="Omega should be scaled to std(W_out)",
+            )
+            assert isinstance(
+                layer_out.previous_module.extended_output_layer, torch.nn.Linear
+            )
+            self.assertAlmostEqual(
+                layer_out.previous_module.extended_output_layer.weight.std().item(),
+                std_weights_in,
+                places=5,
+                msg="Alpha should be scaled to std(W_in)",
+            )
+            assert isinstance(layer_out.optimal_delta_layer, torch.nn.Linear)
+            self.assertAlmostEqual(
+                layer_out.optimal_delta_layer.weight.std().item(),
+                std_weights,
+                places=5,
+                msg="dW should be scaled to std(W_out)",
+            )
+
+        with self.subTest(case="match_extending_layer_no_previous_module"):
+            layer_out = set_up_network_for_normalization_test()
+            layer_out.previous_module = None
+            with self.assertRaises(ValueError):
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="match_extending_layer"
+                )
+
+        with self.subTest(case="match_extending_layer_missing_components"):
+            # None components must be skipped without error.
+            layer_out = setup_layers_with_known_stds(2.0, 3.0, 5.0, 7.0)
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            prev = layer_out.previous_module
+
+            layer_out.optimal_delta_layer = None
+            layer_out.extended_input_layer = None
+
+            assert isinstance(prev.extended_output_layer, torch.nn.Linear)
+            alpha_std_before = prev.extended_output_layer.weight.std().item()
+
+            # Should not raise even though two of the three components are None.
+            layer_out.normalize_optimal_updates(
+                std_target=None, normalization_type="match_extending_layer"
+            )
+
+            # Alpha is applied via scale_layer_extension which requires
+            # extended_input_layer to be set; here it stays untouched.
+            self.assertAlmostEqual(
+                prev.extended_output_layer.weight.std().item(),
+                alpha_std_before,
+                places=5,
+            )
+
+        with self.subTest(case="match_extending_layer_zero_std_previous_layer"):
+            # A previous layer whose weights have std == 0 (or no weights) should
+            # fall back to the kaiming-like std via the extension's fan-in instead
+            # of raising.
+            layer_out = setup_layers_with_known_stds(2.0, 3.0, 5.0, 7.0)
+            assert isinstance(layer_out.previous_module, LinearGrowingModule)
+            # Zero out the previous layer's weights to force the fallback path.
+            layer_out.previous_module.layer.weight.data.zero_()
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                layer_out.normalize_optimal_updates(
+                    std_target=None, normalization_type="match_extending_layer"
                 )
 
 
