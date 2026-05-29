@@ -189,8 +189,16 @@ class GrowRALinear(LinearGrowingBlock):
     def _delta_weight(self, detach_adapter: bool = False) -> torch.Tensor:
         if self.rank == 0:
             return torch.zeros_like(self.linear.weight)
-        A = self.first_layer.weight.detach() if detach_adapter else self.first_layer.weight
-        B = self.second_layer.weight.detach() if detach_adapter else self.second_layer.weight
+        A = (
+            self.first_layer.weight.detach()
+            if detach_adapter
+            else self.first_layer.weight
+        )
+        B = (
+            self.second_layer.weight.detach()
+            if detach_adapter
+            else self.second_layer.weight
+        )
         return self.scaling * (B @ A)
 
     def _effective_weight(self) -> torch.Tensor:
@@ -456,8 +464,16 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         orig = self._conv_base()
         if self.rank == 0:
             return torch.zeros_like(orig.weight)
-        a_w = self.first_layer.weight.detach() if detach_adapter else self.first_layer.weight
-        b_w = self.second_layer.weight.detach() if detach_adapter else self.second_layer.weight
+        a_w = (
+            self.first_layer.weight.detach()
+            if detach_adapter
+            else self.first_layer.weight
+        )
+        b_w = (
+            self.second_layer.weight.detach()
+            if detach_adapter
+            else self.second_layer.weight
+        )
         assert b_w.shape[-2:] == (1, 1), (
             f"_delta_weight assumes 1x1 B kernel, got {b_w.shape}"
         )
