@@ -495,15 +495,16 @@ def merge_all_growra(model: nn.Module) -> nn.Module:
         Same object with adapter wrappers replaced by merged layers.
     """
     replacements: list[tuple[nn.Module, str, nn.Module]] = []
+    named_dict = dict(model.named_modules())
 
-    for full_name, module in model.named_modules():
+    for full_name, module in named_dict.items():
         if isinstance(module, _GrowRATypes):
             parts = full_name.rsplit(".", 1)
             if len(parts) == 1:
                 parent = model
                 attr_name = parts[0]
             else:
-                parent = dict(model.named_modules())[parts[0]]
+                parent = named_dict[parts[0]]
                 attr_name = parts[1]
             replacements.append((parent, attr_name, module.merge()))
 
