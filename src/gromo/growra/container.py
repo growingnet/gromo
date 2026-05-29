@@ -236,11 +236,8 @@ class GrowRAModel(SequentialGrowingModel):
         out_features: int | None = None,
         device: torch.device | str | None = None,
     ) -> None:
-        # Freeze original weights before injecting adapters
-        for p in model.parameters():
-            p.requires_grad = False
-
-        # Infer I/O dimensions for SequentialGrowingModel
+        # Infer I/O dimensions before freezing so a ValueError doesn't leave
+        # the caller's model silently frozen.
         if in_features is None or out_features is None:
             inf, outf = _infer_features(model)
             if in_features is None:
@@ -251,6 +248,9 @@ class GrowRAModel(SequentialGrowingModel):
         super().__init__(
             in_features=in_features, out_features=out_features, device=device
         )
+
+        for p in model.parameters():
+            p.requires_grad = False
 
         # Inject rank-0 GrowRA wrappers into the model
         _inject_growra_inplace(
