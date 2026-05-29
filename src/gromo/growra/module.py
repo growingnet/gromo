@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from torch import functional as torch_functional
+import torch.nn.functional as F  # noqa: N812
 
 from gromo.containers.growing_block import Conv2dGrowingBlock, LinearGrowingBlock
 from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
@@ -223,7 +223,7 @@ class GrowRALinear(LinearGrowingBlock):
         if not self.use_dora:
             return super().forward(x)
         else:
-            out = torch_functional.F.linear(x, self._effective_weight(), self.linear.bias)
+            out = F.linear(x, self._effective_weight(), self.linear.bias)
             if self.first_layer.store_input:
                 # DoRA forward bypasses A/B, so Fisher stats don't accumulate.
                 # Connect the A/B gradient path with zero output contribution so
@@ -249,14 +249,12 @@ class GrowRALinear(LinearGrowingBlock):
             A_ext = self.first_layer.extended_output_layer
             B_ext = self.second_layer.extended_input_layer
             if A_ext is None or B_ext is None:
-                return torch_functional.F.linear(
-                    x, self._effective_weight(), self.linear.bias
-                )
+                return F.linear(x, self._effective_weight(), self.linear.bias)
             ext_scaling = self._scaling.get_scaling(max(1, self.rank))
             W = self.linear.weight + self._delta_weight()
             W = W + ext_scaling * (B_ext.weight @ A_ext.weight)
             W_dora = self.magnitude[:, None] * (W / self._weight_norm(W))
-            return torch_functional.F.linear(x, W_dora, self.linear.bias)
+            return F.linear(x, W_dora, self.linear.bias)
         return super().extended_forward(x)
 
     def merge(self) -> nn.Linear:
@@ -499,7 +497,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             return super().forward(x)
         else:
             orig = self._conv_base()
-            out = torch_functional.F.conv2d(
+            out = F.conv2d(
                 x,
                 self._effective_weight(),
                 orig.bias,
@@ -534,7 +532,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             A_ext = self.first_layer.extended_output_layer
             B_ext = self.second_layer.extended_input_layer
             if A_ext is None or B_ext is None:
-                return torch_functional.F.conv2d(
+                return F.conv2d(
                     x,
                     self._effective_weight(),
                     orig.bias,
@@ -552,7 +550,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             a_ext_flat = A_ext.weight.view(A_ext.weight.shape[0], -1)
             W = W + ext_scaling * (b_ext_mat @ a_ext_flat).view_as(orig.weight)
             W_dora = self.magnitude[:, None, None, None] * (W / self._weight_norm(W))
-            return torch_functional.F.conv2d(
+            return F.conv2d(
                 x,
                 W_dora,
                 orig.bias,
