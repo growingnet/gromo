@@ -196,7 +196,7 @@ class GrowRALinear(LinearGrowingBlock):
         if not self.use_dora:
             return weight
         assert self.magnitude is not None
-        return self.magnitude[:, None] * (weight / self._weight_norm(weight))
+        return self.magnitude[:, None] * (weight / self._weight_norm(weight).detach())
 
     def enable_dora(self) -> None:
         """Enable DoRA magnitude reparameterization."""
@@ -223,13 +223,26 @@ class GrowRALinear(LinearGrowingBlock):
         if not self.use_dora:
             return super().forward(x)
         else:
-            out = F.linear(x, self._effective_weight(), self.linear.bias)
             if self.first_layer.store_input:
-                # DoRA forward bypasses A/B, so Fisher stats don't accumulate.
-                # Connect the A/B gradient path with zero output contribution so
-                # tensor_s and tensor_m_prev are populated during backward.
+                # Detach A/B in the main path so their gradients flow only through
+                # the shadow, giving clean Fisher statistics without double-counting.
+                if self.rank > 0:
+                    delta = self.scaling * (
+                        self.second_layer.weight.detach()
+                        @ self.first_layer.weight.detach()
+                    )
+                else:
+                    delta = torch.zeros_like(self.linear.weight)
+                assert self.magnitude is not None
+                weight = self.linear.weight + delta
+                eff_w = self.magnitude[:, None] * (
+                    weight / self._weight_norm(weight).detach()
+                )
+                out = F.linear(x, eff_w, self.linear.bias)
                 shadow = super().forward(x)
                 out = out + (shadow - shadow.detach())
+            else:
+                out = F.linear(x, self._effective_weight(), self.linear.bias)
             return out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -253,7 +266,7 @@ class GrowRALinear(LinearGrowingBlock):
             ext_scaling = self._scaling.get_scaling(max(1, self.rank))
             W = self.linear.weight + self._delta_weight()
             W = W + ext_scaling * (B_ext.weight @ A_ext.weight)
-            W_dora = self.magnitude[:, None] * (W / self._weight_norm(W))
+            W_dora = self.magnitude[:, None] * (W / self._weight_norm(W).detach())
             return F.linear(x, W_dora, self.linear.bias)
         return super().extended_forward(x)
 
@@ -469,7 +482,9 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         if not self.use_dora:
             return weight
         assert self.magnitude is not None
-        return self.magnitude[:, None, None, None] * (weight / self._weight_norm(weight))
+        return self.magnitude[:, None, None, None] * (
+            weight / self._weight_norm(weight).detach()
+        )
 
     def enable_dora(self) -> None:
         """Enable DoRA magnitude reparameterization."""
@@ -497,21 +512,43 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             return super().forward(x)
         else:
             orig = self._conv_base()
-            out = F.conv2d(
-                x,
-                self._effective_weight(),
-                orig.bias,
-                orig.stride,
-                orig.padding,
-                orig.dilation,
-                orig.groups,
-            )
             if self.first_layer.store_input:
-                # DoRA forward bypasses A/B, so Fisher stats don't accumulate.
-                # Connect the A/B gradient path with zero output contribution so
-                # tensor_s and tensor_m_prev are populated during backward.
+                # Detach A/B in the main path so their gradients flow only through
+                # the shadow, giving clean Fisher statistics without double-counting.
+                if self.rank > 0:
+                    a_w = self.first_layer.weight.detach()
+                    b_w = self.second_layer.weight.detach()
+                    b_mat = b_w.squeeze(-1).squeeze(-1)
+                    a_flat = a_w.view(a_w.shape[0], -1)
+                    delta = self.scaling * (b_mat @ a_flat).view_as(orig.weight)
+                else:
+                    delta = torch.zeros_like(orig.weight)
+                assert self.magnitude is not None
+                weight = orig.weight + delta
+                eff_w = self.magnitude[:, None, None, None] * (
+                    weight / self._weight_norm(weight).detach()
+                )
+                out = F.conv2d(
+                    x,
+                    eff_w,
+                    orig.bias,
+                    orig.stride,
+                    orig.padding,
+                    orig.dilation,
+                    orig.groups,
+                )
                 shadow = super().forward(x)
                 out = out + (shadow - shadow.detach())
+            else:
+                out = F.conv2d(
+                    x,
+                    self._effective_weight(),
+                    orig.bias,
+                    orig.stride,
+                    orig.padding,
+                    orig.dilation,
+                    orig.groups,
+                )
             return out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -549,7 +586,9 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             b_ext_mat = B_ext.weight.squeeze(-1).squeeze(-1)
             a_ext_flat = A_ext.weight.view(A_ext.weight.shape[0], -1)
             W = W + ext_scaling * (b_ext_mat @ a_ext_flat).view_as(orig.weight)
-            W_dora = self.magnitude[:, None, None, None] * (W / self._weight_norm(W))
+            W_dora = self.magnitude[:, None, None, None] * (
+                W / self._weight_norm(W).detach()
+            )
             return F.conv2d(
                 x,
                 W_dora,

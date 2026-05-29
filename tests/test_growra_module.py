@@ -1063,6 +1063,41 @@ class TestDoRALinear(TestCase):
             out_merged = lora.merge()(x)
         self.assertTrue(torch.allclose(out_lora, out_merged, atol=1e-5))
 
+    def test_dora_no_double_gradient_with_store_input(self):
+        """With store_input=True, A's gradient must equal the shadow-path gradient only.
+
+        The shadow is super().forward(x) = W0(x) + s*B(A(x)).
+        With the fix, the main DoRA path detaches A/B, so the shadow is the sole
+        contributor to A.grad.  Without the fix, the main path also contributes,
+        making A.grad strictly larger.
+        """
+        linear = _linear(10, 20)
+        lora = GrowRALinear(linear, rank=4, use_dora=True)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(5, 10)
+
+        # Reference: shadow-path gradient (call the parent block forward directly,
+        # bypassing the DoRA logic entirely).
+        lora.zero_grad()
+        shadow_out = LinearGrowingBlock.forward(lora, x)
+        shadow_out.sum().backward()
+        assert lora.first_layer.weight.grad is not None
+        grad_A_shadow_only = lora.first_layer.weight.grad.clone()
+
+        # With store_input=True (fixed): only shadow contributes to A.grad
+        lora.zero_grad()
+        lora.first_layer.store_input = True
+        lora(x).sum().backward()
+        assert lora.first_layer.weight.grad is not None
+        grad_A_with_store = lora.first_layer.weight.grad.clone()
+        lora.first_layer.store_input = False
+
+        self.assertTrue(
+            torch.allclose(grad_A_shadow_only, grad_A_with_store, atol=1e-5),
+            "DoRA+store_input: A gradient differs from shadow-only gradient",
+        )
+
 
 class TestDoRAConv2d(TestCase):
     def setUp(self):
@@ -1143,6 +1178,33 @@ class TestDoRAConv2d(TestCase):
             out_merged = lora.merge()(x)
         self.assertTrue(torch.allclose(out_lora, out_merged, atol=1e-5))
 
+    def test_dora_no_double_gradient_with_store_input(self):
+        """With store_input=True, A's gradient must equal the shadow-path gradient only."""
+        from gromo.containers.growing_block import Conv2dGrowingBlock
+
+        conv = _conv2d(3, 8, 3, padding=1)
+        lora = GrowRAConv2d(conv, rank=4, use_dora=True)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(2, 3, 8, 8)
+
+        lora.zero_grad()
+        Conv2dGrowingBlock.forward(lora, x).sum().backward()
+        assert lora.first_layer.weight.grad is not None
+        grad_A_shadow_only = lora.first_layer.weight.grad.clone()
+
+        lora.zero_grad()
+        lora.first_layer.store_input = True
+        lora(x).sum().backward()
+        assert lora.first_layer.weight.grad is not None
+        grad_A_with_store = lora.first_layer.weight.grad.clone()
+        lora.first_layer.store_input = False
+
+        self.assertTrue(
+            torch.allclose(grad_A_shadow_only, grad_A_with_store, atol=1e-5),
+            "DoRA+store_input: A gradient differs from shadow-only gradient",
+        )
+
 
 # ---------------------------------------------------------------------------
 # PEFT compatibility helpers
@@ -1180,6 +1242,156 @@ class TestGrowRAMatchesPEFT(TestCase):
 
     def setUp(self) -> None:
         torch.manual_seed(0)
+
+    @unittest.skipUnless(HAS_PEFT, "peft is not installed")
+    def test_dora_rank0_matches_peft(self):
+        """At rank=0, DoRA output equals base layer — same as PEFT DoRA at init."""
+        linear = _linear(10, 20)
+        growra = GrowRALinear(copy.deepcopy(linear), rank=0, use_dora=True)
+        peft_model = get_peft_model(
+            _SimpleModel(copy.deepcopy(linear)),
+            LoraConfig(
+                r=4, lora_alpha=4, target_modules=["fc"], use_dora=True, bias="none"
+            ),
+        )
+        x = _randn(4, 10)
+        peft_model.eval()
+        growra.eval()
+        with torch.no_grad():
+            out_growra = growra(x)
+            out_peft = peft_model(x)
+            out_base = linear(x)
+        self.assertTrue(torch.allclose(out_growra, out_base, atol=1e-6))
+        self.assertTrue(torch.allclose(out_peft, out_base, atol=1e-6))
+
+    @unittest.skipUnless(HAS_PEFT, "peft is not installed")
+    def test_dora_magnitude_init_matches_paper(self):
+        """Magnitude is initialized to column norms of W0 (paper eq. 5)."""
+        linear = _linear(10, 20)
+        growra = GrowRALinear(copy.deepcopy(linear), rank=0, use_dora=True)
+        expected = linear.weight.norm(dim=1)
+        assert growra.magnitude is not None
+        self.assertTrue(
+            torch.allclose(growra.magnitude.data, expected, atol=1e-6),
+            "magnitude should equal ||W0||_col at rank 0",
+        )
+
+    @unittest.skipUnless(HAS_PEFT, "peft is not installed")
+    def test_dora_forward_matches_peft_same_weights(self):
+        """With identical A, B, magnitude → GrowRA DoRA and PEFT DoRA produce same output."""
+        in_f, out_f, rank = 10, 20, 4
+        linear = _linear(in_f, out_f)
+
+        peft_model = get_peft_model(
+            _SimpleModel(copy.deepcopy(linear)),
+            LoraConfig(
+                r=rank, lora_alpha=rank, target_modules=["fc"], use_dora=True, bias="none"
+            ),
+        )
+        peft_mod = _find_peft_lora_module(peft_model)
+        nn.init.normal_(peft_mod.lora_A["default"].weight)
+        nn.init.normal_(peft_mod.lora_B["default"].weight)
+        peft_mag = peft_mod.lora_magnitude_vector["default"].weight.data.squeeze()
+        A_w = peft_mod.lora_A["default"].weight.data.clone()
+        B_w = peft_mod.lora_B["default"].weight.data.clone()
+
+        growra = GrowRALinear(
+            copy.deepcopy(linear), rank=rank, scaling=1.0, use_dora=True
+        )
+        with torch.no_grad():
+            growra.first_layer.weight.copy_(A_w)
+            growra.second_layer.weight.copy_(B_w)
+            assert growra.magnitude is not None
+            growra.magnitude.data.copy_(peft_mag)
+
+        x = _randn(5, in_f)
+        peft_model.eval()
+        growra.eval()
+        with torch.no_grad():
+            out_peft = peft_model(x)
+            out_growra = growra(x)
+        self.assertTrue(
+            torch.allclose(out_peft, out_growra, atol=1e-5),
+            f"Max diff: {(out_peft - out_growra).abs().max().item()}",
+        )
+
+    @unittest.skipUnless(HAS_PEFT, "peft is not installed")
+    def test_dora_norm_denominator_detached(self):
+        """||W+BA||_col is detached from gradient graph (DoRA paper §4.3)."""
+        linear = _linear(8, 12)
+        lora = GrowRALinear(linear, rank=4, use_dora=True)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(3, 8)
+        out = lora(x)
+        out.sum().backward()
+        assert lora.magnitude is not None
+        # With detach: magnitude.grad = sum_x(x * direction) — no norm-denominator term.
+        # With no detach: extra coupling term appears, making grad larger in magnitude.
+        # We verify by recomputing expected gradient manually.
+        with torch.no_grad():
+            W = linear.weight + lora._delta_weight()
+            W_norm = lora._weight_norm(W).squeeze(1)  # (out,)
+            direction = W / W_norm[:, None]  # normalised rows
+            # ∂L/∂m_i = sum_j direction[i,j] * sum_batch x[b,j]
+            x_sum = x.sum(0)  # (in,)
+            expected_mag_grad = (direction * x_sum).sum(1)  # (out,)
+        self.assertTrue(
+            torch.allclose(lora.magnitude.grad, expected_mag_grad, atol=1e-4),
+            "magnitude gradient incorrect — norm denominator may not be detached",
+        )
+
+    @unittest.skipUnless(HAS_PEFT, "peft is not installed")
+    def test_dora_gradients_match_peft(self):
+        """Gradients of A, B and magnitude match PEFT DoRA backward exactly."""
+        in_f, out_f, rank = 8, 12, 4
+        linear = _linear(in_f, out_f)
+
+        peft_model = get_peft_model(
+            _SimpleModel(copy.deepcopy(linear)),
+            LoraConfig(
+                r=rank, lora_alpha=rank, target_modules=["fc"], use_dora=True, bias="none"
+            ),
+        )
+        peft_mod = _find_peft_lora_module(peft_model)
+        torch.manual_seed(7)
+        nn.init.normal_(peft_mod.lora_A["default"].weight)
+        nn.init.normal_(peft_mod.lora_B["default"].weight)
+        A_w = peft_mod.lora_A["default"].weight.data.clone()
+        B_w = peft_mod.lora_B["default"].weight.data.clone()
+        peft_mag = peft_mod.lora_magnitude_vector["default"].weight.data.squeeze().clone()
+
+        growra = GrowRALinear(
+            copy.deepcopy(linear), rank=rank, scaling=1.0, use_dora=True
+        )
+        with torch.no_grad():
+            growra.first_layer.weight.copy_(A_w)
+            growra.second_layer.weight.copy_(B_w)
+            assert growra.magnitude is not None
+            growra.magnitude.data.copy_(peft_mag)
+
+        x = _randn(5, in_f)
+
+        peft_model.train()
+        peft_model(x).sum().backward()
+        grad_A_peft = peft_mod.lora_A["default"].weight.grad.clone()
+        grad_B_peft = peft_mod.lora_B["default"].weight.grad.clone()
+        grad_m_peft = (
+            peft_mod.lora_magnitude_vector["default"].weight.grad.squeeze().clone()
+        )
+
+        growra.train()
+        growra(x).sum().backward()
+
+        for name, g_peft, g_growra in [
+            ("A", grad_A_peft, growra.first_layer.weight.grad),
+            ("B", grad_B_peft, growra.second_layer.weight.grad),
+            ("magnitude", grad_m_peft, growra.magnitude.grad),
+        ]:
+            self.assertTrue(
+                torch.allclose(g_peft, g_growra, atol=1e-5),
+                f"grad {name} mismatch: max diff {(g_peft - g_growra).abs().max().item():.2e}",
+            )
 
     @unittest.skipUnless(HAS_PEFT, "peft is not installed")
     def test_rank_zero_equals_base(self):
@@ -1264,3 +1476,109 @@ class TestGrowRAMatchesPEFT(TestCase):
             torch.allclose(out_peft, out_growra, atol=1e-5),
             f"Max diff: {(out_peft - out_growra).abs().max().item()}",
         )
+
+    @unittest.skipUnless(HAS_PEFT, "peft is not installed")
+    def test_rslora_forward_matches_peft(self):
+        """RSLoRA scaling (1/sqrt(r)) matches PEFT use_rslora=True."""
+        in_f, out_f, rank = 8, 12, 4
+        linear = _linear(in_f, out_f)
+
+        peft_model = get_peft_model(
+            _SimpleModel(copy.deepcopy(linear)),
+            LoraConfig(
+                r=rank,
+                lora_alpha=1,
+                use_rslora=True,
+                target_modules=["fc"],
+                bias="none",
+            ),
+        )
+        peft_mod = _find_peft_lora_module(peft_model)
+        torch.manual_seed(3)
+        nn.init.normal_(peft_mod.lora_A["default"].weight)
+        nn.init.normal_(peft_mod.lora_B["default"].weight)
+        A_w = peft_mod.lora_A["default"].weight.data.clone()
+        B_w = peft_mod.lora_B["default"].weight.data.clone()
+
+        growra = GrowRALinear(copy.deepcopy(linear), rank=rank, scaling=lambda r: r**-0.5)
+        with torch.no_grad():
+            growra.first_layer.weight.copy_(A_w)
+            growra.second_layer.weight.copy_(B_w)
+
+        x = _randn(5, in_f)
+        peft_model.eval()
+        growra.eval()
+        with torch.no_grad():
+            out_peft = peft_model(x)
+            out_growra = growra(x)
+        self.assertTrue(
+            torch.allclose(out_peft, out_growra, atol=1e-5),
+            f"RSLoRA max diff: {(out_peft - out_growra).abs().max().item()}",
+        )
+
+    @unittest.skipUnless(HAS_PEFT, "peft is not installed")
+    def test_dora_rslora_forward_and_gradients_match_peft(self):
+        """DoRA + RSLoRA: forward and A/B/magnitude gradients match PEFT."""
+        in_f, out_f, rank = 8, 12, 4
+        linear = _linear(in_f, out_f)
+
+        peft_model = get_peft_model(
+            _SimpleModel(copy.deepcopy(linear)),
+            LoraConfig(
+                r=rank,
+                lora_alpha=1,
+                use_rslora=True,
+                use_dora=True,
+                target_modules=["fc"],
+                bias="none",
+            ),
+        )
+        peft_mod = _find_peft_lora_module(peft_model)
+        torch.manual_seed(5)
+        nn.init.normal_(peft_mod.lora_A["default"].weight)
+        nn.init.normal_(peft_mod.lora_B["default"].weight)
+        A_w = peft_mod.lora_A["default"].weight.data.clone()
+        B_w = peft_mod.lora_B["default"].weight.data.clone()
+        peft_mag = peft_mod.lora_magnitude_vector["default"].weight.data.squeeze().clone()
+
+        growra = GrowRALinear(
+            copy.deepcopy(linear), rank=rank, scaling=lambda r: r**-0.5, use_dora=True
+        )
+        with torch.no_grad():
+            growra.first_layer.weight.copy_(A_w)
+            growra.second_layer.weight.copy_(B_w)
+            assert growra.magnitude is not None
+            growra.magnitude.data.copy_(peft_mag)
+
+        x = _randn(5, in_f)
+        peft_model.eval()
+        growra.eval()
+        with torch.no_grad():
+            out_peft = peft_model(x)
+            out_growra = growra(x)
+        self.assertTrue(
+            torch.allclose(out_peft, out_growra, atol=1e-5),
+            f"DoRA+RSLoRA forward max diff: {(out_peft - out_growra).abs().max().item()}",
+        )
+
+        peft_model.train()
+        peft_model(x).sum().backward()
+        grad_A_peft = peft_mod.lora_A["default"].weight.grad.clone()
+        grad_B_peft = peft_mod.lora_B["default"].weight.grad.clone()
+        grad_m_peft = (
+            peft_mod.lora_magnitude_vector["default"].weight.grad.squeeze().clone()
+        )
+
+        growra.train()
+        growra(x).sum().backward()
+
+        for name, g_peft, g_growra in [
+            ("A", grad_A_peft, growra.first_layer.weight.grad),
+            ("B", grad_B_peft, growra.second_layer.weight.grad),
+            ("magnitude", grad_m_peft, growra.magnitude.grad),
+        ]:
+            assert g_growra is not None
+            self.assertTrue(
+                torch.allclose(g_peft, g_growra, atol=1e-5),
+                f"DoRA+RSLoRA grad {name} mismatch: max diff {(g_peft - g_growra).abs().max().item():.2e}",
+            )
