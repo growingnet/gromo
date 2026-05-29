@@ -186,10 +186,12 @@ class GrowRALinear(LinearGrowingBlock):
     def _weight_norm(self, weight: torch.Tensor) -> torch.Tensor:
         return weight.norm(dim=1, keepdim=True).clamp_min(torch.finfo(weight.dtype).eps)
 
-    def _delta_weight(self) -> torch.Tensor:
+    def _delta_weight(self, detach_adapter: bool = False) -> torch.Tensor:
         if self.rank == 0:
             return torch.zeros_like(self.linear.weight)
-        return self.scaling * (self.second_layer.weight @ self.first_layer.weight)
+        A = self.first_layer.weight.detach() if detach_adapter else self.first_layer.weight
+        B = self.second_layer.weight.detach() if detach_adapter else self.second_layer.weight
+        return self.scaling * (B @ A)
 
     def _effective_weight(self) -> torch.Tensor:
         weight = self.linear.weight + self._delta_weight()
@@ -222,28 +224,16 @@ class GrowRALinear(LinearGrowingBlock):
         """
         if not self.use_dora:
             return super().forward(x)
-        else:
-            if self.first_layer.store_input:
-                # Detach A/B in the main path so their gradients flow only through
-                # the shadow, giving clean Fisher statistics without double-counting.
-                if self.rank > 0:
-                    delta = self.scaling * (
-                        self.second_layer.weight.detach()
-                        @ self.first_layer.weight.detach()
-                    )
-                else:
-                    delta = torch.zeros_like(self.linear.weight)
-                assert self.magnitude is not None
-                weight = self.linear.weight + delta
-                eff_w = self.magnitude[:, None] * (
-                    weight / self._weight_norm(weight).detach()
-                )
-                out = F.linear(x, eff_w, self.linear.bias)
-                shadow = super().forward(x)
-                out = out + (shadow - shadow.detach())
-            else:
-                out = F.linear(x, self._effective_weight(), self.linear.bias)
-            return out
+        gathering = bool(self.first_layer.store_input)
+        assert self.magnitude is not None
+        weight = self.linear.weight + self._delta_weight(detach_adapter=gathering)
+        eff_w = self.magnitude[:, None] * (weight / self._weight_norm(weight).detach())
+        out = F.linear(x, eff_w, self.linear.bias)
+        if gathering:
+            # Shadow is the sole gradient path to A/B; prevents double-counting.
+            shadow = super().forward(x)
+            out = out + (shadow - shadow.detach())
+        return out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Extended forward including computed optimal growth directions.
@@ -462,12 +452,12 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             .clamp_min(torch.finfo(weight.dtype).eps)[:, None, None]
         )
 
-    def _delta_weight(self) -> torch.Tensor:
+    def _delta_weight(self, detach_adapter: bool = False) -> torch.Tensor:
         orig = self._conv_base()
         if self.rank == 0:
             return torch.zeros_like(orig.weight)
-        a_w = self.first_layer.weight
-        b_w = self.second_layer.weight
+        a_w = self.first_layer.weight.detach() if detach_adapter else self.first_layer.weight
+        b_w = self.second_layer.weight.detach() if detach_adapter else self.second_layer.weight
         assert b_w.shape[-2:] == (1, 1), (
             f"_delta_weight assumes 1x1 B kernel, got {b_w.shape}"
         )
@@ -510,46 +500,21 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         """
         if not self.use_dora:
             return super().forward(x)
-        else:
-            orig = self._conv_base()
-            if self.first_layer.store_input:
-                # Detach A/B in the main path so their gradients flow only through
-                # the shadow, giving clean Fisher statistics without double-counting.
-                if self.rank > 0:
-                    a_w = self.first_layer.weight.detach()
-                    b_w = self.second_layer.weight.detach()
-                    b_mat = b_w.squeeze(-1).squeeze(-1)
-                    a_flat = a_w.view(a_w.shape[0], -1)
-                    delta = self.scaling * (b_mat @ a_flat).view_as(orig.weight)
-                else:
-                    delta = torch.zeros_like(orig.weight)
-                assert self.magnitude is not None
-                weight = orig.weight + delta
-                eff_w = self.magnitude[:, None, None, None] * (
-                    weight / self._weight_norm(weight).detach()
-                )
-                out = F.conv2d(
-                    x,
-                    eff_w,
-                    orig.bias,
-                    orig.stride,
-                    orig.padding,
-                    orig.dilation,
-                    orig.groups,
-                )
-                shadow = super().forward(x)
-                out = out + (shadow - shadow.detach())
-            else:
-                out = F.conv2d(
-                    x,
-                    self._effective_weight(),
-                    orig.bias,
-                    orig.stride,
-                    orig.padding,
-                    orig.dilation,
-                    orig.groups,
-                )
-            return out
+        orig = self._conv_base()
+        gathering = bool(self.first_layer.store_input)
+        assert self.magnitude is not None
+        weight = orig.weight + self._delta_weight(detach_adapter=gathering)
+        eff_w = self.magnitude[:, None, None, None] * (
+            weight / self._weight_norm(weight).detach()
+        )
+        out = F.conv2d(
+            x, eff_w, orig.bias, orig.stride, orig.padding, orig.dilation, orig.groups
+        )
+        if gathering:
+            # Shadow is the sole gradient path to A/B; prevents double-counting.
+            shadow = super().forward(x)
+            out = out + (shadow - shadow.detach())
+        return out
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Extended forward including computed optimal growth directions.
