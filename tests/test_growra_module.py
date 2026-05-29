@@ -498,6 +498,40 @@ class TestEnableDora(TestCase):
             out_after = lora(x)
         self.assertTrue(torch.allclose(out_before, out_after, atol=1e-6))
 
+    def test_enable_dora_linear_output_unchanged_at_nonzero_rank(self):
+        """enable_dora() on an adapter with BA != 0 must not change the output."""
+        linear = _linear(10, 20)
+        lora = GrowRALinear(linear, rank=4)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(3, 10)
+        with torch.no_grad():
+            out_before = lora(x).clone()
+        lora.enable_dora()
+        with torch.no_grad():
+            out_after = lora(x)
+        self.assertTrue(
+            torch.allclose(out_before, out_after, atol=1e-5),
+            "enable_dora() changed the output when rank > 0 and BA != 0",
+        )
+
+    def test_enable_dora_conv_output_unchanged_at_nonzero_rank(self):
+        """enable_dora() on Conv2d with BA != 0 must not change the output."""
+        conv = _conv2d(3, 8, 3, padding=1)
+        lora = GrowRAConv2d(conv, rank=4)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(2, 3, 8, 8)
+        with torch.no_grad():
+            out_before = lora(x).clone()
+        lora.enable_dora()
+        with torch.no_grad():
+            out_after = lora(x)
+        self.assertTrue(
+            torch.allclose(out_before, out_after, atol=1e-5),
+            "enable_dora() changed the output when rank > 0 and BA != 0",
+        )
+
     def test_enable_dora_conv_post_construction(self):
         lora = GrowRAConv2d(_conv2d(3, 8, 3, padding=1), rank=2)
         self.assertFalse(lora.use_dora)

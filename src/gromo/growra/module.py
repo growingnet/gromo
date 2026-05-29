@@ -202,7 +202,9 @@ class GrowRALinear(LinearGrowingBlock):
         """Enable DoRA magnitude reparameterization."""
         self.use_dora = True
         with torch.no_grad():
-            magnitude = self._weight_norm(self.linear.weight).squeeze(1)
+            magnitude = self._weight_norm(
+                self.linear.weight + self._delta_weight()
+            ).squeeze(1)
         self.magnitude = nn.Parameter(magnitude.clone())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -474,9 +476,10 @@ class GrowRAConv2d(Conv2dGrowingBlock):
     def enable_dora(self) -> None:
         """Enable DoRA magnitude reparameterization."""
         self.use_dora = True
-        orig = self._conv_base()
         with torch.no_grad():
-            magnitude = self._weight_norm(orig.weight).reshape(-1)
+            magnitude = self._weight_norm(
+                self._conv_base().weight + self._delta_weight()
+            ).reshape(-1)
         self.magnitude = nn.Parameter(magnitude.clone())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
