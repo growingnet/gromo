@@ -350,6 +350,12 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         Device for parameters.
     name : str
         Name for the growing block.
+
+    Raises
+    ------
+    ValueError
+        If ``conv`` uses ``groups > 1``. Grouped convolutions are not supported
+        because the LoRA adapter assumes a standard (groups=1) weight layout.
     """
 
     def __init__(
