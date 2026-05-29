@@ -263,8 +263,9 @@ class GrowRALinear(LinearGrowingBlock):
                 return F.linear(x, self._effective_weight(), self.linear.bias)
             ext_scaling = self._scaling.get_scaling(max(1, self.rank))
             W = self.linear.weight + self._delta_weight()
+            W_base_norm = self._weight_norm(W).detach()
             W = W + ext_scaling * (B_ext.weight @ A_ext.weight)
-            W_dora = self.magnitude[:, None] * (W / self._weight_norm(W).detach())
+            W_dora = self.magnitude[:, None] * (W / W_base_norm)
             return F.linear(x, W_dora, self.linear.bias)
         return super().extended_forward(x)
 
@@ -572,15 +573,14 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 )
             ext_scaling = self._scaling.get_scaling(max(1, self.rank))
             W = orig.weight + self._delta_weight()
+            W_base_norm = self._weight_norm(W).detach()
             assert B_ext.weight.shape[-2:] == (1, 1), (
                 f"B_ext kernel must be 1x1, got {B_ext.weight.shape}"
             )
             b_ext_mat = B_ext.weight.squeeze(-1).squeeze(-1)
             a_ext_flat = A_ext.weight.view(A_ext.weight.shape[0], -1)
             W = W + ext_scaling * (b_ext_mat @ a_ext_flat).view_as(orig.weight)
-            W_dora = self.magnitude[:, None, None, None] * (
-                W / self._weight_norm(W).detach()
-            )
+            W_dora = self.magnitude[:, None, None, None] * (W / W_base_norm)
             return F.conv2d(
                 x,
                 W_dora,

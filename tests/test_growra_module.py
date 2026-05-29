@@ -1044,6 +1044,47 @@ class TestDoRALinear(TestCase):
             "DoRA extended_forward must incorporate growth directions",
         )
 
+    def test_extended_forward_dora_increment_linear_in_extension(self):
+        """extended_forward increment must scale linearly with extension magnitude.
+
+        Normalizing against ||W_ext|| causes norm drift when the extension is large,
+        making the increment nonlinear. The norm reference must be frozen at ||W_base||.
+        """
+        torch.manual_seed(0)
+        lora = GrowRALinear(_linear(8, 16), rank=2, use_dora=True)
+        x = _randn(4, 8)
+        lora.init_computation()
+        lora.zero_grad()
+        lora(x).sum().backward()
+        lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=2,
+            compute_delta=False,
+            use_covariance=False,
+            use_projection=False,
+            alpha_zero=False,
+            omega_zero=False,
+            ignore_singular_values=True,
+        )
+        lora.reset_computation()
+        self.assertIsNotNone(lora.first_layer.extended_output_layer)
+        B_ext = lora.second_layer.extended_input_layer
+        assert B_ext is not None
+        # Amplify extension so norm drift is measurable
+        B_ext.weight.data *= 20.0
+        x_eval = _randn(3, 8)
+        with torch.no_grad():
+            out_base = lora(x_eval)
+            out_ext_1 = lora.extended_forward(x_eval)
+            B_ext.weight.data *= 2.0
+            out_ext_2 = lora.extended_forward(x_eval)
+        delta_1 = out_ext_1 - out_base
+        delta_2 = out_ext_2 - out_base
+        self.assertTrue(
+            torch.allclose(delta_2, 2.0 * delta_1, atol=1e-4),
+            "DoRA extended_forward: increment must scale linearly with extension magnitude",
+        )
+
     def test_magnitude_is_trainable(self):
         lora = GrowRALinear(_linear(10, 20), rank=4, use_dora=True)
         self.assertIsNotNone(lora.magnitude)
@@ -1208,6 +1249,42 @@ class TestDoRAConv2d(TestCase):
         self.assertTrue(
             torch.allclose(grad_A_shadow_only, grad_A_with_store, atol=1e-5),
             "DoRA+store_input: A gradient differs from shadow-only gradient",
+        )
+
+    def test_extended_forward_dora_increment_linear_in_extension(self):
+        """Conv2d extended_forward increment must scale linearly with extension magnitude."""
+        torch.manual_seed(0)
+        lora = GrowRAConv2d(_conv2d(3, 8, 3, padding=1), rank=2, use_dora=True)
+        x = _randn(2, 3, 8, 8)
+        lora.init_computation()
+        lora.zero_grad()
+        lora(x).sum().backward()
+        lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=2,
+            compute_delta=False,
+            use_covariance=False,
+            use_projection=False,
+            alpha_zero=False,
+            omega_zero=False,
+            ignore_singular_values=True,
+        )
+        lora.reset_computation()
+        self.assertIsNotNone(lora.first_layer.extended_output_layer)
+        B_ext = lora.second_layer.extended_input_layer
+        assert B_ext is not None
+        B_ext.weight.data *= 20.0
+        x_eval = _randn(2, 3, 8, 8)
+        with torch.no_grad():
+            out_base = lora(x_eval)
+            out_ext_1 = lora.extended_forward(x_eval)
+            B_ext.weight.data *= 2.0
+            out_ext_2 = lora.extended_forward(x_eval)
+        delta_1 = out_ext_1 - out_base
+        delta_2 = out_ext_2 - out_base
+        self.assertTrue(
+            torch.allclose(delta_2, 2.0 * delta_1, atol=1e-4),
+            "DoRA Conv2d extended_forward: increment must scale linearly with extension magnitude",
         )
 
 
