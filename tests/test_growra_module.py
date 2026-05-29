@@ -683,6 +683,11 @@ class TestGrowingGrowraConv2dInit(TestCase):
         lora = GrowRAConv2d(conv, rank=4, scaling=lambda r: 1.0 / r)
         self.assertAlmostEqual(lora.scaling, 0.25)
 
+    def test_grouped_conv_raises(self):
+        conv = _conv2d(4, 8, kernel_size=3, padding=1, groups=2)
+        with self.assertRaises(ValueError):
+            GrowRAConv2d(conv, rank=2)
+
 
 class TestGrowingGrowraConv2dForward(TestCase):
     """Tests for GrowRAConv2d forward pass."""

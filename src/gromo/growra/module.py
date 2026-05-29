@@ -368,6 +368,11 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             underlying = conv.layer
         else:
             underlying = conv
+        if underlying.groups > 1:
+            raise ValueError(
+                f"GrowRAConv2d does not support grouped convolutions (groups={underlying.groups}). "
+                "The LoRA adapter assumes a standard (groups=1) convolution."
+            )
         if device is None:
             device = underlying.weight.device
         self.in_channels: int = int(underlying.in_channels)
