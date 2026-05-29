@@ -49,8 +49,12 @@ class Scaling(nn.Module, SupportsExtendedForward):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply scaling to ``x``; returns ``x`` unchanged when rank is 0."""
-        scale = 1.0 if self.rank_getter() == 0 else self.scaling_fn(self.rank_getter())
+        scale = 1.0 if self.rank_getter() == 0 else self.get_scaling(self.rank_getter())
         return x * scale
+
+    def get_scaling(self, rank: int) -> float:
+        """Return the scaling factor for the given rank."""
+        return self.scaling_fn(rank)
 
     def extended_forward(
         self,
@@ -58,7 +62,7 @@ class Scaling(nn.Module, SupportsExtendedForward):
         x_ext: torch.Tensor | None,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """Apply scaling to both ``x`` and ``x_ext`` using at least rank 1."""
-        scale = self.scaling_fn(max(1, self.rank_getter()))
+        scale = self.get_scaling(max(1, self.rank_getter()))
         if x is not None:
             x = x * scale
         if x_ext is not None:
@@ -128,6 +132,8 @@ class GrowRALinear(LinearGrowingBlock):
 
         dropout_module = nn.Dropout(p=dropout)
 
+        _scaling = Scaling(self.scaling_fn, lambda: self.rank)
+
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -141,12 +147,13 @@ class GrowRALinear(LinearGrowingBlock):
                 target_hidden_features=target_rank,
                 activation=activation,
                 pre_activation=dropout_module,
-                pre_addition_function=Scaling(self.scaling_fn, lambda: self.rank),
+                pre_addition_function=_scaling,
                 name=name,
                 kwargs_layer={"use_bias": False},
                 downsample=linear,
                 device=device,
             )
+        self._scaling = _scaling
         self.linear = linear
         self.dropout = dropout_module
         self.use_dora = False
@@ -243,7 +250,7 @@ class GrowRALinear(LinearGrowingBlock):
                 return torch_functional.F.linear(
                     x, self._effective_weight(), self.linear.bias
                 )
-            ext_scaling = self.scaling_fn(max(1, self.rank))
+            ext_scaling = self._scaling.get_scaling(max(1, self.rank))
             W = self.linear.weight + self._delta_weight()
             W = W + ext_scaling * (B_ext.weight @ A_ext.weight)
             W_dora = self.magnitude[:, None] * (W / self._weight_norm(W))
@@ -367,6 +374,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             activation = nn.Identity()
 
         dropout_module = nn.Dropout(p=dropout)
+        _scaling = Scaling(self.scaling_fn, lambda: self.rank)
 
         with warnings.catch_warnings():
             warnings.filterwarnings(
@@ -381,7 +389,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 target_hidden_channels=target_rank,
                 activation=activation,
                 pre_activation=dropout_module,
-                pre_addition_function=Scaling(self.scaling_fn, lambda: self.rank),
+                pre_addition_function=_scaling,
                 name=name,
                 kwargs_first_layer={
                     "use_bias": False,
@@ -399,6 +407,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 downsample=conv,
                 device=device,
             )
+        self._scaling = _scaling
         self.conv = conv
         self.dropout = dropout_module
         self.use_dora = False
@@ -531,7 +540,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                     orig.dilation,
                     orig.groups,
                 )
-            ext_scaling = self.scaling_fn(max(1, self.rank))
+            ext_scaling = self._scaling.get_scaling(max(1, self.rank))
             W = orig.weight + self._delta_weight()
             assert B_ext.weight.shape[-2:] == (1, 1), (
                 f"B_ext kernel must be 1x1, got {B_ext.weight.shape}"
