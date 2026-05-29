@@ -210,6 +210,8 @@ class GrowRALinear(LinearGrowingBlock):
 
     def enable_dora(self) -> None:
         """Enable DoRA magnitude reparameterization."""
+        if self.use_dora:
+            return
         self.use_dora = True
         with torch.no_grad():
             magnitude = self._weight_norm(
@@ -506,6 +508,8 @@ class GrowRAConv2d(Conv2dGrowingBlock):
 
     def enable_dora(self) -> None:
         """Enable DoRA magnitude reparameterization."""
+        if self.use_dora:
+            return
         self.use_dora = True
         with torch.no_grad():
             magnitude = self._weight_norm(
