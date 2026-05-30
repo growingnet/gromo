@@ -3760,6 +3760,81 @@ class GrowingModule(torch.nn.Module):
             noise_ratio=noise_ratio,
         )
 
+    @torch.no_grad()
+    def prune_hidden_neurons_in(
+        self,
+        indices_to_remove: list[int],
+        ) -> None:
+        """
+        Prune neurons from the hidden dim between ``self.previous_module`` and ``self``.
+
+        Symmetric counterpart of ``create_layer_extensions``: shrinks the hidden
+        dimension by dropping rows from ``previous_module.weight`` and the
+        matching columns from ``self.weight``.
+
+        Parameters
+        ----------
+        indices_to_remove: list[int]
+            Hidden-dim indices to delete. De-duplicated and sorted internally.
+            Empty list leads to no-operation; out-of-range raises IndexError.
+        """
+        # 0) Need a previous GrowingModule to coordinate with.
+        assert isinstance(self.previous_module, GrowingModule), (
+            f"prune_hidden_neurons_in requires a previous GrowingModule, "
+            f"got {type(self.previous_module)}"
+        )
+
+        # 1) Normalize + validate indices.
+        if len(indices_to_remove) == 0:
+            return
+        indices = sorted({int(i) for i in indices_to_remove})
+        n_hidden = self.previous_module.out_features
+        if indices[0] < 0 or indices[-1] >= n_hidden:
+            raise IndexError(
+                f"indices {indices} out of range for hidden dim of size {n_hidden}"
+            )
+        if len(indices) == n_hidden:
+            raise ValueError("Cannot prune all neurons of a layer")
+
+        # 2) Drop matching dims on both sides. Subclasses implement the slicing.
+        self.previous_module.prune_layer_out(indices)   # rows of W_prev， reshape tensor m
+        self._prune_post_layer_function(indices) # post-layer of the previous module
+        self.prune_layer_in(indices)                    # cols of W_self, reshape tensor m and s
+
+    
+
+
+    @torch.no_grad()
+    def _prune_post_layer_function(self, indices: list[int]) -> None:
+        """Prune the post-layer function of the previous module, if it exists and has num_features.
+
+        Parameters:
+        indices: list[int] clean prune list, already validated and sorted"""
+
+        post_fn = self.previous_module.post_layer_function
+        if post_fn is not None:
+            sub_modules = list(post_fn) if isinstance(post_fn, torch.nn.Sequential) else [post_fn]
+            for m in sub_modules:
+                if not hasattr(m, "num_features"): # skip modules that don't have num_features (e.g. ReLU)
+                    continue
+                
+                device = m.weight.device if isinstance(getattr(m, "weight", None), torch.nn.Parameter) else ( m.running_mean.device if getattr(m, "running_mean", None) is not None else "cpu")
+
+                keep_mask = torch.ones(m.num_features, dtype=torch.bool, device=device)
+
+                keep_mask[indices] = False
+                if isinstance(getattr(m, "weight", None), torch.nn.Parameter):
+                    m.weight = torch.nn.Parameter(m.weight[keep_mask].clone())
+                if isinstance(getattr(m, "bias", None), torch.nn.Parameter):
+                    m.bias = torch.nn.Parameter(m.bias[keep_mask].clone())
+                if getattr(m, "running_mean", None) is not None:
+                    m.running_mean = m.running_mean[keep_mask].clone()
+                if getattr(m, "running_var", None) is not None:
+                    m.running_var = m.running_var[keep_mask].clone()
+                m.num_features = int(keep_mask.sum().item())
+
+
+
     def missing_neurons(self) -> int:
         """
         Get the number of missing neurons to reach the target hidden features.

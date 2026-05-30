@@ -1233,6 +1233,88 @@ class Conv2dGrowingModule(GrowingModule):
             update_function=self.compute_m_update,
             name=self.tensor_m.name,
         )
+    
+
+
+
+    @torch.no_grad()
+    def prune_layer_in(self, indices_to_remove:list[int])->None:
+        """ Shrink "self.layer" by dropping the input channels."""
+        keep = [i for i in range(self.in_channels) if i not in set(indices_to_remove)]
+        device = self.layer.weight.device
+        keep_idx = torch.tensor(keep, device=device, dtype = torch.long)
+
+        new_layer = torch.nn.Conv2d(
+            in_channels = len(keep),
+            out_channels= self.out_channels,
+            kernel_size = self.layer.kernel_size,
+            stride = self.layer.stride,
+            padding = self.layer.padding,
+            dilation =self.layer.dilation,
+            groups = self.layer.groups,
+            bias = (self.layer.bias is not None),
+            padding_mode = self.layer.padding_mode,
+            device = device,
+
+        )
+        new_layer.weight.data =self.layer.weight.index_select(1,keep_idx).clone()
+        if self.layer.bias is not None:
+            new_layer.bias.data = self.layer.bias.clone()
+        
+        self.layer = new_layer
+
+        in_dim = (
+            self.in_channels * self.layer.kernel_size[0] * self.layer.kernel_size[1]
+            + self.use_bias
+        )
+        self._tensor_s = TensorStatistic(
+            (in_dim, in_dim),
+            update_function=self.compute_s_update,
+            name=self.tensor_s.name,
+        )
+        self.tensor_m = TensorStatistic(
+            (in_dim, self.out_channels),
+            update_function=self.compute_m_update,
+            name=self.tensor_m.name,
+        )
+
+
+
+    @torch.no_grad()
+    def prune_layer_out(self, indices_to_remove:list[int])->None:
+        """ Shrink "self.layer"by dropping the output channels."""
+        keep = [i for i in range(self.out_features) if i not in set(indices_to_remove)]
+        device = self.layer.weight.device
+        keep_idx = torch.tensor(keep, device=device, dtype = torch.long)
+
+        new_layer = torch.nn.Conv2d(
+            in_channels = self.in_channels,
+            out_channels = len(keep),
+            kernel_size = self.layer.kernel_size,
+            stride = self.layer.stride,
+            padding = self.layer.padding,
+            dilation =self.layer.dilation,
+            groups = self.layer.groups,
+            bias = (self.layer.bias is not None),
+            padding_mode = self.layer.padding_mode,
+            device = device,
+        )
+        new_layer.weight.data = self.layer.weight.index_select(0,keep_idx).clone()
+        if self.layer.bias is not None:
+            new_layer.bias.data = self.layer.bias.index_select(0,keep_idx).clone()
+        
+        self.layer = new_layer
+
+        in_dim = (
+            self.in_channels * self.layer.kernel_size[0] * self.layer.kernel_size[1]
+            + self.use_bias
+        )
+        self.tensor_m = TensorStatistic(
+            (in_dim, self.out_channels),
+            update_function=self.compute_m_update,
+            name=self.tensor_m.name,
+        )
+
 
     def update_input_size(  # type: ignore
         self,

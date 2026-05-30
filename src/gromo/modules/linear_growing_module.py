@@ -1100,3 +1100,79 @@ class LinearGrowingModule(GrowingModule):
         self.extended_output_layer = torch.nn.Linear(
             self.in_features, extension_size, bias=self.use_bias, device=self.device
         )
+
+    @torch.no_grad()
+    def prune_layer_in(self, indices_to_remove: list[int]) -> None:
+        """
+        Shrink ``self.layer`` by dropping the given input columns of its weight.
+
+        Bias is unchanged (bias dim = out_features).
+
+        Parameters
+        ----------
+        indices_to_remove: list[int]
+            Column indices in ``self.layer.weight`` to drop. Assumed already
+            de-duplicated, sorted, and in-range by the caller.
+        """
+        keep = [i for i in range(self.in_features) if i not in set(indices_to_remove)]
+        keep_idx = torch.tensor(keep, device=self.device, dtype=torch.long)
+
+        new_layer = torch.nn.Linear(
+            in_features=len(keep),
+            out_features=self.out_features,
+            bias=self.use_bias,
+            device=self.device,
+        )
+        new_layer.weight.data = self.layer.weight.index_select(1, keep_idx).clone()
+        if self.use_bias:
+            new_layer.bias.data = self.layer.bias.data.clone()  #bias unchanged
+
+        self.layer = new_layer
+
+        use_bias = int(self.use_bias) # convert bool to int for the shape of S and M
+        self._tensor_s = TensorStatistic(
+            (self.in_features + use_bias, self.in_features + use_bias),
+            update_function=self.compute_s_update,
+            name=self.tensor_s.name,
+        )
+        self.tensor_m = TensorStatistic(
+            (self.in_features + use_bias, self.out_features),
+            update_function=self.compute_m_update,
+            name=self.tensor_m.name,
+        )
+
+
+
+    @torch.no_grad()
+    def prune_layer_out(self, indices_to_remove: list[int]) -> None:
+        """
+        Shrink ``self.layer`` by dropping the given output rows of its weight
+        (and the matching bias entries, if any).
+
+        Parameters
+        ----------
+        indices_to_remove: list[int]
+            Row indices in ``self.layer.weight`` to drop. Assumed already
+            de-duplicated, sorted, and in-range by the caller.
+        """
+        keep = [i for i in range(self.out_features) if i not in set(indices_to_remove)]
+        keep_idx = torch.tensor(keep, device=self.device, dtype=torch.long)
+
+        new_layer = torch.nn.Linear(
+            in_features=self.in_features,
+            out_features=len(keep),
+            bias=self.use_bias,
+            device=self.device,
+        )
+        new_layer.weight.data = self.layer.weight.index_select(0, keep_idx).clone()
+        if self.use_bias:
+            new_layer.bias.data = self.layer.bias.data.index_select(0, keep_idx).clone()
+
+        self.layer = new_layer
+
+        self.tensor_m = TensorStatistic(
+            (self.in_features + int(self.use_bias), self.out_features),
+            update_function=self.compute_m_update,
+            name=self.tensor_m.name,
+        )
+
