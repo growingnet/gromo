@@ -677,6 +677,88 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
 
         self.demo_couple = {b: self.create_demo_layers(b) for b in (True, False)}
 
+    # ------------------------------------------------------------------ #
+    # Pruning
+    # ------------------------------------------------------------------ #
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_prune_layer_out(self, bias):
+        """prune_layer_out drops the given output channels (and matching bias)."""
+        torch.manual_seed(0)
+        layer = self._tested_class(
+            in_channels=2, out_channels=5, kernel_size=(3, 3), padding=1,
+            use_bias=bias, device=global_device(),
+        )
+        original = deepcopy(layer)
+        indices = [1, 3]
+        keep = torch.tensor([0, 2, 4], device=global_device())
+
+        layer.prune_layer_out(indices)
+
+        self.assertEqual(layer.in_channels, original.in_channels)
+        self.assertEqual(layer.out_channels, original.out_channels - len(indices))
+        self.assertAllClose(layer.layer.weight, original.layer.weight.index_select(0, keep))
+        if bias:
+            self.assertAllClose(layer.layer.bias, original.layer.bias.index_select(0, keep))
+        # forward equivalence on the channel axis: pruned(x) == original(x)[:, keep]
+        x = torch.randn(4, 2, 8, 8, device=global_device())
+        self.assertAllClose(layer(x), original(x).index_select(1, keep))
+        # recreated tensor_m shape: (in_channels * k0 * k1 + bias, out_channels)
+        k0, k1 = layer.layer.kernel_size
+        in_dim = layer.in_channels * k0 * k1 + int(bias)
+        self.assertEqual(layer.tensor_m._shape, (in_dim, layer.out_channels))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_prune_layer_in(self, bias):
+        """prune_layer_in drops the given input channels; recreates tensor_s and tensor_m."""
+        torch.manual_seed(0)
+        layer = self._tested_class(
+            in_channels=4, out_channels=3, kernel_size=(3, 3), padding=1,
+            use_bias=bias, device=global_device(),
+        )
+        original = deepcopy(layer)
+        indices = [1, 3]
+        keep = torch.tensor([0, 2], device=global_device())
+
+        layer.prune_layer_in(indices)
+
+        self.assertEqual(layer.in_channels, original.in_channels - len(indices))
+        self.assertEqual(layer.out_channels, original.out_channels)
+        self.assertAllClose(layer.layer.weight, original.layer.weight.index_select(1, keep))
+        if bias:
+            self.assertAllClose(layer.layer.bias, original.layer.bias)
+        # forward equivalence: zeroing the removed input channels of the original
+        # equals feeding only the kept channels to the pruned layer
+        x = torch.randn(4, 4, 8, 8, device=global_device())
+        x_masked = x.clone()
+        x_masked[:, indices] = 0.0
+        self.assertAllClose(layer(x.index_select(1, keep)), original(x_masked))
+        # recreated stats shapes: in_dim = in_channels * k0 * k1 + bias
+        k0, k1 = layer.layer.kernel_size
+        in_dim = layer.in_channels * k0 * k1 + int(bias)
+        self.assertEqual(layer.tensor_s._shape, (in_dim, in_dim))
+        self.assertEqual(layer.tensor_m._shape, (in_dim, layer.out_channels))
+
+    def test_prune_layer_in_statistics_regather(self):
+        """After prune_layer_in, the re-created tensor_s can accumulate a fresh gather."""
+        torch.manual_seed(0)
+        layer = self._tested_class(
+            in_channels=4, out_channels=3, kernel_size=(3, 3), padding=1,
+            use_bias=True, device=global_device(),
+        )
+        layer.prune_layer_in([1, 3])
+
+        # gather statistics on the pruned layer (mirrors test_tensor_s_update_*)
+        layer.store_input = True
+        layer.tensor_s.init()
+        x = torch.randn(5, layer.in_channels, 8, 8, device=global_device())
+        layer(x)
+        layer.tensor_s.update()  # would trip the size assert if _shape were wrong
+
+        k0, k1 = layer.layer.kernel_size
+        in_dim = layer.in_channels * k0 * k1 + 1  # +1 for bias
+        self.assertEqual(layer.tensor_s.samples, x.size(0))
+        self.assertShapeEqual(layer.tensor_s(), (in_dim, in_dim))
+
     def test_get_fan_in_from_layer(self):
         """Test get_fan_in_from_layer method."""
         layer = self.demo_couple[True][0]

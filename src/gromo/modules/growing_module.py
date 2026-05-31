@@ -3764,7 +3764,7 @@ class GrowingModule(torch.nn.Module):
     def prune_hidden_neurons_in(
         self,
         indices_to_remove: list[int],
-        ) -> None:
+    ) -> None:
         """
         Prune neurons from the hidden dim between ``self.previous_module`` and ``self``.
 
@@ -3797,12 +3797,9 @@ class GrowingModule(torch.nn.Module):
             raise ValueError("Cannot prune all neurons of a layer")
 
         # 2) Drop matching dims on both sides. Subclasses implement the slicing.
-        self.previous_module.prune_layer_out(indices)   # rows of W_prev， reshape tensor m
-        self._prune_post_layer_function(indices) # post-layer of the previous module
-        self.prune_layer_in(indices)                    # cols of W_self, reshape tensor m and s
-
-    
-
+        self.previous_module.prune_layer_out(indices)  # rows of W_prev， reshape tensor m
+        self._prune_post_layer_function(indices)  # post-layer of the previous module
+        self.prune_layer_in(indices)  # cols of W_self, reshape tensor m and s
 
     @torch.no_grad()
     def _prune_post_layer_function(self, indices: list[int]) -> None:
@@ -3813,12 +3810,24 @@ class GrowingModule(torch.nn.Module):
 
         post_fn = self.previous_module.post_layer_function
         if post_fn is not None:
-            sub_modules = list(post_fn) if isinstance(post_fn, torch.nn.Sequential) else [post_fn]
+            sub_modules = (
+                list(post_fn) if isinstance(post_fn, torch.nn.Sequential) else [post_fn]
+            )
             for m in sub_modules:
-                if not hasattr(m, "num_features"): # skip modules that don't have num_features (e.g. ReLU)
+                if not hasattr(
+                    m, "num_features"
+                ):  # skip modules that don't have num_features (e.g. ReLU)
                     continue
-                
-                device = m.weight.device if isinstance(getattr(m, "weight", None), torch.nn.Parameter) else ( m.running_mean.device if getattr(m, "running_mean", None) is not None else "cpu")
+
+                device = (
+                    m.weight.device
+                    if isinstance(getattr(m, "weight", None), torch.nn.Parameter)
+                    else (
+                        m.running_mean.device
+                        if getattr(m, "running_mean", None) is not None
+                        else "cpu"
+                    )
+                )
 
                 keep_mask = torch.ones(m.num_features, dtype=torch.bool, device=device)
 
@@ -3832,8 +3841,6 @@ class GrowingModule(torch.nn.Module):
                 if getattr(m, "running_var", None) is not None:
                     m.running_var = m.running_var[keep_mask].clone()
                 m.num_features = int(keep_mask.sum().item())
-
-
 
     def missing_neurons(self) -> int:
         """

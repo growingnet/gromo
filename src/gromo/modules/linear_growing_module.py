@@ -1125,11 +1125,11 @@ class LinearGrowingModule(GrowingModule):
         )
         new_layer.weight.data = self.layer.weight.index_select(1, keep_idx).clone()
         if self.use_bias:
-            new_layer.bias.data = self.layer.bias.data.clone()  #bias unchanged
+            new_layer.bias.data = self.layer.bias.data.clone()  # bias unchanged
 
         self.layer = new_layer
 
-        use_bias = int(self.use_bias) # convert bool to int for the shape of S and M
+        use_bias = int(self.use_bias)  # convert bool to int for the shape of S and M
         self._tensor_s = TensorStatistic(
             (self.in_features + use_bias, self.in_features + use_bias),
             update_function=self.compute_s_update,
@@ -1140,8 +1140,6 @@ class LinearGrowingModule(GrowingModule):
             update_function=self.compute_m_update,
             name=self.tensor_m.name,
         )
-
-
 
     @torch.no_grad()
     def prune_layer_out(self, indices_to_remove: list[int]) -> None:
@@ -1175,4 +1173,3 @@ class LinearGrowingModule(GrowingModule):
             update_function=self.compute_m_update,
             name=self.tensor_m.name,
         )
-

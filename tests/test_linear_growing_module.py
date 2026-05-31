@@ -464,6 +464,158 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         for bias in (True, False):
             self.demo_layers[bias] = self.create_demo_layers(bias)
 
+    # ------------------------------------------------------------------ #
+    # Pruning
+    # ------------------------------------------------------------------ #
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_prune_layer_out(self, bias):
+        """prune_layer_out drops the given output rows (and matching bias)."""
+        torch.manual_seed(self.config.RANDOM_SEED)
+        layer = self.create_linear_layer(in_features=5, out_features=4, bias=bias)
+        original = deepcopy(layer)
+        indices = [1, 3]
+        keep = torch.tensor([0, 2], device=global_device())
+
+        layer.prune_layer_out(indices)
+
+        self.assertEqual(layer.in_features, original.in_features)
+        self.assertEqual(layer.out_features, original.out_features - len(indices))
+        self.assertAllClose(layer.weight, original.weight.index_select(0, keep))
+        if bias:
+            self.assertAllClose(layer.bias, original.bias.index_select(0, keep))
+        # forward equivalence: pruned(x) == original(x)[:, keep]
+        x = torch.randn(self.n, 5, device=global_device())
+        self.assertAllClose(layer(x), original(x).index_select(1, keep))
+        # recreated tensor_m shape
+        self.assertEqual(
+            layer.tensor_m._shape, (layer.in_features + int(bias), layer.out_features)
+        )
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_prune_layer_in(self, bias):
+        """prune_layer_in drops the given input columns; bias unchanged."""
+        torch.manual_seed(self.config.RANDOM_SEED)
+        layer = self.create_linear_layer(in_features=5, out_features=4, bias=bias)
+        original = deepcopy(layer)
+        indices = [1, 3]
+        keep = torch.tensor([0, 2, 4], device=global_device())
+
+        layer.prune_layer_in(indices)
+
+        self.assertEqual(layer.in_features, original.in_features - len(indices))
+        self.assertEqual(layer.out_features, original.out_features)
+        self.assertAllClose(layer.weight, original.weight.index_select(1, keep))
+        if bias:
+            self.assertAllClose(layer.bias, original.bias)
+        # forward equivalence: zeroing the removed inputs of the original
+        # equals feeding only the kept inputs to the pruned layer
+        x = torch.randn(self.n, 5, device=global_device())
+        x_masked = x.clone()
+        x_masked[:, indices] = 0.0
+        self.assertAllClose(layer(x.index_select(1, keep)), original(x_masked))
+        # recreated stats shapes
+        use_bias = int(bias)
+        self.assertEqual(
+            layer.tensor_s._shape,
+            (layer.in_features + use_bias, layer.in_features + use_bias),
+        )
+        self.assertEqual(
+            layer.tensor_m._shape, (layer.in_features + use_bias, layer.out_features)
+        )
+
+    def test_prune_hidden_neurons_in(self):
+        """Pruning hidden neurons shrinks previous.out_features and self.in_features together."""
+        first, second = self.create_demo_layers(bias=True, hidden_features=4)
+        original_first_weight = first.weight.detach().clone()
+        original_second_weight = second.weight.detach().clone()
+        indices = [0, 2]
+        keep = torch.tensor([1, 3], device=global_device())
+
+        second.prune_hidden_neurons_in(indices)
+
+        new_hidden = 4 - len(indices)
+        self.assertEqual(first.out_features, new_hidden)
+        self.assertEqual(second.in_features, new_hidden)
+        self.assertEqual(first.out_features, second.in_features)
+        # surviving hidden neurons keep their original weights
+        self.assertAllClose(first.weight, original_first_weight.index_select(0, keep))
+        self.assertAllClose(second.weight, original_second_weight.index_select(1, keep))
+        # chain forward still works and preserves output shape
+        x = torch.randn(self.n, first.in_features, device=global_device())
+        y = second(first(x))
+        self.assertShapeEqual(y, (self.n, second.out_features))
+
+    def test_prune_hidden_neurons_in_with_batchnorm(self):
+        """The previous module's BatchNorm post-layer is pruned alongside the hidden dim."""
+        hidden = 4
+        first, second = self.create_demo_layers(
+            bias=True,
+            hidden_features=hidden,
+            first_layer_post_layer=torch.nn.BatchNorm1d(hidden, device=global_device()),
+        )
+        bn = first.post_layer_function
+        # give every channel a distinct value so we can check the right ones survive
+        with torch.no_grad():
+            bn.weight.copy_(
+                torch.arange(hidden, dtype=torch.float32, device=global_device()) + 1.0
+            )
+            bn.bias.copy_(
+                torch.arange(hidden, dtype=torch.float32, device=global_device()) + 10.0
+            )
+        bn.running_mean = (
+            torch.arange(hidden, dtype=torch.float32, device=global_device()) + 20.0
+        )
+        bn.running_var = (
+            torch.arange(hidden, dtype=torch.float32, device=global_device()) + 30.0
+        )
+        original_weight = bn.weight.detach().clone()
+        original_bias = bn.bias.detach().clone()
+        original_running_mean = bn.running_mean.clone()
+        original_running_var = bn.running_var.clone()
+
+        indices = [0, 2]
+        keep = torch.tensor([1, 3], device=global_device())
+        new_hidden = hidden - len(indices)
+
+        second.prune_hidden_neurons_in(indices)
+
+        bn = first.post_layer_function
+        self.assertEqual(bn.num_features, new_hidden)
+        self.assertAllClose(bn.weight, original_weight.index_select(0, keep))
+        self.assertAllClose(bn.bias, original_bias.index_select(0, keep))
+        self.assertAllClose(bn.running_mean, original_running_mean.index_select(0, keep))
+        self.assertAllClose(bn.running_var, original_running_var.index_select(0, keep))
+        # chain forward works with the pruned feature count
+        first.eval()
+        x = torch.randn(self.n, first.in_features, device=global_device())
+        y = second(first(x))
+        self.assertShapeEqual(y, (self.n, second.out_features))
+
+    def test_prune_hidden_neurons_in_validation(self):
+        """Empty list is a no-op; bad indices and bad wiring raise (validation precedes mutation)."""
+        first, second = self.create_demo_layers(bias=True, hidden_features=4)
+
+        # empty list -> no-op
+        second.prune_hidden_neurons_in([])
+        self.assertEqual(first.out_features, 4)
+        self.assertEqual(second.in_features, 4)
+
+        # out-of-range / negative index -> IndexError
+        with self.assertRaises(IndexError):
+            second.prune_hidden_neurons_in([4])
+        with self.assertRaises(IndexError):
+            second.prune_hidden_neurons_in([-1])
+
+        # pruning all hidden neurons -> ValueError
+        with self.assertRaises(ValueError) as ctx:
+            second.prune_hidden_neurons_in([0, 1, 2, 3])
+        self.assertIn("Cannot prune all neurons", str(ctx.exception))
+
+        # no previous GrowingModule -> AssertionError
+        standalone = self.create_linear_layer(in_features=5, out_features=7, bias=True)
+        with self.assertRaises(AssertionError):
+            standalone.prune_hidden_neurons_in([0])
+
     def test_get_fan_in_from_layer(self):
         """Test get_fan_in_from_layer method."""
         layer = self.demo_layers[True][0]
