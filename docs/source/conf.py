@@ -227,7 +227,7 @@ html_theme_options = {
     "show_toc_level": 1,
     "nosidebar": "true",
     "navbar_end": ["theme-switcher"],
-    "footer_items": ["copyright"],
+    "footer_start": ["copyright"],
     "pygment_light_style": "default",
     # "announcement": "https://raw.githubusercontent.com/growingnet/gromo"
     # "/develop/docs/source/_templates/custom-template.html",

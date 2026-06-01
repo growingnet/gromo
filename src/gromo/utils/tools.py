@@ -369,10 +369,11 @@ def compute_mask_tensor_t(
     """
     Compute the tensor T
     For:
-    - input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H'[-1]W'[-1])
-      after the pooling
+
+    - input tensor: B[-1] in (S[-1], H[-1]W[-1]) and (S[-1], H'[-1]W'[-1]) after the pooling
     - output tensor: B in (S, HW)
     - conv kernel tensor: W in (S, S[-1], Hd, Wd)
+
     T is the tensor in (HW, HdWd, H'[-1]W'[-1]) such that:
     B = W T B[-1]
 
