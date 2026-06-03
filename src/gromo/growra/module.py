@@ -8,6 +8,13 @@ a frozen original layer and add a trainable low-rank adaptation::
 
 where A and B are growing modules from gromo.  The rank starts at 0 and grows
 via the FOGRO pipeline (see :mod:`gromo.growra.container`).
+
+.. note::
+
+    GrowRA modules are primarily designed and tested with ``use_fisher=True``
+    in :meth:`~gromo.modules.growing_module.GrowingModule.compute_optimal_updates`.
+    Other growth strategies (covariance-based, projection-based, etc.) are
+    available but receive less testing in the GrowRA context.
 """
 
 from __future__ import annotations
