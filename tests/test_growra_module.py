@@ -15,6 +15,7 @@ from unittest import TestCase
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F  # noqa: N812
 
 from gromo.containers.growing_block import LinearGrowingBlock
 from gromo.growra.container import (
@@ -1144,6 +1145,38 @@ class TestDoRALinear(TestCase):
             "DoRA+store_input: A gradient differs from shadow-only gradient",
         )
 
+    def test_dora_input_gradient_not_doubled_with_store_input(self):
+        """x.grad must equal only the DoRA-path gradient when store_input=True.
+
+        Without the fix, shadow=super().forward(x) back-propagates through x,
+        adding (W0 + scaling*B@A)^T·grad on top of eff_w^T·grad.
+        With the fix (x.detach()), x.grad comes solely from the DoRA path.
+        """
+        linear = _linear(10, 20)
+        lora = GrowRALinear(linear, rank=4, use_dora=True)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(5, 10).requires_grad_(True)
+
+        lora.first_layer.store_input = True
+        lora(x).sum().backward()
+        x_grad = x.grad.clone()
+        lora.first_layer.store_input = False
+
+        # Expected: gradient of F.linear(x, eff_w, bias).sum() w.r.t. x
+        with torch.no_grad():
+            weight = linear.weight + lora._delta_weight(detach_adapter=True)
+            eff_w = lora.magnitude[:, None] * (weight / lora._weight_norm(weight))
+        x2 = x.detach().requires_grad_(True)
+        F.linear(x2, eff_w, linear.bias).sum().backward()
+        expected = x2.grad.clone()
+
+        self.assertTrue(
+            torch.allclose(x_grad, expected, atol=1e-5),
+            f"DoRA+store_input: x.grad is doubled by shadow path. "
+            f"Max diff: {(x_grad - expected).abs().max().item():.2e}",
+        )
+
 
 class TestDoRAConv2d(TestCase):
     def setUp(self):
@@ -1249,6 +1282,42 @@ class TestDoRAConv2d(TestCase):
         self.assertTrue(
             torch.allclose(grad_A_shadow_only, grad_A_with_store, atol=1e-5),
             "DoRA+store_input: A gradient differs from shadow-only gradient",
+        )
+
+    def test_dora_input_gradient_not_doubled_with_store_input(self):
+        """x.grad must equal only the DoRA-path gradient when store_input=True.
+
+        Without the fix, shadow=super().forward(x) back-propagates through x,
+        adding (W0 + scaling*B@A)^T·grad on top of eff_w^T·grad.
+        With the fix (x.detach()), x.grad comes solely from the DoRA path.
+        """
+        conv = _conv2d(3, 8, 3, padding=1)
+        lora = GrowRAConv2d(conv, rank=4, use_dora=True)
+        nn.init.normal_(lora.first_layer.weight)
+        nn.init.normal_(lora.second_layer.weight)
+        x = _randn(2, 3, 8, 8).requires_grad_(True)
+
+        lora.first_layer.store_input = True
+        lora(x).sum().backward()
+        x_grad = x.grad.clone()
+        lora.first_layer.store_input = False
+
+        orig = lora._conv_base()
+        with torch.no_grad():
+            weight = orig.weight + lora._delta_weight(detach_adapter=True)
+            eff_w = lora.magnitude[:, None, None, None] * (
+                weight / lora._weight_norm(weight)
+            )
+        x2 = x.detach().requires_grad_(True)
+        F.conv2d(
+            x2, eff_w, orig.bias, orig.stride, orig.padding, orig.dilation, orig.groups
+        ).sum().backward()
+        expected = x2.grad.clone()
+
+        self.assertTrue(
+            torch.allclose(x_grad, expected, atol=1e-5),
+            f"DoRA Conv2d+store_input: x.grad is doubled by shadow path. "
+            f"Max diff: {(x_grad - expected).abs().max().item():.2e}",
         )
 
     def test_extended_forward_dora_increment_linear_in_extension(self):

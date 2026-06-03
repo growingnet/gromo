@@ -240,8 +240,9 @@ class GrowRALinear(LinearGrowingBlock):
         eff_w = self.magnitude[:, None] * (weight / self._weight_norm(weight).detach())
         out = F.linear(x, eff_w, self.linear.bias)
         if gathering:
-            # Shadow is the sole gradient path to A/B; prevents double-counting.
-            shadow = super().forward(x)
+            # x is detached so the shadow's backward does not reach the layer
+            # input; only A/B get their gradients through this path.
+            shadow = super().forward(x.detach())
             out = out + (shadow - shadow.detach())
         return out
 
@@ -543,8 +544,9 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             x, eff_w, orig.bias, orig.stride, orig.padding, orig.dilation, orig.groups
         )
         if gathering:
-            # Shadow is the sole gradient path to A/B; prevents double-counting.
-            shadow = super().forward(x)
+            # x is detached so the shadow's backward does not reach the layer
+            # input; only A/B get their gradients through this path.
+            shadow = super().forward(x.detach())
             out = out + (shadow - shadow.detach())
         return out
 
