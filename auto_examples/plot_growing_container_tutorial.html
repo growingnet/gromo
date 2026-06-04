@@ -580,7 +580,8 @@ larger values add stronger contributions from new neurons.</p>
 <span class="sd">    train_loader : torch.utils.data.DataLoader</span>
 <span class="sd">        DataLoader providing batches of (input, target) pairs.</span>
 <span class="sd">    layer_to_grow : int</span>
-<span class="sd">        Index of the layer to grow (1-indexed).</span>
+<span class="sd">        Index of the layer to grow (1-indexed over growable layers,</span>
+<span class="sd">        i.e. excludes the input layer and follows the ordering of _growable_layers).</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -595,7 +596,7 @@ larger values add stronger contributions from new neurons.</p>
     <span class="n">criterion_sum</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(</span><span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;sum&quot;</span><span class="p">)</span>
     <span class="n">criterion_mean</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MSELoss</span><span class="p">(</span><span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;mean&quot;</span><span class="p">)</span>
 
-    <span class="n">model</span><span class="o">.</span><span class="n">set_growing_layers</span><span class="p">(</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="p">)</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">set_growing_layers</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="p">)</span>
     <span class="n">compute_statistics</span><span class="p">(</span>
         <span class="n">model</span><span class="p">,</span>
         <span class="n">train_loader</span><span class="p">,</span>
@@ -739,7 +740,7 @@ performance</p></li>
         <a href="https://docs.python.org/3/library/stdtypes.html#dict" title="builtins.dict" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">history</span></a><span class="p">[</span><span class="s2">&quot;num_params&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">count_parameters</span><span class="p">(</span><span class="n">model</span><span class="p">))</span>
         <a href="https://docs.python.org/3/library/stdtypes.html#dict" title="builtins.dict" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">history</span></a><span class="p">[</span><span class="s2">&quot;step_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;SGD&quot;</span><span class="p">)</span>
 
-    <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">step</span></a> <span class="o">%</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">number_hidden_layers</span></a><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+    <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">step</span></a> <span class="o">%</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">number_hidden_layers</span></a><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Growing layer </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="n">grow</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">train_data_loader</span><span class="p">,</span> <a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="o">=</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">layer_to_grow</span></a><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Model after growing:&quot;</span><span class="p">)</span>
@@ -767,7 +768,7 @@ LinearGrowingModule(LinearGrowingModule(Layer 2))(in_features=2, out_features=3,
 [SGD] Step 1, Test Loss: 6.3001 (-0.6117)
 [SGD] Step 2, Test Loss: 5.9221 (-0.3780)
 [SGD] Step 3, Test Loss: 5.6654 (-0.2567)
-Growing layer 1
+Growing layer 0
 Scaling factor: 0.0, Loss: 5.5520
 Scaling factor: 0.1, Loss: 5.5478
 Scaling factor: 0.5, Loss: 5.4533
@@ -781,7 +782,7 @@ LinearGrowingModule(LinearGrowingModule(Layer 2))(in_features=2, out_features=3,
 [SGD] Step 5, Test Loss: 5.2204 (-0.1383)
 [SGD] Step 6, Test Loss: 5.1136 (-0.1068)
 [SGD] Step 7, Test Loss: 5.0304 (-0.0832)
-Growing layer 2
+Growing layer 1
 Scaling factor: 0.0, Loss: 4.9136
 Scaling factor: 0.1, Loss: 4.8978
 Scaling factor: 0.5, Loss: 4.6110
@@ -795,7 +796,7 @@ LinearGrowingModule(LinearGrowingModule(Layer 2))(in_features=4, out_features=3,
 [SGD] Step 9, Test Loss: 4.6807 (-0.0356)
 [SGD] Step 10, Test Loss: 4.6587 (-0.0220)
 [SGD] Step 11, Test Loss: 4.6431 (-0.0156)
-Growing layer 1
+Growing layer 0
 Scaling factor: 0.0, Loss: 4.5436
 Scaling factor: 0.1, Loss: 4.5415
 Scaling factor: 0.5, Loss: 4.5138
@@ -809,7 +810,7 @@ LinearGrowingModule(LinearGrowingModule(Layer 2))(in_features=4, out_features=3,
 [SGD] Step 13, Test Loss: 4.6010 (-0.0059)
 [SGD] Step 14, Test Loss: 4.5966 (-0.0044)
 [SGD] Step 15, Test Loss: 4.5935 (-0.0031)
-Growing layer 2
+Growing layer 1
 Scaling factor: 0.0, Loss: 4.4958
 Scaling factor: 0.1, Loss: 4.4947
 Scaling factor: 0.5, Loss: 4.4750
@@ -897,7 +898,7 @@ LinearGrowingModule(LinearGrowingModule(Layer 2))(in_features=6, out_features=3,
 <a href="https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.show.html#matplotlib.pyplot.show" title="matplotlib.pyplot.show" class="sphx-glr-backref-module-matplotlib-pyplot sphx-glr-backref-type-py-function"><span class="n">plt</span><span class="o">.</span><span class="n">show</span></a><span class="p">()</span>
 </pre></div>
 </div>
-<img src="../_images/sphx_glr_plot_growing_container_tutorial_001.png" srcset="../_images/sphx_glr_plot_growing_container_tutorial_001.png" alt="Model Performance and Capacity Evolution" class = "sphx-glr-single-img"/><p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 2.021 seconds)</p>
+<img src="../_images/sphx_glr_plot_growing_container_tutorial_001.png" srcset="../_images/sphx_glr_plot_growing_container_tutorial_001.png" alt="Model Performance and Capacity Evolution" class = "sphx-glr-single-img"/><p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 1.679 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-growing-container-tutorial-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/8a90e3a12e6c28e6701ab553191db473/plot_growing_container_tutorial.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_growing_container_tutorial.ipynb</span></code></a></p>
