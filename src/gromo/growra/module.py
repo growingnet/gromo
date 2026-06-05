@@ -243,9 +243,20 @@ class GrowRALinear(LinearGrowingBlock):
             return super().forward(x)
         gathering = bool(self.first_layer.store_input)
         assert self.magnitude is not None
-        weight = self.linear.weight + self._delta_weight(detach_adapter=gathering)
-        eff_w = self.magnitude[:, None] * (weight / self._weight_norm(weight).detach())
-        out = F.linear(x, eff_w, self.linear.bias)
+        delta = self._delta_weight(detach_adapter=gathering)
+        weight = self.linear.weight + delta
+        mns = self.magnitude / self._weight_norm(weight).detach().squeeze(1)
+        if self.training and self.dropout.p > 0:
+            # PEFT parity: base path sees clean x; dropped input flows through
+            # the DoRA-scaled direction with a (mns - 1) * W0 correction on x_d.
+            x_d = self.dropout(x)
+            base_clean = F.linear(x, self.linear.weight, self.linear.bias)
+            base_dropped = F.linear(x_d, self.linear.weight)
+            delta_dropped = F.linear(x_d, delta)
+            out = base_clean + (mns - 1) * base_dropped + mns * delta_dropped
+        else:
+            eff_w = mns[:, None] * weight
+            out = F.linear(x, eff_w, self.linear.bias)
         if gathering:
             # x is detached so the shadow's backward does not reach the layer
             # input; only A/B get their gradients through this path.
@@ -543,13 +554,25 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         orig = self._conv_base()
         gathering = bool(self.first_layer.store_input)
         assert self.magnitude is not None
-        weight = orig.weight + self._delta_weight(detach_adapter=gathering)
-        eff_w = self.magnitude[:, None, None, None] * (
-            weight / self._weight_norm(weight).detach()
+        delta = self._delta_weight(detach_adapter=gathering)
+        weight = orig.weight + delta
+        norm = self._weight_norm(weight).detach()
+        conv_kw = dict(
+            stride=orig.stride,
+            padding=orig.padding,
+            dilation=orig.dilation,
+            groups=orig.groups,
         )
-        out = F.conv2d(
-            x, eff_w, orig.bias, orig.stride, orig.padding, orig.dilation, orig.groups
-        )
+        if self.training and self.dropout.p > 0:
+            x_d = self.dropout(x)
+            mns = self.magnitude.reshape(1, -1, 1, 1) / norm.reshape(1, -1, 1, 1)
+            base_clean = F.conv2d(x, orig.weight, orig.bias, **conv_kw)
+            base_dropped = F.conv2d(x_d, orig.weight, None, **conv_kw)
+            delta_dropped = F.conv2d(x_d, delta, None, **conv_kw)
+            out = base_clean + (mns - 1) * base_dropped + mns * delta_dropped
+        else:
+            eff_w = self.magnitude[:, None, None, None] * (weight / norm)
+            out = F.conv2d(x, eff_w, orig.bias, **conv_kw)
         if gathering:
             # x is detached so the shadow's backward does not reach the layer
             # input; only A/B get their gradients through this path.
