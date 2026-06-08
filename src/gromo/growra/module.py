@@ -309,6 +309,63 @@ class GrowRALinear(LinearGrowingBlock):
             return F.linear(x, W_dora, self.linear.bias)
         return super().extended_forward(x)
 
+    def apply_change(
+        self,
+        extension_size: int | None = None,
+        scaling_factor: "float | torch.Tensor | None" = None,
+        apply_delta: bool = True,
+        apply_extension: bool = True,
+        lr_init: float = 1e-3,
+    ) -> None:
+        """Apply growth step then re-initialize new adapter weights per paper.
+
+        After committing the SVD-derived directions from :meth:`compute_optimal_updates`,
+        the raw Fisher-preconditioned magnitudes are discarded and the newly added
+        weights are re-initialized to the prescription in GrowRA Section A.5:
+
+        - Each new A row is rescaled so ``var(A_ij) = 1/fan_in``
+          (linear Kaiming, no nonlinearity between A and B), giving ``‖A_row‖ = 1``.
+        - Each new B column is rescaled so ``var(B_ij) = lr_init``
+          (paper Section A.5: "scale B to have variance η"), giving
+          ``‖B_col‖ = sqrt(fan_out * lr_init)``.
+
+        Parameters
+        ----------
+        extension_size : int | None
+            Passed to the parent ``apply_change``.
+        scaling_factor : float | Tensor | None
+            Passed to the parent ``apply_change``.
+        apply_delta : bool
+            Passed to the parent ``apply_change``.
+        apply_extension : bool
+            Passed to the parent ``apply_change``.
+        lr_init : float
+            Learning-rate scale used to size the new B columns. Default ``1e-3``.
+        """
+        old_rank = self.rank
+        super().apply_change(
+            extension_size=extension_size,
+            scaling_factor=scaling_factor,
+            apply_delta=apply_delta,
+            apply_extension=apply_extension,
+        )
+        if not apply_extension or self.rank <= old_rank:
+            return
+        with torch.no_grad():
+            A_new = self.first_layer.weight[old_rank:]  # (added, fan_in)
+            for i in range(A_new.shape[0]):
+                n = A_new[i].norm()
+                if n > 0:
+                    A_new[i].div_(n)  # ||row|| = 1 → var = 1/fan_in
+
+            B_new = self.second_layer.weight[:, old_rank:]  # (fan_out, added)
+            fan_out = B_new.shape[0]
+            target = (fan_out * lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
+            for i in range(B_new.shape[1]):
+                n = B_new[:, i].norm()
+                if n > 0:
+                    B_new[:, i].mul_(target / n)
+
     def merge(self) -> nn.Linear:
         """Merge adapter into the original layer.
 
@@ -648,6 +705,44 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 orig.groups,
             )
         return super().extended_forward(x)
+
+    def apply_change(
+        self,
+        extension_size: int | None = None,
+        scaling_factor: "float | torch.Tensor | None" = None,
+        apply_delta: bool = True,
+        apply_extension: bool = True,
+        lr_init: float = 1e-3,
+    ) -> None:
+        """Apply growth step then re-initialize new adapter weights per paper.
+
+        Mirrors :meth:`GrowRALinear.apply_change` but for convolutional adapters.
+        ``fan_in = in_channels * kH * kW`` from the A (first) layer.
+        """
+        old_rank = self.rank
+        super().apply_change(
+            extension_size=extension_size,
+            scaling_factor=scaling_factor,
+            apply_delta=apply_delta,
+            apply_extension=apply_extension,
+        )
+        if not apply_extension or self.rank <= old_rank:
+            return
+        A_w = self.first_layer.weight  # (new_rank, in_ch, kH, kW)
+        with torch.no_grad():
+            A_new = A_w[old_rank:]  # (added, in_ch, kH, kW)
+            for i in range(A_new.shape[0]):
+                n = A_new[i].norm()
+                if n > 0:
+                    A_new[i].div_(n)  # ||row|| = 1 → var = 1/fan_in
+
+            B_new = self.second_layer.weight[:, old_rank:]  # (out_ch, added, 1, 1)
+            fan_out = B_new.shape[0]
+            target = (fan_out * lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
+            for i in range(B_new.shape[1]):
+                n = B_new[:, i].norm()
+                if n > 0:
+                    B_new[:, i].mul_(target / n)
 
     def merge(self) -> nn.Conv2d:
         """Merge adapter into the original convolution layer.
