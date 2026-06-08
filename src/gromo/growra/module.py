@@ -19,6 +19,7 @@ via the FOGRO pipeline (see :mod:`gromo.growra.container`).
 
 from __future__ import annotations
 
+import copy
 import warnings
 from typing import TYPE_CHECKING
 
@@ -75,6 +76,24 @@ class Scaling(nn.Module, SupportsExtendedForward):
         if x_ext is not None:
             x_ext = x_ext * scale
         return x, x_ext
+
+
+def _deepcopy_growra_module(self, memo: dict):
+    """``__deepcopy__`` for GrowRA modules.
+
+    ``deepcopy`` treats callables (lambdas) as atomic, so the ``rank_getter``
+    and ``scaling_fn`` stored on ``_scaling`` would still reference the
+    *original* module after a plain copy.  This override re-wires them to the
+    newly-created copy before returning it.
+    """
+    cls = self.__class__
+    result = cls.__new__(cls)
+    memo[id(self)] = result
+    for k, v in self.__dict__.items():
+        setattr(result, k, copy.deepcopy(v, memo))
+    result._scaling.scaling_fn = result.scaling_fn
+    result._scaling.rank_getter = lambda: result.rank
+    return result
 
 
 class GrowRALinear(LinearGrowingBlock):
@@ -324,6 +343,8 @@ class GrowRALinear(LinearGrowingBlock):
         """Reset adapter to zero output."""
         nn.init.kaiming_uniform_(self.first_layer.weight)
         nn.init.zeros_(self.second_layer.weight)
+
+    __deepcopy__ = _deepcopy_growra_module
 
     def extra_repr(self) -> str:
         """Return extra representation string."""
@@ -671,6 +692,8 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         """Reset adapter to zero output."""
         nn.init.kaiming_uniform_(self.first_layer.weight)
         nn.init.zeros_(self.second_layer.weight)
+
+    __deepcopy__ = _deepcopy_growra_module
 
     def extra_repr(self) -> str:
         """Return extra representation string."""

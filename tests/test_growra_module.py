@@ -1733,3 +1733,78 @@ class TestGrowRAMatchesPEFT(TestCase):
                 torch.allclose(g_peft, g_growra, atol=1e-5),
                 f"DoRA+RSLoRA grad {name} mismatch: max diff {(g_peft - g_growra).abs().max().item():.2e}",
             )
+
+
+# ===================== Deepcopy Tests =====================
+
+
+def _grow_linear(lora: GrowRALinear, added_rank: int) -> None:
+    """One FOGRO step on a GrowRALinear; grows rank by added_rank."""
+    lora.init_computation()
+    x = _randn(4, lora.in_features)
+    lora.zero_grad()
+    (lora(x) ** 2).sum().backward()
+    lora.update_computation()
+    lora.compute_optimal_updates(
+        maximum_added_neurons=added_rank + 1,
+        compute_delta=False,
+        use_covariance=False,
+        use_projection=False,
+        alpha_zero=True,
+        omega_zero=False,
+        ignore_singular_values=True,
+    )
+    lora.sub_select_optimal_added_parameters(keep_neurons=added_rank)
+    lora.apply_change(scaling_factor=1.0, extension_size=added_rank)
+    lora.reset_computation()
+
+
+class TestDeepCopy(TestCase):
+    """Verify deepcopy produces correctly wired GrowRA modules."""
+
+    def test_linear_deepcopy_rewires_scaling_rank_getter(self):
+        """After deepcopy, growing the copy must not affect _scaling.rank_getter of the original."""
+        linear = _linear(8, 16)
+        original = GrowRALinear(linear, rank=0, scaling=2.0)
+        _grow_linear(original, added_rank=2)
+
+        copied = copy.deepcopy(original)
+        original_rank_before = original.rank
+
+        # Grow only the copy
+        _grow_linear(copied, added_rank=2)
+
+        # Original is unchanged
+        self.assertEqual(original.rank, original_rank_before)
+        # Copy grew
+        self.assertEqual(copied.rank, original_rank_before + 2)
+
+        # _scaling.rank_getter must read EACH module's own rank
+        self.assertEqual(original._scaling.rank_getter(), original.rank)
+        self.assertEqual(copied._scaling.rank_getter(), copied.rank)
+
+        # Forward and merge must be correct for the copy
+        x = _randn(4, 8)
+        out = copied(x)
+        self.assertEqual(out.shape, (4, 16))
+        merged = copied.merge()
+        self.assertTrue(torch.allclose(out, merged(x), atol=1e-5))
+
+    def test_linear_deepcopy_rewires_scaling_fn(self):
+        """After deepcopy, _scaling.scaling_fn must be the copy's scaling_fn."""
+        linear = _linear(8, 16)
+        original = GrowRALinear(linear, rank=0, scaling=3.0)
+        copied = copy.deepcopy(original)
+
+        # Both scaling_fns are consistent within their own module
+        self.assertIs(copied._scaling.scaling_fn, copied.scaling_fn)
+        self.assertIs(original._scaling.scaling_fn, original.scaling_fn)
+
+    def test_conv_deepcopy_rewires_scaling_rank_getter(self):
+        """deepcopy of GrowRAConv2d correctly rewires _scaling.rank_getter."""
+        conv = _conv2d(4, 8, 3, padding=1)
+        original = GrowRAConv2d(conv, rank=0, scaling=2.0)
+        copied = copy.deepcopy(original)
+
+        self.assertEqual(copied._scaling.rank_getter(), copied.rank)
+        self.assertIs(copied._scaling.scaling_fn, copied.scaling_fn)

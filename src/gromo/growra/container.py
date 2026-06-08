@@ -591,6 +591,7 @@ def load_growra_state_dict(model: nn.Module, state: dict[str, torch.Tensor]) -> 
             # evaluated at the saved rank. The adaptive schedule is not preserved.
             module._raw_scaling = _s
             module.scaling_fn = lambda _, s=_s: s
+            module._scaling.scaling_fn = module.scaling_fn
             use_dora_key = f"{prefix}use_dora"
             if use_dora_key in state and bool(state[use_dora_key].item()):
                 if not module.use_dora:

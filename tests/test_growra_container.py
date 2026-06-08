@@ -633,6 +633,25 @@ class TestLoadGrowraStateDictCoverage(TestCase):
         with self.assertRaises(ValueError):
             lora_model.load_growra_state_dict(rank2_state)
 
+    def test_load_state_dict_resyncs_scaling_fn(self):
+        """load_growra_state_dict must keep _scaling.scaling_fn in sync with module.scaling_fn."""
+        model = _make_simple_model()
+        lora_model = get_growra_model(model, scaling=2.0)
+        data = [(_randn(4, 10), _randn(4, 5))]
+        _grow(lora_model, data, added_rank=2)
+        state = lora_model.growra_state_dict()
+
+        # Load into a model that was initialised with a different scaling
+        model2 = _make_simple_model()
+        lora_model2 = get_growra_model(model2, scaling=1.0)
+        _grow(lora_model2, data, added_rank=2)
+        lora_model2.load_growra_state_dict(state)
+
+        for m in lora_model2.growra_modules():
+            # _scaling.scaling_fn must agree with module.scaling_fn
+            self.assertAlmostEqual(m._scaling.scaling_fn(m.rank), m.scaling_fn(m.rank))
+            self.assertAlmostEqual(m._scaling.scaling_fn(m.rank), 2.0)
+
     def test_merge_all_growra_top_level_module(self):
         """merge_all_growra works when a LoRA wrapper is at the top level (no dot in name)."""
         linear = _linear(4, 8)
