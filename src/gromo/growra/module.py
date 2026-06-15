@@ -142,6 +142,7 @@ class GrowRALinear(LinearGrowingBlock):
         activation: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str = "growra_block",
+        lr_init: float = 1e-3,
     ):
         linear.requires_grad_(False)
         self._raw_scaling: float | Callable[[int], float] = scaling
@@ -181,6 +182,7 @@ class GrowRALinear(LinearGrowingBlock):
             )
         self._scaling = _scaling
         self.linear = linear
+        self.lr_init = lr_init
         self.dropout = dropout_module
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
@@ -309,47 +311,17 @@ class GrowRALinear(LinearGrowingBlock):
             return F.linear(x, W_dora, self.linear.bias)
         return super().extended_forward(x)
 
-    def apply_change(
-        self,
-        extension_size: int | None = None,
-        scaling_factor: "float | torch.Tensor | None" = None,
-        apply_delta: bool = True,
-        apply_extension: bool = True,
-        lr_init: float = 1e-3,
-    ) -> None:
-        """Apply growth step then re-initialize new adapter weights per paper.
+    def _post_extension_init(self, old_rank: int) -> None:
+        """Re-initialize new adapter weights per GrowRA paper Section A.5.
 
-        After committing the SVD-derived directions from :meth:`compute_optimal_updates`,
-        the raw Fisher-preconditioned magnitudes are discarded and the newly added
-        weights are re-initialized to the prescription in GrowRA Section A.5:
-
+        After extension, the newly added weights are re-initialized:
         - Each new A row is rescaled so ``var(A_ij) = 1/fan_in``
           (linear Kaiming, no nonlinearity between A and B), giving ``‖A_row‖ = 1``.
         - Each new B column is rescaled so ``var(B_ij) = lr_init``
           (paper Section A.5: "scale B to have variance η"), giving
           ``‖B_col‖ = sqrt(fan_out * lr_init)``.
-
-        Parameters
-        ----------
-        extension_size : int | None
-            Passed to the parent ``apply_change``.
-        scaling_factor : float | Tensor | None
-            Passed to the parent ``apply_change``.
-        apply_delta : bool
-            Passed to the parent ``apply_change``.
-        apply_extension : bool
-            Passed to the parent ``apply_change``.
-        lr_init : float
-            Learning-rate scale used to size the new B columns. Default ``1e-3``.
         """
-        old_rank = self.rank
-        super().apply_change(
-            extension_size=extension_size,
-            scaling_factor=scaling_factor,
-            apply_delta=apply_delta,
-            apply_extension=apply_extension,
-        )
-        if not apply_extension or self.rank <= old_rank:
+        if self.rank <= old_rank:
             return
         with torch.no_grad():
             A_new = self.first_layer.weight[old_rank:]  # (added, fan_in)
@@ -360,7 +332,7 @@ class GrowRALinear(LinearGrowingBlock):
 
             B_new = self.second_layer.weight[:, old_rank:]  # (fan_out, added)
             fan_out = B_new.shape[0]
-            target = (fan_out * lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
+            target = (fan_out * self.lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
             for i in range(B_new.shape[1]):
                 n = B_new[:, i].norm()
                 if n > 0:
@@ -469,6 +441,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         activation: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str = "growra_conv_block",
+        lr_init: float = 1e-3,
     ):
         if isinstance(conv, Conv2dGrowingModule):
             underlying = conv.layer
@@ -534,6 +507,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         self.dropout = dropout_module
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
+        self.lr_init = lr_init
         if use_dora:
             self.enable_dora()
 
@@ -706,27 +680,12 @@ class GrowRAConv2d(Conv2dGrowingBlock):
             )
         return super().extended_forward(x)
 
-    def apply_change(
-        self,
-        extension_size: int | None = None,
-        scaling_factor: "float | torch.Tensor | None" = None,
-        apply_delta: bool = True,
-        apply_extension: bool = True,
-        lr_init: float = 1e-3,
-    ) -> None:
-        """Apply growth step then re-initialize new adapter weights per paper.
+    def _post_extension_init(self, old_rank: int) -> None:
+        """Re-initialize new adapter weights per GrowRA paper Section A.5.
 
-        Mirrors :meth:`GrowRALinear.apply_change` but for convolutional adapters.
-        ``fan_in = in_channels * kH * kW`` from the A (first) layer.
+        Convolutional variant: ``fan_in = in_channels * kH * kW`` from the A (first) layer.
         """
-        old_rank = self.rank
-        super().apply_change(
-            extension_size=extension_size,
-            scaling_factor=scaling_factor,
-            apply_delta=apply_delta,
-            apply_extension=apply_extension,
-        )
-        if not apply_extension or self.rank <= old_rank:
+        if self.rank <= old_rank:
             return
         A_w = self.first_layer.weight  # (new_rank, in_ch, kH, kW)
         with torch.no_grad():
@@ -738,7 +697,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
 
             B_new = self.second_layer.weight[:, old_rank:]  # (out_ch, added, 1, 1)
             fan_out = B_new.shape[0]
-            target = (fan_out * lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
+            target = (fan_out * self.lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
             for i in range(B_new.shape[1]):
                 n = B_new[:, i].norm()
                 if n > 0:

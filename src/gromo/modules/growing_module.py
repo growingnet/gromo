@@ -2129,6 +2129,7 @@ class GrowingModule(torch.nn.Module):
                 ),
             )
         if apply_extension:
+            old_rank = getattr(self, "rank", None)
             if self.extended_input_layer:
                 assert self.extended_input_layer.bias is None or torch.allclose(
                     self.extended_input_layer.bias,
@@ -2175,6 +2176,15 @@ class GrowingModule(torch.nn.Module):
                 self.previous_module.update_size()
             if isinstance(self.next_module, MergeGrowingModule):
                 self.next_module.update_size()
+            if old_rank is not None:
+                self._post_extension_init(old_rank)
+
+    def _post_extension_init(self, old_rank: int) -> None:
+        """Hook called after rank extension in apply_change.
+
+        Subclasses can override to initialize newly-added weights.
+        The rank has already been updated; new_rank = self.rank.
+        """
 
     # Optimal update computation
     def compute_optimal_delta(
