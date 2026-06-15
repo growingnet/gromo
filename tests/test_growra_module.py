@@ -472,6 +472,30 @@ class TestFOGROGrowthPipeline(TestCase):
         )
         lora.reset_computation()
 
+    def test_apply_change_no_extension(self):
+        """apply_change(apply_extension=False) skips _post_extension_init."""
+        lora = self._make_lora(rank=0)
+        lora.init_computation()
+        x = _randn(self.batch_size, self.in_features)
+        lora.zero_grad()
+        (lora(x) ** 2).sum().backward()
+        lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=2,
+            compute_delta=False,
+            use_covariance=True,
+            use_projection=False,
+            alpha_zero=False,
+            omega_zero=False,
+            ignore_singular_values=True,
+            use_fisher=True,
+        )
+        lora.sub_select_optimal_added_parameters(keep_neurons=2)
+        rank_before = lora.rank
+        lora.apply_change(scaling_factor=1.0, extension_size=2, apply_extension=False)
+        self.assertEqual(lora.rank, rank_before)
+        lora.reset_computation()
+
 
 class TestEnableDora(TestCase):
     """Tests for enable_dora() called post-construction."""
@@ -828,6 +852,30 @@ class TestGrowingGrowraConv2dFOGRO(TestCase):
         x2 = _randn(2, 3, 8, 8)
         out = lora(x2)
         self.assertEqual(out.shape, (2, 8, 8, 8))
+
+    def test_apply_change_no_extension(self):
+        """apply_change(apply_extension=False) skips _post_extension_init."""
+        conv = _conv2d(3, 8, kernel_size=3, padding=1)
+        lora = GrowRAConv2d(conv, rank=0)
+        lora.init_computation()
+        x = _randn(4, 3, 8, 8)
+        lora(x).sum().backward()
+        lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=2,
+            compute_delta=False,
+            use_covariance=True,
+            use_projection=False,
+            alpha_zero=False,
+            omega_zero=False,
+            ignore_singular_values=True,
+            use_fisher=True,
+        )
+        lora.sub_select_optimal_added_parameters(keep_neurons=2)
+        rank_before = lora.rank
+        lora.apply_change(scaling_factor=1.0, extension_size=2, apply_extension=False)
+        self.assertEqual(lora.rank, rank_before)
+        lora.reset_computation()
 
 
 # ===================== Dropout Tests =====================

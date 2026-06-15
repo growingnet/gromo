@@ -129,6 +129,8 @@ class GrowRALinear(LinearGrowingBlock):
         Device for parameters.
     name : str
         Name for the growing block.
+    lr_init : float
+        Initial learning rate hint stored on the module. Default ``1e-3``.
     """
 
     def __init__(
@@ -429,6 +431,8 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         Device for parameters.
     name : str
         Name for the growing block.
+    lr_init : float
+        Initial learning rate hint stored on the module. Default ``1e-3``.
 
     Raises
     ------
