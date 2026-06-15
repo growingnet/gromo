@@ -338,6 +338,13 @@ class GrowRALinear(LinearGrowingBlock):
                 if n > 0:
                     B_new[:, i].mul_(target / n)
 
+    def apply_change(self, **kwargs):
+        """Apply change and re-initialize new adapter weights."""
+        old_rank = self.rank
+        super().apply_change(**kwargs)
+        if kwargs.get("apply_extension", True):
+            self._post_extension_init(old_rank)
+
     def merge(self) -> nn.Linear:
         """Merge adapter into the original layer.
 
@@ -702,6 +709,13 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 n = B_new[:, i].norm()
                 if n > 0:
                     B_new[:, i].mul_(target / n)
+
+    def apply_change(self, **kwargs):
+        """Apply change and re-initialize new adapter weights."""
+        old_rank = self.rank
+        super().apply_change(**kwargs)
+        if kwargs.get("apply_extension", True):
+            self._post_extension_init(old_rank)
 
     def merge(self) -> nn.Conv2d:
         """Merge adapter into the original convolution layer.
