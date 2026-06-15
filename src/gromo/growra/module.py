@@ -142,6 +142,7 @@ class GrowRALinear(LinearGrowingBlock):
         activation: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str = "growra_block",
+        lr_init: float = 1e-3,
     ):
         linear.requires_grad_(False)
         self._raw_scaling: float | Callable[[int], float] = scaling
@@ -181,6 +182,7 @@ class GrowRALinear(LinearGrowingBlock):
             )
         self._scaling = _scaling
         self.linear = linear
+        self.lr_init = lr_init
         self.dropout = dropout_module
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
@@ -309,6 +311,40 @@ class GrowRALinear(LinearGrowingBlock):
             return F.linear(x, W_dora, self.linear.bias)
         return super().extended_forward(x)
 
+    def _post_extension_init(self, old_rank: int) -> None:
+        """Re-initialize new adapter weights per GrowRA paper Section A.5.
+
+        After extension, the newly added weights are re-initialized:
+        - Each new A row is rescaled so ``var(A_ij) = 1/fan_in``
+          (linear Kaiming, no nonlinearity between A and B), giving ``‖A_row‖ = 1``.
+        - Each new B column is rescaled so ``var(B_ij) = lr_init``
+          (paper Section A.5: "scale B to have variance η"), giving
+          ``‖B_col‖ = sqrt(fan_out * lr_init)``.
+        """
+        if self.rank <= old_rank:
+            return
+        with torch.no_grad():
+            A_new = self.first_layer.weight[old_rank:]  # (added, fan_in)
+            for i in range(A_new.shape[0]):
+                n = A_new[i].norm()
+                if n > 0:
+                    A_new[i].div_(n)  # ||row|| = 1 → var = 1/fan_in
+
+            B_new = self.second_layer.weight[:, old_rank:]  # (fan_out, added)
+            fan_out = B_new.shape[0]
+            target = (fan_out * self.lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
+            for i in range(B_new.shape[1]):
+                n = B_new[:, i].norm()
+                if n > 0:
+                    B_new[:, i].mul_(target / n)
+
+    def apply_change(self, **kwargs):
+        """Apply change and re-initialize new adapter weights."""
+        old_rank = self.rank
+        super().apply_change(**kwargs)
+        if kwargs.get("apply_extension", True):
+            self._post_extension_init(old_rank)
+
     def merge(self) -> nn.Linear:
         """Merge adapter into the original layer.
 
@@ -412,6 +448,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         activation: torch.nn.Module | None = None,
         device: torch.device | None = None,
         name: str = "growra_conv_block",
+        lr_init: float = 1e-3,
     ):
         if isinstance(conv, Conv2dGrowingModule):
             underlying = conv.layer
@@ -477,6 +514,7 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         self.dropout = dropout_module
         self.use_dora = False
         self.magnitude: nn.Parameter | None = None
+        self.lr_init = lr_init
         if use_dora:
             self.enable_dora()
 
@@ -648,6 +686,36 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                 orig.groups,
             )
         return super().extended_forward(x)
+
+    def _post_extension_init(self, old_rank: int) -> None:
+        """Re-initialize new adapter weights per GrowRA paper Section A.5.
+
+        Convolutional variant: ``fan_in = in_channels * kH * kW`` from the A (first) layer.
+        """
+        if self.rank <= old_rank:
+            return
+        A_w = self.first_layer.weight  # (new_rank, in_ch, kH, kW)
+        with torch.no_grad():
+            A_new = A_w[old_rank:]  # (added, in_ch, kH, kW)
+            for i in range(A_new.shape[0]):
+                n = A_new[i].norm()
+                if n > 0:
+                    A_new[i].div_(n)  # ||row|| = 1 → var = 1/fan_in
+
+            B_new = self.second_layer.weight[:, old_rank:]  # (out_ch, added, 1, 1)
+            fan_out = B_new.shape[0]
+            target = (fan_out * self.lr_init) ** 0.5  # ||col|| = sqrt(fan_out * lr)
+            for i in range(B_new.shape[1]):
+                n = B_new[:, i].norm()
+                if n > 0:
+                    B_new[:, i].mul_(target / n)
+
+    def apply_change(self, **kwargs):
+        """Apply change and re-initialize new adapter weights."""
+        old_rank = self.rank
+        super().apply_change(**kwargs)
+        if kwargs.get("apply_extension", True):
+            self._post_extension_init(old_rank)
 
     def merge(self) -> nn.Conv2d:
         """Merge adapter into the original convolution layer.

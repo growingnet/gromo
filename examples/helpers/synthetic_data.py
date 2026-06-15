@@ -2,6 +2,7 @@ from typing import Any
 
 import torch
 import torch.utils.data
+from torch.utils.data import DataLoader, TensorDataset
 
 
 class SyntheticDataloader(torch.utils.data.DataLoader):
@@ -89,3 +90,50 @@ class MultiSinDataloader(SyntheticDataloader):
                 torch.sin((i + 1) * x[:, i] + d) for i in range(self.in_features)
             )
         return x, y
+
+
+def create_classification_dataset(
+    num_samples: int = 500,
+    input_dim: int = 20,
+    num_classes: int = 3,
+    class_probs: torch.Tensor | None = None,
+    seed: int = 0,
+    device: torch.device | None = None,
+) -> DataLoader:
+    """Create a synthetic classification dataset.
+
+    Parameters
+    ----------
+    num_samples : int
+        Number of samples to generate.
+    input_dim : int
+        Input feature dimension.
+    num_classes : int
+        Number of classes.
+    class_probs : torch.Tensor | None
+        Class distribution probabilities. If None, uniform distribution is used.
+    seed : int
+        Random seed for reproducibility.
+    device : torch.device | None
+        Device to put tensors on. Defaults to CPU.
+
+    Returns
+    -------
+    DataLoader
+        A DataLoader with the generated classification data.
+    """
+    if device is None:
+        device = torch.device("cpu")
+
+    torch.manual_seed(seed)
+
+    # Generate labels
+    if class_probs is None:
+        class_probs = torch.ones(num_classes) / num_classes
+    y = torch.multinomial(class_probs, num_samples, replacement=True).to(device)
+
+    # Generate features
+    X = torch.randn(num_samples, input_dim, device=device)
+
+    dataset = TensorDataset(X, y)
+    return DataLoader(dataset, batch_size=32, shuffle=True)

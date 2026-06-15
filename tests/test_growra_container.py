@@ -61,11 +61,12 @@ def _grow(lora_model, data, added_rank=2):
     for m in growra_mods:
         m.compute_optimal_updates(
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
-            alpha_zero=True,
+            alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
     for m in growra_mods:
         if added_rank is not None:
@@ -378,7 +379,7 @@ class TestEndToEnd(TestCase):
         # First growth step
         _grow(lora_model, [(x, y)] * 2, added_rank=2)
 
-        optimizer = torch.optim.SGD(lora_model.growra_parameters(), lr=0.01)
+        optimizer = torch.optim.SGD(lora_model.growra_parameters(), lr=1e-3)
         for _ in range(3):
             optimizer.zero_grad()
             nn.functional.mse_loss(lora_model(x), y).backward()
@@ -387,7 +388,7 @@ class TestEndToEnd(TestCase):
         # Second growth step
         _grow(lora_model, [(x, y)] * 2, added_rank=2)
 
-        optimizer = torch.optim.SGD(lora_model.growra_parameters(), lr=0.01)
+        optimizer = torch.optim.SGD(lora_model.growra_parameters(), lr=1e-3)
         for _ in range(3):
             optimizer.zero_grad()
             nn.functional.mse_loss(lora_model(x), y).backward()
@@ -836,11 +837,12 @@ class TestLoadGrowraStateDictConv2dExpansion(TestCase):
         for m in lora_model.growra_modules():
             m.compute_optimal_updates(
                 compute_delta=False,
-                use_covariance=False,
+                use_covariance=True,
                 use_projection=False,
-                alpha_zero=True,
+                alpha_zero=False,
                 omega_zero=False,
                 ignore_singular_values=True,
+                use_fisher=True,
             )
             m.sub_select_optimal_added_parameters(keep_neurons=added_rank)
             m.apply_change(scaling_factor=1.0, extension_size=added_rank)
@@ -967,8 +969,6 @@ class TestGrowRAModelExtendedForward(TestCase):
         _grow(lora_model, data, added_rank=2)
 
         # Compute growth directions from rank 2.
-        # alpha_zero=False so the incoming weights (alpha) of new neurons are non-zero,
-        # making extended_forward visibly different from forward.
         for m in lora_model.growra_modules():
             m.init_computation()
         lora_model.zero_grad()
@@ -978,11 +978,12 @@ class TestGrowRAModelExtendedForward(TestCase):
         for m in lora_model.growra_modules():
             m.compute_optimal_updates(
                 compute_delta=False,
-                use_covariance=False,
+                use_covariance=True,
                 use_projection=False,
                 alpha_zero=False,
                 omega_zero=False,
                 ignore_singular_values=True,
+                use_fisher=True,
             )
         for m in lora_model.growra_modules():
             m.reset_computation()

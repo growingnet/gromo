@@ -336,11 +336,12 @@ class TestFOGROGrowthPipeline(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=4,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
-            alpha_zero=True,
+            alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
 
         self.assertIsNotNone(lora.first_layer.extended_output_layer)
@@ -428,11 +429,12 @@ class TestFOGROGrowthPipeline(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=4,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
-            alpha_zero=True,
+            alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         improvement = lora.first_order_improvement
         self.assertIsInstance(improvement, torch.Tensor)
@@ -451,11 +453,12 @@ class TestFOGROGrowthPipeline(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=4,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
-            alpha_zero=True,
+            alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         self.assertIsNotNone(lora.first_layer.extended_output_layer)
         # extension_scaling is 0 by default, so extended_forward == forward
@@ -785,11 +788,12 @@ class TestGrowingGrowraConv2dFOGRO(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=2,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
-            alpha_zero=True,
+            alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         lora.sub_select_optimal_added_parameters(keep_neurons=2)
         lora.apply_change(scaling_factor=1.0, extension_size=2)
@@ -810,11 +814,12 @@ class TestGrowingGrowraConv2dFOGRO(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=2,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
-            alpha_zero=True,
+            alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         lora.sub_select_optimal_added_parameters(keep_neurons=2)
         lora.apply_change(scaling_factor=1.0, extension_size=2)
@@ -1028,11 +1033,12 @@ class TestDoRALinear(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=2,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
             alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         lora.reset_computation()
         self.assertIsNotNone(lora.first_layer.extended_output_layer)
@@ -1061,11 +1067,12 @@ class TestDoRALinear(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=2,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
             alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         lora.reset_computation()
         self.assertIsNotNone(lora.first_layer.extended_output_layer)
@@ -1217,11 +1224,12 @@ class TestDoRAConv2d(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=2,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
             alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         lora.reset_computation()
         self.assertIsNotNone(lora.first_layer.extended_output_layer)
@@ -1332,11 +1340,12 @@ class TestDoRAConv2d(TestCase):
         lora.compute_optimal_updates(
             maximum_added_neurons=2,
             compute_delta=False,
-            use_covariance=False,
+            use_covariance=True,
             use_projection=False,
             alpha_zero=False,
             omega_zero=False,
             ignore_singular_values=True,
+            use_fisher=True,
         )
         lora.reset_computation()
         self.assertIsNotNone(lora.first_layer.extended_output_layer)
@@ -1748,11 +1757,12 @@ def _grow_linear(lora: GrowRALinear, added_rank: int) -> None:
     lora.compute_optimal_updates(
         maximum_added_neurons=added_rank + 1,
         compute_delta=False,
-        use_covariance=False,
+        use_covariance=True,
         use_projection=False,
-        alpha_zero=True,
+        alpha_zero=False,
         omega_zero=False,
         ignore_singular_values=True,
+        use_fisher=True,
     )
     lora.sub_select_optimal_added_parameters(keep_neurons=added_rank)
     lora.apply_change(scaling_factor=1.0, extension_size=added_rank)
@@ -1808,3 +1818,245 @@ class TestDeepCopy(TestCase):
 
         self.assertEqual(copied._scaling.rank_getter(), copied.rank)
         self.assertIs(copied._scaling.scaling_fn, copied.scaling_fn)
+
+
+# ===================== Fisher-mode Tests =====================
+
+
+def _fisher_grow(lora: GrowRALinear, added_rank: int, n_batches: int = 4) -> None:
+    """One Fisher FOGRO step: accumulate statistics then grow by added_rank."""
+    lora.init_computation()
+    for _ in range(n_batches):
+        x = _randn(8, lora.in_features)
+        lora.zero_grad()
+        (lora(x) ** 2).sum().backward()
+        lora.update_computation()
+    lora.compute_optimal_updates(
+        maximum_added_neurons=added_rank + 2,
+        compute_delta=False,
+        use_covariance=True,
+        use_projection=False,
+        alpha_zero=False,
+        omega_zero=False,
+        ignore_singular_values=True,
+        use_fisher=True,
+    )
+    lora.sub_select_optimal_added_parameters(keep_neurons=added_rank)
+    lora.apply_change(scaling_factor=1.0, extension_size=added_rank)
+    lora.reset_computation()
+
+
+class TestGrowRAFisher(TestCase):
+    """End-to-end tests for the Fisher-mode growth pipeline.
+
+    All tests use ``use_fisher=True`` in ``compute_optimal_updates`` and
+    verify that the pipeline runs correctly and produces non-trivial results.
+
+    At rank 0 the adapter path ``B @ A @ x`` is identically zero, but
+    ``second_layer.pre_activity.grad`` receives the upstream gradient (it is
+    retained via ``retain_grad()`` during ``init_computation``). This means
+    the Fisher covariance and ``tensor_m_prev`` are both well-defined and
+    non-zero even before any rank has been added.
+    """
+
+    SEED = 0
+
+    def setUp(self) -> None:
+        torch.manual_seed(self.SEED)
+
+    def _make_lora(self, in_f: int = 8, out_f: int = 16, rank: int = 0) -> GrowRALinear:
+        linear = _linear(in_f, out_f)
+        return GrowRALinear(linear, rank=rank)
+
+    # ------------------------------------------------------------------
+    # Fisher statistics population
+    # ------------------------------------------------------------------
+
+    def test_fisher_covariance_non_zero_at_rank_zero(self):
+        """covariance_loss_gradient() is non-zero at rank 0 after one backward pass.
+
+        The upstream gradient flows into second_layer.pre_activity (the
+        zero-valued adapter output) because retain_grad() is called during
+        init_computation(). The outer product of this gradient gives a
+        positive-semidefinite matrix that captures output-space curvature.
+        """
+        lora = self._make_lora()
+        lora.init_computation()
+        x = _randn(8, lora.in_features)
+        lora.zero_grad()
+        (lora(x) ** 2).sum().backward()
+        lora.update_computation()
+
+        cov = lora.second_layer.covariance_loss_gradient()
+        self.assertEqual(cov.shape, (lora.out_features, lora.out_features))
+        self.assertGreater(cov.norm().item(), 0.0)
+
+        lora.reset_computation()
+
+    def test_fisher_covariance_accumulates_over_batches(self):
+        """covariance_loss_gradient is updated by each backward and is non-trivially non-zero.
+
+        We collect two fixed batches, run backward for each, and verify the
+        accumulated covariance is non-zero and differs from a single-batch run
+        (i.e. the statistic genuinely reflects more than one observation).
+        """
+        lora_one = self._make_lora()
+        lora_two = self._make_lora()
+
+        torch.manual_seed(self.SEED + 7)
+        x1 = _randn(8, lora_one.in_features)
+        x2 = _randn(8, lora_one.in_features)
+
+        # One-batch reference
+        lora_one.init_computation()
+        lora_one.zero_grad()
+        (lora_one(x1) ** 2).sum().backward()
+        lora_one.update_computation()
+        cov_one = lora_one.second_layer.covariance_loss_gradient().detach().clone()
+        lora_one.reset_computation()
+
+        # Two-batch accumulation
+        lora_two.init_computation()
+        lora_two.zero_grad()
+        (lora_two(x1) ** 2).sum().backward()
+        lora_two.update_computation()
+        lora_two.zero_grad()
+        (lora_two(x2) ** 2).sum().backward()
+        lora_two.update_computation()
+        cov_two = lora_two.second_layer.covariance_loss_gradient().detach().clone()
+        lora_two.reset_computation()
+
+        # Both non-zero
+        self.assertGreater(cov_one.norm().item(), 0.0)
+        self.assertGreater(cov_two.norm().item(), 0.0)
+        # Two-batch covariance reflects more information: it is not identical to the
+        # single-batch result (different random draws → different result).
+        self.assertFalse(
+            torch.allclose(cov_one, cov_two),
+            "accumulated covariance must differ from single-batch covariance",
+        )
+
+    # ------------------------------------------------------------------
+    # Fisher growth pipeline
+    # ------------------------------------------------------------------
+
+    def test_fisher_pipeline_from_rank_zero(self):
+        """Full Fisher FOGRO loop from rank 0: rank grows and output shape is correct."""
+        lora = self._make_lora()
+        _fisher_grow(lora, added_rank=2)
+
+        self.assertEqual(lora.rank, 2)
+        out = lora(_randn(4, lora.in_features))
+        self.assertEqual(out.shape, (4, lora.out_features))
+
+    def test_fisher_eigenvalues_positive(self):
+        """Fisher growth produces strictly positive eigenvalues."""
+        lora = self._make_lora()
+        lora.init_computation()
+        for _ in range(4):
+            x = _randn(8, lora.in_features)
+            lora.zero_grad()
+            (lora(x) ** 2).sum().backward()
+            lora.update_computation()
+        lora.compute_optimal_updates(
+            maximum_added_neurons=4,
+            compute_delta=False,
+            use_covariance=True,
+            use_projection=False,
+            alpha_zero=False,
+            omega_zero=False,
+            ignore_singular_values=True,
+            use_fisher=True,
+        )
+
+        eigs = lora.second_layer.eigenvalues_extension
+        self.assertIsNotNone(eigs)
+        self.assertGreater(eigs.shape[0], 0, "at least one neuron must be selected")
+        self.assertTrue((eigs > 0).all(), f"all eigenvalues must be positive, got {eigs}")
+        lora.reset_computation()
+
+    def test_fisher_pipeline_from_nonzero_rank(self):
+        """Fisher FOGRO from rank > 0: rank grows and forward matches merge."""
+        lora = self._make_lora()
+        _grow_linear(lora, added_rank=2)
+        self.assertEqual(lora.rank, 2)
+
+        _fisher_grow(lora, added_rank=2)
+        self.assertEqual(lora.rank, 4)
+
+        x = _randn(4, lora.in_features)
+        out = lora(x)
+        self.assertEqual(out.shape, (4, lora.out_features))
+        merged = lora.merge()
+        self.assertTrue(
+            torch.allclose(out, merged(x), atol=1e-5),
+            "forward must match merge after Fisher growth",
+        )
+
+    def test_fisher_forward_unchanged_from_original_at_rank_zero(self):
+        """At rank 0 the GrowRA adapter is a no-op: output equals the frozen linear."""
+        linear = _linear(8, 16)
+        lora = GrowRALinear(linear, rank=0)
+        x = _randn(4, 8)
+        with torch.no_grad():
+            self.assertTrue(torch.allclose(lora(x), linear(x)))
+
+    # ------------------------------------------------------------------
+    # Cross-layer score ordering
+    # ------------------------------------------------------------------
+
+    def test_kfac_eigenvalues_scale_invariant(self):
+        """K-FAC eigenvalues are invariant to input scale.
+
+        With full K-FAC (use_covariance=True, use_fisher=True) the score matrix
+        is M = F_s^{-1/2} @ grad_W @ C^{-1/2}. Scaling inputs by SCALE also
+        scales C by SCALE^2, grad_W by SCALE^2, and F_s by SCALE^2, so the
+        SCALE factors cancel and M is unchanged. Two adapters fed x vs SCALE*x
+        with identical samples must therefore produce identical eigenvalues.
+        """
+        torch.manual_seed(self.SEED)
+        SCALE = 0.05
+
+        linear = _linear(8, 8)
+        lora_big = GrowRALinear(copy.deepcopy(linear), rank=0)
+        lora_small = GrowRALinear(copy.deepcopy(linear), rank=0)
+
+        for lora in (lora_big, lora_small):
+            lora.init_computation()
+
+        for _ in range(6):
+            x = _randn(16, 8)
+            lora_big.zero_grad()
+            (lora_big(x) ** 2).sum().backward()
+            lora_big.update_computation()
+            lora_small.zero_grad()
+            (lora_small(x * SCALE) ** 2).sum().backward()
+            lora_small.update_computation()
+
+        lora_big.compute_optimal_updates(
+            maximum_added_neurons=4,
+            use_covariance=True,
+            use_fisher=True,
+            ignore_singular_values=True,
+            compute_delta=False,
+        )
+        lora_small.compute_optimal_updates(
+            maximum_added_neurons=4,
+            use_covariance=True,
+            use_fisher=True,
+            ignore_singular_values=True,
+            compute_delta=False,
+        )
+
+        eigs_big = lora_big.second_layer.eigenvalues_extension
+        eigs_small = lora_small.second_layer.eigenvalues_extension
+
+        self.assertIsNotNone(eigs_big)
+        self.assertIsNotNone(eigs_small)
+        self.assertTrue(
+            torch.allclose(eigs_big, eigs_small, atol=1e-4, rtol=1e-3),
+            f"K-FAC eigenvalues must be scale-invariant: big={eigs_big}, small={eigs_small}",
+        )
+
+        for lora in (lora_big, lora_small):
+            lora.reset_computation()
