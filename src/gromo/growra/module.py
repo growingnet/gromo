@@ -341,7 +341,14 @@ class GrowRALinear(LinearGrowingBlock):
                     B_new[:, i].mul_(target / n)
 
     def apply_change(self, **kwargs):
-        """Apply change and re-initialize new adapter weights."""
+        """Apply change and re-initialize new adapter weights.
+
+        ``lr_init`` (if given) overrides the variance used to rescale new B
+        columns in ``_post_extension_init``; it is consumed here rather than
+        forwarded to the base ``GrowingBlock.apply_change``, which rejects it.
+        """
+        if "lr_init" in kwargs:
+            self.lr_init = kwargs.pop("lr_init")
         old_rank = self.rank
         super().apply_change(**kwargs)
         if kwargs.get("apply_extension", True):
@@ -715,7 +722,14 @@ class GrowRAConv2d(Conv2dGrowingBlock):
                     B_new[:, i].mul_(target / n)
 
     def apply_change(self, **kwargs):
-        """Apply change and re-initialize new adapter weights."""
+        """Apply change and re-initialize new adapter weights.
+
+        ``lr_init`` (if given) overrides the variance used to rescale new B
+        columns in ``_post_extension_init``; it is consumed here rather than
+        forwarded to the base ``GrowingBlock.apply_change``, which rejects it.
+        """
+        if "lr_init" in kwargs:
+            self.lr_init = kwargs.pop("lr_init")
         old_rank = self.rank
         super().apply_change(**kwargs)
         if kwargs.get("apply_extension", True):
