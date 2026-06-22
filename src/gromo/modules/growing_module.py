@@ -874,7 +874,15 @@ class GrowingModule(torch.nn.Module):
         # the previous with sqrt(t) * extended_output_layer having a change of activity
         # of dA we have (with sigma the activation function in post_layer_function):
         # L(A + dA) = L(A) - t * sigma'(0) * (eigenvalues_extension ** 2).sum() + o(t)
+        # The squared form above holds when the singular values are applied to the
+        # extension weights. When they are ignored (unit-scaled alpha and omega) the
+        # contribution is linear and the square must be dropped (see
+        # _first_order_uses_squared_singular_values and first_order_improvement).
         self.eigenvalues_extension: torch.Tensor | None = None
+        # True when first_order_improvement must square eigenvalues_extension, i.e. when
+        # sqrt(singular value) is baked into the extension weights; False in the
+        # ignore_singular_values regime where alpha and omega are unit-scaled.
+        self._first_order_uses_squared_singular_values: bool = True
         self._activation_gradient_previous_module: torch.Tensor | None = None
 
         self.delta_raw: torch.Tensor | None = None
@@ -2337,6 +2345,10 @@ class GrowingModule(torch.nn.Module):
         omega = omega.to(dtype=saved_dtype)
         eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
 
+        # Record how the singular values enter the extension so first_order_improvement
+        # and scale_layer_extension know whether to square eigenvalues_extension.
+        self._first_order_uses_squared_singular_values = not ignore_singular_values
+
         return alpha, omega, eigenvalues_extension
 
     def _compute_optimal_added_parameters(
@@ -2400,6 +2412,31 @@ class GrowingModule(torch.nn.Module):
         raise NotImplementedError
 
     @property
+    def new_neurons_fo_improvement(self) -> torch.Tensor:
+        """
+        Get the part of the first order improvement due to the new neurons.
+
+        This is the contribution of the extension (added neurons) to
+        ``first_order_improvement``. The singular values stored in
+        ``eigenvalues_extension`` are squared when they are applied to the extension
+        weights and summed as-is otherwise (see
+        ``_first_order_uses_squared_singular_values``).
+
+        Returns
+        -------
+        torch.Tensor
+            first order improvement due to the new neurons, or zero if no extension
+            has been computed
+        """
+        if self.eigenvalues_extension is None:
+            return torch.zeros((), device=self.device, dtype=self.weight.dtype)
+        if self._first_order_uses_squared_singular_values:
+            extension_improvement = (self.eigenvalues_extension**2).sum()
+        else:
+            extension_improvement = self.eigenvalues_extension.sum()
+        return self.activation_gradient * extension_improvement
+
+    @property
     def first_order_improvement(self) -> torch.Tensor:
         """
         Get the first order improvement of the block.
@@ -2413,13 +2450,7 @@ class GrowingModule(torch.nn.Module):
             "The first order improvement is not computed. "
             "Use compute_optimal_delta before."
         )
-        if self.eigenvalues_extension is not None:
-            return (
-                self.parameter_update_decrease
-                + self.activation_gradient * (self.eigenvalues_extension**2).sum()
-            )
-        else:
-            return self.parameter_update_decrease
+        return self.parameter_update_decrease + self.new_neurons_fo_improvement
 
     def compute_optimal_updates(
         self,
@@ -2655,6 +2686,7 @@ class GrowingModule(torch.nn.Module):
         # this type problem is due to the use of the setter to change the scaling factor
         self.parameter_update_decrease = None
         self.eigenvalues_extension = None
+        self._first_order_uses_squared_singular_values = True
         self._pre_activity = None
         self._input = None
 
@@ -2810,8 +2842,12 @@ class GrowingModule(torch.nn.Module):
         Scale the layer extension by a given factor.
         This means scaling the extended_input_layer, the extended_output_layer and
         the eigenvalues_extension.
-        However as the eigenvalues_extension will be squared they will be
-        scaled by sqrt(scale_input * scale_output).
+        The first-order improvement is bilinear in the extension scales, so it is
+        multiplied by scale_input * scale_output. When the singular values are applied
+        to the weights, eigenvalues_extension is squared in first_order_improvement and
+        is therefore scaled by sqrt(scale_input * scale_output); in the
+        ignore_singular_values regime it is used linearly and scaled by
+        scale_input * scale_output instead.
 
         Parameters
         ----------
@@ -2851,7 +2887,8 @@ class GrowingModule(torch.nn.Module):
         self.scale_layer(self.extended_input_layer, scales[1])
         self.scale_layer(self.previous_module.extended_output_layer, scales[0])
         if self.eigenvalues_extension is not None:
-            self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
+            exponent = 0.5 if self._first_order_uses_squared_singular_values else 1.0
+            self.eigenvalues_extension *= (scales[0] * scales[1]) ** exponent
 
     def get_fan_in_from_layer(
         self, layer: torch.nn.Module | None = None, num_neurons: int | None = None
