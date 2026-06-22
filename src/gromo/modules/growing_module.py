@@ -3535,7 +3535,7 @@ class GrowingModule(torch.nn.Module):
             ext_in.weight.data.add_(torch.randn_like(ext_in.weight.data) * noise_std)
 
     @torch.no_grad()
-    def copy_initialisation_variance(
+    def copy_initialization_variance(
         self,
         tensor: torch.Tensor,
         reference_tensor: torch.Tensor | None,
@@ -3564,6 +3564,11 @@ class GrowingModule(torch.nn.Module):
             number of input features of the base tensor + extension
         distribution: Literal["uniform", "normal"]
             sampling law to use, default ``"uniform"``.
+
+        Raises
+        ------
+        ValueError
+            If ``distribution`` is not ``"uniform"`` or ``"normal"``.
         """
         # Fallback to Kaiming initialization (same distribution)
         if (
@@ -3607,6 +3612,11 @@ class GrowingModule(torch.nn.Module):
             sampling law to use, default ``"uniform"``:
             - ``"uniform"``: ``U(-sqrt(6 / fan_in), sqrt(6 / fan_in))``;
             - ``"normal"``: ``N(0, 2 / fan_in)``.
+
+        Raises
+        ------
+        ValueError
+            If ``distribution`` is not ``"uniform"`` or ``"normal"``.
         """
         del reference_tensor
         if distribution == "normal":
@@ -3648,8 +3658,8 @@ class GrowingModule(torch.nn.Module):
            rescaled weights as reference).
         2. **Extension creation** — physical extension layers are allocated
            at their final (post-pairing) size.
-        3. **Initialisation** — the first half of each extension is
-           initialised when ``neuron_pairing`` is active, the full extension
+        3. **Initialization** — the first half of each extension is
+           initialized when ``neuron_pairing`` is active, the full extension
            otherwise.
         4. **Neuron pairing** — the already-allocated second half of each
            extension is filled in place via (V,V)/(Z,-Z).
@@ -3665,17 +3675,17 @@ class GrowingModule(torch.nn.Module):
             Size of the input extension to create, if ``None`` use
             *extension_size*.
         output_extension_init: str
-            Initialisation method for the output extension.  Must be one of
+            Initialization method for the output extension.  Must be one of
             the keys in ``known_inits`` (``"copy_uniform"``, ``"copy_normal"``,
             ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``), default
             ``"copy_uniform"``.
         input_extension_init: str
-            Initialisation method for the input extension.  Must be one of
+            Initialization method for the input extension.  Must be one of
             the keys in ``known_inits`` (``"copy_uniform"``, ``"copy_normal"``,
             ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``), default
             ``"copy_uniform"``.
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
-            Neuron-pairing strategy applied after initialisation.
+            Neuron-pairing strategy applied after initialization.
             ``"none"`` (default) or ``"vv_z_negz"``.
             /!/ When ``neuron_pairing`` is active, ``extension_size`` (and
             ``output_extension_size`` / ``input_extension_size``) is the
@@ -3751,10 +3761,10 @@ class GrowingModule(torch.nn.Module):
 
         known_inits = {
             "copy_uniform": partial(
-                self.copy_initialisation_variance, distribution="uniform"
+                self.copy_initialization_variance, distribution="uniform"
             ),
             "copy_normal": partial(
-                self.copy_initialisation_variance, distribution="normal"
+                self.copy_initialization_variance, distribution="normal"
             ),
             "kaiming": partial(self.kaiming_initialization, distribution="uniform"),
             "kaiming_normal": partial(self.kaiming_initialization, distribution="normal"),
@@ -3770,7 +3780,7 @@ class GrowingModule(torch.nn.Module):
                 )
 
         # Step 3: Initialize extensions. When pairing is active only the
-        # first half is initialised; the second half is filled by
+        # first half is initialized; the second half is filled by
         # apply_neuron_pairing.
         half_in = input_extension_size // 2 if neuron_pairing else None
         half_out = output_extension_size // 2 if neuron_pairing else None

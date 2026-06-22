@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add Kaiming-normal and copy-normal initializations for layer extensions: ``kaiming_initialization`` and ``copy_initialization_variance`` (renamed from ``copy_uniform_initialization``) gain a ``distribution`` argument, exposed through the new ``"kaiming_normal"`` and ``"copy_normal"`` keys of ``create_layer_extensions`` (:gh:`259` by `Théo Rudkiewicz`_).
 - Refactored growing MLP containers to use `SequentialGrowingContainer` for a more unified model manipulation interface (:gh:`253` by `Pako Maxence TEKOU`_)
 - Example for `GrowingGraphNetwork` and `GrowingDAG` usage (:gh:`252` by `Stella Douka`_)
 - Add an empirical Fisher (loss-gradient covariance) as an optional preconditioner for both optimal-delta weight updates and rank-k neuron extension computations (:gh:`250` by `Théo Rudkiewicz`_).
