@@ -1147,7 +1147,7 @@ class TestCoverageSmoke(TorchTestCase):
             block.second_layer.apply_neuron_pairing(neuron_pairing="vv_z_negz")
 
     def test_copy_uniform_initialization(self):
-        """create_layer_extensions with copy_uniform init hits copy_uniform_initialization."""
+        """create_layer_extensions with copy_uniform init hits copy_initialisation_variance."""
         block = _make_conv_block(h_t=8, device=self.device)
         block.create_layer_extensions(
             extension_size=4,

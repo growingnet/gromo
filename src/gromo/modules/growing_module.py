@@ -1,4 +1,5 @@
 import warnings
+from functools import partial
 from typing import Any, Iterator, Literal, Protocol, get_args, runtime_checkable
 
 import numpy as np
@@ -3534,22 +3535,24 @@ class GrowingModule(torch.nn.Module):
             ext_in.weight.data.add_(torch.randn_like(ext_in.weight.data) * noise_std)
 
     @torch.no_grad()
-    def copy_uniform_initialization(
+    def copy_initialisation_variance(
         self,
         tensor: torch.Tensor,
         reference_tensor: torch.Tensor | None,
         fan_in: int,
+        distribution: Literal["uniform", "normal"] = "uniform",
     ) -> None:
         """
-        Initialize tensor with uniform law aligned on reference
+        Initialize tensor with the empirical variance of the reference.
 
-        Initialize the tensor with a uniform law with bounds
-        -sqrt(std(W)), sqrt(std(W))
-        where std(W) is the empirical standard deviation of the reference_tensor
-        if the reference_tensor has a non-zero variance.
-        Otherwise, use bounds
-        -sqrt(6 / fan_in), sqrt(6 / fan_in)
-        where fan_in is the number of input features of the reference tensor + extension.
+        Initialize the tensor with a law whose standard deviation matches
+        std(W), the empirical standard deviation of the reference_tensor, when
+        the reference_tensor has a non-zero variance:
+        - ``distribution="uniform"``: uniform law on
+          ``[-sqrt(3) * std(W), sqrt(3) * std(W)]`` (variance ``std(W)**2``);
+        - ``distribution="normal"``: normal law ``N(0, std(W)**2)``.
+        Otherwise (missing reference or zero variance), fall back to
+        ``kaiming_initialization`` with the same ``distribution``.
 
         Parameters
         ----------
@@ -3559,18 +3562,27 @@ class GrowingModule(torch.nn.Module):
             tensor to get the standard deviation from or None to use Kaiming init
         fan_in: int
             number of input features of the base tensor + extension
+        distribution: Literal["uniform", "normal"]
+            sampling law to use, default ``"uniform"``.
         """
-        # Fallback to Kaiming uniform initialization bounds
+        # Fallback to Kaiming initialization (same distribution)
         if (
             reference_tensor is None
             or reference_tensor.numel() < 2
             or (std_dev := reference_tensor.std().item()) == 0
         ):
-            self.kaiming_initialization(tensor, reference_tensor, fan_in)
-        else:
-            # Initialize with uniform distribution
+            self.kaiming_initialization(
+                tensor, reference_tensor, fan_in, distribution=distribution
+            )
+        elif distribution == "normal":
+            torch.nn.init.normal_(tensor, mean=0.0, std=std_dev)
+        elif distribution == "uniform":
             bound = 3.0**0.5 * std_dev
             torch.nn.init.uniform_(tensor, -bound, bound)
+        else:
+            raise ValueError(
+                f"Unknown distribution {distribution!r}, expected 'uniform' or 'normal'."
+            )
 
     @torch.no_grad()
     def kaiming_initialization(
@@ -3578,9 +3590,10 @@ class GrowingModule(torch.nn.Module):
         tensor: torch.Tensor,
         reference_tensor: torch.Tensor | None,
         fan_in: int,
+        distribution: Literal["uniform", "normal"] = "uniform",
     ) -> None:
         """
-        Initialize tensor with Kaiming.
+        Initialize tensor with Kaiming (variance ``2 / fan_in``, ReLU gain).
 
         Parameters
         ----------
@@ -3590,10 +3603,21 @@ class GrowingModule(torch.nn.Module):
             Unused
         fan_in: int
             number of input features of the base tensor + extension
+        distribution: Literal["uniform", "normal"]
+            sampling law to use, default ``"uniform"``:
+            - ``"uniform"``: ``U(-sqrt(6 / fan_in), sqrt(6 / fan_in))``;
+            - ``"normal"``: ``N(0, 2 / fan_in)``.
         """
         del reference_tensor
-        bound = (2.0 * 3.0 / fan_in) ** 0.5
-        torch.nn.init.uniform_(tensor, -bound, bound)
+        if distribution == "normal":
+            torch.nn.init.normal_(tensor, mean=0.0, std=(2.0 / fan_in) ** 0.5)
+        elif distribution == "uniform":
+            bound = (2.0 * 3.0 / fan_in) ** 0.5
+            torch.nn.init.uniform_(tensor, -bound, bound)
+        else:
+            raise ValueError(
+                f"Unknown distribution {distribution!r}, expected 'uniform' or 'normal'."
+            )
 
     @torch.no_grad()
     def create_layer_extensions(
@@ -3642,12 +3666,14 @@ class GrowingModule(torch.nn.Module):
             *extension_size*.
         output_extension_init: str
             Initialisation method for the output extension.  Must be one of
-            the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
-            ``"zeros"``), default ``"copy_uniform"``.
+            the keys in ``known_inits`` (``"copy_uniform"``, ``"copy_normal"``,
+            ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``), default
+            ``"copy_uniform"``.
         input_extension_init: str
             Initialisation method for the input extension.  Must be one of
-            the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
-            ``"zeros"``), default ``"copy_uniform"``.
+            the keys in ``known_inits`` (``"copy_uniform"``, ``"copy_normal"``,
+            ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``), default
+            ``"copy_uniform"``.
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy applied after initialisation.
             ``"none"`` (default) or ``"vv_z_negz"``.
@@ -3724,8 +3750,14 @@ class GrowingModule(torch.nn.Module):
         self.create_layer_in_extension(input_extension_size)
 
         known_inits = {
-            "copy_uniform": self.copy_uniform_initialization,
-            "kaiming": self.kaiming_initialization,
+            "copy_uniform": partial(
+                self.copy_initialisation_variance, distribution="uniform"
+            ),
+            "copy_normal": partial(
+                self.copy_initialisation_variance, distribution="normal"
+            ),
+            "kaiming": partial(self.kaiming_initialization, distribution="uniform"),
+            "kaiming_normal": partial(self.kaiming_initialization, distribution="normal"),
             "zeros": lambda tensor, _, __: torch.nn.init.zeros_(tensor),
             # Future initializations can be added here
         }
