@@ -1324,6 +1324,106 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertEqual(demo_layers[1].extended_input_layer.in_features, 2)
         self.assertEqual(demo_layers[0].extended_output_layer.out_features, 2)
 
+    def test_new_neurons_fo_improvement(self):
+        """new_neurons_fo_improvement isolates the added-neuron term and squares the
+        singular values only when they are applied to the extension weights."""
+        _, layer_out = self.create_demo_layers_with_extension()
+        g = layer_out.activation_gradient
+
+        # No extension computed yet -> zero contribution.
+        layer_out.eigenvalues_extension = None
+        zero = layer_out.new_neurons_fo_improvement
+        self.assertEqual(zero.dim(), 0)
+        self.assertEqual(zero.item(), 0.0)
+
+        eigenvalues = torch.tensor([2.0, 3.0], device=global_device())
+
+        # Singular values applied to the weights -> squared.
+        layer_out.eigenvalues_extension = eigenvalues.clone()
+        layer_out._first_order_uses_squared_singular_values = True
+        self.assertAllClose(
+            layer_out.new_neurons_fo_improvement, g * (eigenvalues**2).sum()
+        )
+
+        # ignore_singular_values regime -> summed as-is.
+        layer_out._first_order_uses_squared_singular_values = False
+        self.assertAllClose(layer_out.new_neurons_fo_improvement, g * eigenvalues.sum())
+
+        # first_order_improvement adds the parameter-update term to the new-neuron term.
+        layer_out.parameter_update_decrease = torch.tensor(1.5, device=global_device())
+        self.assertAllClose(
+            layer_out.first_order_improvement,
+            layer_out.parameter_update_decrease + layer_out.new_neurons_fo_improvement,
+        )
+
+    def test_first_order_uses_squared_singular_values_flag(self):
+        """compute_optimal_updates records whether singular values are applied, and
+        first_order_improvement squares eigenvalues_extension accordingly."""
+        for ignore in (False, True):
+            with self.subTest(ignore_singular_values=ignore):
+                layer_in, layer_out = self.create_demo_layers(bias=True)
+                layer_in.init_computation()
+                layer_out.init_computation()
+
+                y = layer_out(layer_in(self.input_x))
+                torch.norm(y).backward()
+
+                layer_in.update_computation()
+                layer_out.update_computation()
+
+                layer_out.compute_optimal_updates(
+                    statistical_threshold=0,
+                    numerical_threshold=0,
+                    ignore_singular_values=ignore,
+                )
+
+                self.assertEqual(
+                    layer_out._first_order_uses_squared_singular_values, not ignore
+                )
+                self.assertIsNotNone(layer_out.eigenvalues_extension)
+
+                eig = layer_out.eigenvalues_extension
+                expected_extension = eig.sum() if ignore else (eig**2).sum()
+                self.assertAllClose(
+                    layer_out.first_order_improvement,
+                    layer_out.parameter_update_decrease
+                    + layer_out.activation_gradient * expected_extension,
+                )
+
+                # delete_update resets the flag to its default (squared) state.
+                layer_out.delete_update()
+                self.assertTrue(layer_out._first_order_uses_squared_singular_values)
+
+    def test_scale_layer_extension_respects_singular_value_flag(self):
+        """scale_layer_extension scales eigenvalues_extension by sqrt(scale) under the
+        squared convention and linearly in the ignore_singular_values regime."""
+        eigenvalues = torch.tensor([2.0, 5.0], device=global_device())
+        scale_output, scale_input = 4.0, 9.0
+
+        # Squared convention -> sqrt(scale_output * scale_input).
+        _, layer_out = self.create_demo_layers_with_extension()
+        layer_out.eigenvalues_extension = eigenvalues.clone()
+        layer_out._first_order_uses_squared_singular_values = True
+        layer_out.scale_layer_extension(
+            scale=None, scale_output=scale_output, scale_input=scale_input
+        )
+        self.assertAllClose(
+            layer_out.eigenvalues_extension,
+            eigenvalues * (scale_output * scale_input) ** 0.5,
+        )
+
+        # ignore_singular_values regime -> scaled linearly.
+        _, layer_out = self.create_demo_layers_with_extension()
+        layer_out.eigenvalues_extension = eigenvalues.clone()
+        layer_out._first_order_uses_squared_singular_values = False
+        layer_out.scale_layer_extension(
+            scale=None, scale_output=scale_output, scale_input=scale_input
+        )
+        self.assertAllClose(
+            layer_out.eigenvalues_extension,
+            eigenvalues * (scale_output * scale_input),
+        )
+
     def test_compute_optimal_added_parameters_no_previous_module_error(self):
         """Test ValueError when no previous module in compute_optimal_added_parameters."""
         layer = LinearGrowingModule(3, 2, device=global_device())
