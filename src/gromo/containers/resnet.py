@@ -507,6 +507,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         input_block_kernel_size: int | None = None,
         output_block_kernel_size: int | None = None,
         hidden_channels: int = 0,
+        init_method: str = "default",
     ) -> None:
         """Append a new block to the specified stage of the ResNet.
 
@@ -520,6 +521,10 @@ class ResNetBasicBlock(SequentialGrowingModel):
             Kernel size for the second layer. If None, uses the instance default.
         hidden_channels : int
             Number of hidden channels in the new block.
+        init_method : str
+            Initialization method for the new block. Supported options are
+            "default" (standard initialization), "zero" (ZeroInit),
+            "gauss" / "gauss_full" / "gauss_full_<std>" (Gaussian initialization).
 
         Raises
         ------
@@ -555,6 +560,25 @@ class ResNetBasicBlock(SequentialGrowingModel):
             input_block_kernel_size=input_block_kernel_size,
             output_block_kernel_size=output_block_kernel_size,
         )
+
+        # Initialize weights based on init_method
+        if init_method == "zero":
+            torch.nn.init.zeros_(new_block.second_layer.layer.weight)
+            if new_block.second_layer.layer.bias is not None:
+                torch.nn.init.zeros_(new_block.second_layer.layer.bias)
+        elif init_method.startswith("gauss"):
+            std = 1.0
+            if "_" in init_method:
+                try:
+                    std = float(init_method.split("_")[-1])
+                except ValueError:
+                    std = 1.0
+            torch.nn.init.normal_(new_block.first_layer.layer.weight, mean=0.0, std=std)
+            if new_block.first_layer.layer.bias is not None:
+                torch.nn.init.zeros_(new_block.first_layer.layer.bias)
+            torch.nn.init.normal_(new_block.second_layer.layer.weight, mean=0.0, std=std)
+            if new_block.second_layer.layer.bias is not None:
+                torch.nn.init.zeros_(new_block.second_layer.layer.bias)
 
         stage.append(new_block)
         if not self.use_preactivation:
