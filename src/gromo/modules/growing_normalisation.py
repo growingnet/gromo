@@ -2,6 +2,7 @@
 
 from typing import Callable, Literal, TypeAlias, TypedDict
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -315,6 +316,60 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         """
         return f"{super().extra_repr()}, name={self.name}"
 
+    @torch.no_grad()
+    def prune(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Prune the batch normalization layer by removing specified features.
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            Feature indices to remove.
+        """
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        if indices_to_remove.size == 0:
+            return
+
+        # Validate indices
+        indices = np.unique(indices_to_remove)
+        if indices[0] < 0 or indices[-1] >= self.num_features:
+            raise IndexError(
+                f"indices {indices} out of range for num_features {self.num_features}"
+            )
+        if len(indices) == self.num_features:
+            raise ValueError("Cannot prune all features of BatchNorm layer")
+
+        keep_mask = torch.ones(self.num_features, dtype=torch.bool, device=self.weight.device if self.affine else "cpu")
+        keep_mask[indices] = False
+
+        self.num_features = int(keep_mask.sum().item())
+
+        if getattr(self, "affine", False):
+            weight_requires_grad = self.weight.requires_grad
+            bias_requires_grad = self.bias.requires_grad if self.bias is not None else False
+
+            self.weight = nn.Parameter(
+                self.weight[keep_mask].clone(),
+                requires_grad=weight_requires_grad
+            )
+            if self.bias is not None:
+                self.bias = nn.Parameter(
+                    self.bias[keep_mask].clone(),
+                    requires_grad=bias_requires_grad
+                )
+
+        if getattr(self, "track_running_stats", False):
+            if self.running_mean is not None:
+                self.running_mean = self.running_mean[keep_mask].clone()
+            if self.running_var is not None:
+                self.running_var = self.running_var[keep_mask].clone()
+
 
 class GrowingBatchNorm2d(GrowingBatchNorm, nn.BatchNorm2d):
     """
@@ -548,6 +603,58 @@ class GrowingLayerNorm(nn.LayerNorm):
         """
         return f"{super().extra_repr()}, name={self.name}"
 
+    @torch.no_grad()
+    def prune(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Prune the LayerNorm layer by removing specified features along the first dimension.
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            Feature indices to remove.
+        """
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        if indices_to_remove.size == 0:
+            return
+
+        old_shape = tuple(int(v) for v in self.normalized_shape)
+        first_dim = old_shape[0]
+
+        # Validate indices
+        indices = np.unique(indices_to_remove)
+        if indices[0] < 0 or indices[-1] >= first_dim:
+            raise IndexError(
+                f"indices {indices} out of range for LayerNorm first dimension {first_dim}"
+            )
+        if len(indices) == first_dim:
+            raise ValueError("Cannot prune all features of LayerNorm layer")
+
+        keep_mask = torch.ones(first_dim, dtype=torch.bool, device=self.weight.device if self.elementwise_affine else "cpu")
+        keep_mask[indices] = False
+
+        new_normalized_shape = (int(keep_mask.sum().item()), *old_shape[1:])
+        self.normalized_shape = new_normalized_shape
+
+        if getattr(self, "elementwise_affine", False):
+            weight_requires_grad = self.weight.requires_grad
+            bias_requires_grad = self.bias.requires_grad if self.bias is not None else False
+
+            self.weight = nn.Parameter(
+                self.weight[keep_mask].clone(),
+                requires_grad=weight_requires_grad
+            )
+            if self.bias is not None:
+                self.bias = nn.Parameter(
+                    self.bias[keep_mask].clone(),
+                    requires_grad=bias_requires_grad
+                )
+
 
 class GrowingGroupNorm(nn.GroupNorm):
     """Growing GroupNorm module.
@@ -744,3 +851,58 @@ class GrowingGroupNorm(nn.GroupNorm):
         Extra representation string for the layer.
         """
         return f"{super().extra_repr()}, name={self.name}"
+
+    @torch.no_grad()
+    def prune(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Prune the GroupNorm layer by removing specified channels.
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            1D array of channel indices to remove.
+        """
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        if indices_to_remove.size == 0:
+            return
+
+        # Validate indices
+        indices = np.unique(indices_to_remove)
+        if indices[0] < 0 or indices[-1] >= self.num_channels:
+            raise IndexError(
+                f"indices {indices} out of range for GroupNorm channels {self.num_channels}"
+            )
+        if len(indices) == self.num_channels:
+            raise ValueError("Cannot prune all channels of GroupNorm layer")
+
+        keep_mask = torch.ones(self.num_channels, dtype=torch.bool, device=self.weight.device if self.affine else "cpu")
+        keep_mask[indices] = False
+
+        new_num_channels = int(keep_mask.sum().item())
+        if new_num_channels % self.num_groups != 0:
+            raise ValueError(
+                f"After pruning: num_channels ({new_num_channels}) must be divisible by "
+                f"num_groups ({self.num_groups})."
+            )
+
+        self.num_channels = new_num_channels
+
+        if getattr(self, "affine", False):
+            weight_requires_grad = self.weight.requires_grad
+            bias_requires_grad = self.bias.requires_grad if self.bias is not None else False
+
+            self.weight = nn.Parameter(
+                self.weight[keep_mask].clone(),
+                requires_grad=weight_requires_grad
+            )
+            if self.bias is not None:
+                self.bias = nn.Parameter(
+                    self.bias[keep_mask].clone(),
+                    requires_grad=bias_requires_grad
+                )

@@ -4,6 +4,8 @@ from copy import deepcopy
 from typing import Literal
 from unittest import mock
 
+import numpy as np
+
 import torch
 
 from gromo.modules.linear_growing_module import (
@@ -474,7 +476,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         torch.manual_seed(self.config.RANDOM_SEED)
         layer = self.create_linear_layer(in_features=5, out_features=4, bias=bias)
         original = deepcopy(layer)
-        indices = [1, 3]
+        indices = np.array([1, 3])
         keep = torch.tensor([0, 2], device=global_device())
 
         layer.prune_layer_out(indices)
@@ -482,8 +484,10 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertEqual(layer.in_features, original.in_features)
         self.assertEqual(layer.out_features, original.out_features - len(indices))
         self.assertAllClose(layer.weight, original.weight.index_select(0, keep))
+        self.assertEqual(layer.weight.requires_grad, original.weight.requires_grad)
         if bias:
             self.assertAllClose(layer.bias, original.bias.index_select(0, keep))
+            self.assertEqual(layer.bias.requires_grad, original.bias.requires_grad)
         # forward equivalence: pruned(x) == original(x)[:, keep]
         x = torch.randn(self.n, 5, device=global_device())
         self.assertAllClose(layer(x), original(x).index_select(1, keep))
@@ -498,7 +502,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         torch.manual_seed(self.config.RANDOM_SEED)
         layer = self.create_linear_layer(in_features=5, out_features=4, bias=bias)
         original = deepcopy(layer)
-        indices = [1, 3]
+        indices = np.array([1, 3])
         keep = torch.tensor([0, 2, 4], device=global_device())
 
         layer.prune_layer_in(indices)
@@ -506,13 +510,15 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertEqual(layer.in_features, original.in_features - len(indices))
         self.assertEqual(layer.out_features, original.out_features)
         self.assertAllClose(layer.weight, original.weight.index_select(1, keep))
+        self.assertEqual(layer.weight.requires_grad, original.weight.requires_grad)
         if bias:
             self.assertAllClose(layer.bias, original.bias)
+            self.assertEqual(layer.bias.requires_grad, original.bias.requires_grad)
         # forward equivalence: zeroing the removed inputs of the original
         # equals feeding only the kept inputs to the pruned layer
         x = torch.randn(self.n, 5, device=global_device())
         x_masked = x.clone()
-        x_masked[:, indices] = 0.0
+        x_masked[:, [1, 3]] = 0.0
         self.assertAllClose(layer(x.index_select(1, keep)), original(x_masked))
         # recreated stats shapes
         use_bias = int(bias)
@@ -524,15 +530,15 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             layer.tensor_m._shape, (layer.in_features + use_bias, layer.out_features)
         )
 
-    def test_prune_hidden_neurons_in(self):
+    def test_prune_neurons_in(self):
         """Pruning hidden neurons shrinks previous.out_features and self.in_features together."""
         first, second = self.create_demo_layers(bias=True, hidden_features=4)
         original_first_weight = first.weight.detach().clone()
         original_second_weight = second.weight.detach().clone()
-        indices = [0, 2]
+        indices = np.array([0, 2])
         keep = torch.tensor([1, 3], device=global_device())
 
-        second.prune_hidden_neurons_in(indices)
+        second.prune_neurons_in(indices)
 
         new_hidden = 4 - len(indices)
         self.assertEqual(first.out_features, new_hidden)
@@ -546,39 +552,33 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         y = second(first(x))
         self.assertShapeEqual(y, (self.n, second.out_features))
 
-    def test_prune_hidden_neurons_in_with_batchnorm(self):
-        """The previous module's BatchNorm post-layer is pruned alongside the hidden dim."""
+    def test_prune_neurons_in_with_growingbatchnorm(self):
+        """The previous module's GrowingBatchNorm post-layer is pruned alongside the hidden dim."""
+        from gromo.modules.growing_normalisation import GrowingBatchNorm1d
         hidden = 4
         first, second = self.create_demo_layers(
             bias=True,
             hidden_features=hidden,
-            first_layer_post_layer=torch.nn.BatchNorm1d(hidden, device=global_device()),
+            first_layer_post_layer=GrowingBatchNorm1d(hidden, device=global_device()),
         )
         bn = first.post_layer_function
-        # give every channel a distinct value so we can check the right ones survive
+        # give every channel a distinct random value
         with torch.no_grad():
-            bn.weight.copy_(
-                torch.arange(hidden, dtype=torch.float32, device=global_device()) + 1.0
-            )
-            bn.bias.copy_(
-                torch.arange(hidden, dtype=torch.float32, device=global_device()) + 10.0
-            )
-        bn.running_mean = (
-            torch.arange(hidden, dtype=torch.float32, device=global_device()) + 20.0
-        )
-        bn.running_var = (
-            torch.arange(hidden, dtype=torch.float32, device=global_device()) + 30.0
-        )
+            bn.weight.copy_(torch.randn(hidden, device=global_device()))
+            bn.bias.copy_(torch.randn(hidden, device=global_device()))
+        bn.running_mean.copy_(torch.randn(hidden, device=global_device()))
+        bn.running_var.copy_(torch.abs(torch.randn(hidden, device=global_device())) + 0.1)
+
         original_weight = bn.weight.detach().clone()
         original_bias = bn.bias.detach().clone()
         original_running_mean = bn.running_mean.clone()
         original_running_var = bn.running_var.clone()
 
-        indices = [0, 2]
+        indices = np.array([0, 2])
         keep = torch.tensor([1, 3], device=global_device())
         new_hidden = hidden - len(indices)
 
-        second.prune_hidden_neurons_in(indices)
+        second.prune_neurons_in(indices)
 
         bn = first.post_layer_function
         self.assertEqual(bn.num_features, new_hidden)
@@ -592,30 +592,91 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         y = second(first(x))
         self.assertShapeEqual(y, (self.n, second.out_features))
 
-    def test_prune_hidden_neurons_in_validation(self):
-        """Empty list is a no-op; bad indices and bad wiring raise (validation precedes mutation)."""
+    def test_prune_neurons_in_with_layernorm(self):
+        from gromo.modules.growing_normalisation import GrowingLayerNorm
+        hidden = 4
+        first, second = self.create_demo_layers(
+            bias=True,
+            hidden_features=hidden,
+            first_layer_post_layer=GrowingLayerNorm(hidden, device=global_device()),
+        )
+        ln = first.post_layer_function
+        with torch.no_grad():
+            ln.weight.copy_(torch.randn(hidden, device=global_device()))
+            ln.bias.copy_(torch.randn(hidden, device=global_device()))
+        original_weight = ln.weight.detach().clone()
+        original_bias = ln.bias.detach().clone()
+
+        indices = np.array([0, 2])
+        keep = torch.tensor([1, 3], device=global_device())
+        new_hidden = hidden - len(indices)
+
+        second.prune_neurons_in(indices)
+
+        ln = first.post_layer_function
+        self.assertEqual(ln.normalized_shape, (new_hidden,))
+        self.assertAllClose(ln.weight, original_weight.index_select(0, keep))
+        self.assertAllClose(ln.bias, original_bias.index_select(0, keep))
+        # chain forward works
+        x = torch.randn(self.n, first.in_features, device=global_device())
+        y = second(first(x))
+        self.assertShapeEqual(y, (self.n, second.out_features))
+
+    def test_prune_neurons_in_with_groupnorm(self):
+        from gromo.modules.growing_normalisation import GrowingGroupNorm
+        hidden = 4
+        first, second = self.create_demo_layers(
+            bias=True,
+            hidden_features=hidden,
+            first_layer_post_layer=GrowingGroupNorm(num_groups=2, num_channels=hidden, device=global_device()),
+        )
+        gn = first.post_layer_function
+        with torch.no_grad():
+            gn.weight.copy_(torch.randn(hidden, device=global_device()))
+            gn.bias.copy_(torch.randn(hidden, device=global_device()))
+        original_weight = gn.weight.detach().clone()
+        original_bias = gn.bias.detach().clone()
+
+        indices = np.array([0, 2])
+        keep = torch.tensor([1, 3], device=global_device())
+        new_hidden = hidden - len(indices)
+
+        second.prune_neurons_in(indices)
+
+        gn = first.post_layer_function
+        self.assertEqual(gn.num_channels, new_hidden)
+        self.assertEqual(gn.num_groups, 2)
+        self.assertAllClose(gn.weight, original_weight.index_select(0, keep))
+        self.assertAllClose(gn.bias, original_bias.index_select(0, keep))
+        # chain forward works
+        x = torch.randn(self.n, first.in_features, device=global_device())
+        y = second(first(x))
+        self.assertShapeEqual(y, (self.n, second.out_features))
+
+    def test_prune_neurons_in_validation(self):
+        """Empty array is a no-op; bad indices and bad wiring raise (validation precedes mutation)."""
         first, second = self.create_demo_layers(bias=True, hidden_features=4)
 
-        # empty list -> no-op
-        second.prune_hidden_neurons_in([])
+        # empty array -> no-op
+        second.prune_neurons_in(np.array([], dtype=np.int64))
         self.assertEqual(first.out_features, 4)
         self.assertEqual(second.in_features, 4)
 
         # out-of-range / negative index -> IndexError
         with self.assertRaises(IndexError):
-            second.prune_hidden_neurons_in([4])
+            second.prune_neurons_in(np.array([4]))
         with self.assertRaises(IndexError):
-            second.prune_hidden_neurons_in([-1])
+            second.prune_neurons_in(np.array([-1]))
 
         # pruning all hidden neurons -> ValueError
         with self.assertRaises(ValueError) as ctx:
-            second.prune_hidden_neurons_in([0, 1, 2, 3])
+            second.prune_neurons_in(np.array([0, 1, 2, 3]))
         self.assertIn("Cannot prune all neurons", str(ctx.exception))
 
-        # no previous GrowingModule -> AssertionError
+        # no previous GrowingModule -> TypeError
         standalone = self.create_linear_layer(in_features=5, out_features=7, bias=True)
-        with self.assertRaises(AssertionError):
-            standalone.prune_hidden_neurons_in([0])
+        with self.assertRaises(TypeError):
+            standalone.prune_neurons_in(np.array([0]))
 
     def test_get_fan_in_from_layer(self):
         """Test get_fan_in_from_layer method."""

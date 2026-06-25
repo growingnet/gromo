@@ -716,6 +716,24 @@ class SupportsExtendedForward(Protocol):
         ...
 
 
+import torch.nn.modules.activation as activation_mod
+import torch.nn.modules.dropout as dropout_mod
+
+
+def is_passthrough(module: torch.nn.Module) -> bool:
+    cls = module.__class__
+    if cls is torch.nn.Identity:
+        return True
+    if cls.__module__ == dropout_mod.__name__:
+        return True
+    return (
+        cls.__module__ == activation_mod.__name__
+        and len(list(module.parameters(recurse=False))) == 0
+        and len(list(module.buffers(recurse=False))) == 0
+        and not isinstance(module, (torch.nn.PReLU, torch.nn.MultiheadAttention, torch.nn.GLU))
+    )
+
+
 class GrowingModule(torch.nn.Module):
     """
     Abstract class for a Module of dynamic size
@@ -3761,33 +3779,32 @@ class GrowingModule(torch.nn.Module):
         )
 
     @torch.no_grad()
-    def prune_hidden_neurons_in(
+    def prune_neurons_in(
         self,
-        indices_to_remove: list[int],
+        indices_to_remove: list[int] | np.ndarray,
     ) -> None:
         """
-        Prune neurons from the hidden dim between ``self.previous_module`` and ``self``.
+        Prune fan-in neurons 
+        """ 
+        # Need a previous GrowingModule to coordinate with.
+        if not isinstance(self.previous_module, GrowingModule):
+            raise TypeError(
+                f"prune_neurons_in requires a previous GrowingModule, "
+                f"got {type(self.previous_module)}"
+            )
 
-        Symmetric counterpart of ``create_layer_extensions``: shrinks the hidden
-        dimension by dropping rows from ``previous_module.weight`` and the
-        matching columns from ``self.weight``.
+        # make sure indices are a numpy array of integers
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
 
-        Parameters
-        ----------
-        indices_to_remove: list[int]
-            Hidden-dim indices to delete. De-duplicated and sorted internally.
-            Empty list leads to no-operation; out-of-range raises IndexError.
-        """
-        # 0) Need a previous GrowingModule to coordinate with.
-        assert isinstance(self.previous_module, GrowingModule), (
-            f"prune_hidden_neurons_in requires a previous GrowingModule, "
-            f"got {type(self.previous_module)}"
-        )
-
-        # 1) Normalize + validate indices.
-        if len(indices_to_remove) == 0:
+        # Normalize + validate indices.
+        if indices_to_remove.size == 0:
             return
-        indices = sorted({int(i) for i in indices_to_remove})
+        indices = np.unique(indices_to_remove)
         n_hidden = self.previous_module.out_features
         if indices[0] < 0 or indices[-1] >= n_hidden:
             raise IndexError(
@@ -3796,17 +3813,17 @@ class GrowingModule(torch.nn.Module):
         if len(indices) == n_hidden:
             raise ValueError("Cannot prune all neurons of a layer")
 
-        # 2) Drop matching dims on both sides. Subclasses implement the slicing.
-        self.previous_module.prune_layer_out(indices)  # rows of W_prev， reshape tensor m
+        # Drop matching dims on both sides. Subclasses implement the slicing.
+        self.previous_module.prune_layer_out(indices)  # rows of W_prev
         self._prune_post_layer_function(indices)  # post-layer of the previous module
-        self.prune_layer_in(indices)  # cols of W_self, reshape tensor m and s
+        self.prune_layer_in(indices)  # cols of W_self
 
     @torch.no_grad()
-    def _prune_post_layer_function(self, indices: list[int]) -> None:
-        """Prune the post-layer function of the previous module, if it exists and has num_features.
+    def _prune_post_layer_function(self, indices: np.ndarray) -> None:
+        """Prune the post-layer function of the previous module, if it exists.
 
         Parameters:
-        indices: list[int] clean prune list, already validated and sorted"""
+        indices: np.ndarray clean prune list, already validated and sorted"""
 
         post_fn = self.previous_module.post_layer_function
         if post_fn is not None:
@@ -3814,33 +3831,15 @@ class GrowingModule(torch.nn.Module):
                 list(post_fn) if isinstance(post_fn, torch.nn.Sequential) else [post_fn]
             )
             for m in sub_modules:
-                if not hasattr(
-                    m, "num_features"
-                ):  # skip modules that don't have num_features (e.g. ReLU)
+                if is_passthrough(m):
                     continue
-
-                device = (
-                    m.weight.device
-                    if isinstance(getattr(m, "weight", None), torch.nn.Parameter)
-                    else (
-                        m.running_mean.device
-                        if getattr(m, "running_mean", None) is not None
-                        else "cpu"
+                # If the module has a prune method, call it.
+                if hasattr(m, "prune") and callable(m.prune):
+                    m.prune(indices)
+                else:
+                    raise TypeError(
+                        f"Module {type(m)} is not a passthrough module and does not support pruning (no prune method)."
                     )
-                )
-
-                keep_mask = torch.ones(m.num_features, dtype=torch.bool, device=device)
-
-                keep_mask[indices] = False
-                if isinstance(getattr(m, "weight", None), torch.nn.Parameter):
-                    m.weight = torch.nn.Parameter(m.weight[keep_mask].clone())
-                if isinstance(getattr(m, "bias", None), torch.nn.Parameter):
-                    m.bias = torch.nn.Parameter(m.bias[keep_mask].clone())
-                if getattr(m, "running_mean", None) is not None:
-                    m.running_mean = m.running_mean[keep_mask].clone()
-                if getattr(m, "running_var", None) is not None:
-                    m.running_var = m.running_var[keep_mask].clone()
-                m.num_features = int(keep_mask.sum().item())
 
     def missing_neurons(self) -> int:
         """

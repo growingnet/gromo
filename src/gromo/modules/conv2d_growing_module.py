@@ -2,6 +2,7 @@ import types
 from math import prod
 from warnings import warn
 
+import numpy as np
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
@@ -1237,11 +1238,24 @@ class Conv2dGrowingModule(GrowingModule):
         )
 
     @torch.no_grad()
-    def prune_layer_in(self, indices_to_remove: list[int]) -> None:
+    def prune_layer_in(self, indices_to_remove: np.ndarray | list[int]) -> None:
         """Shrink "self.layer" by dropping the input channels."""
-        keep = [i for i in range(self.in_channels) if i not in set(indices_to_remove)]
+        if self.layer.groups != 1:
+            raise NotImplementedError("Pruning is only supported for Conv2d layers with groups == 1.")
+
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
         device = self.layer.weight.device
-        keep_idx = torch.tensor(keep, device=device, dtype=torch.long)
+        keep = np.setdiff1d(np.arange(self.in_channels), indices_to_remove)
+        keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
+
+        weight_requires_grad = self.layer.weight.requires_grad
+        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
 
         new_layer = torch.nn.Conv2d(
             in_channels=len(keep),
@@ -1255,9 +1269,15 @@ class Conv2dGrowingModule(GrowingModule):
             padding_mode=self.layer.padding_mode,
             device=device,
         )
-        new_layer.weight.data = self.layer.weight.index_select(1, keep_idx).clone()
+        new_layer.weight = torch.nn.Parameter(
+            self.layer.weight.index_select(1, keep_idx).clone(),
+            requires_grad=weight_requires_grad
+        )
         if self.layer.bias is not None:
-            new_layer.bias.data = self.layer.bias.clone()
+            new_layer.bias = torch.nn.Parameter(
+                self.layer.bias.clone(),
+                requires_grad=bias_requires_grad
+            )
 
         self.layer = new_layer
 
@@ -1277,11 +1297,24 @@ class Conv2dGrowingModule(GrowingModule):
         )
 
     @torch.no_grad()
-    def prune_layer_out(self, indices_to_remove: list[int]) -> None:
-        """Shrink "self.layer"by dropping the output channels."""
-        keep = [i for i in range(self.out_features) if i not in set(indices_to_remove)]
+    def prune_layer_out(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """Shrink "self.layer" by dropping the output channels."""
+        if self.layer.groups != 1:
+            raise NotImplementedError("Pruning is only supported for Conv2d layers with groups == 1.")
+
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
         device = self.layer.weight.device
-        keep_idx = torch.tensor(keep, device=device, dtype=torch.long)
+        keep = np.setdiff1d(np.arange(self.out_channels), indices_to_remove)
+        keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
+
+        weight_requires_grad = self.layer.weight.requires_grad
+        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
 
         new_layer = torch.nn.Conv2d(
             in_channels=self.in_channels,
@@ -1295,9 +1328,15 @@ class Conv2dGrowingModule(GrowingModule):
             padding_mode=self.layer.padding_mode,
             device=device,
         )
-        new_layer.weight.data = self.layer.weight.index_select(0, keep_idx).clone()
+        new_layer.weight = torch.nn.Parameter(
+            self.layer.weight.index_select(0, keep_idx).clone(),
+            requires_grad=weight_requires_grad
+        )
         if self.layer.bias is not None:
-            new_layer.bias.data = self.layer.bias.index_select(0, keep_idx).clone()
+            new_layer.bias = torch.nn.Parameter(
+                self.layer.bias.index_select(0, keep_idx).clone(),
+                requires_grad=bias_requires_grad
+            )
 
         self.layer = new_layer
 

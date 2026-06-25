@@ -1,6 +1,7 @@
 import types
 from warnings import warn
 
+import numpy as np
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
@@ -1102,7 +1103,7 @@ class LinearGrowingModule(GrowingModule):
         )
 
     @torch.no_grad()
-    def prune_layer_in(self, indices_to_remove: list[int]) -> None:
+    def prune_layer_in(self, indices_to_remove: np.ndarray | list[int]) -> None:
         """
         Shrink ``self.layer`` by dropping the given input columns of its weight.
 
@@ -1110,12 +1111,21 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        indices_to_remove: list[int]
-            Column indices in ``self.layer.weight`` to drop. Assumed already
-            de-duplicated, sorted, and in-range by the caller.
+        indices_to_remove: np.ndarray | list[int]
+            Column indices in ``self.layer.weight`` to drop.
         """
-        keep = [i for i in range(self.in_features) if i not in set(indices_to_remove)]
-        keep_idx = torch.tensor(keep, device=self.device, dtype=torch.long)
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        keep = np.setdiff1d(np.arange(self.in_features), indices_to_remove)
+        keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
+
+        weight_requires_grad = self.layer.weight.requires_grad
+        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
 
         new_layer = torch.nn.Linear(
             in_features=len(keep),
@@ -1123,9 +1133,15 @@ class LinearGrowingModule(GrowingModule):
             bias=self.use_bias,
             device=self.device,
         )
-        new_layer.weight.data = self.layer.weight.index_select(1, keep_idx).clone()
+        new_layer.weight = torch.nn.Parameter(
+            self.layer.weight.index_select(1, keep_idx).clone(),
+            requires_grad=weight_requires_grad
+        )
         if self.use_bias:
-            new_layer.bias.data = self.layer.bias.data.clone()  # bias unchanged
+            new_layer.bias = torch.nn.Parameter(
+                self.layer.bias.clone(),
+                requires_grad=bias_requires_grad
+            )
 
         self.layer = new_layer
 
@@ -1142,19 +1158,28 @@ class LinearGrowingModule(GrowingModule):
         )
 
     @torch.no_grad()
-    def prune_layer_out(self, indices_to_remove: list[int]) -> None:
+    def prune_layer_out(self, indices_to_remove: np.ndarray | list[int]) -> None:
         """
         Shrink ``self.layer`` by dropping the given output rows of its weight
         (and the matching bias entries, if any).
 
         Parameters
         ----------
-        indices_to_remove: list[int]
-            Row indices in ``self.layer.weight`` to drop. Assumed already
-            de-duplicated, sorted, and in-range by the caller.
+        indices_to_remove: np.ndarray | list[int]
+            Row indices in ``self.layer.weight`` to drop.
         """
-        keep = [i for i in range(self.out_features) if i not in set(indices_to_remove)]
-        keep_idx = torch.tensor(keep, device=self.device, dtype=torch.long)
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        keep = np.setdiff1d(np.arange(self.out_features), indices_to_remove)
+        keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
+
+        weight_requires_grad = self.layer.weight.requires_grad
+        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
 
         new_layer = torch.nn.Linear(
             in_features=self.in_features,
@@ -1162,9 +1187,15 @@ class LinearGrowingModule(GrowingModule):
             bias=self.use_bias,
             device=self.device,
         )
-        new_layer.weight.data = self.layer.weight.index_select(0, keep_idx).clone()
+        new_layer.weight = torch.nn.Parameter(
+            self.layer.weight.index_select(0, keep_idx).clone(),
+            requires_grad=weight_requires_grad
+        )
         if self.use_bias:
-            new_layer.bias.data = self.layer.bias.data.index_select(0, keep_idx).clone()
+            new_layer.bias = torch.nn.Parameter(
+                self.layer.bias.index_select(0, keep_idx).clone(),
+                requires_grad=bias_requires_grad
+            )
 
         self.layer = new_layer
 
