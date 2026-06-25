@@ -1125,7 +1125,9 @@ class LinearGrowingModule(GrowingModule):
         keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
 
         weight_requires_grad = self.layer.weight.requires_grad
-        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
+        bias_requires_grad = (
+            self.layer.bias.requires_grad if self.layer.bias is not None else False
+        )
 
         new_layer = torch.nn.Linear(
             in_features=len(keep),
@@ -1135,12 +1137,11 @@ class LinearGrowingModule(GrowingModule):
         )
         new_layer.weight = torch.nn.Parameter(
             self.layer.weight.index_select(1, keep_idx).clone(),
-            requires_grad=weight_requires_grad
+            requires_grad=weight_requires_grad,
         )
         if self.use_bias:
             new_layer.bias = torch.nn.Parameter(
-                self.layer.bias.clone(),
-                requires_grad=bias_requires_grad
+                self.layer.bias.clone(), requires_grad=bias_requires_grad
             )
 
         self.layer = new_layer
@@ -1179,7 +1180,9 @@ class LinearGrowingModule(GrowingModule):
         keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
 
         weight_requires_grad = self.layer.weight.requires_grad
-        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
+        bias_requires_grad = (
+            self.layer.bias.requires_grad if self.layer.bias is not None else False
+        )
 
         new_layer = torch.nn.Linear(
             in_features=self.in_features,
@@ -1189,12 +1192,12 @@ class LinearGrowingModule(GrowingModule):
         )
         new_layer.weight = torch.nn.Parameter(
             self.layer.weight.index_select(0, keep_idx).clone(),
-            requires_grad=weight_requires_grad
+            requires_grad=weight_requires_grad,
         )
         if self.use_bias:
             new_layer.bias = torch.nn.Parameter(
                 self.layer.bias.index_select(0, keep_idx).clone(),
-                requires_grad=bias_requires_grad
+                requires_grad=bias_requires_grad,
             )
 
         self.layer = new_layer

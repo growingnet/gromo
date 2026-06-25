@@ -345,23 +345,27 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         if len(indices) == self.num_features:
             raise ValueError("Cannot prune all features of BatchNorm layer")
 
-        keep_mask = torch.ones(self.num_features, dtype=torch.bool, device=self.weight.device if self.affine else "cpu")
+        keep_mask = torch.ones(
+            self.num_features,
+            dtype=torch.bool,
+            device=self.weight.device if self.affine else "cpu",
+        )
         keep_mask[indices] = False
 
         self.num_features = int(keep_mask.sum().item())
 
         if getattr(self, "affine", False):
             weight_requires_grad = self.weight.requires_grad
-            bias_requires_grad = self.bias.requires_grad if self.bias is not None else False
+            bias_requires_grad = (
+                self.bias.requires_grad if self.bias is not None else False
+            )
 
             self.weight = nn.Parameter(
-                self.weight[keep_mask].clone(),
-                requires_grad=weight_requires_grad
+                self.weight[keep_mask].clone(), requires_grad=weight_requires_grad
             )
             if self.bias is not None:
                 self.bias = nn.Parameter(
-                    self.bias[keep_mask].clone(),
-                    requires_grad=bias_requires_grad
+                    self.bias[keep_mask].clone(), requires_grad=bias_requires_grad
                 )
 
         if getattr(self, "track_running_stats", False):
@@ -635,7 +639,11 @@ class GrowingLayerNorm(nn.LayerNorm):
         if len(indices) == first_dim:
             raise ValueError("Cannot prune all features of LayerNorm layer")
 
-        keep_mask = torch.ones(first_dim, dtype=torch.bool, device=self.weight.device if self.elementwise_affine else "cpu")
+        keep_mask = torch.ones(
+            first_dim,
+            dtype=torch.bool,
+            device=self.weight.device if self.elementwise_affine else "cpu",
+        )
         keep_mask[indices] = False
 
         new_normalized_shape = (int(keep_mask.sum().item()), *old_shape[1:])
@@ -643,16 +651,16 @@ class GrowingLayerNorm(nn.LayerNorm):
 
         if getattr(self, "elementwise_affine", False):
             weight_requires_grad = self.weight.requires_grad
-            bias_requires_grad = self.bias.requires_grad if self.bias is not None else False
+            bias_requires_grad = (
+                self.bias.requires_grad if self.bias is not None else False
+            )
 
             self.weight = nn.Parameter(
-                self.weight[keep_mask].clone(),
-                requires_grad=weight_requires_grad
+                self.weight[keep_mask].clone(), requires_grad=weight_requires_grad
             )
             if self.bias is not None:
                 self.bias = nn.Parameter(
-                    self.bias[keep_mask].clone(),
-                    requires_grad=bias_requires_grad
+                    self.bias[keep_mask].clone(), requires_grad=bias_requires_grad
                 )
 
 
@@ -881,7 +889,11 @@ class GrowingGroupNorm(nn.GroupNorm):
         if len(indices) == self.num_channels:
             raise ValueError("Cannot prune all channels of GroupNorm layer")
 
-        keep_mask = torch.ones(self.num_channels, dtype=torch.bool, device=self.weight.device if self.affine else "cpu")
+        keep_mask = torch.ones(
+            self.num_channels,
+            dtype=torch.bool,
+            device=self.weight.device if self.affine else "cpu",
+        )
         keep_mask[indices] = False
 
         new_num_channels = int(keep_mask.sum().item())
@@ -895,14 +907,14 @@ class GrowingGroupNorm(nn.GroupNorm):
 
         if getattr(self, "affine", False):
             weight_requires_grad = self.weight.requires_grad
-            bias_requires_grad = self.bias.requires_grad if self.bias is not None else False
+            bias_requires_grad = (
+                self.bias.requires_grad if self.bias is not None else False
+            )
 
             self.weight = nn.Parameter(
-                self.weight[keep_mask].clone(),
-                requires_grad=weight_requires_grad
+                self.weight[keep_mask].clone(), requires_grad=weight_requires_grad
             )
             if self.bias is not None:
                 self.bias = nn.Parameter(
-                    self.bias[keep_mask].clone(),
-                    requires_grad=bias_requires_grad
+                    self.bias[keep_mask].clone(), requires_grad=bias_requires_grad
                 )

@@ -5,7 +5,6 @@ from copy import deepcopy
 from unittest import main, mock
 
 import numpy as np
-
 import torch
 
 from gromo.modules.conv2d_growing_module import (
@@ -687,8 +686,12 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         """prune_layer_out drops the given output channels (and matching bias)."""
         torch.manual_seed(0)
         layer = self._tested_class(
-            in_channels=2, out_channels=5, kernel_size=(3, 3), padding=1,
-            use_bias=bias, device=global_device(),
+            in_channels=2,
+            out_channels=5,
+            kernel_size=(3, 3),
+            padding=1,
+            use_bias=bias,
+            device=global_device(),
         )
         original = deepcopy(layer)
         indices = np.array([1, 3])
@@ -698,11 +701,19 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
 
         self.assertEqual(layer.in_channels, original.in_channels)
         self.assertEqual(layer.out_channels, original.out_channels - len(indices))
-        self.assertAllClose(layer.layer.weight, original.layer.weight.index_select(0, keep))
-        self.assertEqual(layer.layer.weight.requires_grad, original.layer.weight.requires_grad)
+        self.assertAllClose(
+            layer.layer.weight, original.layer.weight.index_select(0, keep)
+        )
+        self.assertEqual(
+            layer.layer.weight.requires_grad, original.layer.weight.requires_grad
+        )
         if bias:
-            self.assertAllClose(layer.layer.bias, original.layer.bias.index_select(0, keep))
-            self.assertEqual(layer.layer.bias.requires_grad, original.layer.bias.requires_grad)
+            self.assertAllClose(
+                layer.layer.bias, original.layer.bias.index_select(0, keep)
+            )
+            self.assertEqual(
+                layer.layer.bias.requires_grad, original.layer.bias.requires_grad
+            )
         # forward equivalence on the channel axis: pruned(x) == original(x)[:, keep]
         x = torch.randn(4, 2, 8, 8, device=global_device())
         self.assertAllClose(layer(x), original(x).index_select(1, keep))
@@ -716,8 +727,12 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         """prune_layer_in drops the given input channels; recreates tensor_s and tensor_m."""
         torch.manual_seed(0)
         layer = self._tested_class(
-            in_channels=4, out_channels=3, kernel_size=(3, 3), padding=1,
-            use_bias=bias, device=global_device(),
+            in_channels=4,
+            out_channels=3,
+            kernel_size=(3, 3),
+            padding=1,
+            use_bias=bias,
+            device=global_device(),
         )
         original = deepcopy(layer)
         indices = np.array([1, 3])
@@ -727,11 +742,17 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
 
         self.assertEqual(layer.in_channels, original.in_channels - len(indices))
         self.assertEqual(layer.out_channels, original.out_channels)
-        self.assertAllClose(layer.layer.weight, original.layer.weight.index_select(1, keep))
-        self.assertEqual(layer.layer.weight.requires_grad, original.layer.weight.requires_grad)
+        self.assertAllClose(
+            layer.layer.weight, original.layer.weight.index_select(1, keep)
+        )
+        self.assertEqual(
+            layer.layer.weight.requires_grad, original.layer.weight.requires_grad
+        )
         if bias:
             self.assertAllClose(layer.layer.bias, original.layer.bias)
-            self.assertEqual(layer.layer.bias.requires_grad, original.layer.bias.requires_grad)
+            self.assertEqual(
+                layer.layer.bias.requires_grad, original.layer.bias.requires_grad
+            )
         # forward equivalence: zeroing the removed input channels of the original
         # equals feeding only the kept channels to the pruned layer
         x = torch.randn(4, 4, 8, 8, device=global_device())
@@ -748,8 +769,12 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         """After prune_layer_in, the re-created tensor_s can accumulate a fresh gather."""
         torch.manual_seed(0)
         layer = self._tested_class(
-            in_channels=4, out_channels=3, kernel_size=(3, 3), padding=1,
-            use_bias=True, device=global_device(),
+            in_channels=4,
+            out_channels=3,
+            kernel_size=(3, 3),
+            padding=1,
+            use_bias=True,
+            device=global_device(),
         )
         layer.prune_layer_in(np.array([1, 3]))
 
@@ -768,6 +793,7 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
     def test_prune_neurons_in_with_growingbatchnorm2d(self):
         """The previous module's GrowingBatchNorm2d post-layer is pruned alongside the hidden dim."""
         from gromo.modules.growing_normalisation import GrowingBatchNorm2d
+
         hidden = 4
         first, second = self.create_demo_layers(bias=True, hidden_channels=hidden)
         bn = GrowingBatchNorm2d(hidden, device=global_device())

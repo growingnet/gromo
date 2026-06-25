@@ -4,6 +4,8 @@ from typing import Any, Iterator, Literal, Protocol, get_args, runtime_checkable
 
 import numpy as np
 import torch
+import torch.nn.modules.activation as activation_mod
+import torch.nn.modules.dropout as dropout_mod
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
@@ -717,11 +719,8 @@ class SupportsExtendedForward(Protocol):
         ...
 
 
-import torch.nn.modules.activation as activation_mod
-import torch.nn.modules.dropout as dropout_mod
-
-
 def is_passthrough(module: torch.nn.Module) -> bool:
+    """Check if a module is a passthrough layer (no learnable parameters/buffers)."""
     cls = module.__class__
     if cls is torch.nn.Identity:
         return True
@@ -731,7 +730,9 @@ def is_passthrough(module: torch.nn.Module) -> bool:
         cls.__module__ == activation_mod.__name__
         and len(list(module.parameters(recurse=False))) == 0
         and len(list(module.buffers(recurse=False))) == 0
-        and not isinstance(module, (torch.nn.PReLU, torch.nn.MultiheadAttention, torch.nn.GLU))
+        and not isinstance(
+            module, (torch.nn.PReLU, torch.nn.MultiheadAttention, torch.nn.GLU)
+        )
     )
 
 
@@ -3863,8 +3864,8 @@ class GrowingModule(torch.nn.Module):
         indices_to_remove: list[int] | np.ndarray,
     ) -> None:
         """
-        Prune fan-in neurons 
-        """ 
+        Prune fan-in neurons
+        """
         # Need a previous GrowingModule to coordinate with.
         if not isinstance(self.previous_module, GrowingModule):
             raise TypeError(
@@ -3901,9 +3902,10 @@ class GrowingModule(torch.nn.Module):
     def _prune_post_layer_function(self, indices: np.ndarray) -> None:
         """Prune the post-layer function of the previous module, if it exists.
 
-        Parameters:
-        indices: np.ndarray clean prune list, already validated and sorted"""
-
+        Parameters
+        ----------
+        indices: np.ndarray clean prune list, already validated and sorted
+        """
         post_fn = self.previous_module.post_layer_function
         if post_fn is not None:
             sub_modules = (

@@ -1241,7 +1241,9 @@ class Conv2dGrowingModule(GrowingModule):
     def prune_layer_in(self, indices_to_remove: np.ndarray | list[int]) -> None:
         """Shrink "self.layer" by dropping the input channels."""
         if self.layer.groups != 1:
-            raise NotImplementedError("Pruning is only supported for Conv2d layers with groups == 1.")
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
 
         if isinstance(indices_to_remove, list):
             indices_to_remove = np.array(indices_to_remove)
@@ -1255,7 +1257,9 @@ class Conv2dGrowingModule(GrowingModule):
         keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
 
         weight_requires_grad = self.layer.weight.requires_grad
-        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
+        bias_requires_grad = (
+            self.layer.bias.requires_grad if self.layer.bias is not None else False
+        )
 
         new_layer = torch.nn.Conv2d(
             in_channels=len(keep),
@@ -1271,12 +1275,11 @@ class Conv2dGrowingModule(GrowingModule):
         )
         new_layer.weight = torch.nn.Parameter(
             self.layer.weight.index_select(1, keep_idx).clone(),
-            requires_grad=weight_requires_grad
+            requires_grad=weight_requires_grad,
         )
         if self.layer.bias is not None:
             new_layer.bias = torch.nn.Parameter(
-                self.layer.bias.clone(),
-                requires_grad=bias_requires_grad
+                self.layer.bias.clone(), requires_grad=bias_requires_grad
             )
 
         self.layer = new_layer
@@ -1300,7 +1303,9 @@ class Conv2dGrowingModule(GrowingModule):
     def prune_layer_out(self, indices_to_remove: np.ndarray | list[int]) -> None:
         """Shrink "self.layer" by dropping the output channels."""
         if self.layer.groups != 1:
-            raise NotImplementedError("Pruning is only supported for Conv2d layers with groups == 1.")
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
 
         if isinstance(indices_to_remove, list):
             indices_to_remove = np.array(indices_to_remove)
@@ -1314,7 +1319,9 @@ class Conv2dGrowingModule(GrowingModule):
         keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
 
         weight_requires_grad = self.layer.weight.requires_grad
-        bias_requires_grad = self.layer.bias.requires_grad if self.layer.bias is not None else False
+        bias_requires_grad = (
+            self.layer.bias.requires_grad if self.layer.bias is not None else False
+        )
 
         new_layer = torch.nn.Conv2d(
             in_channels=self.in_channels,
@@ -1330,12 +1337,12 @@ class Conv2dGrowingModule(GrowingModule):
         )
         new_layer.weight = torch.nn.Parameter(
             self.layer.weight.index_select(0, keep_idx).clone(),
-            requires_grad=weight_requires_grad
+            requires_grad=weight_requires_grad,
         )
         if self.layer.bias is not None:
             new_layer.bias = torch.nn.Parameter(
                 self.layer.bias.index_select(0, keep_idx).clone(),
-                requires_grad=bias_requires_grad
+                requires_grad=bias_requires_grad,
             )
 
         self.layer = new_layer

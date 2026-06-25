@@ -5,7 +5,6 @@ from typing import Literal
 from unittest import mock
 
 import numpy as np
-
 import torch
 
 from gromo.modules.linear_growing_module import (
@@ -555,6 +554,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
     def test_prune_neurons_in_with_growingbatchnorm(self):
         """The previous module's GrowingBatchNorm post-layer is pruned alongside the hidden dim."""
         from gromo.modules.growing_normalisation import GrowingBatchNorm1d
+
         hidden = 4
         first, second = self.create_demo_layers(
             bias=True,
@@ -594,6 +594,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     def test_prune_neurons_in_with_layernorm(self):
         from gromo.modules.growing_normalisation import GrowingLayerNorm
+
         hidden = 4
         first, second = self.create_demo_layers(
             bias=True,
@@ -624,11 +625,14 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     def test_prune_neurons_in_with_groupnorm(self):
         from gromo.modules.growing_normalisation import GrowingGroupNorm
+
         hidden = 4
         first, second = self.create_demo_layers(
             bias=True,
             hidden_features=hidden,
-            first_layer_post_layer=GrowingGroupNorm(num_groups=2, num_channels=hidden, device=global_device()),
+            first_layer_post_layer=GrowingGroupNorm(
+                num_groups=2, num_channels=hidden, device=global_device()
+            ),
         )
         gn = first.post_layer_function
         with torch.no_grad():
