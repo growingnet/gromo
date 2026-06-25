@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from gromo.containers.growing_container import GrowingContainer
+from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.modules.linear_growing_module import LinearGrowingModule
 from gromo.utils.utils import compute_tensor_stats
 
@@ -500,7 +501,7 @@ def check_sizes(image_size: int, patch_size: int) -> int:
     return num_patches
 
 
-class GrowingMLPMixer(GrowingContainer):
+class GrowingMLPMixer(SequentialGrowingModel):
     """
     Represents a growing MLP mixer network.
 
@@ -543,6 +544,7 @@ class GrowingMLPMixer(GrowingContainer):
         super().__init__(
             in_features=torch.tensor(in_features).prod().int().item(),
             out_features=out_features,
+            device=device,
         )
         self.device = device
         self.patcher = nn.Conv2d(
@@ -566,14 +568,11 @@ class GrowingMLPMixer(GrowingContainer):
             ]
         )
         self.classifier = nn.Linear(num_features, self.out_features, device=self.device)
-        self.set_growing_layers()
-
-    def set_growing_layers(self) -> None:
-        """Reference all growable layers of the model in the _growing_layers private attribute"""
-        self._growing_layers = list()
+        self._growable_layers = []
         for mixer in self.mixers:
-            self._growing_layers.append(mixer.token_mixer.mlp.second_layer)
-            self._growing_layers.append(mixer.channel_mixer.mlp.second_layer)
+            self._growable_layers.append(mixer.token_mixer.mlp.second_layer)
+            self._growable_layers.append(mixer.channel_mixer.mlp.second_layer)
+        self.set_growing_layers(scheduling_method="all")
 
     def forward(self, x: Tensor) -> Tensor:
         """

@@ -3,11 +3,11 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from gromo.containers.growing_container import GrowingModel
+from gromo.containers.sequential_growing_container import SequentialGrowingModel
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-class GrowingMLP(GrowingModel):
+class GrowingMLP(SequentialGrowingModel):
     """
     Represents a growing MLP network.
 
@@ -98,14 +98,8 @@ class GrowingMLP(GrowingModel):
             )
         )
 
-        self.set_growing_layers()
-
-    def set_growing_layers(self, index: int | None = None) -> None:
-        """Reference all growable layers of the model in the _growing_layers private attribute"""
-        if index is not None:
-            self._growing_layers = [self.layers[index]]  # type: ignore
-        else:
-            self._growing_layers = list(self.layers[1:])  # type: ignore
+        self._growable_layers = list(self.layers[1:])
+        self.set_growing_layers(scheduling_method="all")
 
     def forward(self, x: Tensor) -> Tensor:
         """
