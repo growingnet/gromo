@@ -416,14 +416,18 @@ def compute_mask_tensor_t(
     return tensor_t
 
 
-def create_bordering_effect_convolution(
+def create_bordering_effect_weight(
     channels: int,
     convolution: torch.nn.Conv2d,
-) -> torch.nn.Conv2d:
+) -> torch.Tensor:
     """
-    Create a convolution that simulates the border effect of a convolution
-    on an unfolded tensor. The convolution can then be used in
-    `apply_border_effect_on_unfolded`.
+    Create the constant depthwise kernel that simulates the border effect of a
+    convolution on an unfolded tensor. The weight can then be applied functionally
+    in `apply_border_effect_on_unfolded`.
+
+    The returned tensor is a fixed constant (not a learnable parameter): the
+    grouped (``groups=channels``) kernel of a depthwise convolution whose only
+    non-zero entry is a ``1.0`` at the center of every channel.
 
     Parameters
     ----------
@@ -432,12 +436,12 @@ def create_bordering_effect_convolution(
         this is for the unfolded tensor, not the original tensor.
         Therefore, it should be equal to C[-1] * C1.kernel_size[0] * C1.kernel_size[1].
     convolution: torch.nn.Conv2d
-        convolutional layer to be applied on the unfolded tensor
+        convolutional layer whose kernel size and device are matched
 
     Returns
     -------
-    torch.nn.Conv2d
-        convolutional layer that simulates the border effect
+    torch.Tensor
+        weight of shape ``(channels, 1, kH, kW)`` simulating the border effect
 
     Raises
     ------
@@ -447,35 +451,29 @@ def create_bordering_effect_convolution(
         if argument convolution is not of type torch.nn.Conv2d
     """
     if not isinstance(channels, int) or channels <= 0:
-        raise ValueError("Input 'input_channels' must be a positive integer.")
+        raise ValueError("Input 'channels' must be a positive integer.")
     if not isinstance(convolution, torch.nn.Conv2d):
         raise TypeError("Input 'convolution' must be a torch.nn.Conv2d instance.")
 
-    identity_conv = torch.nn.Conv2d(
-        in_channels=channels,
-        out_channels=channels,
-        groups=channels,
-        kernel_size=convolution.kernel_size,  # type: ignore
-        padding=convolution.padding,  # type: ignore
-        stride=convolution.stride,  # type: ignore
-        dilation=convolution.dilation,  # type: ignore
-        bias=False,
+    weight = torch.zeros(
+        channels,
+        1,
+        convolution.kernel_size[0],
+        convolution.kernel_size[1],
         device=convolution.weight.device,
     )
-
-    identity_conv.weight.data.fill_(0)
     mid = (convolution.kernel_size[0] // 2, convolution.kernel_size[1] // 2)
-    identity_conv.weight.data[:, 0, mid[0], mid[1]] = 1.0
+    weight[:, 0, mid[0], mid[1]] = 1.0
 
-    return identity_conv
+    return weight
 
 
 @torch.no_grad()
 def apply_border_effect_on_unfolded(
     unfolded_tensor: torch.Tensor,
     original_size: tuple[int, int],
-    border_effect_conv: torch.nn.Conv2d | None = None,
-    identity_conv: torch.nn.Conv2d | None = None,
+    border_effect_conv: torch.nn.Conv2d,
+    identity_weight: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """
     Simulate the effect of a 1x1 convolution on the size of an unfolded tensor.
@@ -495,11 +493,13 @@ def apply_border_effect_on_unfolded(
         unfolded tensor to be modified
     original_size: tuple[int, int]
         original size of the tensor before unfolding
-    border_effect_conv: torch.nn.Conv2d | None, optional
-        convolutional layer to be applied on the unfolded tensor
-    identity_conv: torch.nn.Conv2d | None, optional
-        convolutional layer that simulates the identity effect,
-        if None, it will be created from `border_effect_conv`.
+    border_effect_conv: torch.nn.Conv2d
+        convolutional layer providing the convolution hyper-parameters
+        (stride, padding, dilation, kernel size) used to apply the border effect.
+    identity_weight: torch.Tensor | None, optional
+        constant depthwise kernel (see `create_bordering_effect_weight`) applied
+        functionally with `torch.nn.functional.conv2d`. If None, it is built from
+        `border_effect_conv`.
 
     Returns
     -------
@@ -513,31 +513,35 @@ def apply_border_effect_on_unfolded(
     """
     if not isinstance(unfolded_tensor, torch.Tensor):
         raise TypeError("Input 'unfolded_tensor' must be a torch.Tensor")
-    assert isinstance(border_effect_conv, torch.nn.Conv2d) or isinstance(
-        identity_conv, torch.nn.Conv2d
-    ), "Either 'border_effect_conv' or 'identity_conv' must be provided."
+    assert isinstance(border_effect_conv, torch.nn.Conv2d), (
+        "'border_effect_conv' must be a torch.nn.Conv2d instance."
+    )
     assert all(isinstance(s, int) and s > 0 for s in original_size), (
         "'original_size' must be a tuple of positive integers."
     )
 
-    if identity_conv is None:
-        assert isinstance(border_effect_conv, torch.nn.Conv2d), (
-            "'border_effect_conv' must be provided if 'identity_conv' is None."
-        )
-        channels = unfolded_tensor.shape[1]
-        identity_conv = create_bordering_effect_convolution(
+    channels = unfolded_tensor.shape[1]
+    if identity_weight is None:
+        identity_weight = create_bordering_effect_weight(
             channels=channels,
             convolution=border_effect_conv,
         )
 
     unfolded_tensor = unfolded_tensor.reshape(
         unfolded_tensor.shape[0],
-        unfolded_tensor.shape[1],
+        channels,
         original_size[0],
         original_size[1],
     )
 
-    unfolded_tensor = identity_conv(unfolded_tensor)
+    unfolded_tensor = torch.nn.functional.conv2d(
+        unfolded_tensor,
+        identity_weight,
+        stride=border_effect_conv.stride,
+        padding=border_effect_conv.padding,
+        dilation=border_effect_conv.dilation,
+        groups=channels,
+    )
     unfolded_tensor = unfolded_tensor.flatten(start_dim=2)
 
     return unfolded_tensor

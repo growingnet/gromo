@@ -10,7 +10,7 @@ from gromo.utils.tools import (
     compute_mask_tensor_t,
     compute_optimal_added_parameters,
     compute_output_shape_conv,
-    create_bordering_effect_convolution,
+    create_bordering_effect_weight,
     optimal_delta,
     sqrt_inverse_matrix_semi_positive,
 )
@@ -414,38 +414,34 @@ class TestTools(TorchTestCase):
         with self.assertRaises(AssertionError):
             compute_optimal_added_parameters(matrix_s, matrix_n)
 
-    def test_create_bordering_effect_convolution(self):
-        """Test create_bordering_effect_convolution function"""
+    def test_create_bordering_effect_weight(self):
+        """Test create_bordering_effect_weight function"""
         # Test basic functionality
         channels = 12  # 2 * 3 * 2 (in_channels * kernel_h * kernel_w)
         conv = torch.nn.Conv2d(2, 4, (3, 2), padding=(1, 0))
 
-        identity_conv = create_bordering_effect_convolution(channels, conv)
+        weight = create_bordering_effect_weight(channels, conv)
 
-        # Check properties
-        self.assertEqual(identity_conv.in_channels, channels)
-        self.assertEqual(identity_conv.out_channels, channels)
-        self.assertEqual(identity_conv.groups, channels)
-        self.assertEqual(identity_conv.kernel_size, conv.kernel_size)
-        self.assertEqual(identity_conv.padding, conv.padding)
-        self.assertEqual(identity_conv.stride, conv.stride)
-        self.assertEqual(identity_conv.dilation, conv.dilation)
-        self.assertIsNone(identity_conv.bias)
+        # Check shape: depthwise kernel (channels, 1, kH, kW)
+        self.assertShapeEqual(
+            weight, (channels, 1, conv.kernel_size[0], conv.kernel_size[1])
+        )
 
-        # Check weight initialization (should be identity in center)
+        # Check weight initialization (1.0 at the center, 0.0 elsewhere)
         mid_h, mid_w = conv.kernel_size[0] // 2, conv.kernel_size[1] // 2
-        center_weights = identity_conv.weight.data[:, 0, mid_h, mid_w]
-        self.assertTrue(torch.allclose(center_weights, torch.ones(channels)))
+        center_weights = weight[:, 0, mid_h, mid_w]
+        self.assertAllClose(center_weights, torch.ones(channels))
+        self.assertAllClose(weight.sum(), torch.tensor(float(channels)))
 
         # Test error cases
         with self.assertRaises(ValueError):
-            create_bordering_effect_convolution(-1, conv)  # Invalid channels
+            create_bordering_effect_weight(-1, conv)  # Invalid channels
 
         with self.assertRaises(ValueError):
-            create_bordering_effect_convolution(0, conv)  # Invalid channels
+            create_bordering_effect_weight(0, conv)  # Invalid channels
 
         with self.assertRaises(TypeError):
-            create_bordering_effect_convolution(
+            create_bordering_effect_weight(
                 12,
                 "not_a_conv",  # type: ignore
             )  # Wrong type
