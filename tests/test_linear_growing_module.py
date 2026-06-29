@@ -5040,6 +5040,32 @@ class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
         self.assertEqual(layer1.out_features, initial_out_features_layer1)
 
 
+class TestLinearPruningValidation(TorchTestCase):
+    def test_prune_layer_validation_and_errors(self):
+        layer = LinearGrowingModule(
+            in_features=5,
+            out_features=4,
+            use_bias=True,
+            device=global_device(),
+        )
+
+        # list input validation (converting to numpy array)
+        layer.prune_layer_in([1, 3])
+        self.assertEqual(layer.in_features, 3)
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            layer.prune_layer_in("invalid")
+        with self.assertRaises(TypeError):
+            layer.prune_layer_out("invalid")
+
+        # non-integer type -> TypeError
+        with self.assertRaises(TypeError):
+            layer.prune_layer_in(np.array([1.0, 2.0]))
+        with self.assertRaises(TypeError):
+            layer.prune_layer_out(np.array([1.0, 2.0]))
+
+
 if __name__ == "__main__":
     from unittest import main
 

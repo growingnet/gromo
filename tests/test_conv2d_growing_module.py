@@ -2568,5 +2568,51 @@ class TestNeuronCountingConv2d(TestConv2dGrowingModuleBase):
         self.assertEqual(layer.number_of_neurons_to_add(number_of_growth_steps=2), 5)
 
 
+class TestConv2dPruningValidation(TorchTestCase):
+    def test_prune_layer_validation_and_errors(self):
+        layer = Conv2dGrowingModule(
+            in_channels=4,
+            out_channels=3,
+            kernel_size=(3, 3),
+            padding=1,
+            device=global_device(),
+        )
+
+        # list input validation (converting to numpy array)
+        layer.prune_layer_in([1, 3])
+        self.assertEqual(layer.in_channels, 2)
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            layer.prune_layer_in("invalid")
+        with self.assertRaises(TypeError):
+            layer.prune_layer_out("invalid")
+
+        # non-integer type -> TypeError
+        with self.assertRaises(TypeError):
+            layer.prune_layer_in(np.array([1.0, 2.0]))
+        with self.assertRaises(TypeError):
+            layer.prune_layer_out(np.array([1.0, 2.0]))
+
+        # groups != 1 -> NotImplementedError
+        grouped_layer = Conv2dGrowingModule(
+            in_channels=4,
+            out_channels=4,
+            kernel_size=(3, 3),
+            device=global_device(),
+        )
+        grouped_layer.layer = torch.nn.Conv2d(
+            in_channels=4,
+            out_channels=4,
+            kernel_size=(3, 3),
+            groups=2,
+            device=global_device(),
+        )
+        with self.assertRaises(NotImplementedError):
+            grouped_layer.prune_layer_in(np.array([0]))
+        with self.assertRaises(NotImplementedError):
+            grouped_layer.prune_layer_out(np.array([0]))
+
+
 if __name__ == "__main__":
     main()
