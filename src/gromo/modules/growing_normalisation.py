@@ -325,6 +325,15 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Feature indices to remove.
+
+        Raises
+        ------
+        TypeError
+            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
+        IndexError
+            If indices are out of range for the number of features.
+        ValueError
+            If attempting to prune all features.
         """
         if isinstance(indices_to_remove, list):
             indices_to_remove = np.array(indices_to_remove)
@@ -616,6 +625,15 @@ class GrowingLayerNorm(nn.LayerNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Feature indices to remove.
+
+        Raises
+        ------
+        TypeError
+            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
+        IndexError
+            If indices are out of range for LayerNorm first dimension.
+        ValueError
+            If attempting to prune all features.
         """
         if isinstance(indices_to_remove, list):
             indices_to_remove = np.array(indices_to_remove)
@@ -869,6 +887,15 @@ class GrowingGroupNorm(nn.GroupNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             1D array of channel indices to remove.
+
+        Raises
+        ------
+        TypeError
+            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
+        IndexError
+            If indices are out of range for GroupNorm channels.
+        ValueError
+            If attempting to prune all channels or the pruned channels are not divisible by num_groups.
         """
         if isinstance(indices_to_remove, list):
             indices_to_remove = np.array(indices_to_remove)

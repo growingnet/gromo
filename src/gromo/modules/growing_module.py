@@ -3904,7 +3904,13 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        indices: np.ndarray clean prune list, already validated and sorted
+        indices : np.ndarray
+            Clean prune list, already validated and sorted.
+
+        Raises
+        ------
+        TypeError
+            If the module is not a passthrough module and does not support pruning.
         """
         post_fn = self.previous_module.post_layer_function
         if post_fn is not None:

@@ -1111,8 +1111,13 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        indices_to_remove: np.ndarray | list[int]
+        indices_to_remove : np.ndarray | list[int]
             Column indices in ``self.layer.weight`` to drop.
+
+        Raises
+        ------
+        TypeError
+            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
         """
         if isinstance(indices_to_remove, list):
             indices_to_remove = np.array(indices_to_remove)
@@ -1166,8 +1171,13 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        indices_to_remove: np.ndarray | list[int]
+        indices_to_remove : np.ndarray | list[int]
             Row indices in ``self.layer.weight`` to drop.
+
+        Raises
+        ------
+        TypeError
+            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
         """
         if isinstance(indices_to_remove, list):
             indices_to_remove = np.array(indices_to_remove)
