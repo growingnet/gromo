@@ -1085,7 +1085,7 @@ class Conv2dGrowingModule(GrowingModule):
         )
         return (
             torch.einsum("iahw,ibhw->ab", desired_activation, desired_activation),
-            self.input.shape[0],
+            desired_activation.shape[0],
         )
 
     # Layer edition

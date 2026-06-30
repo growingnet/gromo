@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Adds ``GrowRALinear`` and ``GrowRAConv2d`` adapter classes, and the ``GrowRAModel`` / ``get_growra_model`` container that injects growable adapters into any pretrained model (:gh:`255` by `Hugo Mousset`_).
 - Add Kaiming-normal and copy-normal initializations for layer extensions: ``kaiming_initialization`` and ``copy_initialization_variance`` (renamed from ``copy_uniform_initialization``) gain a ``distribution`` argument, exposed through the new ``"kaiming_normal"`` and ``"copy_normal"`` keys of ``create_layer_extensions`` (:gh:`259` by `Théo Rudkiewicz`_).
 - Refactored growing MLP containers to use `SequentialGrowingContainer` for a more unified model manipulation interface (:gh:`253` by `Pako Maxence TEKOU`_)
 - Example for `GrowingGraphNetwork` and `GrowingDAG` usage (:gh:`252` by `Stella Douka`_)
