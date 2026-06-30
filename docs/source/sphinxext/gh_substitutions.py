@@ -6,8 +6,12 @@ from docutils.parsers.rst.roles import set_classes
 # https://doughellmann.com/blog/2010/05/09/defining-custom-roles-in-sphinx/
 
 
-def gh_role(name, rawtext, text, lineno, inliner, options={}, content=[]):  # noqa: B006
+def gh_role(name, rawtext, text, lineno, inliner, options=None, content=None):
     """Link to a GitHub issue."""
+    if options is None:
+        options = {}
+    if content is None:
+        content = []
     try:
         # issue/PR mode (issues/PR-num will redirect to pull/PR-num)
         int(text)
