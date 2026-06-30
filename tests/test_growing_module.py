@@ -1518,6 +1518,83 @@ class TestScalingMethods(TorchTestCase):
         self.assertIs(returned_layer, layer, "scale_layer should return the same layer")
 
 
+class TestGrowingModulePruningValidation(TorchTestCase):
+    def test_prune_neurons_in_validation(self):
+        import numpy as np
+
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        # list conversion
+        second.prune_neurons_in([1, 3])
+        self.assertEqual(second.in_features, 2)
+
+        # Recreate layers
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            second.prune_neurons_in("invalid")
+
+        # non-integer type -> TypeError
+        with self.assertRaises(TypeError):
+            second.prune_neurons_in(np.array([1.0, 2.0]))
+
+        # empty index -> no-op
+        second.prune_neurons_in(np.array([], dtype=np.int64))
+        self.assertEqual(second.in_features, 4)
+
+        # previous module is not GrowingModule -> TypeError
+        third = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=None, device=global_device()
+        )
+        with self.assertRaises(TypeError):
+            third.prune_neurons_in(np.array([0]))
+
+        # out of range -> IndexError
+        with self.assertRaises(IndexError):
+            second.prune_neurons_in(np.array([4]))
+        with self.assertRaises(IndexError):
+            second.prune_neurons_in(np.array([-1]))
+
+        # prune all features -> ValueError
+        with self.assertRaises(ValueError):
+            second.prune_neurons_in(np.array([0, 1, 2, 3]))
+
+    def test_prune_post_layer_function_none(self):
+        import numpy as np
+
+        # post_layer_function is None
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        first.post_layer_function = None
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        # should run successfully without error
+        second.prune_neurons_in(np.array([0]))
+        self.assertEqual(second.in_features, 3)
+
+    def test_prune_post_layer_function_unsupported_module(self):
+        import numpy as np
+
+        # post_layer_function is nn.Linear, which has parameters but no prune method
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        first.post_layer_function = torch.nn.Linear(4, 4, device=global_device())
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        with self.assertRaises(TypeError) as ctx:
+            second.prune_neurons_in(np.array([0]))
+        self.assertIn("does not support pruning", str(ctx.exception))
+
+
 if __name__ == "__main__":
     from unittest import main
 

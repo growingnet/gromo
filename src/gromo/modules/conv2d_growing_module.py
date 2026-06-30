@@ -2,6 +2,7 @@ import types
 from math import prod
 from warnings import warn
 
+import numpy as np
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
@@ -1232,6 +1233,126 @@ class Conv2dGrowingModule(GrowingModule):
 
         self.tensor_m = TensorStatistic(
             (self.in_channels + self.use_bias, self.out_channels),
+            update_function=self.compute_m_update,
+            name=self.tensor_m.name,
+        )
+
+    @torch.no_grad()
+    def prune_layer_in(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """Shrink "self.layer" by dropping the input channels."""
+        if self.layer.groups != 1:
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
+
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        device = self.layer.weight.device
+        keep = np.setdiff1d(np.arange(self.in_channels), indices_to_remove)
+        keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
+
+        weight_requires_grad = self.layer.weight.requires_grad
+        bias_requires_grad = (
+            self.layer.bias.requires_grad if self.layer.bias is not None else False
+        )
+
+        new_layer = torch.nn.Conv2d(
+            in_channels=len(keep),
+            out_channels=self.out_channels,
+            kernel_size=self.layer.kernel_size,
+            stride=self.layer.stride,
+            padding=self.layer.padding,
+            dilation=self.layer.dilation,
+            groups=self.layer.groups,
+            bias=(self.layer.bias is not None),
+            padding_mode=self.layer.padding_mode,
+            device=device,
+        )
+        new_layer.weight = torch.nn.Parameter(
+            self.layer.weight.index_select(1, keep_idx).clone(),
+            requires_grad=weight_requires_grad,
+        )
+        if self.layer.bias is not None:
+            new_layer.bias = torch.nn.Parameter(
+                self.layer.bias.clone(), requires_grad=bias_requires_grad
+            )
+
+        self.layer = new_layer
+
+        in_dim = (
+            self.in_channels * self.layer.kernel_size[0] * self.layer.kernel_size[1]
+            + self.use_bias
+        )
+        self._tensor_s = TensorStatistic(
+            (in_dim, in_dim),
+            update_function=self.compute_s_update,
+            name=self.tensor_s.name,
+        )
+        self.tensor_m = TensorStatistic(
+            (in_dim, self.out_channels),
+            update_function=self.compute_m_update,
+            name=self.tensor_m.name,
+        )
+
+    @torch.no_grad()
+    def prune_layer_out(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """Shrink "self.layer" by dropping the output channels."""
+        if self.layer.groups != 1:
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
+
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        device = self.layer.weight.device
+        keep = np.setdiff1d(np.arange(self.out_channels), indices_to_remove)
+        keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
+
+        weight_requires_grad = self.layer.weight.requires_grad
+        bias_requires_grad = (
+            self.layer.bias.requires_grad if self.layer.bias is not None else False
+        )
+
+        new_layer = torch.nn.Conv2d(
+            in_channels=self.in_channels,
+            out_channels=len(keep),
+            kernel_size=self.layer.kernel_size,
+            stride=self.layer.stride,
+            padding=self.layer.padding,
+            dilation=self.layer.dilation,
+            groups=self.layer.groups,
+            bias=(self.layer.bias is not None),
+            padding_mode=self.layer.padding_mode,
+            device=device,
+        )
+        new_layer.weight = torch.nn.Parameter(
+            self.layer.weight.index_select(0, keep_idx).clone(),
+            requires_grad=weight_requires_grad,
+        )
+        if self.layer.bias is not None:
+            new_layer.bias = torch.nn.Parameter(
+                self.layer.bias.index_select(0, keep_idx).clone(),
+                requires_grad=bias_requires_grad,
+            )
+
+        self.layer = new_layer
+
+        in_dim = (
+            self.in_channels * self.layer.kernel_size[0] * self.layer.kernel_size[1]
+            + self.use_bias
+        )
+        self.tensor_m = TensorStatistic(
+            (in_dim, self.out_channels),
             update_function=self.compute_m_update,
             name=self.tensor_m.name,
         )
