@@ -1,4 +1,5 @@
 import warnings
+from functools import partial
 from typing import Any, Iterator, Literal, Protocol, get_args, runtime_checkable
 
 import numpy as np
@@ -874,7 +875,15 @@ class GrowingModule(torch.nn.Module):
         # the previous with sqrt(t) * extended_output_layer having a change of activity
         # of dA we have (with sigma the activation function in post_layer_function):
         # L(A + dA) = L(A) - t * sigma'(0) * (eigenvalues_extension ** 2).sum() + o(t)
+        # The squared form above holds when the singular values are applied to the
+        # extension weights. When they are ignored (unit-scaled alpha and omega) the
+        # contribution is linear and the square must be dropped (see
+        # _first_order_uses_squared_singular_values and first_order_improvement).
         self.eigenvalues_extension: torch.Tensor | None = None
+        # True when first_order_improvement must square eigenvalues_extension, i.e. when
+        # sqrt(singular value) is baked into the extension weights; False in the
+        # ignore_singular_values regime where alpha and omega are unit-scaled.
+        self._first_order_uses_squared_singular_values: bool = True
         self._activation_gradient_previous_module: torch.Tensor | None = None
 
         self.delta_raw: torch.Tensor | None = None
@@ -2337,6 +2346,10 @@ class GrowingModule(torch.nn.Module):
         omega = omega.to(dtype=saved_dtype)
         eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
 
+        # Record how the singular values enter the extension so first_order_improvement
+        # and scale_layer_extension know whether to square eigenvalues_extension.
+        self._first_order_uses_squared_singular_values = not ignore_singular_values
+
         return alpha, omega, eigenvalues_extension
 
     def _compute_optimal_added_parameters(
@@ -2400,6 +2413,31 @@ class GrowingModule(torch.nn.Module):
         raise NotImplementedError
 
     @property
+    def new_neurons_fo_improvement(self) -> torch.Tensor:
+        """
+        Get the part of the first order improvement due to the new neurons.
+
+        This is the contribution of the extension (added neurons) to
+        ``first_order_improvement``. The singular values stored in
+        ``eigenvalues_extension`` are squared when they are applied to the extension
+        weights and summed as-is otherwise (see
+        ``_first_order_uses_squared_singular_values``).
+
+        Returns
+        -------
+        torch.Tensor
+            first order improvement due to the new neurons, or zero if no extension
+            has been computed
+        """
+        if self.eigenvalues_extension is None:
+            return torch.zeros((), device=self.device, dtype=self.weight.dtype)
+        if self._first_order_uses_squared_singular_values:
+            extension_improvement = (self.eigenvalues_extension**2).sum()
+        else:
+            extension_improvement = self.eigenvalues_extension.sum()
+        return self.activation_gradient * extension_improvement
+
+    @property
     def first_order_improvement(self) -> torch.Tensor:
         """
         Get the first order improvement of the block.
@@ -2413,13 +2451,7 @@ class GrowingModule(torch.nn.Module):
             "The first order improvement is not computed. "
             "Use compute_optimal_delta before."
         )
-        if self.eigenvalues_extension is not None:
-            return (
-                self.parameter_update_decrease
-                + self.activation_gradient * (self.eigenvalues_extension**2).sum()
-            )
-        else:
-            return self.parameter_update_decrease
+        return self.parameter_update_decrease + self.new_neurons_fo_improvement
 
     def compute_optimal_updates(
         self,
@@ -2655,6 +2687,7 @@ class GrowingModule(torch.nn.Module):
         # this type problem is due to the use of the setter to change the scaling factor
         self.parameter_update_decrease = None
         self.eigenvalues_extension = None
+        self._first_order_uses_squared_singular_values = True
         self._pre_activity = None
         self._input = None
 
@@ -2810,8 +2843,12 @@ class GrowingModule(torch.nn.Module):
         Scale the layer extension by a given factor.
         This means scaling the extended_input_layer, the extended_output_layer and
         the eigenvalues_extension.
-        However as the eigenvalues_extension will be squared they will be
-        scaled by sqrt(scale_input * scale_output).
+        The first-order improvement is bilinear in the extension scales, so it is
+        multiplied by scale_input * scale_output. When the singular values are applied
+        to the weights, eigenvalues_extension is squared in first_order_improvement and
+        is therefore scaled by sqrt(scale_input * scale_output); in the
+        ignore_singular_values regime it is used linearly and scaled by
+        scale_input * scale_output instead.
 
         Parameters
         ----------
@@ -2851,7 +2888,8 @@ class GrowingModule(torch.nn.Module):
         self.scale_layer(self.extended_input_layer, scales[1])
         self.scale_layer(self.previous_module.extended_output_layer, scales[0])
         if self.eigenvalues_extension is not None:
-            self.eigenvalues_extension *= (scales[0] * scales[1]) ** 0.5
+            exponent = 0.5 if self._first_order_uses_squared_singular_values else 1.0
+            self.eigenvalues_extension *= (scales[0] * scales[1]) ** exponent
 
     def get_fan_in_from_layer(
         self, layer: torch.nn.Module | None = None, num_neurons: int | None = None
@@ -3497,22 +3535,24 @@ class GrowingModule(torch.nn.Module):
             ext_in.weight.data.add_(torch.randn_like(ext_in.weight.data) * noise_std)
 
     @torch.no_grad()
-    def copy_uniform_initialization(
+    def copy_initialization_variance(
         self,
         tensor: torch.Tensor,
         reference_tensor: torch.Tensor | None,
         fan_in: int,
+        distribution: Literal["uniform", "normal"] = "uniform",
     ) -> None:
         """
-        Initialize tensor with uniform law aligned on reference
+        Initialize tensor with the empirical variance of the reference.
 
-        Initialize the tensor with a uniform law with bounds
-        -sqrt(std(W)), sqrt(std(W))
-        where std(W) is the empirical standard deviation of the reference_tensor
-        if the reference_tensor has a non-zero variance.
-        Otherwise, use bounds
-        -sqrt(6 / fan_in), sqrt(6 / fan_in)
-        where fan_in is the number of input features of the reference tensor + extension.
+        Initialize the tensor with a law whose standard deviation matches
+        std(W), the empirical standard deviation of the reference_tensor, when
+        the reference_tensor has a non-zero variance:
+        - ``distribution="uniform"``: uniform law on
+          ``[-sqrt(3) * std(W), sqrt(3) * std(W)]`` (variance ``std(W)**2``);
+        - ``distribution="normal"``: normal law ``N(0, std(W)**2)``.
+        Otherwise (missing reference or zero variance), fall back to
+        ``kaiming_initialization`` with the same ``distribution``.
 
         Parameters
         ----------
@@ -3522,18 +3562,32 @@ class GrowingModule(torch.nn.Module):
             tensor to get the standard deviation from or None to use Kaiming init
         fan_in: int
             number of input features of the base tensor + extension
+        distribution: Literal["uniform", "normal"]
+            sampling law to use, default ``"uniform"``.
+
+        Raises
+        ------
+        ValueError
+            If ``distribution`` is not ``"uniform"`` or ``"normal"``.
         """
-        # Fallback to Kaiming uniform initialization bounds
+        # Fallback to Kaiming initialization (same distribution)
         if (
             reference_tensor is None
             or reference_tensor.numel() < 2
             or (std_dev := reference_tensor.std().item()) == 0
         ):
-            self.kaiming_initialization(tensor, reference_tensor, fan_in)
-        else:
-            # Initialize with uniform distribution
+            self.kaiming_initialization(
+                tensor, reference_tensor, fan_in, distribution=distribution
+            )
+        elif distribution == "normal":
+            torch.nn.init.normal_(tensor, mean=0.0, std=std_dev)
+        elif distribution == "uniform":
             bound = 3.0**0.5 * std_dev
             torch.nn.init.uniform_(tensor, -bound, bound)
+        else:
+            raise ValueError(
+                f"Unknown distribution {distribution!r}, expected 'uniform' or 'normal'."
+            )
 
     @torch.no_grad()
     def kaiming_initialization(
@@ -3541,9 +3595,10 @@ class GrowingModule(torch.nn.Module):
         tensor: torch.Tensor,
         reference_tensor: torch.Tensor | None,
         fan_in: int,
+        distribution: Literal["uniform", "normal"] = "uniform",
     ) -> None:
         """
-        Initialize tensor with Kaiming.
+        Initialize tensor with Kaiming (variance ``2 / fan_in``, ReLU gain).
 
         Parameters
         ----------
@@ -3553,10 +3608,26 @@ class GrowingModule(torch.nn.Module):
             Unused
         fan_in: int
             number of input features of the base tensor + extension
+        distribution: Literal["uniform", "normal"]
+            sampling law to use, default ``"uniform"``:
+            - ``"uniform"``: ``U(-sqrt(6 / fan_in), sqrt(6 / fan_in))``;
+            - ``"normal"``: ``N(0, 2 / fan_in)``.
+
+        Raises
+        ------
+        ValueError
+            If ``distribution`` is not ``"uniform"`` or ``"normal"``.
         """
         del reference_tensor
-        bound = (2.0 * 3.0 / fan_in) ** 0.5
-        torch.nn.init.uniform_(tensor, -bound, bound)
+        if distribution == "normal":
+            torch.nn.init.normal_(tensor, mean=0.0, std=(2.0 / fan_in) ** 0.5)
+        elif distribution == "uniform":
+            bound = (2.0 * 3.0 / fan_in) ** 0.5
+            torch.nn.init.uniform_(tensor, -bound, bound)
+        else:
+            raise ValueError(
+                f"Unknown distribution {distribution!r}, expected 'uniform' or 'normal'."
+            )
 
     @torch.no_grad()
     def create_layer_extensions(
@@ -3587,8 +3658,8 @@ class GrowingModule(torch.nn.Module):
            rescaled weights as reference).
         2. **Extension creation** — physical extension layers are allocated
            at their final (post-pairing) size.
-        3. **Initialisation** — the first half of each extension is
-           initialised when ``neuron_pairing`` is active, the full extension
+        3. **Initialization** — the first half of each extension is
+           initialized when ``neuron_pairing`` is active, the full extension
            otherwise.
         4. **Neuron pairing** — the already-allocated second half of each
            extension is filled in place via (V,V)/(Z,-Z).
@@ -3604,15 +3675,17 @@ class GrowingModule(torch.nn.Module):
             Size of the input extension to create, if ``None`` use
             *extension_size*.
         output_extension_init: str
-            Initialisation method for the output extension.  Must be one of
-            the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
-            ``"zeros"``), default ``"copy_uniform"``.
+            Initialization method for the output extension.  Must be one of
+            the keys in ``known_inits`` (``"copy_uniform"``, ``"copy_normal"``,
+            ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``), default
+            ``"copy_uniform"``.
         input_extension_init: str
-            Initialisation method for the input extension.  Must be one of
-            the keys in ``known_inits`` (``"copy_uniform"``, ``"kaiming"``,
-            ``"zeros"``), default ``"copy_uniform"``.
+            Initialization method for the input extension.  Must be one of
+            the keys in ``known_inits`` (``"copy_uniform"``, ``"copy_normal"``,
+            ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``), default
+            ``"copy_uniform"``.
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
-            Neuron-pairing strategy applied after initialisation.
+            Neuron-pairing strategy applied after initialization.
             ``"none"`` (default) or ``"vv_z_negz"``.
             /!/ When ``neuron_pairing`` is active, ``extension_size`` (and
             ``output_extension_size`` / ``input_extension_size``) is the
@@ -3687,8 +3760,14 @@ class GrowingModule(torch.nn.Module):
         self.create_layer_in_extension(input_extension_size)
 
         known_inits = {
-            "copy_uniform": self.copy_uniform_initialization,
-            "kaiming": self.kaiming_initialization,
+            "copy_uniform": partial(
+                self.copy_initialization_variance, distribution="uniform"
+            ),
+            "copy_normal": partial(
+                self.copy_initialization_variance, distribution="normal"
+            ),
+            "kaiming": partial(self.kaiming_initialization, distribution="uniform"),
+            "kaiming_normal": partial(self.kaiming_initialization, distribution="normal"),
             "zeros": lambda tensor, _, __: torch.nn.init.zeros_(tensor),
             # Future initializations can be added here
         }
@@ -3701,7 +3780,7 @@ class GrowingModule(torch.nn.Module):
                 )
 
         # Step 3: Initialize extensions. When pairing is active only the
-        # first half is initialised; the second half is filled by
+        # first half is initialized; the second half is filled by
         # apply_neuron_pairing.
         half_in = input_extension_size // 2 if neuron_pairing else None
         half_out = output_extension_size // 2 if neuron_pairing else None
@@ -3796,6 +3875,12 @@ class GrowingModule(torch.nn.Module):
             - ``"fixed_proportional"``: add a fixed proportion of the total
               neurons at each growth step (integer division, so a few neurons
               may remain after the last step).
+            Options are:
+                - "fixed_proportional": add a fixed proportion of the total number of neurons
+                to add at each growth step. The amount to add is computed as
+                an integer division as a consequence a few neurons may remain to be added
+                after all growth steps have been performed.
+
         number_of_growth_steps: int
             Number of growth steps planned, used only if method is "fixed_proportional".
 
