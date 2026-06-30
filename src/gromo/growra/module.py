@@ -346,12 +346,18 @@ class GrowRALinear(LinearGrowingBlock):
         ``lr_init`` (if given) overrides the variance used to rescale new B
         columns in ``_post_extension_init``; it is consumed here rather than
         forwarded to the base ``GrowingBlock.apply_change``, which rejects it.
+
+        ``reinit_extension`` (default ``True``) controls whether the newly
+        grown columns are rescaled by ``_post_extension_init`` (paper A.5
+        variance-eta init). Set ``False`` to keep the optimal magnitudes
+        produced by the base ``apply_change`` (legacy <=819a23c behaviour).
         """
         if "lr_init" in kwargs:
             self.lr_init = kwargs.pop("lr_init")
+        reinit_extension = kwargs.pop("reinit_extension", True)
         old_rank = self.rank
         super().apply_change(**kwargs)
-        if kwargs.get("apply_extension", True):
+        if reinit_extension and kwargs.get("apply_extension", True):
             self._post_extension_init(old_rank)
 
     def merge(self) -> nn.Linear:
@@ -727,12 +733,18 @@ class GrowRAConv2d(Conv2dGrowingBlock):
         ``lr_init`` (if given) overrides the variance used to rescale new B
         columns in ``_post_extension_init``; it is consumed here rather than
         forwarded to the base ``GrowingBlock.apply_change``, which rejects it.
+
+        ``reinit_extension`` (default ``True``) controls whether the newly
+        grown columns are rescaled by ``_post_extension_init`` (paper A.5
+        variance-eta init). Set ``False`` to keep the optimal magnitudes
+        produced by the base ``apply_change`` (legacy <=819a23c behaviour).
         """
         if "lr_init" in kwargs:
             self.lr_init = kwargs.pop("lr_init")
+        reinit_extension = kwargs.pop("reinit_extension", True)
         old_rank = self.rank
         super().apply_change(**kwargs)
-        if kwargs.get("apply_extension", True):
+        if reinit_extension and kwargs.get("apply_extension", True):
             self._post_extension_init(old_rank)
 
     def merge(self) -> nn.Conv2d:
