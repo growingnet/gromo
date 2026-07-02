@@ -567,81 +567,9 @@ class GrowingTransformer(SequentialGrowingModel):
         activation: type[nn.Module] | None = nn.ReLU,
         max_pool: bool = True,
         conv_bias: bool = False,
-        in_features: tuple[int, int, int] | None = None,
-        out_features: int | None = None,
-        patch_size: int | tuple[int, int] | None = None,
-        d_model: int | None = None,
-        d_ff: int | None = None,
-        num_blocks: int | None = None,
-        pooling: Literal["cls", "mean"] | None = None,
-        use_cls_token: bool | None = None,
         device: torch.device | str | None = None,
         name: str = "GrowingTransformer",
-        *args: Any,
-        **kwargs: Any,
     ) -> None:
-        _ = args, kwargs
-        legacy_api = any(
-            value is not None
-            for value in (
-                in_features,
-                out_features,
-                patch_size,
-                d_model,
-                d_ff,
-                num_blocks,
-                pooling,
-                use_cls_token,
-            )
-        )
-        if legacy_api:
-            if in_features is None:
-                raise ValueError(
-                    "`in_features` is required when using the legacy "
-                    "`GrowingTransformer` constructor."
-                )
-            if len(in_features) != 3:
-                raise ValueError(
-                    "`in_features` must be a tuple of the form (channels, height, width)."
-                )
-            if pooling not in {None, "cls"}:
-                raise ValueError(
-                    "`GrowingTransformer` mirrors ViTLite and uses cls pooling."
-                )
-            if use_cls_token is False:
-                raise ValueError(
-                    "`GrowingTransformer` mirrors ViTLite and requires a cls token."
-                )
-
-            n_input_channels, image_height, image_width = in_features
-            img_size = (image_height, image_width)
-            if out_features is not None:
-                num_classes = out_features
-            if d_model is not None:
-                embedding_dim = d_model
-            if num_blocks is not None:
-                num_layers = num_blocks
-            if d_ff is not None:
-                mlp_ratio = d_ff / embedding_dim
-            if patch_size is not None:
-                patch_grid, _ = check_patch_grid(
-                    image_height,
-                    image_width,
-                    patch_size,
-                )
-                if patch_grid[0] != patch_grid[1]:
-                    raise ValueError(
-                        "ViTLite-compatible tokenization requires square patches."
-                    )
-                kernel_size = patch_grid[0]
-            stride = kernel_size
-            padding = 0
-            n_conv_layers = 1
-            seq_pool = False
-            activation = None
-            max_pool = False
-            conv_bias = True
-
         if isinstance(img_size, int):
             image_height = image_width = img_size
         else:
@@ -652,7 +580,6 @@ class GrowingTransformer(SequentialGrowingModel):
             device=device,
         )
         self.name = name
-        self.legacy_api = legacy_api
         self.input_shape = (n_input_channels, image_height, image_width)
         self.embedding_dim = embedding_dim
         self.num_layers = num_layers
@@ -666,8 +593,6 @@ class GrowingTransformer(SequentialGrowingModel):
         self.d_model = embedding_dim
         self.d_ff = int(embedding_dim * mlp_ratio)
         self.num_blocks = num_layers
-        self.pooling = "cls" if not seq_pool else "seq"
-        self.use_cls_token = not seq_pool
 
         self.tokenizer = Tokenizer(
             n_input_channels=n_input_channels,
@@ -806,18 +731,6 @@ class GrowingTransformer(SequentialGrowingModel):
             }
             if conv.bias is not None:
                 statistics["tokenizer"][i]["bias"] = compute_tensor_stats(conv.bias)
-        if self.legacy_api:
-            patcher = self.tokenizer.conv_layers[0][0]
-            statistics["patcher"] = {
-                "weight": compute_tensor_stats(patcher.weight),
-            }
-            if patcher.bias is not None:
-                statistics["patcher"]["bias"] = compute_tensor_stats(patcher.bias)
-            statistics["classifier_head"] = classifier_stats["fc"]
-            if "positional_emb" in classifier_stats:
-                statistics["position_embeddings"] = classifier_stats["positional_emb"]
-            if "class_emb" in classifier_stats:
-                statistics["cls_token"] = classifier_stats["class_emb"]
         return statistics
 
 
@@ -1180,13 +1093,20 @@ class GrowingTextViTLite(SequentialGrowingModel):
 if __name__ == "__main__":
     input_shape = (3, 32, 32)
     model = GrowingTransformer(
-        in_features=input_shape,
-        out_features=10,
-        patch_size=4,
-        d_model=32,
+        img_size=input_shape[1:],
+        embedding_dim=32,
+        n_input_channels=input_shape[0],
+        kernel_size=4,
+        stride=4,
+        padding=0,
+        activation=None,
+        max_pool=False,
+        conv_bias=True,
         num_heads=4,
-        d_ff=64,
-        num_blocks=2,
+        mlp_ratio=2.0,
+        num_layers=2,
+        num_classes=10,
+        seq_pool=False,
     )
 
     x = torch.rand((2, *input_shape))
