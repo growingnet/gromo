@@ -606,9 +606,9 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.assertEqual(start_linear_module.in_features, self.out_features + 1)
 
     def test_numeric_accuracy_when_expanding_around_pooling(self) -> None:
-        # import random
-        # torch.manual_seed(0)
-        # random.seed(0)
+        rng_state = torch.random.get_rng_state()
+        self.addCleanup(torch.random.set_rng_state, rng_state)
+        torch.manual_seed(0)
         start_conv, end_conv = self.net_conv.dag.root, self.net_conv.dag.end
         self.net_conv.dag.remove_node("1")
         self.net_conv.dag.add_direct_edge(
@@ -712,12 +712,14 @@ class TestGrowingGraphNetwork(TorchTestCase):
         # In local sweeps, 1.5e-2 is a stable upper bound for this setup.
         # self.assertAllClose(desired_output, output, atol=1.5e-2)
 
-        # Absolute difference between outputs is no longer applicable
-        # Compute alignment instead
-        scalar_product = (
-            torch.einsum("b...,b...->b", output, desired_output).mean().item()
+        output_flat = output.flatten(start_dim=1)
+        desired_output_flat = desired_output.flatten(start_dim=1)
+        cosine_alignment = (
+            torch.nn.functional.cosine_similarity(output_flat, desired_output_flat, dim=1)
+            .mean()
+            .item()
         )
-        self.assertGreater(scalar_product, 5e-2)
+        self.assertGreater(cosine_alignment, 0.9)
 
 
 if __name__ == "__main__":

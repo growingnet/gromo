@@ -1,13 +1,67 @@
 """
-Unit tests for GrowingDropout2d
+Unit tests for GrowingDropout variants.
 """
 
 import unittest
 
 import torch
 
-from gromo.modules.growing_dropout import GrowingDropout2d
+from gromo.modules.growing_dropout import GrowingDropout, GrowingDropout2d
 from gromo.modules.growing_module import SupportsExtendedForward
+
+
+class TestGrowingDropout(unittest.TestCase):
+    """Test cases for element-wise GrowingDropout (nn.Dropout equivalent)."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch_size = 8
+        self.sequence_length = 5
+        self.features = 32
+
+    def test_initialization(self):
+        """Test proper initialization of GrowingDropout."""
+        dropout = GrowingDropout(dropout_rate=0.5, name="test_dropout")
+        self.assertEqual(dropout.p, 0.5)
+        self.assertEqual(dropout.name, "test_dropout")
+        self.assertFalse(dropout.inplace)
+
+    def test_forward_pass(self):
+        """Test forward pass on sequence activations."""
+        dropout = GrowingDropout(dropout_rate=0.5)
+        x = torch.randn(
+            self.batch_size,
+            self.sequence_length,
+            self.features,
+            device=self.device,
+        )
+        output = dropout(x)
+        self.assertEqual(output.shape, x.shape)
+
+    def test_extended_forward(self):
+        """Test extended_forward applies dropout to x and passes x_ext unchanged."""
+        dropout = GrowingDropout(dropout_rate=0.5)
+        x = torch.randn(
+            self.batch_size,
+            self.sequence_length,
+            self.features,
+            device=self.device,
+        )
+        x_ext = torch.randn(
+            self.batch_size,
+            self.sequence_length,
+            4,
+            device=self.device,
+        )
+
+        self.assertIsInstance(dropout, SupportsExtendedForward)
+
+        processed_x, processed_x_ext = dropout.extended_forward(x, x_ext)
+
+        self.assertEqual(processed_x.shape, x.shape)
+        self.assertEqual(processed_x_ext.shape, x_ext.shape)
+        torch.testing.assert_close(processed_x_ext, x_ext)
 
 
 class TestGrowingDropout2d(unittest.TestCase):

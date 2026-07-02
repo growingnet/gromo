@@ -63,6 +63,22 @@ class _SimpleGrowingContainer(GrowingContainer):
         return self.forward(x), None
 
 
+class _SimpleTensorGrowingContainer(GrowingContainer):
+    """Minimal GrowingContainer whose extended_forward returns a Tensor."""
+
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__(in_features=in_features, out_features=out_features)
+        self.linear = nn.Linear(in_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        return self.linear(x)
+
+    def extended_forward(self, x: torch.Tensor, mask: dict | None = None) -> torch.Tensor:
+        """Extended forward returns a plain Tensor."""
+        return self.forward(x)
+
+
 class _SumMetric(Metric):
     """Accumulates the sum of first predictions — just enough to test the metrics path."""
 
@@ -226,6 +242,18 @@ class TestEvaluateModel(TorchTestCase):
     def test_extended_growing_container(self):
         """use_extended_model=True with a GrowingContainer."""
         model = _SimpleGrowingContainer(4, 2)
+        dl = self._make_dataloader()
+        loss, _ = evaluate_model(
+            model,
+            dl,
+            nn.MSELoss(reduction="mean"),
+            use_extended_model=True,
+        )
+        self.assertIsInstance(loss, float)
+
+    def test_extended_tensor_growing_container(self):
+        """use_extended_model=True accepts GrowingContainer Tensor outputs."""
+        model = _SimpleTensorGrowingContainer(4, 2)
         dl = self._make_dataloader()
         loss, _ = evaluate_model(
             model,

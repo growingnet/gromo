@@ -80,6 +80,43 @@ class DummySequentialGrowingModel(SequentialGrowingModel):
         return torch.tensor(0.0)
 
 
+class BaseSequentialGrowingModel(SequentialGrowingModel):
+    """
+    Minimal SequentialGrowingModel that exercises the base container methods
+    instead of overriding them.
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        device: torch.device | str | None = None,
+    ):
+        super().__init__(
+            in_features=in_features,
+            out_features=out_features,
+            device=device,
+        )
+        self.layer1 = LinearGrowingModule(
+            in_features=in_features,
+            out_features=out_features,
+            name="layer1",
+            device=self.device,
+            target_in_features=in_features + 2,
+        )
+        self._growable_layers = [self.layer1]
+        self.set_growing_layers(index=0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through the single growable layer."""
+        return self.layer1(x)
+
+    @property
+    def first_order_improvement(self) -> torch.Tensor:
+        """Property required by parent class."""
+        return torch.tensor(0.0)
+
+
 class TestSequentialGrowingModel(TorchTestCase):
     """Test SequentialGrowingModel implementation."""
 
@@ -232,3 +269,51 @@ class TestSequentialGrowingModel(TorchTestCase):
         container.set_growing_layers(scheduling_method="all")
         info = container.update_information()
         self.assertIsInstance(info, dict)
+
+    def test_base_number_of_neurons_to_add_and_runtime_error(self):
+        """Test the base number_of_neurons_to_add implementation."""
+        container = BaseSequentialGrowingModel(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            device=self.device,
+        )
+
+        self.assertEqual(
+            container.number_of_neurons_to_add(number_of_growth_steps=2),
+            1,
+        )
+
+        container.layer_to_grow_index = -1
+        with self.assertRaises(RuntimeError):
+            container.number_of_neurons_to_add(number_of_growth_steps=2)
+
+    def test_update_information_uses_current_growing_layers(self):
+        """Test update_information reports the currently growing layers."""
+        container = DummySequentialGrowingModel(
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_features=self.hidden_features,
+            device=self.device,
+        )
+        container.layer2.parameter_update_decrease = torch.tensor(0.3)
+        container.layer2.eigenvalues_extension = torch.tensor([0.6, 0.5])
+        container.layer1.parameter_update_decrease = torch.tensor(0.5)
+        container.set_growing_layers(index=1)
+
+        info = container.update_information()
+
+        self.assertEqual(list(info.keys()), [0])
+        self.assertAlmostEqual(
+            info[0]["update_value"],
+            container.layer2.first_order_improvement.item(),
+        )
+        self.assertAlmostEqual(
+            info[0]["parameter_improvement"],
+            container.layer2.parameter_update_decrease.item(),
+        )
+        self.assertTrue(
+            torch.equal(
+                info[0]["eigenvalues_extension"],
+                container.layer2.eigenvalues_extension,
+            )
+        )
