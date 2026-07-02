@@ -46,16 +46,7 @@ class TestGrowingTransformer(TorchTestCase):
         self.d_ff = 8
         self.num_blocks = 2
 
-        self.model = GrowingTransformer(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            patch_size=self.patch_size,
-            d_model=self.d_model,
-            num_heads=self.num_heads,
-            d_ff=self.d_ff,
-            num_blocks=self.num_blocks,
-            device=torch.device("cpu"),
-        )
+        self.model = self._make_model()
 
         self.loss = nn.MSELoss()
 
@@ -63,17 +54,28 @@ class TestGrowingTransformer(TorchTestCase):
         with self.assertMaybeWarns(UserWarning):
             self.model.compute_optimal_updates()
 
-    def test_init(self):
-        model = GrowingTransformer(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            patch_size=self.patch_size,
-            d_model=self.d_model,
+    def _make_model(self) -> GrowingTransformer:
+        return GrowingTransformer(
+            img_size=self.in_features[1:],
+            embedding_dim=self.d_model,
+            n_input_channels=self.in_features[0],
+            n_conv_layers=1,
+            kernel_size=self.patch_size,
+            stride=self.patch_size,
+            padding=0,
+            num_layers=self.num_blocks,
             num_heads=self.num_heads,
-            d_ff=self.d_ff,
-            num_blocks=self.num_blocks,
+            mlp_ratio=self.d_ff / self.d_model,
+            num_classes=self.out_features,
+            seq_pool=False,
+            activation=None,
+            max_pool=False,
+            conv_bias=True,
             device=torch.device("cpu"),
         )
+
+    def test_init(self):
+        model = self._make_model()
 
         self.assertIsInstance(model, GrowingTransformer)
         self.assertIsInstance(model, torch.nn.Module)
@@ -111,16 +113,7 @@ class TestGrowingTransformer(TorchTestCase):
         self.assertIs(self.model._growing_layers[0], self.model.blocks[1].mlp)
 
     def test_compute_optimal_updates_on_selected_block_only(self):
-        model = GrowingTransformer(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            patch_size=self.patch_size,
-            d_model=self.d_model,
-            num_heads=self.num_heads,
-            d_ff=self.d_ff,
-            num_blocks=self.num_blocks,
-            device=torch.device("cpu"),
-        )
+        model = self._make_model()
         gather_statistics(self.dataloader, model, self.loss)
         model.set_growing_layers(index=1)
 
@@ -345,6 +338,26 @@ class TestGrowingTransformerCoveragePaths(TorchTestCase):
         self.d_model = 16
         self.num_heads = 4
         self.d_ff = 8
+
+    def _make_vit_like_transformer(self) -> GrowingTransformer:
+        return GrowingTransformer(
+            img_size=self.in_features[1:],
+            embedding_dim=self.d_model,
+            n_input_channels=self.in_features[0],
+            n_conv_layers=1,
+            kernel_size=4,
+            stride=4,
+            padding=0,
+            num_layers=2,
+            num_heads=self.num_heads,
+            mlp_ratio=self.d_ff / self.d_model,
+            num_classes=self.out_features,
+            seq_pool=False,
+            activation=None,
+            max_pool=False,
+            conv_bias=True,
+            device=self.device,
+        )
 
     def test_drop_path_and_extended_dropout_helpers(self):
         x = torch.ones(2, 3, 4)
@@ -803,16 +816,7 @@ class TestGrowingTransformerCoveragePaths(TorchTestCase):
         classifier.select_update(layer_index=0)
         self.assertEqual(classifier.first_order_improvement.item(), 1.0)
 
-        image_model = GrowingTransformer(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            patch_size=4,
-            d_model=self.d_model,
-            num_heads=self.num_heads,
-            d_ff=self.d_ff,
-            num_blocks=2,
-            device=self.device,
-        )
+        image_model = self._make_vit_like_transformer()
         for idx, block in enumerate(image_model.classifier.blocks):
             block.parameter_update_decrease = torch.tensor(float(idx + 1))
             block.mlp.second_layer.eigenvalues_extension = None
@@ -820,83 +824,19 @@ class TestGrowingTransformerCoveragePaths(TorchTestCase):
         image_model.select_update(layer_index=1)
         self.assertEqual(image_model.first_order_improvement.item(), 2.0)
 
-    def test_transformer_and_text_models_legacy_error_and_statistics_paths(self):
-        legacy_model = GrowingTransformer(
-            in_features=self.in_features,
-            out_features=self.out_features,
-            patch_size=4,
-            d_model=self.d_model,
-            num_heads=self.num_heads,
-            d_ff=self.d_ff,
-            num_blocks=2,
-            device=self.device,
-        )
-        self.assertTrue(legacy_model.legacy_api)
-        legacy_stats = legacy_model.weights_statistics()
-        self.assertIn("patcher", legacy_stats)
-        self.assertIn("classifier_head", legacy_stats)
-        self.assertIn("position_embeddings", legacy_stats)
-        self.assertIn("cls_token", legacy_stats)
+    def test_transformer_removed_aliases_and_text_model_statistics_paths(self):
+        model = self._make_vit_like_transformer()
+        stats = model.weights_statistics()
+        self.assertIn("tokenizer", stats)
+        self.assertIn("classifier", stats)
+        self.assertNotIn("patcher", stats)
+        self.assertNotIn("classifier_head", stats)
+
+        with self.assertRaises(TypeError):
+            GrowingTransformer(in_features=self.in_features)
 
         with self.assertRaises(ValueError):
-            GrowingTransformer(
-                out_features=self.out_features,
-                patch_size=4,
-                d_model=self.d_model,
-                num_heads=self.num_heads,
-                d_ff=self.d_ff,
-                num_blocks=2,
-                device=self.device,
-            )
-        with self.assertRaises(ValueError):
-            GrowingTransformer(
-                in_features=(3, 16),
-                out_features=self.out_features,
-                patch_size=4,
-                d_model=self.d_model,
-                num_heads=self.num_heads,
-                d_ff=self.d_ff,
-                num_blocks=2,
-                device=self.device,
-            )
-        with self.assertRaises(ValueError):
-            GrowingTransformer(
-                in_features=self.in_features,
-                out_features=self.out_features,
-                patch_size=4,
-                d_model=self.d_model,
-                num_heads=self.num_heads,
-                d_ff=self.d_ff,
-                num_blocks=2,
-                pooling="mean",
-                device=self.device,
-            )
-        with self.assertRaises(ValueError):
-            GrowingTransformer(
-                in_features=self.in_features,
-                out_features=self.out_features,
-                patch_size=4,
-                d_model=self.d_model,
-                num_heads=self.num_heads,
-                d_ff=self.d_ff,
-                num_blocks=2,
-                use_cls_token=False,
-                device=self.device,
-            )
-        with self.assertRaises(ValueError):
-            GrowingTransformer(
-                in_features=self.in_features,
-                out_features=self.out_features,
-                patch_size=(4, 8),
-                d_model=self.d_model,
-                num_heads=self.num_heads,
-                d_ff=self.d_ff,
-                num_blocks=2,
-                device=self.device,
-            )
-
-        with self.assertRaises(ValueError):
-            legacy_model(
+            model(
                 torch.randn(1, *self.in_features),
                 mask=torch.ones(1, 4, dtype=torch.bool),
                 attention_mask=torch.ones(1, 4, dtype=torch.bool),
@@ -959,7 +899,7 @@ class TestGrowingTransformerCoveragePaths(TorchTestCase):
         text_model.select_update(layer_index=1)
         self.assertEqual(text_model.first_order_improvement.item(), 2.0)
 
-    def test_non_legacy_model_aliases_and_module_main_entrypoint(self):
+    def test_model_aliases_and_module_main_entrypoint(self):
         model = GrowingTransformer(
             img_size=16,
             embedding_dim=self.d_model,
@@ -978,7 +918,6 @@ class TestGrowingTransformerCoveragePaths(TorchTestCase):
             stochastic_depth=0.0,
             device=self.device,
         )
-        self.assertFalse(model.legacy_api)
         self.assertIs(model.blocks, model.classifier.blocks)
 
         model.set_growing_layers(index=1)
@@ -995,11 +934,11 @@ class TestGrowingTransformerCoveragePaths(TorchTestCase):
             (1, self.out_features),
         )
 
-        non_legacy_stats = model.weights_statistics()
-        self.assertIn("tokenizer", non_legacy_stats)
-        self.assertIn("classifier", non_legacy_stats)
-        self.assertNotIn("patcher", non_legacy_stats)
-        self.assertNotIn("classifier_head", non_legacy_stats)
+        model_stats = model.weights_statistics()
+        self.assertIn("tokenizer", model_stats)
+        self.assertIn("classifier", model_stats)
+        self.assertNotIn("patcher", model_stats)
+        self.assertNotIn("classifier_head", model_stats)
 
         with patch("builtins.print"):
             main_globals = runpy.run_module(
