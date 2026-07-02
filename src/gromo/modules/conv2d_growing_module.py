@@ -14,7 +14,7 @@ from gromo.utils.tools import (
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
     compute_output_shape_conv,
-    create_bordering_effect_convolution,
+    create_bordering_effect_weight,
 )
 
 
@@ -1424,7 +1424,11 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             name=name,
             target_in_channels=target_in_channels,
         )
-        self.bordering_convolution = None
+        # Constant kernel simulating the border effect of the equivalent 1x1
+        # convolution. Stored as a non-persistent buffer so that it is not counted
+        # as a parameter (see number_of_parameters) nor saved in the state_dict,
+        # while still following the module on `.to(device)`.
+        self.register_buffer("bordering_weight", None, persistent=False)
 
     def linear_layer_of_tensor(
         self, weight: torch.Tensor, bias: torch.Tensor | None = None
@@ -1500,9 +1504,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
                 f"Cannot compute the bordered unfolded input without a previous "
                 f"module for {self.name}."
             )
-        if self.bordering_convolution is None:
+        if self.bordering_weight is None:
             if isinstance(self.previous_module, Conv2dGrowingModule):
-                self.bordering_convolution = create_bordering_effect_convolution(
+                self.bordering_weight = create_bordering_effect_weight(
                     self.previous_module.in_channels
                     * self.previous_module.kernel_size[0]
                     * self.previous_module.kernel_size[1]
@@ -1522,7 +1526,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             unfolded_tensor=self.previous_module.unfolded_extended_input,
             original_size=input_size,
             border_effect_conv=self.layer,
-            identity_conv=self.bordering_convolution,
+            identity_weight=self.bordering_weight,
         )
 
     def compute_m_prev_update(

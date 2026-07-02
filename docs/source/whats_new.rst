@@ -21,6 +21,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Add sequentially growable transformer backbones and classifier variants, including CCT, CVT, ViT-Lite, and text/image transformer support, with sequential block scheduling and tests (:gh:`256` by `Santiago23florido`_).
+- Add Kaiming-normal and copy-normal initializations for layer extensions: ``kaiming_initialization`` and ``copy_initialization_variance`` (renamed from ``copy_uniform_initialization``) gain a ``distribution`` argument, exposed through the new ``"kaiming_normal"`` and ``"copy_normal"`` keys of ``create_layer_extensions`` (:gh:`259` by `Théo Rudkiewicz`_).
 - Refactored growing MLP containers to use `SequentialGrowingContainer` for a more unified model manipulation interface (:gh:`253` by `Pako Maxence TEKOU`_)
 - Example for `GrowingGraphNetwork` and `GrowingDAG` usage (:gh:`252` by `Stella Douka`_)
 - Add an empirical Fisher (loss-gradient covariance) as an optional preconditioner for both optimal-delta weight updates and rank-k neuron extension computations (:gh:`250` by `Théo Rudkiewicz`_).
@@ -105,6 +106,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Fix ``first_order_improvement`` when ``ignore_singular_values=True``: the new-neuron term now sums the singular values instead of squaring them, consistent with the unit-scaled extension weights, and ``scale_layer_extension`` is adjusted accordingly (:gh:`261` by `Théo Rudkiewicz`_)
 - Fix orientation of non-square images in `__make_safe_forward` (:gh:`230` by `Stella Douka`_)
 - Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
 - Fix lingering modules that were not properly deleted (:gh:`210` by `Stella Douka`_)

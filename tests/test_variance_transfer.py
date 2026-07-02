@@ -1147,7 +1147,7 @@ class TestCoverageSmoke(TorchTestCase):
             block.second_layer.apply_neuron_pairing(neuron_pairing="vv_z_negz")
 
     def test_copy_uniform_initialization(self):
-        """create_layer_extensions with copy_uniform init hits copy_uniform_initialization."""
+        """create_layer_extensions with copy_uniform init hits copy_initialization_variance."""
         block = _make_conv_block(h_t=8, device=self.device)
         block.create_layer_extensions(
             extension_size=4,
@@ -1167,6 +1167,67 @@ class TestCoverageSmoke(TorchTestCase):
             output_extension_init="copy_uniform",
             input_extension_init="copy_uniform",
         )
+
+    def test_kaiming_normal_initialization(self):
+        """create_layer_extensions with kaiming_normal hits the normal branch."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_init="kaiming_normal",
+            input_extension_init="kaiming_normal",
+        )
+        self.assertIsNotNone(block.first_layer.extended_output_layer)
+        self.assertIsNotNone(block.second_layer.extended_input_layer)
+
+    def test_copy_normal_initialization(self):
+        """create_layer_extensions with copy_normal hits the normal branch."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_init="copy_normal",
+            input_extension_init="copy_normal",
+        )
+        self.assertIsNotNone(block.second_layer.extended_input_layer)
+
+    def test_copy_normal_fallback_to_kaiming(self):
+        """copy_normal with zero-variance reference falls back to kaiming (normal)."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        # Constant weights => zero variance => kaiming-normal fallback.
+        block.first_layer.weight.data.fill_(0.5)
+        block.second_layer.weight.data.fill_(0.5)
+        block.create_layer_extensions(
+            extension_size=4,
+            output_extension_init="copy_normal",
+            input_extension_init="copy_normal",
+        )
+        self.assertIsNotNone(block.second_layer.extended_input_layer)
+
+    def test_kaiming_initialization_bad_distribution_raises(self):
+        """kaiming_initialization with an unknown distribution raises ValueError."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        tensor = torch.empty(4, 8, device=self.device)
+        with self.assertRaises(ValueError):
+            block.second_layer.kaiming_initialization(
+                tensor,
+                None,
+                8,
+                distribution="bad",  # type: ignore
+            )
+
+    def test_copy_initialization_variance_bad_distribution_raises(self):
+        """copy_initialization_variance with an unknown distribution raises ValueError."""
+        block = _make_conv_block(h_t=8, device=self.device)
+        tensor = torch.empty(4, 8, device=self.device)
+        # Non-zero variance reference so we reach the distribution dispatch
+        # (and not the Kaiming fallback).
+        reference = torch.randn(4, 8, device=self.device)
+        with self.assertRaises(ValueError):
+            block.second_layer.copy_initialization_variance(
+                tensor,
+                reference,
+                8,
+                distribution="bad",  # type: ignore
+            )
 
     def test_extension_size_overrides(self):
         """Explicit output_extension_size and input_extension_size."""
