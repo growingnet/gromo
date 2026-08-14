@@ -3870,6 +3870,11 @@ class GrowingModule(torch.nn.Module):
         ----------
         method: str
             Method to use for determining the number of neurons to add.
+            Supported values:
+
+            - ``"fixed_proportional"``: add a fixed proportion of the total
+              neurons at each growth step (integer division, so a few neurons
+              may remain after the last step).
             Options are:
                 - "fixed_proportional": add a fixed proportion of the total number of neurons
                 to add at each growth step. The amount to add is computed as
