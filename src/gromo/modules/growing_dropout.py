@@ -2,12 +2,15 @@ import torch
 import torch.nn as nn
 
 
-class GrowingDropout(nn.modules.dropout._DropoutNd):
+class _GrowingDropoutBase(nn.modules.dropout._DropoutNd):
     """
     Base class for dropout layers on growing architectures.
 
     This class provides dropout without penalyzing growth.
     The growth of the previous layer is never zeroed.
+
+    Concrete subclasses mix in ``nn.Dropout``, ``nn.Dropout1d``, or
+    ``nn.Dropout2d`` to match the PyTorch dropout variant they replace.
 
     Parameters
     ----------
@@ -23,9 +26,8 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
         self,
         dropout_rate: float = 0.0,
         name: str = "growing_dropout",
-    ):
-
-        super(GrowingDropout, self).__init__(
+    ) -> None:
+        super().__init__(
             p=dropout_rate,
             inplace=False,  # Dropout should not be inplace to avoid modifying the input tensor directly
         )
@@ -35,7 +37,6 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
         self, x: torch.Tensor | None, x_ext: torch.Tensor | None
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """Apply dropout to the main tensor; pass the extension through unchanged.
-
 
         Parameters
         ----------
@@ -49,29 +50,37 @@ class GrowingDropout(nn.modules.dropout._DropoutNd):
         Returns
         -------
         tuple[torch.Tensor | None, torch.Tensor | None]
-            ``(self(x), x_ext)`` — batch-normalised main tensor and unmodified
+            ``(self(x), x_ext)`` — dropout-masked main tensor and unmodified
             extension tensor.  ``None`` inputs propagate as ``None`` outputs.
         """
         return self(x) if x is not None else None, x_ext
 
     def extra_repr(self) -> str:
-        """
-        Extra representation string for the layer.
-        """
+        """Extra representation string for the layer."""
         return f"{super().extra_repr()}, name={self.name}"
 
 
-class GrowingDropout2d(GrowingDropout, nn.Dropout2d):
+class GrowingDropout(_GrowingDropoutBase, nn.Dropout):
     """
-    A 2D dropout layer that do not penalize the growth.
+    Element-wise dropout for dense and sequence activations.
 
-    This class extends torch.nn.Dropout2d and never zero the growth of the previous layer.
+    Equivalent to ``torch.nn.Dropout`` with support for ``extended_forward``.
     """
 
 
-class GrowingDropout1d(GrowingDropout, nn.Dropout1d):
+class GrowingDropout2d(_GrowingDropoutBase, nn.Dropout2d):
     """
-    A 1D dropout layer that do not penalize the growth.
+    A 2D dropout layer that does not penalize growth.
 
-    This class extends torch.nn.Dropout1d and never zero the growth of the previous layer.
+    This class extends ``torch.nn.Dropout2d`` and never zeros the growth of the
+    previous layer.
+    """
+
+
+class GrowingDropout1d(_GrowingDropoutBase, nn.Dropout1d):
+    """
+    A 1D dropout layer that does not penalize growth.
+
+    This class extends ``torch.nn.Dropout1d`` and never zeros the growth of the
+    previous layer.
     """

@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add sequentially growable transformer backbones and classifier variants, including CCT, CVT, ViT-Lite, and text/image transformer support, with sequential block scheduling and tests (:gh:`256` by `Santiago23florido`_).
 - Add Kaiming-normal and copy-normal initializations for layer extensions: ``kaiming_initialization`` and ``copy_initialization_variance`` (renamed from ``copy_uniform_initialization``) gain a ``distribution`` argument, exposed through the new ``"kaiming_normal"`` and ``"copy_normal"`` keys of ``create_layer_extensions`` (:gh:`259` by `Théo Rudkiewicz`_).
 - Refactored growing MLP containers to use `SequentialGrowingContainer` for a more unified model manipulation interface (:gh:`253` by `Pako Maxence TEKOU`_)
 - Example for `GrowingGraphNetwork` and `GrowingDAG` usage (:gh:`252` by `Stella Douka`_)
@@ -146,3 +147,4 @@ API changes
 .. _Hugo Mousset: https://github.com/hmousset
 .. _ferdinandlouapre: https://github.com/ferdinandlouapre
 .. _Pako Maxence TEKOU: https://github.com/maxencelebaron
+.. _Santiago23florido: https://github.com/Santiago23florido
