@@ -4,6 +4,8 @@ from typing import Any, Iterator, Literal, Protocol, get_args, runtime_checkable
 
 import numpy as np
 import torch
+import torch.nn.modules.activation as activation_mod
+import torch.nn.modules.dropout as dropout_mod
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
@@ -715,6 +717,23 @@ class SupportsExtendedForward(Protocol):
             propagate as ``None`` outputs.
         """
         ...
+
+
+def is_passthrough(module: torch.nn.Module) -> bool:
+    """Check if a module is a passthrough layer (no learnable parameters/buffers)."""
+    cls = module.__class__
+    if cls is torch.nn.Identity:
+        return True
+    if cls.__module__ == dropout_mod.__name__:
+        return True
+    return (
+        cls.__module__ == activation_mod.__name__
+        and len(list(module.parameters(recurse=False))) == 0
+        and len(list(module.buffers(recurse=False))) == 0
+        and not isinstance(
+            module, (torch.nn.PReLU, torch.nn.MultiheadAttention, torch.nn.GLU)
+        )
+    )
 
 
 class GrowingModule(torch.nn.Module):
@@ -3838,6 +3857,76 @@ class GrowingModule(torch.nn.Module):
             neuron_pairing=neuron_pairing,
             noise_ratio=noise_ratio,
         )
+
+    @torch.no_grad()
+    def prune_neurons_in(
+        self,
+        indices_to_remove: list[int] | np.ndarray,
+    ) -> None:
+        """
+        Prune fan-in neurons
+        """
+        # Need a previous GrowingModule to coordinate with.
+        if not isinstance(self.previous_module, GrowingModule):
+            raise TypeError(
+                f"prune_neurons_in requires a previous GrowingModule, "
+                f"got {type(self.previous_module)}"
+            )
+
+        # make sure indices are a numpy array of integers
+        if isinstance(indices_to_remove, list):
+            indices_to_remove = np.array(indices_to_remove)
+        elif not isinstance(indices_to_remove, np.ndarray):
+            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
+        if not np.issubdtype(indices_to_remove.dtype, np.integer):
+            raise TypeError("indices_to_remove must contain integers")
+
+        # Normalize + validate indices.
+        if indices_to_remove.size == 0:
+            return
+        indices = np.unique(indices_to_remove)
+        n_hidden = self.previous_module.out_features
+        if indices[0] < 0 or indices[-1] >= n_hidden:
+            raise IndexError(
+                f"indices {indices} out of range for hidden dim of size {n_hidden}"
+            )
+        if len(indices) == n_hidden:
+            raise ValueError("Cannot prune all neurons of a layer")
+
+        # Drop matching dims on both sides. Subclasses implement the slicing.
+        self.previous_module.prune_layer_out(indices)  # rows of W_prev
+        self._prune_post_layer_function(indices)  # post-layer of the previous module
+        self.prune_layer_in(indices)  # cols of W_self
+
+    @torch.no_grad()
+    def _prune_post_layer_function(self, indices: np.ndarray) -> None:
+        """Prune the post-layer function of the previous module, if it exists.
+
+        Parameters
+        ----------
+        indices : np.ndarray
+            Clean prune list, already validated and sorted.
+
+        Raises
+        ------
+        TypeError
+            If the module is not a passthrough module and does not support pruning.
+        """
+        post_fn = self.previous_module.post_layer_function
+        if post_fn is not None:
+            sub_modules = (
+                list(post_fn) if isinstance(post_fn, torch.nn.Sequential) else [post_fn]
+            )
+            for m in sub_modules:
+                if is_passthrough(m):
+                    continue
+                # If the module has a prune method, call it.
+                if hasattr(m, "prune") and callable(m.prune):
+                    m.prune(indices)
+                else:
+                    raise TypeError(
+                        f"Module {type(m)} is not a passthrough module and does not support pruning (no prune method)."
+                    )
 
     def missing_neurons(self) -> int:
         """

@@ -1120,5 +1120,241 @@ class TestGrowingGroupNorm(unittest.TestCase):
         torch.testing.assert_close(processed_x_ext, x_ext)
 
 
+class TestGrowingNormalisationPruning(unittest.TestCase):
+    def setUp(self):
+        self.device = torch.device("cpu")
+
+    def test_batch_norm_pruning_validation_and_edge_cases(self):
+        import numpy as np
+
+        bn = GrowingBatchNorm1d(num_features=8, device=self.device)
+
+        # indices_to_remove is list
+        bn.prune([1, 3])
+        self.assertEqual(bn.num_features, 6)
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            bn.prune("invalid")
+
+        # non-integer dtype -> TypeError
+        with self.assertRaises(TypeError):
+            bn.prune(np.array([1.0, 2.0]))
+
+        # empty index -> no-op
+        bn.prune(np.array([], dtype=np.int64))
+        self.assertEqual(bn.num_features, 6)
+
+        # out-of-bounds -> IndexError
+        with self.assertRaises(IndexError):
+            bn.prune([6])
+        with self.assertRaises(IndexError):
+            bn.prune([-1])
+
+        # pruning all features -> ValueError
+        with self.assertRaises(ValueError):
+            bn.prune([0, 1, 2, 3, 4, 5])
+
+    def test_batch_norm_prune_affine_and_running_stats(self):
+        bn_no_affine = GrowingBatchNorm1d(
+            num_features=8, affine=False, device=self.device
+        )
+        self.assertIsNone(bn_no_affine.weight)
+        bn_no_affine.prune([0, 2])
+        self.assertEqual(bn_no_affine.num_features, 6)
+        self.assertIsNone(bn_no_affine.weight)
+
+        bn_no_stats = GrowingBatchNorm1d(
+            num_features=8, track_running_stats=False, device=self.device
+        )
+        self.assertIsNone(bn_no_stats.running_mean)
+        bn_no_stats.prune([0, 2])
+        self.assertEqual(bn_no_stats.num_features, 6)
+        self.assertIsNone(bn_no_stats.running_mean)
+
+        # test bias is None with affine=True
+        bn_bias_none = GrowingBatchNorm1d(num_features=8, affine=True, device=self.device)
+        bn_bias_none.bias = None
+        bn_bias_none.prune([0, 2])
+        self.assertEqual(bn_bias_none.num_features, 6)
+        self.assertIsNone(bn_bias_none.bias)
+
+        # test running stats are None with track_running_stats=True
+        bn_stats_none = GrowingBatchNorm1d(
+            num_features=8, track_running_stats=True, device=self.device
+        )
+        bn_stats_none.running_mean = None
+        bn_stats_none.running_var = None
+        bn_stats_none.prune([0, 2])
+        self.assertEqual(bn_stats_none.num_features, 6)
+        self.assertIsNone(bn_stats_none.running_mean)
+        self.assertIsNone(bn_stats_none.running_var)
+
+    def test_layer_norm_pruning_validation_and_edge_cases(self):
+        import numpy as np
+
+        ln = GrowingLayerNorm(8, device=self.device)
+
+        # indices_to_remove is list
+        ln.prune([1, 3])
+        self.assertEqual(ln.normalized_shape, (6,))
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            ln.prune("invalid")
+
+        # non-integer dtype -> TypeError
+        with self.assertRaises(TypeError):
+            ln.prune(np.array([1.0, 2.0]))
+
+        # empty index -> no-op
+        ln.prune(np.array([], dtype=np.int64))
+        self.assertEqual(ln.normalized_shape, (6,))
+
+        # out-of-bounds -> IndexError
+        with self.assertRaises(IndexError):
+            ln.prune([6])
+        with self.assertRaises(IndexError):
+            ln.prune([-1])
+
+        # pruning all features -> ValueError
+        with self.assertRaises(ValueError):
+            ln.prune([0, 1, 2, 3, 4, 5])
+
+    def test_layer_norm_prune_elementwise_affine_false(self):
+        ln = GrowingLayerNorm(8, elementwise_affine=False, device=self.device)
+        self.assertIsNone(ln.weight)
+        ln.prune([0, 2])
+        self.assertEqual(ln.normalized_shape, (6,))
+        self.assertIsNone(ln.weight)
+
+        # bias is None with elementwise_affine=True
+        ln_bias_none = GrowingLayerNorm(8, elementwise_affine=True, device=self.device)
+        ln_bias_none.bias = None
+        ln_bias_none.prune([0, 2])
+        self.assertEqual(ln_bias_none.normalized_shape, (6,))
+        self.assertIsNone(ln_bias_none.bias)
+
+    def test_group_norm_pruning_validation_and_edge_cases(self):
+        import numpy as np
+
+        gn = GrowingGroupNorm(num_groups=2, num_channels=8, device=self.device)
+
+        # indices_to_remove is list
+        gn.prune([1, 3])
+        self.assertEqual(gn.num_channels, 6)
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            gn.prune("invalid")
+
+        # non-integer dtype -> TypeError
+        with self.assertRaises(TypeError):
+            gn.prune(np.array([1.0, 2.0]))
+
+        # empty index -> no-op
+        gn.prune(np.array([], dtype=np.int64))
+        self.assertEqual(gn.num_channels, 6)
+
+        # out-of-bounds -> IndexError
+        with self.assertRaises(IndexError):
+            gn.prune([6])
+        with self.assertRaises(IndexError):
+            gn.prune([-1])
+
+        # pruning all features -> ValueError
+        with self.assertRaises(ValueError):
+            gn.prune([0, 1, 2, 3, 4, 5])
+
+        # num_channels not divisible by num_groups -> ValueError
+        with self.assertRaises(ValueError):
+            gn.prune([0])
+
+    def test_group_norm_prune_affine_false(self):
+        gn = GrowingGroupNorm(
+            num_groups=2, num_channels=8, affine=False, device=self.device
+        )
+        self.assertIsNone(gn.weight)
+        gn.prune([0, 2])
+        self.assertEqual(gn.num_channels, 6)
+        self.assertIsNone(gn.weight)
+
+        # bias is None with affine=True
+        gn_bias_none = GrowingGroupNorm(
+            num_groups=2, num_channels=8, affine=True, device=self.device
+        )
+        gn_bias_none.bias = None
+        gn_bias_none.prune([0, 2])
+        self.assertEqual(gn_bias_none.num_channels, 6)
+        self.assertIsNone(gn_bias_none.bias)
+
+    def test_extend_parameter_mismatches(self):
+        # BatchNorm
+        bn = GrowingBatchNorm1d(num_features=8, device=self.device)
+        with self.assertRaises(ValueError):
+            bn.grow(4, new_weights=torch.ones(2))
+
+        # test direct call to _extend_parameter to trigger shape mismatch check at line 156
+        with self.assertRaises(ValueError):
+            bn._extend_parameter(
+                param_name="weight",
+                additional_features=4,
+                new_values=torch.ones(2),
+                default_value_fn=torch.ones,
+                device=self.device,
+                as_parameter=True,
+            )
+
+        # Recreate to avoid corrupted state
+        bn2 = GrowingBatchNorm1d(num_features=8, device=self.device)
+        cpu_device = torch.device("cpu")
+        new_w = torch.ones(4, dtype=torch.float64, device=cpu_device)
+        bn2.grow(4, new_weights=new_w)
+        self.assertEqual(bn2.num_features, 12)
+        self.assertEqual(bn2.weight.dtype, torch.float32)
+
+        # LayerNorm
+        ln = GrowingLayerNorm(8, device=self.device)
+        with self.assertRaises(ValueError):
+            ln.grow(4, new_weights=torch.ones(2))
+
+        with self.assertRaises(ValueError):
+            ln._extend_parameter(
+                param_name="weight",
+                additional_first_dim=4,
+                new_values=torch.ones(2),
+                default_value_fn=torch.ones,
+                device=self.device,
+                as_parameter=True,
+            )
+
+        ln2 = GrowingLayerNorm(8, device=self.device)
+        new_w = torch.ones(4, dtype=torch.float64, device=cpu_device)
+        ln2.grow(4, new_weights=new_w)
+        self.assertEqual(ln2.normalized_shape, (12,))
+        self.assertEqual(ln2.weight.dtype, torch.float32)
+
+        # GroupNorm
+        gn = GrowingGroupNorm(num_groups=2, num_channels=8, device=self.device)
+        with self.assertRaises(ValueError):
+            gn.grow(4, new_weights=torch.ones(2))
+
+        with self.assertRaises(ValueError):
+            gn._extend_parameter(
+                param_name="weight",
+                additional_channels=4,
+                new_values=torch.ones(2),
+                default_value_fn=torch.ones,
+                device=self.device,
+                as_parameter=True,
+            )
+
+        gn2 = GrowingGroupNorm(num_groups=2, num_channels=8, device=self.device)
+        new_w = torch.ones(4, dtype=torch.float64, device=cpu_device)
+        gn2.grow(4, new_weights=new_w)
+        self.assertEqual(gn2.num_channels, 12)
+        self.assertEqual(gn2.weight.dtype, torch.float32)
+
+
 if __name__ == "__main__":
     unittest.main()

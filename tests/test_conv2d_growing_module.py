@@ -4,6 +4,7 @@ import warnings
 from copy import deepcopy
 from unittest import main, mock
 
+import numpy as np
 import torch
 
 from gromo.modules.conv2d_growing_module import (
@@ -676,6 +677,156 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         self.bias_demos = {True: self.demo_b, False: self.demo}
 
         self.demo_couple = {b: self.create_demo_layers(b) for b in (True, False)}
+
+    # ------------------------------------------------------------------ #
+    # Pruning
+    # ------------------------------------------------------------------ #
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_prune_layer_out(self, bias):
+        """prune_layer_out drops the given output channels (and matching bias)."""
+        torch.manual_seed(0)
+        layer = self._tested_class(
+            in_channels=2,
+            out_channels=5,
+            kernel_size=(3, 3),
+            padding=1,
+            use_bias=bias,
+            device=global_device(),
+        )
+        original = deepcopy(layer)
+        indices = np.array([1, 3])
+        keep = torch.tensor([0, 2, 4], device=global_device())
+
+        layer.prune_layer_out(indices)
+
+        self.assertEqual(layer.in_channels, original.in_channels)
+        self.assertEqual(layer.out_channels, original.out_channels - len(indices))
+        self.assertAllClose(
+            layer.layer.weight, original.layer.weight.index_select(0, keep)
+        )
+        self.assertEqual(
+            layer.layer.weight.requires_grad, original.layer.weight.requires_grad
+        )
+        if bias:
+            self.assertAllClose(
+                layer.layer.bias, original.layer.bias.index_select(0, keep)
+            )
+            self.assertEqual(
+                layer.layer.bias.requires_grad, original.layer.bias.requires_grad
+            )
+        # forward equivalence on the channel axis: pruned(x) == original(x)[:, keep]
+        x = torch.randn(4, 2, 8, 8, device=global_device())
+        self.assertAllClose(layer(x), original(x).index_select(1, keep))
+        # recreated tensor_m shape: (in_channels * k0 * k1 + bias, out_channels)
+        k0, k1 = layer.layer.kernel_size
+        in_dim = layer.in_channels * k0 * k1 + int(bias)
+        self.assertEqual(layer.tensor_m._shape, (in_dim, layer.out_channels))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_prune_layer_in(self, bias):
+        """prune_layer_in drops the given input channels; recreates tensor_s and tensor_m."""
+        torch.manual_seed(0)
+        layer = self._tested_class(
+            in_channels=4,
+            out_channels=3,
+            kernel_size=(3, 3),
+            padding=1,
+            use_bias=bias,
+            device=global_device(),
+        )
+        original = deepcopy(layer)
+        indices = np.array([1, 3])
+        keep = torch.tensor([0, 2], device=global_device())
+
+        layer.prune_layer_in(indices)
+
+        self.assertEqual(layer.in_channels, original.in_channels - len(indices))
+        self.assertEqual(layer.out_channels, original.out_channels)
+        self.assertAllClose(
+            layer.layer.weight, original.layer.weight.index_select(1, keep)
+        )
+        self.assertEqual(
+            layer.layer.weight.requires_grad, original.layer.weight.requires_grad
+        )
+        if bias:
+            self.assertAllClose(layer.layer.bias, original.layer.bias)
+            self.assertEqual(
+                layer.layer.bias.requires_grad, original.layer.bias.requires_grad
+            )
+        # forward equivalence: zeroing the removed input channels of the original
+        # equals feeding only the kept channels to the pruned layer
+        x = torch.randn(4, 4, 8, 8, device=global_device())
+        x_masked = x.clone()
+        x_masked[:, [1, 3]] = 0.0
+        self.assertAllClose(layer(x.index_select(1, keep)), original(x_masked))
+        # recreated stats shapes: in_dim = in_channels * k0 * k1 + bias
+        k0, k1 = layer.layer.kernel_size
+        in_dim = layer.in_channels * k0 * k1 + int(bias)
+        self.assertEqual(layer.tensor_s._shape, (in_dim, in_dim))
+        self.assertEqual(layer.tensor_m._shape, (in_dim, layer.out_channels))
+
+    def test_prune_layer_in_statistics_regather(self):
+        """After prune_layer_in, the re-created tensor_s can accumulate a fresh gather."""
+        torch.manual_seed(0)
+        layer = self._tested_class(
+            in_channels=4,
+            out_channels=3,
+            kernel_size=(3, 3),
+            padding=1,
+            use_bias=True,
+            device=global_device(),
+        )
+        layer.prune_layer_in(np.array([1, 3]))
+
+        # gather statistics on the pruned layer (mirrors test_tensor_s_update_*)
+        layer.store_input = True
+        layer.tensor_s.init()
+        x = torch.randn(5, layer.in_channels, 8, 8, device=global_device())
+        layer(x)
+        layer.tensor_s.update()  # would trip the size assert if _shape were wrong
+
+        k0, k1 = layer.layer.kernel_size
+        in_dim = layer.in_channels * k0 * k1 + 1  # +1 for bias
+        self.assertEqual(layer.tensor_s.samples, x.size(0))
+        self.assertShapeEqual(layer.tensor_s(), (in_dim, in_dim))
+
+    def test_prune_neurons_in_with_growingbatchnorm2d(self):
+        """The previous module's GrowingBatchNorm2d post-layer is pruned alongside the hidden dim."""
+        from gromo.modules.growing_normalisation import GrowingBatchNorm2d
+
+        hidden = 4
+        first, second = self.create_demo_layers(bias=True, hidden_channels=hidden)
+        bn = GrowingBatchNorm2d(hidden, device=global_device())
+        first.post_layer_function = bn
+
+        with torch.no_grad():
+            bn.weight.copy_(torch.randn(hidden, device=global_device()))
+            bn.bias.copy_(torch.randn(hidden, device=global_device()))
+        bn.running_mean.copy_(torch.randn(hidden, device=global_device()))
+        bn.running_var.copy_(torch.abs(torch.randn(hidden, device=global_device())) + 0.1)
+
+        original_weight = bn.weight.detach().clone()
+        original_bias = bn.bias.detach().clone()
+        original_running_mean = bn.running_mean.clone()
+        original_running_var = bn.running_var.clone()
+
+        indices = np.array([0, 2])
+        keep = torch.tensor([1, 3], device=global_device())
+        new_hidden = hidden - len(indices)
+
+        second.prune_neurons_in(indices)
+
+        self.assertEqual(bn.num_features, new_hidden)
+        self.assertAllClose(bn.weight, original_weight.index_select(0, keep))
+        self.assertAllClose(bn.bias, original_bias.index_select(0, keep))
+        self.assertAllClose(bn.running_mean, original_running_mean.index_select(0, keep))
+        self.assertAllClose(bn.running_var, original_running_var.index_select(0, keep))
+
+        # chain forward works with the pruned feature count
+        first.eval()
+        x = torch.randn(4, first.in_channels, 10, 10, device=global_device())
+        y = second(first(x))
+        self.assertShapeEqual(y, (4, second.out_channels, 6, 6))
 
     def test_get_fan_in_from_layer(self):
         """Test get_fan_in_from_layer method."""
@@ -2415,6 +2566,52 @@ class TestNeuronCountingConv2d(TestConv2dGrowingModuleBase):
         )
         # Total to add: 15 - 5 = 10
         self.assertEqual(layer.number_of_neurons_to_add(number_of_growth_steps=2), 5)
+
+
+class TestConv2dPruningValidation(TorchTestCase):
+    def test_prune_layer_validation_and_errors(self):
+        layer = Conv2dGrowingModule(
+            in_channels=4,
+            out_channels=3,
+            kernel_size=(3, 3),
+            padding=1,
+            device=global_device(),
+        )
+
+        # list input validation (converting to numpy array)
+        layer.prune_layer_in([1, 3])
+        self.assertEqual(layer.in_channels, 2)
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            layer.prune_layer_in("invalid")
+        with self.assertRaises(TypeError):
+            layer.prune_layer_out("invalid")
+
+        # non-integer type -> TypeError
+        with self.assertRaises(TypeError):
+            layer.prune_layer_in(np.array([1.0, 2.0]))
+        with self.assertRaises(TypeError):
+            layer.prune_layer_out(np.array([1.0, 2.0]))
+
+        # groups != 1 -> NotImplementedError
+        grouped_layer = Conv2dGrowingModule(
+            in_channels=4,
+            out_channels=4,
+            kernel_size=(3, 3),
+            device=global_device(),
+        )
+        grouped_layer.layer = torch.nn.Conv2d(
+            in_channels=4,
+            out_channels=4,
+            kernel_size=(3, 3),
+            groups=2,
+            device=global_device(),
+        )
+        with self.assertRaises(NotImplementedError):
+            grouped_layer.prune_layer_in(np.array([0]))
+        with self.assertRaises(NotImplementedError):
+            grouped_layer.prune_layer_out(np.array([0]))
 
 
 if __name__ == "__main__":
