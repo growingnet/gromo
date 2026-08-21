@@ -4109,7 +4109,7 @@ class GrowingModule(torch.nn.Module):
             *output_extension_init*, default ``"copy_uniform"``.
         neuron_pairing: _KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy applied after initialization.
-            ``"none"`` (default) or ``"vv_z_negz"``.
+            ``None`` (default) or ``"vv_z_negz"``.
             /!/ When ``neuron_pairing`` is active, ``extension_size`` (and
             ``output_extension_size`` / ``input_extension_size``) is the
             **final** size, pairing included, and must be even. A
