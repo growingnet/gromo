@@ -13,7 +13,7 @@ from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
-from gromo.modules.growing_module import GrowingModule
+from gromo.modules.growing_module import ExtensionInit, GrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
@@ -614,8 +614,10 @@ class GrowingBlock(GrowingContainer):
         extension_size: int,
         output_extension_size: int | None = None,
         input_extension_size: int | None = None,
-        output_extension_init: str = "copy_uniform",
-        input_extension_init: str = "copy_uniform",
+        output_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE
+        | ExtensionInit = "copy_uniform",
+        input_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE
+        | ExtensionInit = "copy_uniform",
         neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
         rescaling: GrowingModule._KNOWN_RESCALING_STRATEGIES_TYPE | None = None,
         noise_ratio: float = 0.001,
@@ -637,12 +639,14 @@ class GrowingBlock(GrowingContainer):
         input_extension_size: int | None
             Size of the input extension to create, if ``None`` use
             *extension_size*.
-        output_extension_init: str
-            Initialisation method for the output extension.  Possible values
-            include ``"copy_uniform"``, ``"kaiming"``, ``"zeros"``.
-        input_extension_init: str
-            Initialisation method for the input extension.  Possible values
-            include ``"copy_uniform"``, ``"kaiming"``, ``"zeros"``.
+        output_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE | ExtensionInit
+            Initialisation for the output extension.  Either a key of
+            ``GrowingModule.KNOWN_EXTENSION_INITS`` (``"copy_uniform"``,
+            ``"copy_normal"``, ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``)
+            or a callable following the ``ExtensionInit`` signature.
+        input_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE | ExtensionInit
+            Initialisation for the input extension, same values as
+            *output_extension_init*.
         neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
             Neuron-pairing strategy.  ``None`` (default) or
             ``"vv_z_negz"``.
@@ -663,6 +667,73 @@ class GrowingBlock(GrowingContainer):
             input_extension_init=input_extension_init,
             neuron_pairing=neuron_pairing,
             rescaling=rescaling,
+            noise_ratio=noise_ratio,
+        )
+
+    def allocate_layer_extensions(
+        self,
+        extension_size: int,
+        output_extension_size: int | None = None,
+        input_extension_size: int | None = None,
+    ) -> None:
+        """Create the extension layers, without initializing them.
+
+        Delegates to ``self.second_layer.allocate_layer_extensions``.
+        Intended for the FOGRO path, where allocation is called separately
+        from initialization.
+
+        Parameters
+        ----------
+        extension_size: int
+            Size of the extension to create.
+        output_extension_size: int | None
+            Size of the output extension to create, if ``None`` use
+            *extension_size*.
+        input_extension_size: int | None
+            Size of the input extension to create, if ``None`` use
+            *extension_size*.
+        """
+        self.second_layer.allocate_layer_extensions(
+            extension_size=extension_size,
+            output_extension_size=output_extension_size,
+            input_extension_size=input_extension_size,
+        )
+
+    def initialize_extensions(
+        self,
+        output_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE
+        | ExtensionInit = "copy_uniform",
+        input_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE
+        | ExtensionInit = "copy_uniform",
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None = None,
+        noise_ratio: float = 0.001,
+    ) -> None:
+        """Initialize already created extensions via the second layer.
+
+        Delegates to ``self.second_layer.initialize_extensions``.  Intended
+        for the FOGRO path, where initialization is called separately from
+        extension creation, or to re-initialize existing extensions.
+
+        Parameters
+        ----------
+        output_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE | ExtensionInit
+            Initialisation for the output extension.  Either a key of
+            ``GrowingModule.KNOWN_EXTENSION_INITS`` (``"copy_uniform"``,
+            ``"copy_normal"``, ``"kaiming"``, ``"kaiming_normal"``, ``"zeros"``)
+            or a callable following the ``ExtensionInit`` signature.
+        input_extension_init: GrowingModule._KNOWN_EXTENSION_INITS_TYPE | ExtensionInit
+            Initialisation for the input extension, same values as
+            *output_extension_init*.
+        neuron_pairing: GrowingModule._KNOWN_NEURON_PAIRINGS_TYPE | None
+            Neuron-pairing strategy applied after initialization.
+        noise_ratio: float
+            Fraction of the standard deviation of the input extension weights
+            used as the noise level for symmetry breaking.  Default ``0.001``.
+        """
+        self.second_layer.initialize_extensions(
+            output_extension_init=output_extension_init,
+            input_extension_init=input_extension_init,
+            neuron_pairing=neuron_pairing,
             noise_ratio=noise_ratio,
         )
 

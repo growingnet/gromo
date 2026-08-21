@@ -7,6 +7,7 @@ from unittest import mock
 import torch
 
 from gromo.containers.growing_container import GrowingContainer
+from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -4705,10 +4706,11 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             extension_size = 2
 
             # Check that kaiming_initialization fallback is called
+            # kaiming_initialization is a static method: patch it on the class
             with mock.patch.object(
-                layer_out,
+                GrowingModule,
                 "kaiming_initialization",
-                wraps=layer_out.kaiming_initialization,
+                wraps=GrowingModule.kaiming_initialization,
             ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,

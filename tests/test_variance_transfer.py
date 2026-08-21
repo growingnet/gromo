@@ -7,6 +7,8 @@ Tests cover:
 - Edge-case tests (small / zero weight variance)
 """
 
+from typing import get_args
+
 import torch
 
 from gromo.containers.growing_block import (
@@ -14,6 +16,7 @@ from gromo.containers.growing_block import (
     GrowingBlock,
     LinearGrowingBlock,
 )
+from gromo.modules.growing_module import GrowingModule
 from gromo.modules.growing_normalisation import GrowingBatchNorm2d
 from gromo.utils.utils import global_device
 
@@ -1056,6 +1059,82 @@ class TestStandaloneMethods(TorchTestCase):
         self.assertFalse(
             torch.allclose(block.second_layer.weight, w2_before),
             "Conv2 weights should have been rescaled",
+        )
+
+
+class TestAllocateAndInitializeExtensions(TorchTestCase):
+    """Test allocate_layer_extensions / initialize_extensions called separately."""
+
+    def setUp(self):
+        super().setUp()
+        self.device = global_device()
+
+    def test_extensions_can_be_reinitialized(self):
+        """Allocated extensions can be initialized again, without being recreated."""
+        block = _make_linear_block(h_t=6, device=self.device)
+        block.allocate_layer_extensions(extension_size=4)
+        block.initialize_extensions(
+            output_extension_init="kaiming", input_extension_init="kaiming"
+        )
+        weight_before = block.second_layer.weight.clone()
+        assert isinstance(block.second_layer.extended_input_layer, torch.nn.Linear)
+        self.assertGreater(
+            block.second_layer.extended_input_layer.weight.abs().sum().item(), 0.0
+        )
+
+        block.initialize_extensions(
+            output_extension_init="zeros", input_extension_init="zeros"
+        )
+        for extension in (
+            block.second_layer.extended_input_layer,
+            block.first_layer.extended_output_layer,
+        ):
+            assert isinstance(extension, torch.nn.Linear)
+            self.assertAllClose(extension.weight, torch.zeros_like(extension.weight))
+        # the existing weights are left untouched
+        self.assertAllClose(block.second_layer.weight, weight_before)
+
+    def test_initialize_extensions_with_a_callable(self):
+        """A callable can be used instead of a known initialization name."""
+        block = _make_linear_block(h_t=6, device=self.device)
+        block.allocate_layer_extensions(extension_size=4)
+
+        def fill_with_ones(tensor, reference_tensor, fan_in):
+            torch.nn.init.ones_(tensor)
+
+        block.initialize_extensions(
+            output_extension_init=fill_with_ones, input_extension_init=fill_with_ones
+        )
+        extension = block.second_layer.extended_input_layer
+        assert isinstance(extension, torch.nn.Linear)
+        self.assertAllClose(extension.weight, torch.ones_like(extension.weight))
+
+    def test_initialize_missing_extensions_raises(self):
+        """Initializing extensions that do not exist raises."""
+        block = _make_linear_block(h_t=6, device=self.device)
+        with self.assertRaises(RuntimeError):
+            block.initialize_extensions()
+        # only the input extension exists
+        block.second_layer.create_layer_in_extension(4)
+        with self.assertRaises(RuntimeError):
+            block.initialize_extensions()
+
+    def test_initialize_odd_extensions_with_pairing_raises(self):
+        """Pairing an already allocated odd-sized extension raises."""
+        block = _make_linear_block(h_t=6, device=self.device)
+        block.allocate_layer_extensions(extension_size=3)
+        with self.assertRaises(ValueError):
+            block.initialize_extensions(neuron_pairing="vv_z_negz")
+
+    def test_known_extension_inits_registry(self):
+        """The registry keys are the documented ones."""
+        self.assertEqual(
+            set(GrowingModule.KNOWN_EXTENSION_INITS),
+            {"copy_uniform", "copy_normal", "kaiming", "kaiming_normal", "zeros"},
+        )
+        self.assertEqual(
+            set(GrowingModule.KNOWN_EXTENSION_INITS),
+            set(get_args(GrowingModule._KNOWN_EXTENSION_INITS_TYPE)),
         )
 
 

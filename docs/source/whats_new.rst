@@ -21,6 +21,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Add ``fisher_shrinkage`` to ridge-shrink the empirical-Fisher gradient-covariance matrix ``E`` toward a scaled identity, avoiding rank collapse under whitening, and add exact ("true") Fisher accumulation for classification (``GrowingContainer.accumulate_true_fisher_covariance``) as a lower-variance alternative to the empirical Fisher (:gh:`267` by `Hugo Mousset`_).
+- Split ``create_layer_extensions`` into ``allocate_layer_extensions`` (create the extension layers) and ``initialize_extensions`` (set their values), so that already created extensions can be re-initialized, and promote the extension initializations to the ``GrowingModule.KNOWN_EXTENSION_INITS`` registry, that also accepts custom callables. ``copy_initialization_variance``, ``kaiming_initialization`` and the new ``zeros_initialization`` are now static methods, of signature ``(tensor, reference_tensor, fan_in)`` (:gh:`272` by `Théo Rudkiewicz`_).
 - Add Kaiming-normal and copy-normal initializations for layer extensions: ``kaiming_initialization`` and ``copy_initialization_variance`` (renamed from ``copy_uniform_initialization``) gain a ``distribution`` argument, exposed through the new ``"kaiming_normal"`` and ``"copy_normal"`` keys of ``create_layer_extensions`` (:gh:`259` by `Théo Rudkiewicz`_).
 - Refactored growing MLP containers to use `SequentialGrowingContainer` for a more unified model manipulation interface (:gh:`253` by `Pako Maxence TEKOU`_)
 - Example for `GrowingGraphNetwork` and `GrowingDAG` usage (:gh:`252` by `Stella Douka`_)
