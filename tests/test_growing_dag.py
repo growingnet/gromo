@@ -660,6 +660,29 @@ class TestGrowingDAG(TorchTestCase):
             self.assertIsNone(node_module.activity)
             self.assertIsNone(node_module.input)
 
+    def test_compute_optimal_delta_use_fisher_not_implemented(self) -> None:
+        """use_fisher is not supported for GrowingDAG: delta computation for
+        DAG nodes goes through MergeGrowingModule.compute_optimal_delta, which
+        has no gradient-covariance statistic of its own. Must raise a clear
+        NotImplementedError instead of a TypeError from a signature mismatch
+        deep in MergeGrowingModule.compute_optimal_delta."""
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.get_node_module(self.dag.end).init_computation()
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device())
+        pred = self.dag(x)
+        loss = self.loss_fn(pred, y)
+        loss.backward()
+
+        with self.assertRaises(NotImplementedError):
+            self.dag.compute_optimal_delta(use_fisher=True)
+        with self.assertRaises(NotImplementedError):
+            self.dag.compute_optimal_updates(use_fisher=True)
+
     def test_calculate_bottleneck(self) -> None:
         expansions = [
             Expansion(

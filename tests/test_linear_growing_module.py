@@ -6,11 +6,14 @@ from unittest import mock
 
 import torch
 
+from gromo.containers.growing_container import GrowingContainer
+from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tools import sqrt_inverse_matrix_semi_positive
 from gromo.utils.utils import global_device
 from tests.torch_unittest import (
     GrowableIdentity,
@@ -1624,6 +1627,25 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertShapeEqual(w, (out_features, in_features))
         self.assertGreaterEqual(float(fo), 0.0)
 
+    def test_compute_optimal_delta_use_fisher_shrinkage(self):
+        """compute_optimal_delta(use_fisher=True, fisher_shrinkage>0) shrinks
+        E before whitening, and differs from the unshrunk delta."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        layer(x).pow(2).sum().backward()
+        layer.update_computation()
+
+        w_shrunk, _, fo_shrunk = layer.compute_optimal_delta(
+            use_fisher=True, fisher_shrinkage=0.5, update=False
+        )
+        w_plain, _, _ = layer.compute_optimal_delta(use_fisher=True, update=False)
+        self.assertShapeEqual(w_shrunk, (out_features, in_features))
+        self.assertGreaterEqual(float(fo_shrunk), 0.0)
+        self.assertFalse(torch.allclose(w_shrunk, w_plain))
+
     def test_compute_optimal_added_parameters_use_fisher(self):
         """Smoke test: rank-k extension runs with use_fisher=True."""
         in_features, hidden, out_features, batch = 4, 3, 5, 8
@@ -1650,6 +1672,308 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         alpha_w, _alpha_b = layer2.compute_optimal_updates(use_fisher=True)
         self.assertEqual(alpha_w.shape[1], in_features)
         self.assertEqual(layer2.eigenvalues_extension.ndim, 1)
+
+    def _fisher_two_layer_setup(self, loss_scale: float = 1.0, seed: int = 0):
+        """Two-layer net with accumulated statistics; returns the second layer."""
+        torch.manual_seed(seed)
+        in_features, hidden, out_features, batch = 4, 3, 5, 8
+        layer1 = LinearGrowingModule(
+            in_features, hidden, device=global_device(), name="l1"
+        )
+        layer2 = LinearGrowingModule(
+            hidden,
+            out_features,
+            device=global_device(),
+            previous_module=layer1,
+            name="l2",
+        )
+        net = torch.nn.Sequential(layer1, layer2)
+        layer1.init_computation()
+        layer2.init_computation()
+        x = torch.randn(batch, in_features, device=global_device())
+        (loss_scale * net(x).pow(2).sum()).backward()
+        layer1.update_computation()
+        layer2.update_computation()
+        return layer2
+
+    def _fisher_shrinkage_eigenvalues(
+        self, layer, fisher_shrinkage: float
+    ) -> torch.Tensor:
+        """Eigenvalues from compute_optimal_updates with the given shrinkage."""
+        layer.compute_optimal_updates(
+            statistical_threshold=0.0,
+            compute_delta=False,
+            use_projection=False,
+            use_fisher=True,
+            fisher_shrinkage=fisher_shrinkage,
+        )
+        return layer.eigenvalues_extension
+
+    def test_compute_optimal_added_parameters_fisher_shrinkage_closed_form(self):
+        """fisher_shrinkage eigenvalues match
+        svdvals(S^{-1/2} N ((1-a) E + a tr(E)/d I)^{-1/2})."""
+        alpha = 0.1
+        layer2 = self._fisher_two_layer_setup()
+        eigenvalues = self._fisher_shrinkage_eigenvalues(layer2, fisher_shrinkage=alpha)
+
+        s = layer2.tensor_s_growth().to(torch.float32)
+        s = (s + s.t()) / 2
+        n = (-layer2.tensor_m_prev()).to(torch.float32)
+        e = layer2.covariance_loss_gradient().to(torch.float32)
+        e = (e + e.t()) / 2
+        d = e.shape[0]
+        e_shrunk = (1 - alpha) * e + alpha * (e.trace() / d) * torch.eye(
+            d, device=e.device
+        )
+        p = (
+            sqrt_inverse_matrix_semi_positive(s, threshold=1e-6)
+            @ n
+            @ sqrt_inverse_matrix_semi_positive(e_shrunk, threshold=0.0)
+        )
+        expected = torch.linalg.svdvals(p)
+        self.assertAllClose(
+            eigenvalues, expected[: eigenvalues.shape[0]], atol=1e-6, rtol=1e-4
+        )
+
+    def test_fisher_shrinkage_zero_matches_default(self):
+        """fisher_shrinkage=0 must reproduce the un-shrunk behaviour exactly."""
+        layer2 = self._fisher_two_layer_setup()
+        eig_default = self._fisher_shrinkage_eigenvalues(
+            layer2, fisher_shrinkage=0.0
+        ).clone()
+        eig_shrunk = self._fisher_shrinkage_eigenvalues(layer2, fisher_shrinkage=0.0)
+        self.assertAllClose(eig_default, eig_shrunk)
+
+    def test_fisher_shrinkage_out_of_range_rejected(self):
+        """Shrinkage intensity is a convex-combination weight: must be <= 1."""
+        layer2 = self._fisher_two_layer_setup()
+        with self.assertRaises(AssertionError):
+            self._fisher_shrinkage_eigenvalues(layer2, fisher_shrinkage=1.5)
+
+    def test_fisher_shrinkage_rescues_truncated_e(self):
+        """When E's spectrum sits below the whitening threshold, the default
+        truncates E to rank 0 (all-zero scores) while shrinkage keeps them."""
+        # loss_scale 1e-4 -> gradients ~1e-4 -> E ~1e-8, below the 1e-6 cutoff
+        layer2 = self._fisher_two_layer_setup(loss_scale=1e-4)
+        e_eigs = torch.linalg.eigvalsh(layer2.covariance_loss_gradient())
+        self.assertLess(float(e_eigs.max()), 1e-6)
+
+        eig_truncated = self._fisher_shrinkage_eigenvalues(
+            layer2, fisher_shrinkage=0.0
+        ).clone()
+        eig_shrunk = self._fisher_shrinkage_eigenvalues(layer2, fisher_shrinkage=0.1)
+        self.assertAllClose(eig_truncated, torch.zeros_like(eig_truncated))
+        self.assertGreater(float(eig_shrunk.max()), 0.0)
+
+    def test_fisher_shrinkage_scale_equivariance(self):
+        """Scaling the loss by c scales N by c and E by c^2, so the shrunk
+        doubly-whitened scores are unchanged."""
+        eig_base = self._fisher_shrinkage_eigenvalues(
+            self._fisher_two_layer_setup(loss_scale=1.0), fisher_shrinkage=0.1
+        )
+        eig_scaled = self._fisher_shrinkage_eigenvalues(
+            self._fisher_two_layer_setup(loss_scale=100.0), fisher_shrinkage=0.1
+        )
+        self.assertAllClose(eig_base, eig_scaled, atol=1e-6, rtol=1e-3)
+
+    def test_update_covariance_loss_gradient_count_samples(self):
+        """Repeated covariance updates on one batch: numerator accumulates,
+        samples are counted only when count_samples=True."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+        x = torch.randn(batch, in_features, device=global_device())
+        layer(x).pow(2).sum().backward()
+
+        layer.update_covariance_loss_gradient(count_samples=True)
+        once = layer.covariance_loss_gradient().clone()
+        self.assertEqual(layer.covariance_loss_gradient.samples, batch)
+
+        layer.update_covariance_loss_gradient(count_samples=False)
+        self.assertEqual(layer.covariance_loss_gradient.samples, batch)
+        self.assertAllClose(layer.covariance_loss_gradient(), 2 * once)
+
+    def test_update_computation_skips_covariance(self):
+        """update_computation(update_covariance_loss_gradient=False) updates S
+        and M but leaves the gradient covariance untouched."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+        x = torch.randn(batch, in_features, device=global_device())
+        layer(x).pow(2).sum().backward()
+
+        layer.update_computation(update_covariance_loss_gradient=False)
+        self.assertEqual(layer.tensor_s.samples, batch)
+        self.assertEqual(layer.tensor_m.samples, batch)
+        self.assertEqual(layer.covariance_loss_gradient.samples, 0)
+
+    def test_clear_pre_activity_grad(self):
+        """clear_pre_activity_grad drops the retained gradient so successive
+        backward passes do not accumulate."""
+        in_features, out_features, batch = 3, 4, 6
+        layer = LinearGrowingModule(in_features, out_features, device=global_device())
+        layer.init_computation()
+        x = torch.randn(batch, in_features, device=global_device())
+        out = layer(x)
+        out.pow(2).sum().backward(retain_graph=True)
+        self.assertIsNotNone(layer.pre_activity.grad)
+        first_grad = layer.pre_activity.grad.clone()
+
+        # without clearing, a second backward accumulates
+        out.pow(2).sum().backward(retain_graph=True)
+        self.assertAllClose(layer.pre_activity.grad, 2 * first_grad)
+
+        layer.clear_pre_activity_grad()
+        self.assertIsNone(layer.pre_activity.grad)
+        out.pow(2).sum().backward()
+        self.assertAllClose(layer.pre_activity.grad, first_grad)
+
+    def test_clear_pre_activity_grad_delegates_to_merge_module(self):
+        """When a layer's next_module is a MergeGrowingModule, its own
+        _pre_activity is never populated (storage is delegated to
+        next_module.input, see the pre_activity property): clear_pre_activity_grad
+        must clear the merge node's retained gradient instead of no-oping, and
+        MergeGrowingModule.clear_pre_activity_grad must not be a no-op either.
+        This is the topology used by GrowingDAG / skip-connection merges, and
+        matters for accumulate_true_fisher_covariance's multi-backward-pass
+        clearing protocol."""
+        in_features, merge_features, out_features, batch = 3, 4, 5, 6
+        merge = LinearMergeGrowingModule(
+            in_features=merge_features, name="merge", device=global_device()
+        )
+        layer = LinearGrowingModule(
+            in_features,
+            merge_features,
+            device=global_device(),
+            next_module=merge,
+            name="layer",
+        )
+        next_layer = LinearGrowingModule(
+            merge_features,
+            out_features,
+            device=global_device(),
+            previous_module=merge,
+            name="next_layer",
+        )
+        merge.set_previous_modules([layer])
+        merge.set_next_modules([next_layer])
+
+        layer.init_computation()
+        next_layer.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        out = next_layer(merge(layer(x)))
+        out.pow(2).sum().backward(retain_graph=True)
+        self.assertIsNotNone(merge.input.grad)
+        first_grad = merge.input.grad.clone()
+
+        # without clearing, a second backward accumulates on the merge node's input
+        out.pow(2).sum().backward(retain_graph=True)
+        self.assertAllClose(merge.input.grad, 2 * first_grad)
+
+        # layer.clear_pre_activity_grad() must delegate to the merge node
+        layer.clear_pre_activity_grad()
+        self.assertIsNone(merge.input.grad)
+        out.pow(2).sum().backward(retain_graph=True)
+        self.assertAllClose(merge.input.grad, first_grad)
+
+        # merge.clear_pre_activity_grad() must also clear it directly
+        merge.clear_pre_activity_grad()
+        self.assertIsNone(merge.input.grad)
+        out.pow(2).sum().backward()
+        self.assertAllClose(merge.input.grad, first_grad)
+
+    def _true_fisher_container(self, n_classes: int, batch: int):
+        """Container wrapping one classifier-head layer, with S/M accumulated
+        from a real-label backward and the graph retained for the Fisher."""
+        torch.manual_seed(3)
+        in_features = 3
+        layer = LinearGrowingModule(in_features, n_classes, device=global_device())
+        container = GrowingContainer(in_features, n_classes, device=global_device())
+        container._growing_layers = [layer]
+        layer.init_computation()
+        x = torch.randn(batch, in_features, device=global_device())
+        labels = torch.randint(0, n_classes, (batch,), device=global_device())
+
+        logits = layer(x)
+        loss = torch.nn.functional.cross_entropy(logits, labels, reduction="mean")
+        loss.backward(retain_graph=True)
+        container.update_computation(update_covariance_loss_gradient=False)
+        return container, layer, logits
+
+    def test_true_fisher_closed_form(self):
+        """accumulate_true_fisher_covariance yields the exact Fisher of the
+        softmax head, F = E[diag(p) - p p^T] (up to the shared loss
+        normalisation), instead of the label-dependent empirical Fisher."""
+        for n_classes in (2, 3):
+            with self.subTest(n_classes=n_classes):
+                batch = 16
+                container, layer, logits = self._true_fisher_container(n_classes, batch)
+                container.accumulate_true_fisher_covariance(logits)
+
+                # real-label pass must not have touched E
+                self.assertEqual(layer.tensor_s.samples, batch)
+                self.assertEqual(layer.covariance_loss_gradient.samples, batch)
+
+                # seeds are sqrt(lambda_j) v_j / batch, so the statistic reads
+                # (1/batch^3) sum_i F_z(x_i) with F_z = diag(p) - p p^T.
+                probs = torch.softmax(logits, dim=-1).detach()
+                expected = torch.zeros(n_classes, n_classes, device=global_device())
+                for i in range(batch):
+                    p = probs[i]
+                    expected += torch.diag(p) - torch.outer(p, p)
+                expected /= batch**3
+                self.assertAllClose(
+                    layer.covariance_loss_gradient(),
+                    expected,
+                    atol=1e-8,
+                    rtol=1e-4,
+                )
+
+    def test_update_computation_true_fisher_one_call(self):
+        """update_computation_true_fisher = real backward for S/M + seeded
+        Fisher passes for E, in one call."""
+
+        def build():
+            torch.manual_seed(3)
+            layer = LinearGrowingModule(3, 2, device=global_device())
+            container = GrowingContainer(3, 2, device=global_device())
+            container._growing_layers = [layer]
+            layer.init_computation()
+            x = torch.randn(8, 3, device=global_device())
+            labels = torch.randint(0, 2, (8,), device=global_device())
+            logits = layer(x)
+            loss = torch.nn.functional.cross_entropy(logits, labels)
+            return container, layer, loss, logits
+
+        container, layer, loss, logits = build()
+        container.update_computation_true_fisher(loss, logits)
+
+        container_m, layer_m, loss_m, logits_m = build()
+        loss_m.backward(retain_graph=True)
+        container_m.update_computation(update_covariance_loss_gradient=False)
+        container_m.accumulate_true_fisher_covariance(logits_m)
+
+        self.assertAllClose(layer.tensor_s(), layer_m.tensor_s())
+        self.assertAllClose(layer.tensor_m(), layer_m.tensor_m())
+        self.assertAllClose(
+            layer.covariance_loss_gradient(), layer_m.covariance_loss_gradient()
+        )
+
+    def test_true_fisher_binary_single_backward(self):
+        """For K=2 the logits Fisher is rank one, so the exact true Fisher
+        costs a single extra backward pass."""
+        container, _layer, logits = self._true_fisher_container(2, batch=8)
+        calls = []
+        original = torch.autograd.backward
+
+        def counting_backward(*args, **kwargs):
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        with mock.patch("torch.autograd.backward", side_effect=counting_backward):
+            container.accumulate_true_fisher_covariance(logits)
+        self.assertEqual(len(calls), 1)
 
     def test_compute_optimal_delta_use_fisher_closed_form(self):
         r"""
@@ -4382,10 +4706,11 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             extension_size = 2
 
             # Check that kaiming_initialization fallback is called
+            # kaiming_initialization is a static method: patch it on the class
             with mock.patch.object(
-                layer_out,
+                GrowingModule,
                 "kaiming_initialization",
-                wraps=layer_out.kaiming_initialization,
+                wraps=GrowingModule.kaiming_initialization,
             ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,

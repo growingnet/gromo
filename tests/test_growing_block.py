@@ -847,6 +847,63 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertFalse(block.second_layer.store_input)
         self.assertFalse(block.second_layer.store_pre_activity)
 
+    def test_update_computation_skips_covariance(self):
+        """update_computation(update_covariance_loss_gradient=False) updates
+        S/M but leaves the second layer's gradient covariance untouched."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_neurons,
+            device=self.device,
+        )
+        block.init_computation()
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        block(x).pow(2).sum().backward()
+
+        block.update_computation(update_covariance_loss_gradient=False)
+
+        self.assertEqual(block.second_layer.tensor_m_prev.samples, self.batch_size)
+        self.assertEqual(block.second_layer.covariance_loss_gradient.samples, 0)
+
+    def test_update_covariance_loss_gradient(self):
+        """update_covariance_loss_gradient updates only the second layer's
+        gradient-covariance statistic."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_neurons,
+            device=self.device,
+        )
+        block.init_computation()
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        block(x).pow(2).sum().backward()
+
+        block.update_covariance_loss_gradient()
+
+        self.assertEqual(
+            block.second_layer.covariance_loss_gradient.samples, self.batch_size
+        )
+
+    def test_clear_pre_activity_grad(self):
+        """clear_pre_activity_grad clears the retained pre-activity gradient
+        of both the first and second layers."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_neurons,
+            device=self.device,
+        )
+        block.init_computation()
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        block(x).pow(2).sum().backward(retain_graph=True)
+
+        # only the second layer stores its pre-activity (see init_computation)
+        self.assertIsNotNone(block.second_layer.pre_activity.grad)
+
+        block.clear_pre_activity_grad()
+
+        self.assertIsNone(block.second_layer.pre_activity.grad)
+
     def test_forward_backward_compatibility(self):
         """Test that forward and backward passes work correctly."""
         block = LinearGrowingBlock(

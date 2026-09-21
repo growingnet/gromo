@@ -149,14 +149,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             else:
                 node_module.init_computation()
 
-    def update_computation(self):
+    def update_computation(self, update_covariance_loss_gradient: bool = True):
         """Update statistics computations for all nodes"""
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 continue
             # node_module.previous_tensor_s.update()
             # node_module.previous_tensor_m.update()
-            node_module.update_computation()
+            node_module.update_computation(
+                update_covariance_loss_gradient=update_covariance_loss_gradient
+            )
 
     def reset_computation(self):
         """Reset the computation of the optimal added parameters on the whole network"""
@@ -174,6 +176,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         update: bool = True,
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
+        use_fisher: bool = False,
+        fisher_shrinkage: float = 0.0,  # noqa: ARG002
     ):
         """Compute optimal delta for growth procedure for all nodes
 
@@ -186,7 +190,27 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         force_pseudo_inverse : bool
             use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible, by default False
+        use_fisher : bool
+            not supported for GrowingDAG, see Raises.
+        fisher_shrinkage : float
+            not supported for GrowingDAG, see Raises.
+
+        Raises
+        ------
+        NotImplementedError
+            if ``use_fisher`` is True: delta computation for DAG nodes goes
+            through ``MergeGrowingModule.compute_optimal_delta``, which
+            aggregates deltas across all incoming edges and has no
+            gradient-covariance (Fisher) statistic of its own.
         """
+        if use_fisher:
+            raise NotImplementedError(
+                "use_fisher=True is not supported for GrowingDAG: delta "
+                "computation for DAG nodes goes through "
+                "MergeGrowingModule.compute_optimal_delta, which aggregates "
+                "deltas across all incoming edges and has no gradient-covariance "
+                "(Fisher) statistic of its own."
+            )
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 continue

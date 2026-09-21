@@ -12,6 +12,7 @@ from gromo.modules.conv2d_growing_module import (
     FullConv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -2235,10 +2236,11 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             extension_size = 13
 
             # Check that kaiming_initialization fallback is called
+            # kaiming_initialization is a static method: patch it on the class
             with mock.patch.object(
-                layer_out,
+                GrowingModule,
                 "kaiming_initialization",
-                wraps=layer_out.kaiming_initialization,
+                wraps=GrowingModule.kaiming_initialization,
             ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,

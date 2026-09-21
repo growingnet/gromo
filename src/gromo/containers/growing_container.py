@@ -85,10 +85,120 @@ class GrowingContainer(torch.nn.Module):
         for layer in self._growing_layers:
             layer.init_computation()
 
-    def update_computation(self) -> None:
-        """Update statistics computations for growth procedure"""
+    def update_computation(self, update_covariance_loss_gradient: bool = True) -> None:
+        """Update statistics computations for growth procedure
+
+        Parameters
+        ----------
+        update_covariance_loss_gradient: bool
+            if False, skip the gradient-covariance statistic (see
+            GrowingModule.update_computation).
+        """
         for layer in self._growing_layers:
-            layer.update_computation()
+            layer.update_computation(
+                update_covariance_loss_gradient=update_covariance_loss_gradient
+            )
+
+    def update_covariance_loss_gradient(self, count_samples: bool = True) -> None:
+        """Update only the gradient-covariance statistics of the growing layers."""
+        for layer in self._growing_layers:
+            layer.update_covariance_loss_gradient(count_samples=count_samples)
+
+    def update_computation_true_fisher(
+        self,
+        loss: torch.Tensor,
+        logits: torch.Tensor,
+        loss_normalization: float | None = None,
+    ) -> None:
+        """Per-batch statistics update with the exact (true) softmax Fisher.
+
+        Drop-in replacement for the empirical-Fisher pair
+        ``loss.backward(); model.update_computation()``: runs the real-label
+        backward for S and M, then the seeded Fisher passes for E (see
+        accumulate_true_fisher_covariance). Consumes the autograd graph.
+
+        Parameters
+        ----------
+        loss: torch.Tensor
+            scalar training loss of the current batch, not yet backpropagated.
+        logits: torch.Tensor
+            pre-softmax outputs of shape (batch, n_classes) from the same
+            forward pass as the loss.
+        loss_normalization: float | None
+            see accumulate_true_fisher_covariance.
+        """
+        loss.backward(retain_graph=True)
+        self.update_computation(update_covariance_loss_gradient=False)
+        self.accumulate_true_fisher_covariance(
+            logits, loss_normalization=loss_normalization
+        )
+
+    def accumulate_true_fisher_covariance(
+        self, logits: torch.Tensor, loss_normalization: float | None = None
+    ) -> None:
+        """Accumulate the exact (true) softmax Fisher into the gradient
+        covariances, replacing the empirical Fisher for one batch.
+
+        The Fisher of a K-class softmax at the logits is analytic and rank
+        K-1: F_z = diag(p) - p p^T. Backpropagating each scaled eigenvector
+        sqrt(lambda_j) v_j as the gradient seed of the logits yields, at every
+        layer, per-sample gradients whose outer products sum exactly to the
+        true Fisher E_x[J^T F_z J] - with only K-1 backward passes (a single
+        one for binary classification), instead of one per class or per label
+        sample.
+
+        Protocol: call after the real-label backward has updated S and M via
+        ``update_computation(update_covariance_loss_gradient=False)``, with
+        the graph retained (``loss.backward(retain_graph=True)``). This method
+        consumes the graph on its last backward pass.
+
+        Parameters
+        ----------
+        logits: torch.Tensor
+            pre-softmax model outputs of shape (batch, n_classes), attached
+            to the autograd graph of the forward pass.
+        loss_normalization: float | None
+            scale by which per-sample gradients were divided in the real-label
+            loss, so both statistics share one convention. None uses the batch
+            size (matching a mean-reduced cross-entropy).
+        """
+        assert logits.dim() == 2, (
+            f"Expected classification logits of shape (batch, n_classes), "
+            f"got {tuple(logits.shape)}."
+        )
+        batch, n_classes = logits.shape
+        assert n_classes >= 2, "The true Fisher requires at least 2 classes."
+        norm = float(loss_normalization) if loss_normalization is not None else batch
+
+        probs = torch.softmax(logits, dim=-1).detach()
+        fisher_logits = torch.diag_embed(probs) - probs.unsqueeze(-1) * probs.unsqueeze(
+            -2
+        )
+        eigenvalues, eigenvectors = torch.linalg.eigh(fisher_logits)
+
+        # eigh sorts ascending: index 0 is the exact null direction (the
+        # all-ones vector); the K-1 others carry the whole Fisher.
+        for j in range(1, n_classes):
+            seed = (
+                eigenvalues[:, j].clamp_min(0).sqrt().unsqueeze(-1)
+                * eigenvectors[:, :, j]
+            ) / norm
+            self.clear_pre_activity_grad()
+            torch.autograd.backward(logits, seed, retain_graph=j < n_classes - 1)
+            self.update_covariance_loss_gradient(count_samples=(j == 1))
+
+    def clear_pre_activity_grad(self) -> None:
+        """Clear retained pre-activity gradients of the growing layers.
+
+        Required between the backward passes of multi-backward accumulation
+        schemes: retained gradients accumulate across passes. Named to match
+        ``GrowingModule``/``MergeGrowingModule``'s singular method (like
+        ``update_covariance_loss_gradient``) so that a container nested as a
+        layer inside another container's ``_growing_layers`` (e.g. a
+        ``GrowingDAG`` inside a ``GrowingGraphNetwork``) dispatches correctly.
+        """
+        for layer in self._growing_layers:
+            layer.clear_pre_activity_grad()
 
     def reset_computation(self) -> None:
         """Reset statistics computations for growth procedure"""

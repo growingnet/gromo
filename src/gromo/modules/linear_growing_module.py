@@ -938,6 +938,7 @@ class LinearGrowingModule(GrowingModule):
         use_projection: bool = True,
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
+        fisher_shrinkage: float = 0.0,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -970,6 +971,11 @@ class LinearGrowingModule(GrowingModule):
         use_fisher: bool
             if True, use the covariance of the loss gradient as an additional
             preconditioner when computing the neuron extension
+        fisher_shrinkage: float
+            shrinkage intensity alpha in [0, 1]. If > 0, replace E by the
+            Ledoit-Wolf-style convex combination
+            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it without
+            truncation. Only has an effect when ``use_fisher`` is True.
 
         Returns
         -------
@@ -998,6 +1004,7 @@ class LinearGrowingModule(GrowingModule):
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
             use_fisher=use_fisher,
+            fisher_shrinkage=fisher_shrinkage,
         )
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1], (

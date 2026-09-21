@@ -1085,7 +1085,7 @@ class Conv2dGrowingModule(GrowingModule):
         )
         return (
             torch.einsum("iahw,ibhw->ab", desired_activation, desired_activation),
-            self.input.shape[0],
+            desired_activation.shape[0],
         )
 
     # Layer edition
@@ -1301,12 +1301,20 @@ class Conv2dGrowingModule(GrowingModule):
         self._input_size = new_size
         return self._input_size
 
-    def update_computation(self) -> None:
+    def update_computation(self, update_covariance_loss_gradient: bool = True) -> None:
         """
         Update the computation of the layer.
+
+        Parameters
+        ----------
+        update_covariance_loss_gradient: bool
+            if False, skip the gradient-covariance statistic (see
+            GrowingModule.update_computation).
         """
         self.update_input_size()
-        super(Conv2dGrowingModule, self).update_computation()
+        super(Conv2dGrowingModule, self).update_computation(
+            update_covariance_loss_gradient=update_covariance_loss_gradient
+        )
 
     def get_fan_in_from_layer(  # type: ignore
         self, layer: torch.nn.Conv2d | None = None, num_neurons: int | None = None
@@ -1717,6 +1725,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         use_projection: bool = True,
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
+        fisher_shrinkage: float = 0.0,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1750,6 +1759,11 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         use_fisher: bool
             if True, use the empirical Fisher / gradient covariance as
             preconditioner on the output side.
+        fisher_shrinkage: float
+            shrinkage intensity alpha in [0, 1]. If > 0, replace E by the
+            Ledoit-Wolf-style convex combination
+            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it without
+            truncation. Only has an effect when ``use_fisher`` is True.
 
         Returns
         -------
@@ -1773,6 +1787,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
             use_fisher=use_fisher,
+            fisher_shrinkage=fisher_shrinkage,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -2162,6 +2177,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         use_projection: bool = True,
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
+        fisher_shrinkage: float = 0.0,  # noqa: ARG002
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2197,6 +2213,9 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             preconditioner. Not supported for FullConv2dGrowingModule because
             the SVD output dimension is `out_channels * k_h * k_w`, not
             `out_channels`.
+        fisher_shrinkage: float
+            accepted for interface compatibility; has no effect since
+            ``use_fisher`` is not supported here (see Raises).
 
         Returns
         -------

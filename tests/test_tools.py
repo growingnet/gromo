@@ -397,6 +397,44 @@ class TestTools(TorchTestCase):
         )
         self.assertTrue(torch.allclose(omega, torch.zeros_like(omega)))
 
+    def test_compute_optimal_added_parameters_e_numerical_threshold(self):
+        """E whitening cutoff can differ from S's via e_numerical_threshold."""
+        matrix_s = torch.eye(3) * 2.0
+        matrix_n = torch.randn(3, 2)
+        # E's whole spectrum sits below the default numerical_threshold (1e-6)
+        matrix_e = torch.eye(2) * 1e-8
+
+        # Default: E is fully truncated -> P = S^{-1/2} N @ 0 -> zero singular values
+        _, _, eig_truncated = compute_optimal_added_parameters(
+            matrix_s,
+            matrix_n,
+            statistical_threshold=0.0,
+            matrix_covariance_loss_gradient=matrix_e,
+        )
+        self.assertAllClose(eig_truncated, torch.zeros_like(eig_truncated))
+
+        # e_numerical_threshold=0.0 keeps the full spectrum of E:
+        # E^{-1/2} = 1e4 * I, so singular values are svdvals(S^{-1/2} N) * 1e4
+        _, _, eig_kept = compute_optimal_added_parameters(
+            matrix_s,
+            matrix_n,
+            statistical_threshold=0.0,
+            matrix_covariance_loss_gradient=matrix_e,
+            e_numerical_threshold=0.0,
+        )
+        expected = torch.linalg.svdvals(matrix_n / torch.sqrt(torch.tensor(2.0))) * 1e4
+        self.assertAllClose(eig_kept, expected, rtol=1e-4)
+
+        # e_numerical_threshold=None falls back to numerical_threshold
+        _, _, eig_none = compute_optimal_added_parameters(
+            matrix_s,
+            matrix_n,
+            statistical_threshold=0.0,
+            matrix_covariance_loss_gradient=matrix_e,
+            e_numerical_threshold=None,
+        )
+        self.assertAllClose(eig_none, eig_truncated)
+
     def test_compute_optimal_added_parameters_error_cases(self):
         """Test error handling in compute_optimal_added_parameters"""
 

@@ -71,11 +71,18 @@ class TensorStatistic:
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
     @torch.no_grad()
-    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
+    def update(
+        self, count_samples: bool = True, **kwargs: Any
+    ) -> tuple[torch.Tensor, int] | None:
         """Update tensor based on update_function
 
         Parameters
         ----------
+        count_samples : bool
+            if False, accumulate the update tensor without increasing the
+            sample counter. Used when several updates are computed from the
+            same samples (e.g. one backward pass per class for the true
+            Fisher) and should be averaged as a single-pass contribution.
         **kwargs : Any
 
         Returns
@@ -85,6 +92,8 @@ class TensorStatistic:
         """
         if self.updated is False:
             update, nb_sample = self._update_function(**kwargs)  # type: ignore
+            if not count_samples:
+                nb_sample = 0
             assert (self._shape is None or self._shape == update.size()) and (
                 self._tensor is None or self._tensor.size() == update.size()
             ), (
@@ -226,11 +235,17 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         return self._trace / self._batches
 
     @torch.no_grad()
-    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
+    def update(
+        self, count_samples: bool = True, **kwargs: Any
+    ) -> tuple[torch.Tensor, int] | None:
         """Update tensor based on update_function
 
         Parameters
         ----------
+        count_samples : bool
+            if False, accumulate the update tensor without increasing the
+            sample counter (see TensorStatistic.update) and without treating
+            this call as a new batch for the trace-error estimation below.
         **kwargs : Any
 
         Returns
@@ -239,10 +254,14 @@ class TensorStatiticWithEstimationError(TensorStatistic):
             the update tensor, number of samples used to compute the update
         """
         if self.updated is False:
-            update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
+            update, nb_sample = super().update(count_samples=count_samples, **kwargs)  # type: ignore (we are sure updated is False here)
             assert isinstance(
                 self._tensor, torch.Tensor
             )  # self._tensor should not be None here
+
+            if not count_samples:
+                return update, nb_sample
+
             self._batches += 1
 
             if self._compute_trace:

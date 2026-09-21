@@ -174,6 +174,7 @@ def compute_optimal_added_parameters(
     omega_zero: bool = False,
     ignore_singular_values: bool = False,
     matrix_covariance_loss_gradient: torch.Tensor | None = None,
+    e_numerical_threshold: float | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
@@ -205,6 +206,10 @@ def compute_optimal_added_parameters(
         applies the empirical-Fisher preconditioning to the rank-k extension.
         Note that this silently uses the independence hypothesis described in
         `first_order_optimization.typ` (`@hyp:independence`).
+    e_numerical_threshold : float | None
+        Whitening threshold for E_s. When None, `numerical_threshold` is used.
+        Pass 0.0 to keep the full spectrum (e.g. when E_s has been ridge-shrunk
+        upstream and is already positive definite).
 
     Returns
     -------
@@ -219,9 +224,24 @@ def compute_optimal_added_parameters(
     ------
     torch.linalg.LinAlgError
         If SVD of S^{-1/2} N fails.
+    ValueError
+        If maximum_added_neurons is negative.
     """
     # Validate inputs
     n_1, n_2 = matrix_n.shape
+
+    # Safeguard against the -1 "resolve from schedule" sentinel (or any negative
+    # budget) leaking in from the caller. ``None`` means "no limit"; a negative
+    # value would otherwise be silently misread as a Python negative index in the
+    # singular-value selection below (``selected[maximum_added_neurons:] = False``
+    # with -1 keeps rank-1 neurons instead of capping the count), so reject it.
+    if maximum_added_neurons is not None and maximum_added_neurons < 0:
+        raise ValueError(
+            f"maximum_added_neurons must be None (no limit) or non-negative, got "
+            f"{maximum_added_neurons}. A negative value (e.g. the -1 sentinel) must "
+            f"be resolved to a concrete per-layer count by the caller before reaching "
+            f"compute_optimal_added_parameters."
+        )
 
     if matrix_s is not None:
         # validate S matrix
@@ -270,7 +290,12 @@ def compute_optimal_added_parameters(
                 matrix_covariance_loss_gradient + matrix_covariance_loss_gradient.t()
             ) / 2
         matrix_e_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
-            matrix_covariance_loss_gradient, threshold=numerical_threshold
+            matrix_covariance_loss_gradient,
+            threshold=(
+                e_numerical_threshold
+                if e_numerical_threshold is not None
+                else numerical_threshold
+            ),
         )
         matrix_p = matrix_p @ matrix_e_inverse_sqrt
 

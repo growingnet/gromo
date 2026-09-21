@@ -114,9 +114,11 @@ class GrowingGraphNetwork(GrowingContainer):
         """Initialize statistics computations for growth procedure"""
         self.dag.init_computation()
 
-    def update_computation(self):
+    def update_computation(self, update_covariance_loss_gradient: bool = True):
         """Update statistics computations for growth procedure"""
-        self.dag.update_computation()
+        self.dag.update_computation(
+            update_covariance_loss_gradient=update_covariance_loss_gradient
+        )
 
     def reset_computation(self):
         """Reset statistics computations for growth procedure"""

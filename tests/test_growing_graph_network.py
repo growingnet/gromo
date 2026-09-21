@@ -719,6 +719,24 @@ class TestGrowingGraphNetwork(TorchTestCase):
         )
         self.assertGreater(scalar_product, 5e-2)
 
+    def test_update_computation_true_fisher_on_graph_network(self) -> None:
+        """update_computation_true_fisher/accumulate_true_fisher_covariance
+        must work on a GrowingGraphNetwork: its _growing_layers holds a
+        GrowingDAG instance directly (set_growing_layers appends self.dag),
+        so the container-level clear_pre_activity_grad/update_covariance_
+        loss_gradient dispatch must resolve on that nested container too,
+        not only on individual GrowingModule/MergeGrowingModule leaves."""
+        self.net.init_computation()
+        logits = self.net(self.x)
+        labels = torch.randint(
+            0, self.out_features, (self.batch_size,), device=global_device()
+        )
+        loss = torch.nn.functional.cross_entropy(logits, labels)
+        self.net.update_computation_true_fisher(loss, logits)
+
+        for edge_module in self.net.dag.get_all_edge_modules():
+            self.assertGreater(edge_module.covariance_loss_gradient.samples, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
