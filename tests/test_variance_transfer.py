@@ -638,7 +638,7 @@ class TestActivationVariance(TorchTestCase):
 
     def test_activation_variance_strategy_b(self):
         """V[conv_path]_init ~ 1 for Strategy B with pairing."""
-        h_t = 96
+        h_t = 128
         dh = 16
         block = self._make_block_with_perturbed_weights(h_t)
 
@@ -666,7 +666,7 @@ class TestActivationVariance(TorchTestCase):
 
     def test_activation_variance_strategy_c(self):
         """V[conv_path]_init ~ h_t / h_{t+1} for Strategy C with pairing."""
-        h_t = 96
+        h_t = 128
         dh = 16
         block = self._make_block_with_perturbed_weights(h_t)
 
