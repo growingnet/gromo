@@ -1,17 +1,23 @@
 import contextlib
 import io
 import unittest.mock
+from functools import partial
 from unittest import main, mock
 
 import torch
 
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import (
+    KNOWN_THRESHOLD_RULES,
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
     compute_optimal_added_parameters,
     compute_output_shape_conv,
     create_bordering_effect_weight,
     optimal_delta,
+    resolve_threshold,
+    resolve_threshold_rule,
+    spectrum_summary,
     sqrt_inverse_matrix_semi_positive,
 )
 from tests.torch_unittest import TorchTestCase
@@ -930,6 +936,189 @@ class TestComputeOptimalAddedParametersTheory(TorchTestCase):
             torch.equal(result[3:] != 0, self.y[3:] != 0),
             "Last 2 features: non-zero iff Y is non-zero",
         )
+
+
+class TestGrowthSpectra(TorchTestCase):
+    """Tests for the `spectra` out-parameter and the threshold rules."""
+
+    def setUp(self):
+        super().setUp()
+        self.matrix_s = torch.diag(torch.tensor([4.0, 2.0, 1.0]))
+        self.matrix_n = torch.randn(3, 3)
+        self.matrix_e = torch.diag(torch.tensor([1.0, 0.5, 0.25]))
+
+    def test_spectra_does_not_change_results(self):
+        """Collecting the spectra leaves the returned values untouched."""
+        kwargs = {
+            "matrix_s": self.matrix_s,
+            "matrix_n": self.matrix_n,
+            "matrix_covariance_loss_gradient": self.matrix_e,
+        }
+        reference = compute_optimal_added_parameters(**kwargs)  # type: ignore
+        spectra = dict()
+        collected = compute_optimal_added_parameters(**kwargs, spectra=spectra)  # type: ignore
+        for expected, obtained in zip(reference, collected, strict=False):
+            self.assertAllClose(expected, obtained)
+        self.assertNotEqual(spectra, dict())
+
+    def test_spectra_schema(self):
+        """Every key is set, with None for the matrices that are not used."""
+        spectra = {}
+        compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            matrix_covariance_loss_gradient=self.matrix_e,
+            spectra=spectra,
+        )
+        self.assertEqual(set(spectra.keys()), {"matrix_s", "matrix_e", "extension"})
+        self.assertIsNotNone(spectra["matrix_s"])
+        self.assertIsNotNone(spectra["matrix_e"])
+
+        # GradMax path: no S, no E
+        spectra = {}
+        compute_optimal_added_parameters(
+            matrix_s=None, matrix_n=self.matrix_n, spectra=spectra
+        )
+        self.assertIsNone(spectra["matrix_s"])
+        self.assertIsNone(spectra["matrix_e"])
+        self.assertIsNotNone(spectra["extension"])
+
+    def test_spectra_counts(self):
+        """The recorded counts describe the selection that was applied."""
+        spectra = {}
+        _, _, eigenvalues = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=0.0,
+            spectra=spectra,
+        )
+        extension = spectra["extension"]
+        self.assertEqual(extension["singular_values"].shape[0], 3)
+        self.assertEqual(extension["kept"], eigenvalues.shape[0])
+        self.assertEqual(extension["kept_by_threshold"], 3)
+        self.assertIsNone(extension["maximum_added_neurons"])
+
+        matrix_s_spectra = spectra["matrix_s"]
+        self.assertEqual(matrix_s_spectra["total"], 3)
+        self.assertEqual(matrix_s_spectra["kept"], 3)
+        self.assertFalse(matrix_s_spectra["regularized"])
+        self.assertAllClose(
+            matrix_s_spectra["eigenvalues"],
+            torch.tensor([1.0, 2.0, 4.0]),
+        )
+
+    def test_spectra_maximum_added_neurons(self):
+        """The threshold cut and the maximum cut are recorded separately."""
+        spectra = {}
+        compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=0.0,
+            maximum_added_neurons=1,
+            spectra=spectra,
+        )
+        self.assertEqual(spectra["extension"]["kept_by_threshold"], 3)
+        self.assertEqual(spectra["extension"]["kept"], 1)
+        self.assertEqual(spectra["extension"]["maximum_added_neurons"], 1)
+
+    def test_optimal_delta_spectrum(self):
+        """The recorded singular values are those of the returned delta."""
+        tensor_s = torch.diag(torch.tensor([3.0, 2.0, 1.0]))
+        tensor_m = torch.randn(3, 2)
+        spectra = {}
+        delta, _ = optimal_delta(tensor_s, tensor_m, spectra=spectra)
+        self.assertAllClose(spectra["singular_values"], torch.linalg.svdvals(delta))
+
+    def test_resolve_threshold(self):
+        """A value passes through, a rule is evaluated, degenerate cases fall back."""
+        spectrum = torch.tensor([1.0, 2.0, 3.0])
+        self.assertEqual(resolve_threshold(1e-3, spectrum), 1e-3)
+        self.assertEqual(resolve_threshold(lambda s: s.mean().item(), spectrum), 2.0)
+        self.assertEqual(
+            resolve_threshold(lambda s: 1.0, torch.empty(0)),
+            0.0,
+        )
+        with self.assertWarns(RuntimeWarning):
+            self.assertEqual(
+                resolve_threshold(lambda s: float("inf"), spectrum, fallback=1e-6),
+                1e-6,
+            )
+
+    def test_resolve_threshold_rule(self):
+        """A name resolves to its rule, a rule to itself, an unknown name raises."""
+        rule = resolve_threshold_rule("mean_over_sqrt_n")
+        self.assertIs(rule, KNOWN_THRESHOLD_RULES["mean_over_sqrt_n"])
+
+        def custom(statistic, spectrum):
+            return 0.0
+
+        self.assertIs(resolve_threshold_rule(custom), custom)
+        with self.assertRaises(ValueError):
+            resolve_threshold_rule("not_a_rule")  # type: ignore
+
+    def test_mean_over_sqrt_n_rule(self):
+        """The shipped rule scales the mean of the spectrum by 1 / sqrt(n)."""
+        statistic = TensorStatistic(shape=None, update_function=lambda: (None, 0))  # type: ignore
+        statistic.samples = 4
+        rule = KNOWN_THRESHOLD_RULES["mean_over_sqrt_n"]
+        self.assertAlmostEqual(rule(statistic, torch.tensor([1.0, 2.0, 3.0])), 1.0)
+        statistic.samples = 0  # no sample yet: no division by zero
+        self.assertAlmostEqual(rule(statistic, torch.tensor([1.0, 2.0, 3.0])), 2.0)
+
+    def test_lethal_threshold_is_guarded(self):
+        """A threshold that would select nothing never leaves an empty selection."""
+        # A finite but huge value: the min(threshold, s.max()) guard keeps one neuron
+        _, _, eigenvalues = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=1e12,
+        )
+        self.assertEqual(eigenvalues.shape[0], 1)
+
+        # A non-finite rule value: falls back to keeping the whole spectrum
+        with self.assertWarns(RuntimeWarning):
+            _, _, eigenvalues = compute_optimal_added_parameters(
+                matrix_s=self.matrix_s,
+                matrix_n=self.matrix_n,
+                statistical_threshold=lambda s: float("inf"),
+            )
+        self.assertEqual(eigenvalues.shape[0], 3)
+
+        # Whitening side: falling back rather than returning a zero matrix
+        with self.assertWarns(RuntimeWarning):
+            result = sqrt_inverse_matrix_semi_positive(
+                self.matrix_s, threshold=lambda s: 1e12
+            )
+        self.assertGreater(result.abs().max().item(), 0.0)
+
+    def test_threshold_rule_end_to_end(self):
+        """A bound rule selects fewer neurons and is recorded as the applied value."""
+        statistic = TensorStatistic(shape=None, update_function=lambda: (None, 0))  # type: ignore
+        statistic.samples = 1
+        rule = partial(KNOWN_THRESHOLD_RULES["mean_over_sqrt_n"], statistic)
+
+        spectra = dict()
+        _, _, with_rule = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=rule,
+            spectra=spectra,
+        )
+        _, _, without = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=0.0,
+        )
+        self.assertLess(with_rule.shape[0], without.shape[0])
+        self.assertAlmostEqual(
+            spectra["extension"]["threshold"], without.mean().item(), places=5
+        )
+
+    def test_spectrum_summary(self):
+        """The spectrum summary reports the correct counts and values."""
+        spectrum = torch.tensor([4.0, 2.0, 1.0])
+        summary = spectrum_summary(spectrum)
+        self.assertIsInstance(summary, dict)
 
 
 if __name__ == "__main__":

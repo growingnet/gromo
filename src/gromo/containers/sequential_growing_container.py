@@ -118,6 +118,7 @@ class SequentialGrowingModel(GrowingModel):
                 "update_value": layer.first_order_improvement.item(),
                 "parameter_improvement": layer.parameter_update_decrease.item(),
                 "eigenvalues_extension": layer.eigenvalues_extension,
+                "growth_spectra": layer.growth_spectra,
             }
             information[i] = layer_information
         return information

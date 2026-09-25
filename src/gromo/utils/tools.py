@@ -1,12 +1,119 @@
 import math
+from collections.abc import Callable
+from typing import Any, Literal
 from warnings import warn
 
 import torch
 
+from gromo.utils.tensor_statistic import TensorStatistic
+
+
+# A threshold rule maps the statistic that produced a matrix and the spectrum of that
+# matrix to a threshold. The caller that owns the statistic partially applies the rule,
+# leaving a SpectrumThreshold for the numerical helpers below.
+SpectrumThreshold = Callable[[torch.Tensor], float]
+ThresholdRule = Callable[[TensorStatistic, torch.Tensor], float]
+
+KnownThresholdRuleName = Literal["mean_over_sqrt_n"]
+
+
+def _mean_over_sqrt_n_rule(statistic: TensorStatistic, spectrum: torch.Tensor) -> float:
+    """Mean of the spectrum divided by the square root of the number of samples.
+
+    Parameters
+    ----------
+    statistic: TensorStatistic
+        statistic the thresholded matrix was estimated from
+    spectrum: torch.Tensor
+        spectrum of that matrix
+
+    Returns
+    -------
+    float
+        the threshold
+    """
+    return spectrum.mean().item() / math.sqrt(max(statistic.samples, 1))
+
+
+KNOWN_THRESHOLD_RULES: dict[KnownThresholdRuleName, ThresholdRule] = {
+    "mean_over_sqrt_n": _mean_over_sqrt_n_rule,
+}
+
+
+def resolve_threshold_rule(
+    rule: KnownThresholdRuleName | ThresholdRule,
+) -> ThresholdRule:
+    """
+    Get the threshold rule designated by a name, or the rule itself.
+
+    Parameters
+    ----------
+    rule: KnownThresholdRuleName | ThresholdRule
+        name of a rule of `KnownThresholdRuleName`, or a rule
+
+    Returns
+    -------
+    ThresholdRule
+        the resolved rule
+
+    Raises
+    ------
+    ValueError
+        if the name is not that of a known rule
+    """
+    if callable(rule):
+        return rule
+    if rule not in KNOWN_THRESHOLD_RULES:
+        raise ValueError(
+            f"Unknown threshold rule '{rule}'. "
+            f"Available rules are: {list(KNOWN_THRESHOLD_RULES)}."
+        )
+    return KNOWN_THRESHOLD_RULES[rule]
+
+
+def resolve_threshold(
+    threshold: float | SpectrumThreshold,
+    spectrum: torch.Tensor,
+    fallback: float = 0.0,
+) -> float:
+    """
+    Get the value a threshold takes for a given spectrum.
+
+    An empty spectrum and a non-finite rule value both resolve to a fallback, as
+    either would otherwise select nothing.
+
+    Parameters
+    ----------
+    threshold: float | SpectrumThreshold
+        a value, or a rule already bound to its statistic
+    spectrum: torch.Tensor
+        spectrum the threshold is compared against
+    fallback: float
+        value used when the rule returns a non-finite number
+
+    Returns
+    -------
+    float
+        the resolved threshold
+    """
+    if not callable(threshold):
+        return float(threshold)
+    if spectrum.numel() == 0:
+        return 0.0
+    value: float = float(threshold(spectrum))  # type: ignore
+    if not math.isfinite(value):
+        warn(
+            message=f"The threshold rule returned {value}, falling back to {fallback}.",
+            category=RuntimeWarning,
+        )
+        return fallback
+    return value
+
 
 def sqrt_inverse_matrix_semi_positive(
     matrix: torch.Tensor,
-    threshold: float = 1e-5,
+    threshold: float | SpectrumThreshold = 1e-5,
+    spectra: dict[str, Any] | None = None,
 ) -> torch.Tensor:
     """
     Compute the square root of the inverse of a semi-positive definite matrix.
@@ -15,8 +122,13 @@ def sqrt_inverse_matrix_semi_positive(
     ----------
     matrix: torch.Tensor
         input matrix, square and semi-positive definite
-    threshold: float
-        threshold to consider an eigenvalue as zero
+    threshold: float | SpectrumThreshold
+        threshold to consider an eigenvalue as zero, either a value or a rule
+        already bound to its statistic (see `resolve_threshold`)
+    spectra: dict[str, Any] | None
+        if given, filled in place with the eigenvalues of the input matrix, the
+        threshold applied to them, the number of eigenvalues kept and the total
+        number of eigenvalues. Nothing is computed when None.
 
     Returns
     -------
@@ -27,12 +139,14 @@ def sqrt_inverse_matrix_semi_positive(
     assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
     assert torch.isnan(matrix).sum() == 0, "The input matrix must not contain NaN values."
 
+    regularized = False
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
     except torch.linalg.LinAlgError:
         # Sometimes, due to numerical issues, we get an error:
         # The algorithm failed to converge because the input matrix is
         # ill-conditioned or has too many repeated eigenvalues
+        regularized = True
         matrix += torch.finfo(matrix.dtype).resolution * torch.eye(
             matrix.shape[0],
             device=matrix.device,
@@ -44,7 +158,33 @@ def sqrt_inverse_matrix_semi_positive(
         )
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
 
+    # A value is the caller's explicit choice; only a rule is second-guessed.
+    threshold_is_rule = callable(threshold)
+    # fallback is the same as `torch.linalg.pinv` default
+    fallback_threshold = matrix.shape[0] * torch.finfo(matrix.dtype).eps
+    threshold = resolve_threshold(threshold, eigenvalues, fallback=fallback_threshold)
     selected_eigenvalues = eigenvalues > threshold
+    if threshold_is_rule and selected_eigenvalues.sum() == 0 and eigenvalues.max() > 0:
+        warn(
+            message=(
+                f"The threshold {threshold:.3e} drops the whole spectrum of a non-zero "
+                f"matrix, which would make the inverse square root zero. "
+                f"Falling back to {fallback_threshold:.3e}."
+            ),
+            category=RuntimeWarning,
+        )
+        threshold = fallback_threshold
+        selected_eigenvalues = eigenvalues > threshold
+
+    if spectra is not None:
+        spectra.update(
+            eigenvalues=eigenvalues.detach(),
+            threshold=threshold,
+            kept=int(selected_eigenvalues.sum()),
+            total=int(eigenvalues.numel()),
+            regularized=regularized,
+        )
+
     eigenvalues = torch.rsqrt(eigenvalues[selected_eigenvalues])  # inverse square root
     eigenvectors = eigenvectors[:, selected_eigenvalues]
     return eigenvectors @ torch.diag(eigenvalues) @ eigenvectors.t()
@@ -56,6 +196,7 @@ def optimal_delta(
     dtype: torch.dtype = torch.float32,
     force_pseudo_inverse: bool = False,
     tensor_covariance_loss_gradient: torch.Tensor | None = None,
+    spectra: dict[str, Any] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute the optimal delta for the layer using current S and M tensors.
@@ -85,6 +226,10 @@ def optimal_delta(
         the preconditioned update dW* = E_s^-1 M^T S^-1 is returned. Note that
         relying on this preconditioner silently uses the independence hypothesis
         described in `first_order_optimization.typ` (`@hyp:independence`).
+    spectra: dict[str, Any] | None
+        if given, filled in place with the singular values of the returned optimal
+        delta. This is an additional decomposition, hence opt-in: nothing is
+        computed when None.
 
     Returns
     -------
@@ -152,6 +297,7 @@ def optimal_delta(
                 dtype=torch.float64,
                 force_pseudo_inverse=True,
                 tensor_covariance_loss_gradient=tensor_covariance_loss_gradient,
+                spectra=spectra,
             )
         else:
             warn("Failed to compute the optimal delta, set delta to zero.")
@@ -161,20 +307,24 @@ def optimal_delta(
     if isinstance(parameter_update_decrease, torch.Tensor):
         parameter_update_decrease = parameter_update_decrease.to(dtype=saved_dtype)
 
+    if spectra is not None:
+        spectra["singular_values"] = torch.linalg.svdvals(delta_raw).detach()
+
     return delta_raw, parameter_update_decrease
 
 
 def compute_optimal_added_parameters(
     matrix_s: torch.Tensor | None,
     matrix_n: torch.Tensor,
-    numerical_threshold: float = 1e-6,
-    statistical_threshold: float = 1e-3,
+    numerical_threshold: float | SpectrumThreshold = 1e-6,
+    statistical_threshold: float | SpectrumThreshold = 1e-3,
     maximum_added_neurons: int | None = None,
     alpha_zero: bool = False,
     omega_zero: bool = False,
     ignore_singular_values: bool = False,
     matrix_covariance_loss_gradient: torch.Tensor | None = None,
-    e_numerical_threshold: float | None = None,
+    e_numerical_threshold: float | SpectrumThreshold | None = None,
+    spectra: dict[str, Any] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
@@ -187,9 +337,9 @@ def compute_optimal_added_parameters(
         Square matrix S of shape (s, s). If None, identity matrix is used.
     matrix_n : torch.Tensor
         Matrix N (correlation matrix) of shape (s, t).
-    numerical_threshold : float
+    numerical_threshold : float | SpectrumThreshold
         Threshold to consider an eigenvalue as zero in square root of inverse of S
-    statistical_threshold : float
+    statistical_threshold : float | SpectrumThreshold
         Threshold to consider a singular value as zero in the SVD
     maximum_added_neurons : int | None
         Maximum number of added neurons, if None all significant neurons are kept
@@ -206,10 +356,18 @@ def compute_optimal_added_parameters(
         applies the empirical-Fisher preconditioning to the rank-k extension.
         Note that this silently uses the independence hypothesis described in
         `first_order_optimization.typ` (`@hyp:independence`).
-    e_numerical_threshold : float | None
+    e_numerical_threshold : float | SpectrumThreshold | None
         Whitening threshold for E_s. When None, `numerical_threshold` is used.
         Pass 0.0 to keep the full spectrum (e.g. when E_s has been ridge-shrunk
         upstream and is already positive definite).
+    spectra : dict[str, Any] | None
+        If given, filled in place with the keys "matrix_s", "matrix_e" and
+        "extension". The first two hold the whitening spectra of S and E (None
+        when the corresponding matrix is not used, see
+        `sqrt_inverse_matrix_semi_positive`); "extension" holds the singular
+        values of the SVD target before any selection, the threshold applied to
+        them, and how many were kept by the threshold and by
+        `maximum_added_neurons`. Nothing is computed when None.
 
     Returns
     -------
@@ -227,6 +385,10 @@ def compute_optimal_added_parameters(
     ValueError
         If maximum_added_neurons is negative.
     """
+    if spectra is not None:
+        # Always set every key so a caller merging this in cannot keep a stale one.
+        spectra.update(matrix_s=None, matrix_e=None, extension=None)
+
     # Validate inputs
     n_1, n_2 = matrix_n.shape
 
@@ -262,9 +424,12 @@ def compute_optimal_added_parameters(
             matrix_s = (matrix_s + matrix_s.t()) / 2
 
         # Compute the square root of the inverse of S
+        matrix_s_spectra = dict() if spectra is not None else None
         matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
-            matrix_s, threshold=numerical_threshold
+            matrix_s, threshold=numerical_threshold, spectra=matrix_s_spectra
         )
+        if spectra is not None:
+            spectra["matrix_s"] = matrix_s_spectra
         # Compute the product P := S^{-1/2} N
         matrix_p = matrix_s_inverse_sqrt @ matrix_n
     else:
@@ -289,6 +454,7 @@ def compute_optimal_added_parameters(
             matrix_covariance_loss_gradient = (
                 matrix_covariance_loss_gradient + matrix_covariance_loss_gradient.t()
             ) / 2
+        matrix_e_spectra = dict() if spectra is not None else None
         matrix_e_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
             matrix_covariance_loss_gradient,
             threshold=(
@@ -296,7 +462,10 @@ def compute_optimal_added_parameters(
                 if e_numerical_threshold is not None
                 else numerical_threshold
             ),
+            spectra=matrix_e_spectra,
         )
+        if spectra is not None:
+            spectra["matrix_e"] = matrix_e_spectra
         matrix_p = matrix_p @ matrix_e_inverse_sqrt
 
     # Compute the SVD of the product
@@ -315,9 +484,21 @@ def compute_optimal_added_parameters(
         raise e
 
     # Select the singular values
+    statistical_threshold = resolve_threshold(statistical_threshold, s)
+    # The min(..., s.max()) keeps at least one neuron whatever the threshold.
     selected_singular_values = s >= min(statistical_threshold, s.max())
+    kept_by_threshold = int(selected_singular_values.sum())
     if maximum_added_neurons is not None:
         selected_singular_values[maximum_added_neurons:] = False
+
+    if spectra is not None:
+        spectra["extension"] = {
+            "singular_values": s.detach(),  # before any selection
+            "threshold": statistical_threshold,
+            "kept_by_threshold": kept_by_threshold,
+            "kept": int(selected_singular_values.sum()),
+            "maximum_added_neurons": maximum_added_neurons,
+        }
 
     # Keep only the significant singular values but keep at least one
     s = s[selected_singular_values]
@@ -343,6 +524,45 @@ def compute_optimal_added_parameters(
         omega = torch.zeros_like(omega)
 
     return alpha.t(), omega.t(), s
+
+
+def spectrum_summary(spectrum: torch.Tensor) -> dict[str, float]:
+    """
+    Summarize a spectrum (eigenvalues or singular values) with a few scalars.
+
+    Parameters
+    ----------
+    spectrum: torch.Tensor
+        one dimensional tensor of non-negative values
+
+    Returns
+    -------
+    dict[str, float]
+        maximum, minimum, mean and sum of the spectrum, its condition number
+        (maximum over minimum, restricted to the strictly positive values) and
+        its effective rank (the exponential of the entropy of the normalized
+        spectrum). Empty for an empty spectrum.
+    """
+    if spectrum.numel() == 0:
+        return dict()
+    spectrum = spectrum.detach().to(dtype=torch.float64)
+    positive = spectrum[spectrum > 0]
+    total = spectrum.sum()
+    if positive.numel() == 0:
+        condition_number = float("inf")
+        effective_rank = 0.0
+    else:
+        condition_number = (positive.max() / positive.min()).item()
+        proportions = positive / total
+        effective_rank = torch.exp(-(proportions * torch.log(proportions)).sum()).item()
+    return {
+        "max": spectrum.max().item(),
+        "min": spectrum.min().item(),
+        "mean": spectrum.mean().item(),
+        "sum": total.item(),
+        "condition_number": condition_number,
+        "effective_rank": effective_rank,
+    }
 
 
 def compute_output_shape_conv(

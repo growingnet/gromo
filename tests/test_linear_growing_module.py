@@ -1,3 +1,4 @@
+import math
 import types
 import warnings
 from copy import deepcopy
@@ -1264,6 +1265,83 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             update_computation(double_batch=double_batch)
             layer_out.compute_optimal_updates()
             self.verify_layer_invariants(layer_out, reference, invariants)
+
+    def _run_growth_computation(self) -> LinearGrowingModule:
+        """Accumulate the statistics of a two-layer network and return the second layer."""
+        _, layer_out, net = self.setup_invariant_test_network()
+        layer_out.init_computation()
+        torch.manual_seed(self.config.RANDOM_SEED)
+        net.zero_grad()
+        x = torch.randn((self.config.BATCH_SIZE, 5), device=global_device())
+        y = net(x)
+        loss = self.create_mse_loss_function()(y, torch.zeros_like(y))
+        loss.backward()
+        layer_out.update_computation()
+        return layer_out
+
+    def test_growth_spectra_collection(self):
+        """The spectra are recorded only when asked for, and dropped afterwards."""
+        layer_out = self._run_growth_computation()
+
+        layer_out.compute_optimal_updates()
+        self.assertIsNone(layer_out.growth_spectra)
+
+        layer_out.compute_optimal_updates(
+            collect_spectra=True, collect_delta_spectrum=True
+        )
+        spectra = layer_out.growth_spectra
+        assert spectra is not None
+        self.assertEqual(
+            set(spectra.keys()), {"delta", "matrix_s", "matrix_e", "extension"}
+        )
+        self.assertIsNotNone(spectra["delta"])
+        self.assertIsNotNone(spectra["matrix_s"])
+        self.assertIsNone(spectra["matrix_e"])  # use_fisher is False
+        assert layer_out.eigenvalues_extension is not None
+        self.assertEqual(
+            spectra["extension"]["kept"], layer_out.eigenvalues_extension.shape[0]
+        )
+
+        # A non-collecting call must not leave the previous spectra readable as fresh
+        layer_out.compute_optimal_updates()
+        self.assertIsNone(layer_out.growth_spectra)
+
+        layer_out.compute_optimal_updates(collect_spectra=True)
+        layer_out.delete_update()
+        self.assertIsNone(layer_out.growth_spectra)
+
+    def test_threshold_rule_is_bound_to_its_statistic(self):
+        """A named rule is applied, with the sample count of its own statistic."""
+        layer_out = self._run_growth_computation()
+        assert isinstance(layer_out.previous_module, LinearGrowingModule)
+
+        layer_out.compute_optimal_updates(
+            numerical_threshold="mean_over_sqrt_n", collect_spectra=True
+        )
+        spectra = layer_out.growth_spectra
+        assert spectra is not None
+        eigenvalues = spectra["matrix_s"]["eigenvalues"]
+        expected = eigenvalues.mean().item() / math.sqrt(
+            layer_out.previous_module.tensor_s.samples
+        )
+        self.assertAlmostEqual(spectra["matrix_s"]["threshold"], expected, places=5)
+
+    def test_unknown_threshold_rule_raises(self):
+        """A rule name that is not known fails at the module boundary."""
+        layer_out = self._run_growth_computation()
+        with self.assertRaises(ValueError):
+            layer_out.compute_optimal_updates(numerical_threshold="not_a_rule")  # type: ignore
+
+    def test_threshold_binding_skips_unused_matrices(self):
+        """Without the covariance, S's threshold is never bound to a missing statistic."""
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="orphan")
+        with self.assertRaises(ValueError):
+            _ = layer.tensor_s_growth  # no previous module: binding would raise
+
+        layer_out = self._run_growth_computation()
+        layer_out.compute_optimal_updates(
+            use_covariance=False, numerical_threshold="mean_over_sqrt_n"
+        )
 
     @unittest_parametrize(({"bias": True, "dtype": torch.float64}, {"bias": False}))
     def test_compute_optimal_added_parameters(

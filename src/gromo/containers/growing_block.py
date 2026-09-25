@@ -15,6 +15,7 @@ from gromo.modules.conv2d_growing_module import (
 )
 from gromo.modules.growing_module import ExtensionInit, GrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
+from gromo.utils.tools import KnownThresholdRuleName, ThresholdRule
 
 
 class GrowingBlock(GrowingContainer):
@@ -167,6 +168,17 @@ class GrowingBlock(GrowingContainer):
             eigenvalues extension
         """
         return self.second_layer.eigenvalues_extension
+
+    @property
+    def growth_spectra(self) -> dict[str, Any] | None:
+        """Get the growth spectra recorded by the second layer.
+
+        Returns
+        -------
+        dict[str, Any] | None
+            growth spectra of the second layer
+        """
+        return self.second_layer.growth_spectra
 
     @property
     def parameter_update_decrease(self) -> torch.Tensor | None:
@@ -412,8 +424,8 @@ class GrowingBlock(GrowingContainer):
 
     def compute_optimal_updates(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-6,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
         compute_delta: bool = True,
@@ -424,6 +436,8 @@ class GrowingBlock(GrowingContainer):
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,
+        collect_spectra: bool = False,
+        collect_delta_spectrum: bool = False,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
@@ -433,11 +447,13 @@ class GrowingBlock(GrowingContainer):
 
         Parameters
         ----------
-        numerical_threshold: float
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule
             threshold to consider an eigenvalue as zero in the square root
-            of the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+            of the inverse of S.
+            When a rule is given it is bound to the previous module's ``tensor_s``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
@@ -467,6 +483,12 @@ class GrowingBlock(GrowingContainer):
             Shrinkage intensity alpha in [0, 1]. If > 0, shrink the gradient
             covariance E to (1 - alpha) * E + alpha * tr(E)/d * I and whiten it
             without truncation. Default is 0.0 (absolute-threshold behaviour).
+        collect_spectra: bool
+            If True, record the growth spectra in the second layer's
+            ``growth_spectra``. Default is False.
+        collect_delta_spectrum: bool
+            If True, also record the singular values of the optimal delta.
+            Requires an additional decomposition. Default is False.
 
         Note
         ----
@@ -490,6 +512,11 @@ class GrowingBlock(GrowingContainer):
             # remains available for all configurations.
             self.second_layer.optimal_delta_layer = None
             self.second_layer.delta_raw = None
+            self.second_layer.growth_spectra = (
+                dict.fromkeys(("delta", "matrix_s", "matrix_e", "extension"))
+                if collect_spectra
+                else None
+            )
             self.second_layer.parameter_update_decrease = torch.tensor(
                 0.0,
                 device=self.device,
@@ -513,6 +540,7 @@ class GrowingBlock(GrowingContainer):
                 ignore_singular_values=ignore_singular_values,
                 use_fisher=use_fisher,
                 fisher_shrinkage=fisher_shrinkage,
+                collect_spectra=collect_spectra,
             )
         else:
             # When hidden_neurons > 0, delegate to second layer's
@@ -532,6 +560,8 @@ class GrowingBlock(GrowingContainer):
                 ignore_singular_values=ignore_singular_values,
                 use_fisher=use_fisher,
                 fisher_shrinkage=fisher_shrinkage,
+                collect_spectra=collect_spectra,
+                collect_delta_spectrum=collect_delta_spectrum,
             )
 
     def apply_change(

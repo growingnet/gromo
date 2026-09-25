@@ -5,6 +5,7 @@ import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tools import KnownThresholdRuleName, ThresholdRule
 
 
 class LinearMergeGrowingModule(MergeGrowingModule):
@@ -927,8 +928,8 @@ class LinearGrowingModule(GrowingModule):
     # Optimal update computation
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-6,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -939,6 +940,7 @@ class LinearGrowingModule(GrowingModule):
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,
+        collect_spectra: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -947,10 +949,12 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the square root of the inverse of S.
+            When a rule is given it is bound to the previous module's ``tensor_s``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
         update_previous: bool
@@ -976,6 +980,8 @@ class LinearGrowingModule(GrowingModule):
             Ledoit-Wolf-style convex combination
             (1 - alpha) * E + alpha * tr(E)/d * I and whiten it without
             truncation. Only has an effect when ``use_fisher`` is True.
+        collect_spectra: bool
+            if True, record the growth spectra in ``self.growth_spectra``
 
         Returns
         -------
@@ -1005,6 +1011,7 @@ class LinearGrowingModule(GrowingModule):
             ignore_singular_values=ignore_singular_values,
             use_fisher=use_fisher,
             fisher_shrinkage=fisher_shrinkage,
+            collect_spectra=collect_spectra,
         )
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1], (

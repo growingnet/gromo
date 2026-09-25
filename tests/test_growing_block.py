@@ -1094,6 +1094,39 @@ class TestLinearGrowingBlock(TorchTestCase):
         for obj in deleted_objects:
             self.assertIsNone(obj)
 
+    def test_growth_spectra_on_empty_block(self):
+        """The empty-block branch of compute_optimal_updates records its spectra."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            activation=torch.nn.Identity(),
+            device=self.device,
+            name="test_block",
+        )
+        block.init_computation()
+        x_batch = indicator_batch((self.in_features,), device=self.device)
+        block.zero_grad()
+        loss = (block(x_batch) ** 2).sum() / 2
+        loss.backward()
+        block.update_computation()
+
+        block.compute_optimal_updates(maximum_added_neurons=self.in_features)
+        self.assertIsNone(block.growth_spectra)
+
+        block.compute_optimal_updates(
+            maximum_added_neurons=self.in_features, collect_spectra=True
+        )
+        spectra = block.growth_spectra
+        assert spectra is not None
+        self.assertIsNotNone(spectra["extension"])
+        # There is no natural-gradient step on this path
+        self.assertIsNone(spectra["delta"])
+        assert block.eigenvalues_extension is not None
+        self.assertEqual(
+            spectra["extension"]["kept"], block.eigenvalues_extension.shape[0]
+        )
+
     def test_full_addition_loop_with_features_identity_initialization(
         self, bias: bool = False
     ):
