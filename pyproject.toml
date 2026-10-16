@@ -2,18 +2,21 @@
 name = "gromo"
 dynamic = ["version"]
 authors = [
-    { name="Théo Rudkiewicz", email="theo.rudkiewicz@inria.fr" },
-    { name="Manon Verbockhaven", email="manon.verbockhaven@inria.fr" },
-    { name="Stella Douka", email="styliani.douka@inria.fr" },
+    { name="Théo Rudkiewicz" },
+    { name="Manon Verbockhaven" },
+    { name="Stella Douka" },
     { name="Maxence Tekou" },
     { name="Ying Jin" },
     { name="Hugo Mousset" },
     { name="Félix Houdouin" },
     { name="Léo Burgund" },
-    { name="Stéphane Rivaud", email="stephane.a.rivaud@inria.fr" },
-    { name="Alex Davey", email="alex.davey@inria.fr" },
-    { name="François Landes", email="francois.landes@universite-paris-saclay.fr" },
-    { name="Guillaume Charpiat", email="guillaume.charpiat@inria.fr" },
+    { name="Stéphane Rivaud" },
+    { name="Alex Davey" },
+    { name="François Landes" },
+    { name="Guillaume Charpiat" },
+    { name="Sylvain Chevallier" },
+]
+maintainers = [
     { name="Sylvain Chevallier", email="sylvain.a.chevallier@inria.fr" },
 ]
 description = "Growing module for pytorch"
