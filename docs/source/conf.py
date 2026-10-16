@@ -31,7 +31,7 @@ author = "Theo Rudkiewicz, Stella Douka, Stephane Rivaud, Francois Landes, Guill
 # The short X.Y version
 version = gromo.__version__
 # The full version, including alpha/beta/rc tags
-release = f"{gromo.__version__}-dev"
+release = gromo.__version__
 
 
 # -- General configuration ---------------------------------------------------

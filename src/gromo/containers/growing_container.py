@@ -255,12 +255,13 @@ class GrowingContainer(torch.nn.Module):
                 layer.delete_update()
         return self.currently_updated_layer_index
 
-    def dummy_select_update(self, **_: dict) -> int:
+    def dummy_select_update(self, **kwargs: dict) -> int:  # noqa: ARG002
         """Placeholder function for selecting update
 
         Parameters
         ----------
-        **_ : dict
+        **kwargs : dict
+            ignored keyword arguments
 
         Returns
         -------

@@ -23,6 +23,29 @@ Enhancements
 - Add a numerical floor under every eigenvalue threshold of ``S`` and ``E``: the maximum of the default tolerance of ``torch.linalg.pinv`` (``d * eps * lambda_1`` in the dtype of the eigendecomposition), one ulp of ``lambda_1`` in the less precise of the accumulation and inversion dtypes, and twice the most negative eigenvalue, which measures the noise of low-precision (e.g. bfloat16) statistics. The first term can be switched off with ``worst_case_numerical_floor=False``, forwarded by the growth APIs and the containers; it is off for the shrunk ``E`` of ``fisher_shrinkage``. The floor replaces the absolute fallback of :gh:`275`, records its terms in the spectra (``"numerical_floor"``, ``"numerical_floor_terms"``), and also applies to the pseudo-inverses of ``optimal_delta`` (``pseudo_inverse_matrix_semi_positive``). Add the threshold rule ``"operator_norm_noise_threshold"`` (a conservative estimate of the operator norm of the estimation error) and ``TensorStatistic.dtype`` (:gh:`XXX` by `Théo Rudkiewicz`_).
 - Allow the eigenvalue thresholds of the growth APIs to be data-dependent: ``numerical_threshold`` and ``statistical_threshold`` now accept a threshold rule (or its name, e.g. ``"mean_over_sqrt_n"``) mapping the ``TensorStatistic`` the thresholded matrix was estimated from and its spectrum to a threshold. The default of ``numerical_threshold`` changes in :gh:`XXX` (see API changes) (:gh:`275` by `Théo Rudkiewicz`_).
 - Expose the spectra computed during growth: ``GrowingModule.compute_optimal_updates`` gains ``collect_spectra`` and ``collect_delta_spectrum``, which record in ``GrowingModule.growth_spectra`` the whitening spectra of ``S`` and ``E``, the singular values of the SVD target before selection and those of the optimal delta, together with the thresholds applied and the resulting counts. Add ``spectrum_summary`` to derive the usual scalars from a spectrum (:gh:`275` by `Théo Rudkiewicz`_).
+- Add the Zenodo DOI to ``CITATION.cff`` and the README, with PyPI, Python versions, documentation and DOI badges, and set the development status to beta (:gh:`280` by `Sylvain Chevallier`_)
+
+Bugs
+~~~~
+
+- Fix the pseudo-inverses of ``optimal_delta``: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and ``torch.linalg.pinv`` inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. ``sqrt_inverse_matrix_semi_positive`` no longer modifies its input matrix when ``eigh`` fails (:gh:`XXX` by `Théo Rudkiewicz`_)
+
+API changes
+~~~~~~~~~~~
+
+- ``numerical_threshold`` defaults to ``None``, the numerical floor, instead of ``1e-6``, and explicit values are floored like rules: a threshold can only raise the floor, and falls back to it when it would drop the whole spectrum of a non-zero matrix. ``0`` (and ``e_numerical_threshold=0.0``) now means the floor, not "keep everything". Results change in both directions: the floor is relative, so a matrix of small scale (``lambda_1 < 8.4 / d`` in float32, typical of the gradient covariance ``E``) keeps more directions than with the absolute ``1e-6``; for larger scales, directions below ``d * eps * lambda_1`` are dropped (``worst_case_numerical_floor=False`` keeps them); with bfloat16 statistics, rounding-noise directions are dropped. (:gh:`XXX` by `Théo Rudkiewicz`_).
+
+
+.. _changes_0_1_0:
+
+Version 0.1.0 (2026-10-16)
+--------------------------
+
+Enhancements
+~~~~~~~~~~~~
+
+- Add a GitHub Actions workflow publishing the package to PyPI with trusted publishing when a GitHub release is published, and to TestPyPI on manual runs (:gh:`277` by `Sylvain Chevallier`_)
+- Prepare the packaging for PyPI: single-sourced version in ``gromo/__init__.py``, BSD-3-Clause licence metadata, project URLs and classifiers, lighter runtime dependencies and source distribution, and a ``CITATION.cff`` file (:gh:`276` by `Sylvain Chevallier`_)
 - Add ``fisher_shrinkage`` to ridge-shrink the empirical-Fisher gradient-covariance matrix ``E`` toward a scaled identity, avoiding rank collapse under whitening, and add exact ("true") Fisher accumulation for classification (``GrowingContainer.accumulate_true_fisher_covariance``) as a lower-variance alternative to the empirical Fisher (:gh:`267` by `Hugo Mousset`_).
 - Split ``create_layer_extensions`` into ``allocate_layer_extensions`` (create the extension layers) and ``initialize_extensions`` (set their values), so that already created extensions can be re-initialized, and promote the extension initializations to the ``GrowingModule.KNOWN_EXTENSION_INITS`` registry, that also accepts custom callables. ``copy_initialization_variance``, ``kaiming_initialization`` and the new ``zeros_initialization`` are now static methods, of signature ``(tensor, reference_tensor, fan_in)`` (:gh:`272` by `Théo Rudkiewicz`_).
 - Add Kaiming-normal and copy-normal initializations for layer extensions: ``kaiming_initialization`` and ``copy_initialization_variance`` (renamed from ``copy_uniform_initialization``) gain a ``distribution`` argument, exposed through the new ``"kaiming_normal"`` and ``"copy_normal"`` keys of ``create_layer_extensions`` (:gh:`259` by `Théo Rudkiewicz`_).
@@ -110,7 +133,8 @@ Enhancements
 Bugs
 ~~~~
 
-- Fix the pseudo-inverses of ``optimal_delta``: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and ``torch.linalg.pinv`` inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. ``sqrt_inverse_matrix_semi_positive`` no longer modifies its input matrix when ``eigh`` fails (:gh:`XXX` by `Théo Rudkiewicz`_)
+- Fix the author credits on the PyPI page, which linked the authors without email to the email of the first author: list the authors by name only and add a maintainer contact (:gh:`278` by `Sylvain Chevallier`_)
+- Rename the unused ``**_`` argument of ``GrowingContainer.dummy_select_update`` to ``**kwargs``, as pydoclint >= 0.10 ignores ``_`` and rejected its docstring (:gh:`276` by `Sylvain Chevallier`_)
 - Fix ``first_order_improvement`` when ``ignore_singular_values=True``: the new-neuron term now sums the singular values instead of squaring them, consistent with the unit-scaled extension weights, and ``scale_layer_extension`` is adjusted accordingly (:gh:`261` by `Théo Rudkiewicz`_)
 - Fix orientation of non-square images in `__make_safe_forward` (:gh:`230` by `Stella Douka`_)
 - Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
@@ -136,7 +160,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
-- ``numerical_threshold`` defaults to ``None``, the numerical floor, instead of ``1e-6``, and explicit values are floored like rules: a threshold can only raise the floor, and falls back to it when it would drop the whole spectrum of a non-zero matrix. ``0`` (and ``e_numerical_threshold=0.0``) now means the floor, not "keep everything". Results change in both directions: the floor is relative, so a matrix of small scale (``lambda_1 < 8.4 / d`` in float32, typical of the gradient covariance ``E``) keeps more directions than with the absolute ``1e-6``; for larger scales, directions below ``d * eps * lambda_1`` are dropped (``worst_case_numerical_floor=False`` keeps them); with bfloat16 statistics, rounding-noise directions are dropped. (:gh:`XXX` by `Théo Rudkiewicz`_).
+- Drop support for Python 3.10, which reached its end of life, and test on Python 3.11 to 3.14 (:gh:`276` by `Sylvain Chevallier`_)
 - ``compute_optimal_updates()`` now exposes primitive boolean controls (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``) and growth-related defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` for consistency across modules. Migration for direct internal calls: ``compute_optimal_added_parameters()`` is now ``_compute_optimal_added_parameters()``; external users should prefer ``compute_optimal_updates()`` (:gh:`193` by `Stéphane Rivaud`_)
 - Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
