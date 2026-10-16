@@ -11,7 +11,7 @@ authors = [
     { name="Félix Houdouin" },
     { name="Léo Burgund" },
     { name="Stéphane Rivaud", email="stephane.a.rivaud@inria.fr" },
-    { name="Alex Davey" },
+    { name="Alex Davey", email="alex.davey@inria.fr" },
     { name="François Landes", email="francois.landes@universite-paris-saclay.fr" },
     { name="Guillaume Charpiat", email="guillaume.charpiat@inria.fr" },
     { name="Sylvain Chevallier", email="sylvain.a.chevallier@inria.fr" },
