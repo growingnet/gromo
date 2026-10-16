@@ -108,6 +108,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Rename the unused ``**_`` argument of ``GrowingContainer.dummy_select_update`` to ``**kwargs``, as pydoclint >= 0.10 ignores ``_`` and rejected its docstring (:gh:`276` by `Sylvain Chevallier`_)
 - Fix ``first_order_improvement`` when ``ignore_singular_values=True``: the new-neuron term now sums the singular values instead of squaring them, consistent with the unit-scaled extension weights, and ``scale_layer_extension`` is adjusted accordingly (:gh:`261` by `Théo Rudkiewicz`_)
 - Fix orientation of non-square images in `__make_safe_forward` (:gh:`230` by `Stella Douka`_)
 - Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
