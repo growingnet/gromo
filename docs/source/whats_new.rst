@@ -20,6 +20,21 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+Bugs
+~~~~
+
+API changes
+~~~~~~~~~~~
+
+
+.. _changes_0_1_0:
+
+Version 0.1.0 (2026-10-16)
+--------------------------
+
+Enhancements
+~~~~~~~~~~~~
+
 - Add a GitHub Actions workflow publishing the package to PyPI with trusted publishing when a GitHub release is published, and to TestPyPI on manual runs (:gh:`277` by `Sylvain Chevallier`_)
 - Prepare the packaging for PyPI: single-sourced version in ``gromo/__init__.py``, BSD-3-Clause licence metadata, project URLs and classifiers, lighter runtime dependencies and source distribution, and a ``CITATION.cff`` file (:gh:`276` by `Sylvain Chevallier`_)
 - Add ``fisher_shrinkage`` to ridge-shrink the empirical-Fisher gradient-covariance matrix ``E`` toward a scaled identity, avoiding rank collapse under whitening, and add exact ("true") Fisher accumulation for classification (``GrowingContainer.accumulate_true_fisher_covariance``) as a lower-variance alternative to the empirical Fisher (:gh:`267` by `Hugo Mousset`_).
