@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add a GitHub Actions workflow publishing the package to PyPI with trusted publishing when a GitHub release is published, and to TestPyPI on manual runs (:gh:`277` by `Sylvain Chevallier`_)
 - Prepare the packaging for PyPI: single-sourced version in ``gromo/__init__.py``, BSD-3-Clause licence metadata, project URLs and classifiers, lighter runtime dependencies and source distribution, and a ``CITATION.cff`` file (:gh:`276` by `Sylvain Chevallier`_)
 - Add ``fisher_shrinkage`` to ridge-shrink the empirical-Fisher gradient-covariance matrix ``E`` toward a scaled identity, avoiding rank collapse under whitening, and add exact ("true") Fisher accumulation for classification (``GrowingContainer.accumulate_true_fisher_covariance``) as a lower-variance alternative to the empirical Fisher (:gh:`267` by `Hugo Mousset`_).
 - Split ``create_layer_extensions`` into ``allocate_layer_extensions`` (create the extension layers) and ``initialize_extensions`` (set their values), so that already created extensions can be re-initialized, and promote the extension initializations to the ``GrowingModule.KNOWN_EXTENSION_INITS`` registry, that also accepts custom callables. ``copy_initialization_variance``, ``kaiming_initialization`` and the new ``zeros_initialization`` are now static methods, of signature ``(tensor, reference_tensor, fan_in)`` (:gh:`272` by `Théo Rudkiewicz`_).
