@@ -133,6 +133,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- Drop support for Python 3.10, which reached its end of life, and test on Python 3.11 to 3.14 (:gh:`276` by `Sylvain Chevallier`_)
 - ``compute_optimal_updates()`` now exposes primitive boolean controls (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``) and growth-related defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` for consistency across modules. Migration for direct internal calls: ``compute_optimal_added_parameters()`` is now ``_compute_optimal_added_parameters()``; external users should prefer ``compute_optimal_updates()`` (:gh:`193` by `Stéphane Rivaud`_)
 - Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)

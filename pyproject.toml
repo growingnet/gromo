@@ -14,24 +14,23 @@ description = "Growing module for pytorch"
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENCE.md"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["pytorch", "deep learning", "growing neural networks", "neural architecture growth"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "networkx",
     "torch",
     "numpy",
-    "tomli; python_version < '3.11'",
     "deprecated",
     "torchmetrics",
 ]
