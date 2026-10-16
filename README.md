@@ -1,5 +1,5 @@
 <p align=center>
-  <img alt="banner" src="docs/source/images/logo_bg_black.png" height=500px>
+  <img alt="banner" src="https://raw.githubusercontent.com/growingnet/gromo/main/docs/source/images/logo_bg_black.png" height=500px>
 </p>
 
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)
@@ -34,17 +34,19 @@ Douka, S., Verbockhaven, M., Rudkiewicz, T., Rivaud, S., Landes, F., Chevallier,
 
 ### For users
 
-Simply run the following commands to install the package:
+Install the latest release from PyPI:
 
 ```bash
-pip install build
-git clone https://github.com/growingnet/gromo.git
-cd gromo
-python -m build
-pip install -e .
+pip install gromo
 ```
 
-You may also clone with SSH if you have set up your SSH keys with GitHub: `git clone git@github.com:growingnet/gromo.git`.
+or, in a [uv](https://docs.astral.sh/uv/) project, `uv add gromo`.
+
+To install the development version from GitHub:
+
+```bash
+pip install git+https://github.com/growingnet/gromo.git
+```
 
 ### For developers
 

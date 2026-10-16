@@ -1,0 +1,68 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "GroMo: growing modules for PyTorch"
+abstract: >-
+  GroMo is a Python package that provides a set of tools for PyTorch users to
+  train neural networks that grow in size and complexity as they learn.
+authors:
+  # TODO: add the missing contributors (Hugo Mousset, Pako Maxence Tekou, ...)
+  # and the orcid / affiliation of every author before the first release.
+  - given-names: Manon
+    family-names: Verbockhaven
+  - given-names: Stella
+    family-names: Douka
+  - given-names: Théo
+    family-names: Rudkiewicz
+  - given-names: Stéphane
+    family-names: Rivaud
+  - given-names: Guillaume
+    family-names: Charpiat
+  - given-names: Sylvain
+    family-names: Chevallier
+  - given-names: François
+    family-names: Landes
+license: BSD-3-Clause
+repository-code: "https://github.com/growingnet/gromo"
+url: "https://growingnet.github.io/gromo/"
+keywords:
+  - pytorch
+  - deep learning
+  - growing neural networks
+  - neural architecture growth
+references:
+  - type: article
+    title: "Growing tiny networks: Spotting expressivity bottlenecks and fixing them optimally"
+    authors:
+      - given-names: Manon
+        family-names: Verbockhaven
+      - given-names: Théo
+        family-names: Rudkiewicz
+      - given-names: Sylvain
+        family-names: Chevallier
+      - given-names: Guillaume
+        family-names: Charpiat
+    journal: "Transactions on Machine Learning Research"
+    year: 2024
+  - type: conference-paper
+    title: "Growth strategies for arbitrary DAG neural architectures"
+    authors:
+      - given-names: Stella
+        family-names: Douka
+      - given-names: Manon
+        family-names: Verbockhaven
+      - given-names: Théo
+        family-names: Rudkiewicz
+      - given-names: Stéphane
+        family-names: Rivaud
+      - given-names: François
+        family-names: Landes
+      - given-names: Sylvain
+        family-names: Chevallier
+      - given-names: Guillaume
+        family-names: Charpiat
+    conference:
+      name: "33rd European Symposium on Artificial Neural Networks (ESANN 2025)"
+      city: Bruges
+      country: BE
+    year: 2025

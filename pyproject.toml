@@ -1,6 +1,6 @@
 [project]
 name = "gromo"
-version = "0.0.1"
+dynamic = ["version"]
 authors = [
     { name="Manon Verbockhaven", email="manon.verbockhaven@inria.fr" },
     { name="Stella Douka", email="styliani.douka@inria.fr" },
@@ -12,21 +12,37 @@ authors = [
 ]
 description = "Growing module for pytorch"
 readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENCE.md"]
 requires-python = ">=3.10"
+keywords = ["pytorch", "deep learning", "growing neural networks", "neural architecture growth"]
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "build",
     "networkx",
     "torch",
     "numpy",
-    "tomli",
+    "tomli; python_version < '3.11'",
     "deprecated",
     "torchmetrics",
 ]
+
+[project.urls]
+Homepage = "https://growingnet.github.io/gromo/"
+Documentation = "https://growingnet.github.io/gromo/"
+Source = "https://github.com/growingnet/gromo"
+Issues = "https://github.com/growingnet/gromo/issues"
+Changelog = "https://growingnet.github.io/gromo/whats_new.html"
+
 [project.optional-dependencies]
 test = ["coverage"]
 dev = ["ruff", "pre-commit", "pydoclint"]
@@ -48,11 +64,17 @@ doc = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/gromo/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gromo"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/gromo", "tests", "README.md", "LICENCE.md", "CITATION.cff"]
 
 [tool.coverage.run]
 branch = true

@@ -1,7 +1,12 @@
+import sys
 from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
-import tomli
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 
 def _load_toml(path: Union[Path, str]) -> dict[str, Any]:
@@ -18,7 +23,7 @@ def _load_toml(path: Union[Path, str]) -> dict[str, Any]:
         file content
     """
     with open(path, "rb") as f:
-        return tomli.load(f)
+        return tomllib.load(f)
 
 
 def _find_project_root(srcs: Sequence[str]) -> tuple[Path, str]:
