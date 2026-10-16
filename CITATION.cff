@@ -6,25 +6,56 @@ abstract: >-
   GroMo is a Python package that provides a set of tools for PyTorch users to
   train neural networks that grow in size and complexity as they learn.
 authors:
-  # TODO: add the missing contributors (Hugo Mousset, Pako Maxence Tekou, ...)
-  # and the orcid / affiliation of every author before the first release,
-  # following the entry of Sylvain Chevallier.
-  - given-names: Manon
-    family-names: Verbockhaven
-  - given-names: Stella
-    family-names: Douka
   - given-names: Théo
     family-names: Rudkiewicz
+    orcid: "https://orcid.org/0009-0003-4374-531X"
+    affiliation: "Université Paris-Saclay"
+  - given-names: Manon
+    family-names: Verbockhaven
+    orcid: "https://orcid.org/0000-0002-4921-0741"
+    affiliation: "Université Paris-Saclay"
+  - given-names: Stella
+    family-names: Douka
+    orcid: "https://orcid.org/0009-0002-1088-7568"
+    affiliation: "INRIA"
+  - given-names: Maxence
+    family-names: Tekou
+    affiliation: "INRIA"
+  - given-names: Ying
+    family-names: Jin
+    affiliation: "INRIA"
+  - given-names: Hugo
+    family-names: Mousset
+    orcid: "https://orcid.org/0009-0007-5094-1772"
+    affiliation: "INRIA"
+  - given-names: Félix
+    family-names: Houdouin
+    orcid: "https://orcid.org/0009-0004-4764-410X"
+    affiliation: "INRIA"
+  - given-names: Léo
+    family-names: Burgund
+    orcid: "https://orcid.org/0009-0009-2510-5048"
+    affiliation: "INRIA"
   - given-names: Stéphane
     family-names: Rivaud
+    orcid: "https://orcid.org/0000-0002-1363-442X"
+    affiliation: "Université Paris-Saclay"
+  - given-names: Alex
+    family-names: Davey
+    orcid: "https://orcid.org/0000-0002-2271-4501"
+    affiliation: "INRIA"
+  - given-names: François
+    family-names: Landes
+    orcid: "https://orcid.org/0000-0003-1353-6288"
+    affiliation: "Université Paris-Saclay"
   - given-names: Guillaume
     family-names: Charpiat
+    orcid: "https://orcid.org/0009-0003-6000-9410"
+    affiliation: "INRIA"
   - given-names: Sylvain
     family-names: Chevallier
     orcid: "https://orcid.org/0000-0003-3027-8241"
     affiliation: "Université Paris-Saclay"
-  - given-names: François
-    family-names: Landes
 license: BSD-3-Clause
 repository-code: "https://github.com/growingnet/gromo"
 url: "https://growingnet.github.io/gromo/"
