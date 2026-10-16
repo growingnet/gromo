@@ -5,7 +5,9 @@
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)
 [![Tests](https://github.com/growingnet/gromo/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/tests.yml)
 [![Ruff Linting](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml)
+[![Docs](https://github.com/growingnet/gromo/actions/workflows/doc.yml/badge.svg?branch=main)](https://growingnet.github.io/gromo/)
 [![PyPI](https://img.shields.io/pypi/v/gromo)](https://pypi.org/project/gromo/)
+[![Python](https://img.shields.io/pypi/pyversions/gromo)](https://pypi.org/project/gromo/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23421313.svg)](https://doi.org/10.5281/zenodo.23421313)
 
 # GroMo
