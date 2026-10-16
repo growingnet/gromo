@@ -7,7 +7,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="gromo icon" sizes="300x168" href="_static/gromo_small.png" type="image/png">
-    <title>What’s new &#8212; GroMo 0.0.1-dev documentation</title>
+    <title>What’s new &#8212; GroMo 0.0.2-dev documentation</title>
   
   
   
@@ -46,7 +46,7 @@
 
     <script src="_static/jquery.js?v=5d32c60e"></script>
     <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-    <script src="_static/documentation_options.js?v=5baf466d"></script>
+    <script src="_static/documentation_options.js?v=2119fd82"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -79,7 +79,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.0.1" />
+  <meta name="docsearch:version" content="0.0.2" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -149,8 +149,8 @@
     
     
     
-    <img src="_static/logo_bg_white_small.png" class="logo__image only-light" alt="GroMo 0.0.1-dev documentation - Home"/>
-    <img src="_static/logo_bg_white_small.png" class="logo__image only-dark pst-js-only" alt="GroMo 0.0.1-dev documentation - Home"/>
+    <img src="_static/logo_bg_white_small.png" class="logo__image only-light" alt="GroMo 0.0.2-dev documentation - Home"/>
+    <img src="_static/logo_bg_white_small.png" class="logo__image only-dark pst-js-only" alt="GroMo 0.0.2-dev documentation - Home"/>
   
   
 </a></div>
@@ -499,6 +499,7 @@
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Fix the author credits on the PyPI page, which linked the authors without email to the email of the first author: list the authors by name only and add a maintainer contact (<a class="reference external" href="https://github.com/growingnet/gromo/issues/278">#278</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Rename the unused <code class="docutils literal notranslate"><span class="pre">**_</span></code> argument of <code class="docutils literal notranslate"><span class="pre">GrowingContainer.dummy_select_update</span></code> to <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code>, as pydoclint &gt;= 0.10 ignores <code class="docutils literal notranslate"><span class="pre">_</span></code> and rejected its docstring (<a class="reference external" href="https://github.com/growingnet/gromo/issues/276">#276</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Fix <code class="docutils literal notranslate"><span class="pre">first_order_improvement</span></code> when <code class="docutils literal notranslate"><span class="pre">ignore_singular_values=True</span></code>: the new-neuron term now sums the singular values instead of squaring them, consistent with the unit-scaled extension weights, and <code class="docutils literal notranslate"><span class="pre">scale_layer_extension</span></code> is adjusted accordingly (<a class="reference external" href="https://github.com/growingnet/gromo/issues/261">#261</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 <li><p>Fix orientation of non-square images in <cite>__make_safe_forward</cite> (<a class="reference external" href="https://github.com/growingnet/gromo/issues/230">#230</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
