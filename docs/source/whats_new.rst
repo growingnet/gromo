@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add the Zenodo DOI to ``CITATION.cff`` and the README, with PyPI and DOI badges (:gh:`280` by `Sylvain Chevallier`_)
 Bugs
 ~~~~
 

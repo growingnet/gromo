@@ -5,6 +5,8 @@
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)
 [![Tests](https://github.com/growingnet/gromo/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/tests.yml)
 [![Ruff Linting](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml)
+[![PyPI](https://img.shields.io/pypi/v/gromo)](https://pypi.org/project/gromo/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23421313.svg)](https://doi.org/10.5281/zenodo.23421313)
 
 # GroMo
 
@@ -29,6 +31,9 @@ Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G. (2024). Growi
 ```
 Douka, S., Verbockhaven, M., Rudkiewicz, T., Rivaud, S., Landes, F., Chevallier, S., Charpiat, G. (2025). Growth strategies for arbitrary DAG neural architectures. European Symposium on Artificial Neural Networks.
 ```
+
+To cite the software itself, use its Zenodo DOI [10.5281/zenodo.23421313](https://doi.org/10.5281/zenodo.23421313),
+which covers all versions, or the "Cite this repository" button on GitHub.
 
 ## Installation
 

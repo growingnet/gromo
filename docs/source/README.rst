@@ -24,6 +24,9 @@ the [TMLR24]_.
 The package is still in development, if you would like to contribute, please
 contact us!
 
+To cite the software itself, use its Zenodo DOI
+`10.5281/zenodo.23421313 <https://doi.org/10.5281/zenodo.23421313>`_, which covers all versions.
+
 .. [TMLR24] Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G.
         (2024). Growing tiny networks: Spotting expressivity bottlenecks and
         fixing them optimally. TMLR.

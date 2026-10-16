@@ -2,6 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata from this file."
 type: software
 title: "GroMo: growing modules for PyTorch"
+doi: 10.5281/zenodo.23421313
 abstract: >-
   GroMo is a Python package that provides a set of tools for PyTorch users to
   train neural networks that grow in size and complexity as they learn.
