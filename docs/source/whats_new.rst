@@ -28,6 +28,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Run pydoclint in CI through its pre-commit hook, so that CI and pre-commit use the same pinned version, and remove the debug step printing secrets in the documentation workflow (:gh:`281` by `Sylvain Chevallier`_)
 - Fix the pseudo-inverses of ``optimal_delta``: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and ``torch.linalg.pinv`` inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. ``sqrt_inverse_matrix_semi_positive`` no longer modifies its input matrix when ``eigh`` fails (:gh:`XXX` by `Théo Rudkiewicz`_)
 
 API changes
