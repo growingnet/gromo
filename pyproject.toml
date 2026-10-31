@@ -53,6 +53,7 @@ Changelog = "https://growingnet.github.io/gromo/whats_new.html"
 
 [project.optional-dependencies]
 test = ["coverage"]
+test-extended = ["peft", "torchvision"]
 dev = ["ruff", "pre-commit", "pydoclint"]
 doc = [
     "pre-commit",
