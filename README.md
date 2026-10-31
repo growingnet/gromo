@@ -1,10 +1,14 @@
 <p align=center>
-  <img alt="banner" src="docs/source/images/logo_bg_black.png" height=500px>
+  <img alt="banner" src="https://raw.githubusercontent.com/growingnet/gromo/main/docs/source/images/logo_bg_black.png" height=500px>
 </p>
 
 [![codecov](https://codecov.io/github/growingnet/gromo/graph/badge.svg?token=87HWKJ6H6D)](https://codecov.io/github/growingnet/gromo)
 [![Tests](https://github.com/growingnet/gromo/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/tests.yml)
 [![Ruff Linting](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml/badge.svg?branch=main)](https://github.com/growingnet/gromo/actions/workflows/ruff-check.yml)
+[![Docs](https://github.com/growingnet/gromo/actions/workflows/doc.yml/badge.svg?branch=main)](https://growingnet.github.io/gromo/)
+[![PyPI](https://img.shields.io/pypi/v/gromo)](https://pypi.org/project/gromo/)
+[![Python](https://img.shields.io/pypi/pyversions/gromo)](https://pypi.org/project/gromo/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23421313.svg)](https://doi.org/10.5281/zenodo.23421313)
 
 # GroMo
 
@@ -30,21 +34,26 @@ Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G. (2024). Growi
 Douka, S., Verbockhaven, M., Rudkiewicz, T., Rivaud, S., Landes, F., Chevallier, S., Charpiat, G. (2025). Growth strategies for arbitrary DAG neural architectures. European Symposium on Artificial Neural Networks.
 ```
 
+To cite the software itself, use its Zenodo DOI [10.5281/zenodo.23421313](https://doi.org/10.5281/zenodo.23421313),
+which covers all versions, or the "Cite this repository" button on GitHub.
+
 ## Installation
 
 ### For users
 
-Simply run the following commands to install the package:
+Install the latest release from PyPI:
 
 ```bash
-pip install build
-git clone https://github.com/growingnet/gromo.git
-cd gromo
-python -m build
-pip install -e .
+pip install gromo
 ```
 
-You may also clone with SSH if you have set up your SSH keys with GitHub: `git clone git@github.com:growingnet/gromo.git`.
+or, in a [uv](https://docs.astral.sh/uv/) project, `uv add gromo`.
+
+To install the development version from GitHub:
+
+```bash
+pip install git+https://github.com/growingnet/gromo.git
+```
 
 ### For developers
 

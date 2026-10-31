@@ -84,7 +84,7 @@ def enumerate_dataloader(
     dataloader_seed: int | None = None,
     batch_limit: int | None = None,
     epochs: float | None = None,
-) -> Generator[tuple[int, Any]]:
+) -> Generator[tuple[int, Any], None, None]:
     """
     A generator that yields batches from a dataloader with an optional batch limit.
 

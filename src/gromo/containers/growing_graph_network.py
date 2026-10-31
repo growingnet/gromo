@@ -114,9 +114,11 @@ class GrowingGraphNetwork(GrowingContainer):
         """Initialize statistics computations for growth procedure"""
         self.dag.init_computation()
 
-    def update_computation(self):
+    def update_computation(self, update_covariance_loss_gradient: bool = True):
         """Update statistics computations for growth procedure"""
-        self.dag.update_computation()
+        self.dag.update_computation(
+            update_covariance_loss_gradient=update_covariance_loss_gradient
+        )
 
     def reset_computation(self):
         """Reset statistics computations for growth procedure"""
@@ -127,6 +129,7 @@ class GrowingGraphNetwork(GrowingContainer):
         update: bool = True,
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
+        worst_case_numerical_floor: bool = True,
     ):
         """Compute optimal delta for growth procedure
 
@@ -139,11 +142,15 @@ class GrowingGraphNetwork(GrowingContainer):
         force_pseudo_inverse : bool
             use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible, by default False
+        worst_case_numerical_floor : bool
+            whether the numerical floor of the pseudo-inverses includes its
+            worst-case term (see `optimal_delta`), by default True
         """
         self.dag.compute_optimal_delta(
             update=update,
             return_deltas=return_deltas,
             force_pseudo_inverse=force_pseudo_inverse,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
 
     def delete_update(self) -> None:

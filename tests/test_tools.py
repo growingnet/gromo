@@ -1,17 +1,27 @@
 import contextlib
 import io
 import unittest.mock
+import warnings
+from functools import partial
 from unittest import main, mock
 
 import torch
 
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import (
+    KNOWN_THRESHOLD_RULES,
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
     compute_optimal_added_parameters,
     compute_output_shape_conv,
     create_bordering_effect_weight,
+    numerical_floor_terms,
     optimal_delta,
+    pseudo_inverse_matrix_semi_positive,
+    pytorch_pinv_threshold,
+    resolve_threshold,
+    resolve_threshold_rule,
+    spectrum_summary,
     sqrt_inverse_matrix_semi_positive,
 )
 from tests.torch_unittest import TorchTestCase
@@ -79,13 +89,16 @@ class TestTools(TorchTestCase):
             ],
         ):
             with self.assertWarns(RuntimeWarning):
-                sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(
-                    matrix, threshold=torch.finfo(dtype).resolution
-                )
+                sqrt_inverse_matrix = sqrt_inverse_matrix_semi_positive(matrix)
+            # The eigendecomposition of the regularized matrix is the one used
             self.assertAllClose(
                 sqrt_inverse_matrix,
-                torch.zeros_like(matrix, dtype=dtype),
+                torch.eye(5, dtype=dtype) / torch.finfo(dtype).resolution ** 0.5,
                 message="Shrinkage not applied correctly",
+            )
+            self.assertTrue(
+                torch.equal(matrix, torch.zeros_like(matrix)),
+                "The caller's matrix must not be modified",
             )
 
     def test_compute_output_shape_conv(self):
@@ -396,6 +409,48 @@ class TestTools(TorchTestCase):
             matrix_s, matrix_n, statistical_threshold=0.0, omega_zero=True
         )
         self.assertTrue(torch.allclose(omega, torch.zeros_like(omega)))
+
+    def test_compute_optimal_added_parameters_e_numerical_threshold(self):
+        """E's whitening threshold can differ from S's, and the floor is relative."""
+        matrix_s = torch.eye(3) * 2.0
+        matrix_n = torch.randn(3, 2)
+        matrix_e = torch.diag(torch.tensor([1.0, 1e-3]))
+
+        def singular_values(**kwargs):
+            return compute_optimal_added_parameters(
+                matrix_s, matrix_n, statistical_threshold=0.0, **kwargs
+            )[2]
+
+        whitened_n = matrix_n / torch.sqrt(torch.tensor(2.0))
+        # Default: the floor keeps both directions of E
+        self.assertAllClose(
+            singular_values(matrix_covariance_loss_gradient=matrix_e),
+            torch.linalg.svdvals(whitened_n @ torch.diag(torch.tensor([1.0, 1e3**0.5]))),
+            rtol=1e-4,
+        )
+        # A threshold for E only cuts its second direction, and leaves S untouched
+        cut = torch.linalg.svdvals(whitened_n @ torch.diag(torch.tensor([1.0, 0.0])))
+        self.assertAllClose(
+            singular_values(
+                matrix_covariance_loss_gradient=matrix_e, e_numerical_threshold=1e-2
+            )[: cut.shape[0]],
+            cut,
+            rtol=1e-4,
+        )
+        # e_numerical_threshold=None falls back to numerical_threshold
+        self.assertAllClose(
+            singular_values(
+                matrix_covariance_loss_gradient=matrix_e, numerical_threshold=1e-2
+            )[: cut.shape[0]],
+            cut,
+            rtol=1e-4,
+        )
+        # The floor is relative: an E of scale 1e-8 is not truncated, E^{-1/2} = 1e4 I
+        self.assertAllClose(
+            singular_values(matrix_covariance_loss_gradient=torch.eye(2) * 1e-8),
+            torch.linalg.svdvals(whitened_n) * 1e4,
+            rtol=1e-4,
+        )
 
     def test_compute_optimal_added_parameters_error_cases(self):
         """Test error handling in compute_optimal_added_parameters"""
@@ -892,6 +947,436 @@ class TestComputeOptimalAddedParametersTheory(TorchTestCase):
             torch.equal(result[3:] != 0, self.y[3:] != 0),
             "Last 2 features: non-zero iff Y is non-zero",
         )
+
+
+class TestGrowthSpectra(TorchTestCase):
+    """Tests for the `spectra` out-parameter and the threshold rules."""
+
+    def setUp(self):
+        super().setUp()
+        self.matrix_s = torch.diag(torch.tensor([4.0, 2.0, 1.0]))
+        self.matrix_n = torch.randn(3, 3)
+        self.matrix_e = torch.diag(torch.tensor([1.0, 0.5, 0.25]))
+
+    def test_spectra_does_not_change_results(self):
+        """Collecting the spectra leaves the returned values untouched."""
+        kwargs = {
+            "matrix_s": self.matrix_s,
+            "matrix_n": self.matrix_n,
+            "matrix_covariance_loss_gradient": self.matrix_e,
+        }
+        reference = compute_optimal_added_parameters(**kwargs)  # type: ignore
+        spectra = dict()
+        collected = compute_optimal_added_parameters(**kwargs, spectra=spectra)  # type: ignore
+        for expected, obtained in zip(reference, collected, strict=False):
+            self.assertAllClose(expected, obtained)
+        self.assertNotEqual(spectra, dict())
+
+    def test_spectra_schema(self):
+        """Every key is set, with None for the matrices that are not used."""
+        spectra = {}
+        compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            matrix_covariance_loss_gradient=self.matrix_e,
+            spectra=spectra,
+        )
+        self.assertEqual(set(spectra.keys()), {"matrix_s", "matrix_e", "extension"})
+        self.assertIsNotNone(spectra["matrix_s"])
+        self.assertIsNotNone(spectra["matrix_e"])
+
+        # GradMax path: no S, no E
+        spectra = {}
+        compute_optimal_added_parameters(
+            matrix_s=None, matrix_n=self.matrix_n, spectra=spectra
+        )
+        self.assertIsNone(spectra["matrix_s"])
+        self.assertIsNone(spectra["matrix_e"])
+        self.assertIsNotNone(spectra["extension"])
+
+    def test_spectra_counts(self):
+        """The recorded counts describe the selection that was applied."""
+        spectra = {}
+        _, _, eigenvalues = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=0.0,
+            spectra=spectra,
+        )
+        extension = spectra["extension"]
+        self.assertEqual(extension["singular_values"].shape[0], 3)
+        self.assertEqual(extension["kept"], eigenvalues.shape[0])
+        self.assertEqual(extension["kept_by_threshold"], 3)
+        self.assertIsNone(extension["maximum_added_neurons"])
+
+        matrix_s_spectra = spectra["matrix_s"]
+        self.assertEqual(matrix_s_spectra["total"], 3)
+        self.assertEqual(matrix_s_spectra["kept"], 3)
+        self.assertFalse(matrix_s_spectra["regularized"])
+        self.assertAllClose(
+            matrix_s_spectra["eigenvalues"],
+            torch.tensor([1.0, 2.0, 4.0]),
+        )
+
+    def test_spectra_maximum_added_neurons(self):
+        """The threshold cut and the maximum cut are recorded separately."""
+        spectra = {}
+        compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=0.0,
+            maximum_added_neurons=1,
+            spectra=spectra,
+        )
+        self.assertEqual(spectra["extension"]["kept_by_threshold"], 3)
+        self.assertEqual(spectra["extension"]["kept"], 1)
+        self.assertEqual(spectra["extension"]["maximum_added_neurons"], 1)
+
+    def test_optimal_delta_spectrum(self):
+        """The recorded singular values are those of the returned delta."""
+        tensor_s = torch.diag(torch.tensor([3.0, 2.0, 1.0]))
+        tensor_m = torch.randn(3, 2)
+        spectra = {}
+        delta, _ = optimal_delta(tensor_s, tensor_m, spectra=spectra)
+        self.assertAllClose(spectra["singular_values"], torch.linalg.svdvals(delta))
+
+    def test_resolve_threshold(self):
+        """A value passes through, a rule is evaluated, degenerate cases fall back."""
+        spectrum = torch.tensor([1.0, 2.0, 3.0])
+        self.assertEqual(resolve_threshold(1e-3, spectrum), 1e-3)
+        self.assertEqual(resolve_threshold(lambda s: s.mean().item(), spectrum), 2.0)
+        self.assertEqual(
+            resolve_threshold(lambda s: 1.0, torch.empty(0)),
+            0.0,
+        )
+        with self.assertWarns(RuntimeWarning):
+            self.assertEqual(
+                resolve_threshold(lambda s: float("inf"), spectrum, fallback=1e-6),
+                1e-6,
+            )
+
+    def test_resolve_threshold_rule(self):
+        """A name resolves to its rule, a rule to itself, an unknown name raises."""
+        rule = resolve_threshold_rule("mean_over_sqrt_n")
+        self.assertIs(rule, KNOWN_THRESHOLD_RULES["mean_over_sqrt_n"])
+
+        def custom(statistic, spectrum):
+            return 0.0
+
+        self.assertIs(resolve_threshold_rule(custom), custom)
+        with self.assertRaises(ValueError):
+            resolve_threshold_rule("not_a_rule")  # type: ignore
+
+    def test_mean_over_sqrt_n_rule(self):
+        """The shipped rule scales the mean of the spectrum by 1 / sqrt(n)."""
+        statistic = TensorStatistic(shape=None, update_function=lambda: (None, 0))  # type: ignore
+        statistic.samples = 4
+        rule = KNOWN_THRESHOLD_RULES["mean_over_sqrt_n"]
+        self.assertAlmostEqual(rule(statistic, torch.tensor([1.0, 2.0, 3.0])), 1.0)
+        statistic.samples = 0  # no sample yet: no division by zero
+        self.assertAlmostEqual(rule(statistic, torch.tensor([1.0, 2.0, 3.0])), 2.0)
+
+    def test_lethal_threshold_is_guarded(self):
+        """A threshold that would select nothing never leaves an empty selection."""
+        # A finite but huge value: the min(threshold, s.max()) guard keeps one neuron
+        _, _, eigenvalues = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=1e12,
+        )
+        self.assertEqual(eigenvalues.shape[0], 1)
+
+        # A non-finite rule value: falls back to keeping the whole spectrum
+        with self.assertWarns(RuntimeWarning):
+            _, _, eigenvalues = compute_optimal_added_parameters(
+                matrix_s=self.matrix_s,
+                matrix_n=self.matrix_n,
+                statistical_threshold=lambda s: float("inf"),
+            )
+        self.assertEqual(eigenvalues.shape[0], 3)
+
+        # Whitening side: falling back rather than returning a zero matrix
+        with self.assertWarns(RuntimeWarning):
+            result = sqrt_inverse_matrix_semi_positive(
+                self.matrix_s, threshold=lambda s: 1e12
+            )
+        self.assertGreater(result.abs().max().item(), 0.0)
+
+    def test_threshold_rule_end_to_end(self):
+        """A bound rule selects fewer neurons and is recorded as the applied value."""
+        statistic = TensorStatistic(shape=None, update_function=lambda: (None, 0))  # type: ignore
+        statistic.samples = 1
+        rule = partial(KNOWN_THRESHOLD_RULES["mean_over_sqrt_n"], statistic)
+
+        spectra = dict()
+        _, _, with_rule = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=rule,
+            spectra=spectra,
+        )
+        _, _, without = compute_optimal_added_parameters(
+            matrix_s=self.matrix_s,
+            matrix_n=self.matrix_n,
+            statistical_threshold=0.0,
+        )
+        self.assertLess(with_rule.shape[0], without.shape[0])
+        self.assertAlmostEqual(
+            spectra["extension"]["threshold"], without.mean().item(), places=5
+        )
+
+    def test_spectrum_summary(self):
+        """The spectrum summary reports the correct counts and values."""
+        spectrum = torch.tensor([4.0, 2.0, 1.0])
+        summary = spectrum_summary(spectrum)
+        self.assertIsInstance(summary, dict)
+
+
+class TestNumericalFloor(TorchTestCase):
+    """The numerical floor under every eigenvalue threshold."""
+
+    d, rank, n = 64, 40, 5000
+
+    def setUp(self):
+        generator = torch.Generator().manual_seed(0)
+        z = torch.randn(self.n, self.rank, generator=generator, dtype=torch.float64)
+        w = torch.randn(self.rank, self.d, generator=generator, dtype=torch.float64)
+        self.x = z @ w  # rank-deficient samples, well conditioned on their span
+        # S accumulated in float64, then stored in float32: its null space is float32
+        # rounding noise.
+        self.clean_s = self.x.T @ self.x / self.n
+        self.s = self.clean_s.float()
+        y = torch.randn(self.n, 3, generator=generator, dtype=torch.float64)
+        self.clean_m = self.x.T @ y / self.n
+        a = torch.randn(3, 2, generator=generator, dtype=torch.float64)
+        self.clean_e = a @ a.T  # rank-deficient gradient covariance
+
+        # A single null direction: with this seed, its float32 noise eigenvalue is
+        # positive (checked in test_precision_term_uses_source_dtype), so the
+        # negative-eigenvalue term has nothing to read and only the precision term
+        # removes that noise.
+        generator = torch.Generator().manual_seed(0)
+        x = torch.randn(200, 15, generator=generator, dtype=torch.float64)
+        x = x @ torch.randn(15, 16, generator=generator, dtype=torch.float64)
+        self.one_null_s = x.T @ x / 200
+        y = torch.randn(200, 3, generator=generator, dtype=torch.float64)
+        self.one_null_m = x.T @ y / 200
+
+    @staticmethod
+    def statistic(samples: int = 1, dtype: torch.dtype = torch.float32):
+        """A statistic accumulated in dtype from a given number of samples."""
+        statistic = TensorStatistic(
+            shape=None, update_function=lambda: (torch.zeros(1, dtype=dtype), samples)
+        )
+        statistic.updated = False
+        statistic.update()
+        return statistic
+
+    def kept(self, matrix, threshold, **kwargs) -> int:
+        spectra = dict()
+        sqrt_inverse_matrix_semi_positive(
+            matrix, threshold=threshold, spectra=spectra, **kwargs
+        )
+        return spectra["kept"]
+
+    def assert_close_to_clean(self, delta, expected):
+        relative_error = (delta.double() - expected).norm() / expected.norm()
+        self.assertLess(relative_error.item(), 1e-2)
+
+    def test_pytorch_pinv_threshold(self):
+        """It is PyTorch's default tolerance, in the dtype of the spectrum."""
+        self.assertEqual(pytorch_pinv_threshold(torch.empty(0)), 0.0)
+        self.assertEqual(pytorch_pinv_threshold(-torch.ones(2)), 0.0)
+        spectrum = torch.tensor([1.0, 4.0], dtype=torch.float64)
+        self.assertEqual(
+            pytorch_pinv_threshold(spectrum), 2 * torch.finfo(torch.float64).eps * 4
+        )
+
+        eigenvalues = torch.linalg.eigvalsh(self.s)
+        kept = int((eigenvalues > pytorch_pinv_threshold(eigenvalues)).sum())
+        self.assertEqual(kept, int(torch.linalg.matrix_rank(self.s, hermitian=True)))
+        self.assertEqual(kept, self.rank)
+
+    def test_numerical_floor_terms(self):
+        """Each term has its exact value, and none reaches lambda_1 in bfloat16."""
+        eps32 = torch.finfo(torch.float32).eps
+        eps_bf16 = torch.finfo(torch.bfloat16).eps
+        spectrum = torch.tensor([-0.5, 1.0, 4.0], dtype=torch.float64)
+        terms = numerical_floor_terms(spectrum, source_dtype=torch.float32)
+        self.assertEqual(terms["worst_case"], pytorch_pinv_threshold(spectrum))
+        self.assertEqual(terms["precision"], eps32 * 4)
+        self.assertEqual(terms["negative_eigenvalue"], 1.0)
+        terms = numerical_floor_terms(
+            spectrum.abs(), source_dtype=torch.bfloat16, worst_case=False
+        )
+        self.assertEqual(terms["worst_case"], 0.0)
+        self.assertEqual(terms["precision"], eps_bf16 * 4)
+        self.assertEqual(terms["negative_eigenvalue"], 0.0)
+        self.assertEqual(set(numerical_floor_terms(torch.empty(0)).values()), {0.0})
+
+        # The first version, d * eps_bf16 * lambda_1, dropped everything for d >= 128
+        d = 256
+        eigenvalues = torch.linspace(1e-3, 1.0, d)
+        spectra = dict()
+        sqrt_inverse_matrix_semi_positive(
+            torch.diag(eigenvalues), spectra=spectra, source_dtype=torch.bfloat16
+        )
+        self.assertLess(spectra["numerical_floor"], 1.0)
+        self.assertGreater(spectra["kept"], 0)
+
+    def test_operator_norm_noise_threshold_rule(self):
+        """The rule is scale-equivariant and estimates the operator-norm error."""
+        rule = resolve_threshold_rule("operator_norm_noise_threshold")
+        # n = max(0, 1), negative eigenvalues count as 0: 2 * sqrt(4 * 4 / 1) + 4 / 1
+        self.assertEqual(rule(self.statistic(samples=0), torch.tensor([-1.0, 4.0])), 12.0)
+        d, n = 32, 4000
+        x = torch.randn(
+            n, d, generator=torch.Generator().manual_seed(0), dtype=torch.float64
+        )
+        estimate = x.T @ x / n
+        spectrum = torch.linalg.eigvalsh(estimate)
+        statistic = self.statistic(samples=n)
+        value = rule(statistic, spectrum)
+
+        self.assertAlmostEqual(rule(statistic, 3 * spectrum), 3 * value)
+        error = torch.linalg.matrix_norm(estimate - torch.eye(d), ord=2).item()
+        self.assertGreater(value, 0.8 * error)
+        self.assertLess(value, 1.5 * error)
+
+    def test_every_threshold_is_floored(self):
+        """None, a value and a rule all keep exactly the rank: none keeps rounding noise."""
+        for threshold in (None, 0.0, lambda _: 0.0):
+            spectra = dict()
+            sqrt_inverse_matrix_semi_positive(
+                self.s, threshold=threshold, spectra=spectra
+            )
+            self.assertEqual(spectra["kept"], self.rank)
+            self.assertEqual(spectra["threshold"], spectra["numerical_floor"])
+            self.assertEqual(
+                spectra["numerical_floor"],
+                max(numerical_floor_terms(spectra["eigenvalues"]).values()),
+            )
+
+    def test_negative_eigenvalue_term(self):
+        """Twice the most negative eigenvalue removes the noise of a large null space."""
+        # After a cast to float64 the worst-case and precision terms are negligible.
+        spectra = dict()
+        sqrt_inverse_matrix_semi_positive(
+            self.s.double(), spectra=spectra, worst_case_numerical_floor=False
+        )
+        self.assertEqual(spectra["kept"], self.rank)
+        terms = spectra["numerical_floor_terms"]
+        self.assertEqual(spectra["numerical_floor"], terms["negative_eigenvalue"])
+
+    def test_precision_term_uses_source_dtype(self):
+        """With a single null direction, only the float32 epsilon removes its noise."""
+        cast = self.one_null_s.float().double()
+        # The noise eigenvalue is positive: there is nothing negative to read.
+        self.assertGreater(torch.linalg.eigvalsh(cast)[0].item(), 0.0)
+        self.assertEqual(self.kept(cast, None), 16)
+        self.assertEqual(self.kept(cast, None, source_dtype=torch.float32), 15)
+
+    def test_fallback_is_relative(self):
+        """A threshold that drops the whole spectrum falls back to the floor, at any
+        scale, whether it is a rule or a value."""
+        for scale in (1e-6, 1.0, 1e6):
+            for threshold in (lambda _: 1e30, lambda _: float("inf"), 1e30):
+                with self.subTest(scale=scale), self.assertWarns(RuntimeWarning):
+                    self.assertEqual(self.kept(scale * self.s, threshold), self.rank)
+
+    def test_matrices_without_positive_spectrum(self):
+        """A matrix far from PSD gives zero with a warning; a dead matrix silently."""
+        with self.assertWarns(RuntimeWarning):
+            result = sqrt_inverse_matrix_semi_positive(
+                torch.diag(torch.tensor([1.0, -1.0]))
+            )
+        self.assertTrue(torch.equal(result, torch.zeros(2, 2)))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = sqrt_inverse_matrix_semi_positive(torch.zeros(3, 3))
+        self.assertTrue(torch.equal(result, torch.zeros(3, 3)))
+
+    def test_pseudo_inverse_matrix_semi_positive(self):
+        """It equals pinv on a PSD matrix, and drops a negative noise eigenvalue that
+        pinv inverts with its wrong sign."""
+        a = torch.randn(
+            5, 5, generator=torch.Generator().manual_seed(0), dtype=torch.float64
+        )
+        matrix = a @ a.T + torch.eye(5)
+        self.assertAllClose(
+            pseudo_inverse_matrix_semi_positive(matrix), torch.linalg.pinv(matrix)
+        )
+        noisy = torch.diag(torch.tensor([2.0, -1e-3]))
+        self.assertAllClose(
+            torch.linalg.pinv(noisy), torch.diag(torch.tensor([0.5, -1e3]))
+        )
+        self.assertAllClose(
+            pseudo_inverse_matrix_semi_positive(noisy),
+            torch.diag(torch.tensor([0.5, 0.0])),
+        )
+
+    def test_optimal_delta_pinv_uses_source_epsilon(self):
+        """The float64 pseudo-inverses of float32 statistics ignore their rounding noise."""
+        delta, _ = optimal_delta(
+            self.one_null_s.float(),
+            self.one_null_m.float(),
+            dtype=torch.float64,
+            force_pseudo_inverse=True,
+            tensor_covariance_loss_gradient=self.clean_e.float(),
+        )
+        self.assertEqual(delta.dtype, torch.float32)
+        expected = (
+            torch.linalg.pinv(self.clean_e)
+            @ (torch.linalg.pinv(self.one_null_s) @ self.one_null_m).t()
+        )
+        self.assert_close_to_clean(delta, expected)
+
+    @unittest_parametrize(
+        (
+            {"statistics_dtype": torch.float32, "dtype": torch.float64},
+            {"statistics_dtype": torch.float64, "dtype": torch.float32},
+        )
+    )
+    def test_optimal_delta_retry_uses_the_least_precise_epsilon(
+        self, statistics_dtype: torch.dtype, dtype: torch.dtype
+    ):
+        """The float64 retry uses the float32 epsilon, whether float32 is the dtype of
+        the statistics or that of the cast."""
+        # A solution with a negative decrease triggers the retry.
+        with (
+            mock.patch("torch.linalg.solve", return_value=-self.one_null_m.to(dtype)),
+            self.assertWarns(UserWarning),
+        ):
+            delta, _ = optimal_delta(
+                self.one_null_s.to(statistics_dtype),
+                self.one_null_m.to(statistics_dtype),
+                dtype=dtype,
+            )
+        expected = (torch.linalg.pinv(self.one_null_s) @ self.one_null_m).t()
+        self.assert_close_to_clean(delta, expected)
+
+    def test_optimal_delta_retry_keeps_the_dtype(self):
+        """The float64 retry returns tensors in the dtype of the statistics."""
+        spectra = dict()
+        with (
+            self.assertWarns(UserWarning),
+            unittest.mock.patch(
+                "gromo.utils.tools.pseudo_inverse_matrix_semi_positive",
+                wraps=pseudo_inverse_matrix_semi_positive,
+            ) as wrapped,
+        ):
+            # S = -I: solve succeeds and the decrease is negative, which triggers the retry.
+            delta, decrease = optimal_delta(
+                -torch.eye(3),
+                torch.ones(3, 2),
+                dtype=torch.float64,
+                spectra=spectra,
+                worst_case_numerical_floor=False,
+            )
+        self.assertIs(wrapped.call_args.kwargs["worst_case_numerical_floor"], False)
+        self.assertEqual(delta.dtype, torch.float32)
+        self.assertEqual(decrease.dtype, torch.float32)
+        self.assertEqual(spectra["singular_values"].dtype, torch.float32)
 
 
 if __name__ == "__main__":

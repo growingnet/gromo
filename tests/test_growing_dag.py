@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 
 import torch
 
@@ -14,6 +15,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.tools import optimal_delta
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase
 
@@ -659,6 +661,50 @@ class TestGrowingDAG(TorchTestCase):
         for node_module in self.dag.get_all_node_modules():
             self.assertIsNone(node_module.activity)
             self.assertIsNone(node_module.input)
+
+    def test_compute_optimal_updates_forwards_worst_case_numerical_floor(self) -> None:
+        """The flag of the numerical floor reaches optimal_delta through
+        compute_optimal_updates, compute_optimal_delta and the merge modules."""
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.init_computation()
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device())
+        self.loss_fn(self.dag(x), y).backward()
+        self.dag.update_computation()
+
+        with unittest.mock.patch(
+            "gromo.modules.growing_module.optimal_delta", wraps=optimal_delta
+        ) as wrapped:
+            self.dag.compute_optimal_updates(worst_case_numerical_floor=False)
+        self.assertGreater(wrapped.call_count, 0)
+        for call in wrapped.call_args_list:
+            self.assertIs(call.kwargs["worst_case_numerical_floor"], False)
+
+    def test_compute_optimal_delta_use_fisher_not_implemented(self) -> None:
+        """use_fisher is not supported for GrowingDAG: delta computation for
+        DAG nodes goes through MergeGrowingModule.compute_optimal_delta, which
+        has no gradient-covariance statistic of its own. Must raise a clear
+        NotImplementedError instead of a TypeError from a signature mismatch
+        deep in MergeGrowingModule.compute_optimal_delta."""
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.get_node_module(self.dag.end).init_computation()
+
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device())
+        pred = self.dag(x)
+        loss = self.loss_fn(pred, y)
+        loss.backward()
+
+        with self.assertRaises(NotImplementedError):
+            self.dag.compute_optimal_delta(use_fisher=True)
+        with self.assertRaises(NotImplementedError):
+            self.dag.compute_optimal_updates(use_fisher=True)
 
     def test_calculate_bottleneck(self) -> None:
         expansions = [

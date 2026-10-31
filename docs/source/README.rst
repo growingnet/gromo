@@ -24,6 +24,9 @@ the [TMLR24]_.
 The package is still in development, if you would like to contribute, please
 contact us!
 
+To cite the software itself, use its Zenodo DOI
+`10.5281/zenodo.23421313 <https://doi.org/10.5281/zenodo.23421313>`_, which covers all versions.
+
 .. [TMLR24] Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G.
         (2024). Growing tiny networks: Spotting expressivity bottlenecks and
         fixing them optimally. TMLR.
@@ -37,21 +40,19 @@ contact us!
 Installation
 ~~~~~~~~~~~~
 
-Simply run the following commands to install the package:
+Install the latest release from PyPI:
 
 .. code-block:: bash
 
-    pip install build
-    git clone https://github.com/growingnet/gromo.git
-    cd gromo
-    python -m build
-    pip install -e .
+    pip install gromo
 
-You may also clone with SSH if you have set up your SSH keys with GitHub:
+or, in a `uv <https://docs.astral.sh/uv/>`_ project, ``uv add gromo``.
+
+To install the development version from GitHub:
 
 .. code-block:: bash
 
-    git clone git@github.com:growingnet/gromo.git
+    pip install git+https://github.com/growingnet/gromo.git
 
 Getting started
 ~~~~~~~~~~~~~~~

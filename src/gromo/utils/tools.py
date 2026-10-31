@@ -1,39 +1,279 @@
 import math
+from collections.abc import Callable
+from typing import Any, Literal
 from warnings import warn
 
 import torch
 
+from gromo.utils.tensor_statistic import TensorStatistic
 
-def sqrt_inverse_matrix_semi_positive(
-    matrix: torch.Tensor,
-    threshold: float = 1e-5,
-) -> torch.Tensor:
+
+# A threshold rule maps the statistic that produced a matrix and the spectrum of that
+# matrix to a threshold. The caller that owns the statistic partially applies the rule,
+# leaving a SpectrumThreshold for the numerical helpers below.
+SpectrumThreshold = Callable[[torch.Tensor], float]
+ThresholdRule = Callable[[TensorStatistic, torch.Tensor], float]
+
+KnownThresholdRuleName = Literal[
+    "mean_over_sqrt_n",
+    "operator_norm_noise_threshold",
+]
+
+
+def pytorch_pinv_threshold(spectrum: torch.Tensor) -> float:
+    """PyTorch's default `pinv` / `matrix_rank` tolerance for a symmetric matrix.
+
+    For a symmetric d x d matrix, it is d * eps * max(lambda_1, 0), with eps the
+    epsilon of the dtype of the spectrum: in the worst case, the eigensolver cannot
+    tell an eigenvalue below it apart from zero. For a rectangular matrix, PyTorch
+    uses max(m, n) instead of the number of singular values. It is the first term of
+    `numerical_floor_terms`, not a `ThresholdRule`.
+
+    Parameters
+    ----------
+    spectrum: torch.Tensor
+        eigenvalues of the symmetric matrix
+
+    Returns
+    -------
+    float
+        the tolerance, 0.0 for an empty spectrum
     """
-    Compute the square root of the inverse of a semi-positive definite matrix.
+    if spectrum.numel() == 0:
+        return 0.0
+    eps = torch.finfo(spectrum.dtype).eps
+    return spectrum.numel() * eps * max(spectrum.max().item(), 0.0)
+
+
+def numerical_floor_terms(
+    spectrum: torch.Tensor,
+    *,
+    source_dtype: torch.dtype | None = None,
+    worst_case: bool = True,
+) -> dict[str, float]:
+    """Terms of the numerical floor under every eigenvalue threshold of S and E.
+
+    The floor is the maximum of the terms. It is the library default (the
+    `pinv` / `matrix_rank` tolerance of MATLAB, NumPy, SciPy and PyTorch) plus a
+    correction for the uncertainty of the data, as NumPy's `matrix_rank` docstring
+    recommends when the data are less precise than the arithmetic:
+
+    - ``"worst_case"``: `pytorch_pinv_threshold`, the worst case of the eigensolver
+      error, conservative by about d. In float32 it caps the gain of the inverse
+      square root at (d * eps)^(-1/2) times that of the top direction (about 90 for
+      d = 1000). 0.0 when `worst_case` is False.
+    - ``"precision"``: eps * max(lambda_1, 0), one ulp of the largest eigenvalue in
+      the less precise of `source_dtype` and the dtype of the spectrum. It covers
+      small null spaces, where the next term has nothing to read, and statistics
+      cast to a more precise dtype. Without the factor d, it never reaches lambda_1,
+      even in bfloat16.
+    - ``"negative_eigenvalue"``: 2 * max(-lambda_min, 0). S and E are positive
+      semi-definite, so their negative eigenvalues are noise, and the noise is
+      roughly symmetric around zero: this measures it on the matrix itself, whatever
+      the dtypes and the accumulation history. The factor 2 bounds the relative error
+      of every kept eigenvalue by 1/2.
+
+    Parameters
+    ----------
+    spectrum: torch.Tensor
+        eigenvalues of the symmetric matrix
+    source_dtype: torch.dtype | None
+        dtype the matrix was accumulated in. When None, the dtype of the spectrum
+        is used.
+    worst_case: bool
+        whether to include the worst-case term
+
+    Returns
+    -------
+    dict[str, float]
+        the three terms, all 0.0 for an empty spectrum
+    """
+    if spectrum.numel() == 0:
+        return {"worst_case": 0.0, "precision": 0.0, "negative_eigenvalue": 0.0}
+    smallest, largest = torch.stack(torch.aminmax(spectrum)).tolist()  # one sync
+    top = max(largest, 0.0)
+    inversion_eps = torch.finfo(spectrum.dtype).eps
+    eps = inversion_eps
+    if source_dtype is not None:
+        eps = max(eps, torch.finfo(source_dtype).eps)
+    return {
+        "worst_case": spectrum.numel() * inversion_eps * top if worst_case else 0.0,
+        "precision": eps * top,
+        "negative_eigenvalue": 2 * max(-smallest, 0.0),
+    }
+
+
+def _mean_over_sqrt_n_rule(statistic: TensorStatistic, spectrum: torch.Tensor) -> float:
+    """Mean of the spectrum divided by the square root of the number of samples.
+
+    Parameters
+    ----------
+    statistic: TensorStatistic
+        statistic the thresholded matrix was estimated from
+    spectrum: torch.Tensor
+        spectrum of that matrix
+
+    Returns
+    -------
+    float
+        the threshold
+    """
+    return spectrum.mean().item() / math.sqrt(max(statistic.samples, 1))
+
+
+def _operator_norm_noise_threshold_rule(
+    statistic: TensorStatistic, spectrum: torch.Tensor
+) -> float:
+    """Estimate of the operator norm of the estimation error of a covariance.
+
+    2 * sqrt(lambda_1 * Tr / n) + Tr / n estimates E||C_hat - C||_op
+    (Koltchinskii-Lounici; the constants are exact for an isotropic Gaussian). It is
+    a conservative absolute floor, not a recommended default: the estimation noise of
+    a covariance is multiplicative, so eigenvalues below it can be well estimated.
+
+    n is ``statistic.samples``, which counts images for convolutions and sequences
+    for sequence inputs. Each counted sample then aggregates several outer products,
+    so the rule over-estimates the noise, by up to sqrt(patches per image). In the
+    uncentred S, the bias direction dominates lambda_1.
+
+    The rule is meant for `numerical_threshold`, i.e. for S and E. On
+    `statistical_threshold` the spectrum is made of singular values of P, for which
+    the formula is meaningless.
+
+    Parameters
+    ----------
+    statistic: TensorStatistic
+        statistic the thresholded matrix was estimated from
+    spectrum: torch.Tensor
+        spectrum of that matrix
+
+    Returns
+    -------
+    float
+        the threshold
+    """
+    n = max(statistic.samples, 1)
+    trace = spectrum.clamp_min(0).sum().item()
+    top = max(spectrum.max().item(), 0.0)
+    return 2 * math.sqrt(top * trace / n) + trace / n
+
+
+KNOWN_THRESHOLD_RULES: dict[KnownThresholdRuleName, ThresholdRule] = {
+    "mean_over_sqrt_n": _mean_over_sqrt_n_rule,
+    "operator_norm_noise_threshold": _operator_norm_noise_threshold_rule,
+}
+
+
+def resolve_threshold_rule(
+    rule: KnownThresholdRuleName | ThresholdRule,
+) -> ThresholdRule:
+    """
+    Get the threshold rule designated by a name, or the rule itself.
+
+    Parameters
+    ----------
+    rule: KnownThresholdRuleName | ThresholdRule
+        name of a rule of `KnownThresholdRuleName`, or a rule
+
+    Returns
+    -------
+    ThresholdRule
+        the resolved rule
+
+    Raises
+    ------
+    ValueError
+        if the name is not that of a known rule
+    """
+    if callable(rule):
+        return rule
+    if rule not in KNOWN_THRESHOLD_RULES:
+        raise ValueError(
+            f"Unknown threshold rule '{rule}'. "
+            f"Available rules are: {list(KNOWN_THRESHOLD_RULES)}."
+        )
+    return KNOWN_THRESHOLD_RULES[rule]
+
+
+def resolve_threshold(
+    threshold: float | SpectrumThreshold,
+    spectrum: torch.Tensor,
+    fallback: float = 0.0,
+) -> float:
+    """
+    Get the value a threshold takes for a given spectrum.
+
+    An empty spectrum and a non-finite rule value both resolve to a fallback, as
+    either would otherwise select nothing.
+
+    Parameters
+    ----------
+    threshold: float | SpectrumThreshold
+        a value, or a rule already bound to its statistic
+    spectrum: torch.Tensor
+        spectrum the threshold is compared against
+    fallback: float
+        value used when the rule returns a non-finite number
+
+    Returns
+    -------
+    float
+        the resolved threshold
+    """
+    if not callable(threshold):
+        return float(threshold)
+    if spectrum.numel() == 0:
+        return 0.0
+    value: float = float(threshold(spectrum))  # type: ignore
+    if not math.isfinite(value):
+        warn(
+            message=f"The threshold rule returned {value}, falling back to {fallback}.",
+            category=RuntimeWarning,
+        )
+        return fallback
+    return value
+
+
+def _kept_eigenpairs(
+    matrix: torch.Tensor,
+    threshold: float | SpectrumThreshold | None,
+    *,
+    spectra: dict[str, Any] | None,
+    source_dtype: torch.dtype | None,
+    worst_case_numerical_floor: bool,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Eigenpairs of a symmetric matrix above a threshold raised to the numerical floor.
+
+    See `sqrt_inverse_matrix_semi_positive` for the parameters.
 
     Parameters
     ----------
     matrix: torch.Tensor
-        input matrix, square and semi-positive definite
-    threshold: float
-        threshold to consider an eigenvalue as zero
+        symmetric matrix
+    threshold: float | SpectrumThreshold | None
+        threshold, None for the numerical floor only
+    spectra: dict[str, Any] | None
+        filled in place when given
+    source_dtype: torch.dtype | None
+        dtype the matrix was accumulated in
+    worst_case_numerical_floor: bool
+        whether the floor includes its worst-case term
 
     Returns
     -------
-    torch.Tensor
-        square root of the inverse of the input matrix
+    tuple[torch.Tensor, torch.Tensor]
+        the kept eigenvalues and their eigenvectors (as columns)
     """
-    assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
-    assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
-    assert torch.isnan(matrix).sum() == 0, "The input matrix must not contain NaN values."
-
+    regularized = False
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
     except torch.linalg.LinAlgError:
         # Sometimes, due to numerical issues, we get an error:
         # The algorithm failed to converge because the input matrix is
         # ill-conditioned or has too many repeated eigenvalues
-        matrix += torch.finfo(matrix.dtype).resolution * torch.eye(
+        regularized = True
+        # Out of place, so that the caller's matrix is left untouched.
+        matrix = matrix + torch.finfo(matrix.dtype).resolution * torch.eye(
             matrix.shape[0],
             device=matrix.device,
             dtype=matrix.dtype,
@@ -44,10 +284,155 @@ def sqrt_inverse_matrix_semi_positive(
         )
         eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
 
+    floor_terms = numerical_floor_terms(
+        eigenvalues, source_dtype=source_dtype, worst_case=worst_case_numerical_floor
+    )
+    numerical_floor = max(floor_terms.values())
+    # Every threshold, value or rule, can only raise the floor.
+    if threshold is None:
+        threshold = numerical_floor
+    else:
+        threshold = max(
+            resolve_threshold(threshold, eigenvalues, fallback=numerical_floor),
+            numerical_floor,
+        )
     selected_eigenvalues = eigenvalues > threshold
-    eigenvalues = torch.rsqrt(eigenvalues[selected_eigenvalues])  # inverse square root
-    eigenvectors = eigenvectors[:, selected_eigenvalues]
-    return eigenvectors @ torch.diag(eigenvalues) @ eigenvectors.t()
+    if (
+        not selected_eigenvalues.any()
+        and eigenvalues.numel() > 0
+        and eigenvalues.max() > 0
+    ):
+        if threshold > numerical_floor:
+            # The texts of these warnings are constant, so that the default filter
+            # shows each once per call site; the values are in `spectra`.
+            warn(
+                message=(
+                    "A threshold drops the whole spectrum of a non-zero matrix, which "
+                    "would make its inverse zero. Falling back to the numerical floor."
+                ),
+                category=RuntimeWarning,
+            )
+            threshold = numerical_floor
+            selected_eigenvalues = eigenvalues > threshold
+        if not selected_eigenvalues.any():
+            warn(
+                message=(
+                    "The numerical floor drops the whole spectrum: the matrix is far "
+                    "from positive semi-definite (its most negative eigenvalue is at "
+                    "least half its largest one), so its inverse is set to zero."
+                ),
+                category=RuntimeWarning,
+            )
+
+    if spectra is not None:
+        spectra.update(
+            eigenvalues=eigenvalues.detach(),
+            threshold=threshold,
+            numerical_floor=numerical_floor,
+            numerical_floor_terms=floor_terms,
+            kept=int(selected_eigenvalues.sum()),
+            total=int(eigenvalues.numel()),
+            regularized=regularized,
+        )
+    return eigenvalues[selected_eigenvalues], eigenvectors[:, selected_eigenvalues]
+
+
+def sqrt_inverse_matrix_semi_positive(
+    matrix: torch.Tensor,
+    threshold: float | SpectrumThreshold | None = None,
+    *,
+    spectra: dict[str, Any] | None = None,
+    source_dtype: torch.dtype | None = None,
+    worst_case_numerical_floor: bool = True,
+) -> torch.Tensor:
+    """
+    Compute the square root of the inverse of a semi-positive definite matrix.
+
+    Eigenvalues at or below the threshold are treated as zero. Every threshold is
+    raised to the numerical floor (see `numerical_floor_terms`).
+
+    Parameters
+    ----------
+    matrix: torch.Tensor
+        input matrix, square and semi-positive definite
+    threshold: float | SpectrumThreshold | None
+        threshold to consider an eigenvalue as zero: None for the numerical floor
+        only, a value, or a rule already bound to its statistic (see
+        `resolve_threshold`). A value or a rule can only raise the floor, and falls
+        back to it when it would drop the whole spectrum of a non-zero matrix.
+    spectra: dict[str, Any] | None
+        if given, filled in place with the eigenvalues of the input matrix, the
+        threshold applied to them, the numerical floor and its terms, the number of
+        eigenvalues kept, the total number of eigenvalues, and whether the matrix
+        had to be regularized. Nothing is computed when None.
+    source_dtype: torch.dtype | None
+        dtype the matrix was accumulated in, when it was cast before this call. The
+        numerical floor uses the epsilon of the less precise of this dtype and the
+        dtype of the matrix. When None, the dtype of the matrix is used.
+    worst_case_numerical_floor: bool
+        whether the numerical floor includes its worst-case term, the default
+        tolerance of `torch.linalg.pinv` (see `numerical_floor_terms`)
+
+    Returns
+    -------
+    torch.Tensor
+        square root of the inverse of the input matrix
+    """
+    assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
+    assert torch.allclose(matrix, matrix.t()), "The input matrix must be symmetric."
+    assert torch.isnan(matrix).sum() == 0, "The input matrix must not contain NaN values."
+    eigenvalues, eigenvectors = _kept_eigenpairs(
+        matrix,
+        threshold,
+        spectra=spectra,
+        source_dtype=source_dtype,
+        worst_case_numerical_floor=worst_case_numerical_floor,
+    )
+    return eigenvectors @ torch.diag(torch.rsqrt(eigenvalues)) @ eigenvectors.t()
+
+
+def pseudo_inverse_matrix_semi_positive(
+    matrix: torch.Tensor,
+    *,
+    spectra: dict[str, Any] | None = None,
+    source_dtype: torch.dtype | None = None,
+    worst_case_numerical_floor: bool = True,
+) -> torch.Tensor:
+    """
+    Compute the pseudo-inverse of a semi-positive definite matrix.
+
+    Unlike `torch.linalg.pinv`, which selects eigenvalues by magnitude, it drops
+    the eigenvalues at or below the numerical floor (see `numerical_floor_terms`),
+    negative ones included: a negative eigenvalue of a semi-positive definite matrix
+    is noise, and inverting it would flip the sign of the result along its
+    direction. Without a cast and without negative eigenvalues, the result equals
+    that of `torch.linalg.pinv` up to rounding.
+
+    Parameters
+    ----------
+    matrix: torch.Tensor
+        input matrix, square and semi-positive definite; it is symmetrized
+    spectra: dict[str, Any] | None
+        if given, filled in place as by `sqrt_inverse_matrix_semi_positive`
+    source_dtype: torch.dtype | None
+        dtype the matrix was accumulated in, when it was cast before this call
+    worst_case_numerical_floor: bool
+        whether the numerical floor includes its worst-case term
+
+    Returns
+    -------
+    torch.Tensor
+        pseudo-inverse of the input matrix
+    """
+    assert matrix.shape[0] == matrix.shape[1], "The input matrix must be square."
+    eigenvalues, eigenvectors = _kept_eigenpairs(
+        (matrix + matrix.t()) / 2,
+        None,
+        spectra=spectra,
+        source_dtype=source_dtype,
+        worst_case_numerical_floor=worst_case_numerical_floor,
+    )
+    return eigenvectors @ torch.diag(eigenvalues.reciprocal()) @ eigenvectors.t()
 
 
 def optimal_delta(
@@ -56,6 +441,10 @@ def optimal_delta(
     dtype: torch.dtype = torch.float32,
     force_pseudo_inverse: bool = False,
     tensor_covariance_loss_gradient: torch.Tensor | None = None,
+    spectra: dict[str, Any] | None = None,
+    *,
+    source_dtype: torch.dtype | None = None,
+    worst_case_numerical_floor: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute the optimal delta for the layer using current S and M tensors.
@@ -85,6 +474,21 @@ def optimal_delta(
         the preconditioned update dW* = E_s^-1 M^T S^-1 is returned. Note that
         relying on this preconditioner silently uses the independence hypothesis
         described in `first_order_optimization.typ` (`@hyp:independence`).
+    spectra: dict[str, Any] | None
+        if given, filled in place with the singular values of the returned optimal
+        delta. This is an additional decomposition, hence opt-in: nothing is
+        computed when None.
+    source_dtype: torch.dtype | None
+        dtype the statistics were accumulated in, when the tensors were cast before
+        this call. The numerical floor of the pseudo-inverses uses the epsilon of the
+        less precise of this dtype and ``dtype``, as their rounding noise is not zero
+        after a cast to a more precise dtype. When None, the dtype of ``tensor_s`` is
+        used.
+    worst_case_numerical_floor: bool
+        whether the numerical floor of the pseudo-inverses includes its worst-case
+        term (see `numerical_floor_terms`). The pseudo-inverses are computed by
+        `pseudo_inverse_matrix_semi_positive`, only when a matrix is singular, when
+        ``force_pseudo_inverse`` is True, or in the float64 retry.
 
     Returns
     -------
@@ -98,6 +502,11 @@ def optimal_delta(
     )
 
     saved_dtype = tensor_s.dtype
+    if source_dtype is None:
+        source_dtype = saved_dtype
+    # The cast to dtype rounds too: the less precise dtype bounds the precision. The
+    # retry below receives the cast tensors, so it inherits this dtype.
+    source_dtype = max(source_dtype, dtype, key=lambda t: torch.finfo(t).eps)
     if tensor_s.dtype != dtype:
         tensor_s = tensor_s.to(dtype=dtype)
     if tensor_m.dtype != dtype:
@@ -118,7 +527,14 @@ def optimal_delta(
             # do not use lstsq because it does not work with the GPU
             warn("Using the pseudo-inverse for the computation of the optimal delta.")
     if force_pseudo_inverse:
-        delta_raw = (torch.linalg.pinv(tensor_s) @ tensor_m).t()
+        delta_raw = (
+            pseudo_inverse_matrix_semi_positive(
+                tensor_s,
+                source_dtype=source_dtype,
+                worst_case_numerical_floor=worst_case_numerical_floor,
+            )
+            @ tensor_m
+        ).t()
 
     assert delta_raw is not None, "delta_raw should be computed by now."
 
@@ -133,7 +549,14 @@ def optimal_delta(
                     "Using the pseudo-inverse for the gradient covariance preconditioner."
                 )
         if applied_pinv:
-            delta_raw = torch.linalg.pinv(tensor_covariance_loss_gradient) @ delta_raw
+            delta_raw = (
+                pseudo_inverse_matrix_semi_positive(
+                    tensor_covariance_loss_gradient,
+                    source_dtype=source_dtype,
+                    worst_case_numerical_floor=worst_case_numerical_floor,
+                )
+                @ delta_raw
+            )
 
     assert delta_raw.isnan().sum() == 0, (
         "The optimal delta should not contain NaN values."
@@ -146,12 +569,15 @@ def optimal_delta(
         )
         if not force_pseudo_inverse:
             warn("Trying to use the pseudo-inverse with torch.float64.")
-            return optimal_delta(
+            # The cast to saved_dtype and the spectra below also cover the retry.
+            delta_raw, parameter_update_decrease = optimal_delta(
                 tensor_s,
                 tensor_m,
                 dtype=torch.float64,
                 force_pseudo_inverse=True,
                 tensor_covariance_loss_gradient=tensor_covariance_loss_gradient,
+                source_dtype=source_dtype,
+                worst_case_numerical_floor=worst_case_numerical_floor,
             )
         else:
             warn("Failed to compute the optimal delta, set delta to zero.")
@@ -161,19 +587,28 @@ def optimal_delta(
     if isinstance(parameter_update_decrease, torch.Tensor):
         parameter_update_decrease = parameter_update_decrease.to(dtype=saved_dtype)
 
+    if spectra is not None:
+        spectra["singular_values"] = torch.linalg.svdvals(delta_raw).detach()
+
     return delta_raw, parameter_update_decrease
 
 
 def compute_optimal_added_parameters(
     matrix_s: torch.Tensor | None,
     matrix_n: torch.Tensor,
-    numerical_threshold: float = 1e-6,
-    statistical_threshold: float = 1e-3,
+    numerical_threshold: float | SpectrumThreshold | None = None,
+    statistical_threshold: float | SpectrumThreshold = 1e-3,
     maximum_added_neurons: int | None = None,
     alpha_zero: bool = False,
     omega_zero: bool = False,
     ignore_singular_values: bool = False,
     matrix_covariance_loss_gradient: torch.Tensor | None = None,
+    e_numerical_threshold: float | SpectrumThreshold | None = None,
+    spectra: dict[str, Any] | None = None,
+    *,
+    source_dtype: torch.dtype | None = None,
+    worst_case_numerical_floor: bool = True,
+    e_worst_case_numerical_floor: bool | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute the optimal added parameters for a given layer.
@@ -186,9 +621,11 @@ def compute_optimal_added_parameters(
         Square matrix S of shape (s, s). If None, identity matrix is used.
     matrix_n : torch.Tensor
         Matrix N (correlation matrix) of shape (s, t).
-    numerical_threshold : float
-        Threshold to consider an eigenvalue as zero in square root of inverse of S
-    statistical_threshold : float
+    numerical_threshold : float | SpectrumThreshold | None
+        Threshold to consider an eigenvalue as zero in square root of inverse of S:
+        None for the numerical floor only; a value or a rule can only raise the
+        floor (see `sqrt_inverse_matrix_semi_positive`).
+    statistical_threshold : float | SpectrumThreshold
         Threshold to consider a singular value as zero in the SVD
     maximum_added_neurons : int | None
         Maximum number of added neurons, if None all significant neurons are kept
@@ -205,6 +642,31 @@ def compute_optimal_added_parameters(
         applies the empirical-Fisher preconditioning to the rank-k extension.
         Note that this silently uses the independence hypothesis described in
         `first_order_optimization.typ` (`@hyp:independence`).
+    e_numerical_threshold : float | SpectrumThreshold | None
+        Whitening threshold for E_s. When None, `numerical_threshold` is used.
+        Like every threshold, it can only raise the numerical floor: 0.0 means the
+        floor only.
+    spectra : dict[str, Any] | None
+        If given, filled in place with the keys "matrix_s", "matrix_e" and
+        "extension". The first two hold the whitening spectra of S and E (None
+        when the corresponding matrix is not used, see
+        `sqrt_inverse_matrix_semi_positive`); "extension" holds the singular
+        values of the SVD target before any selection, the threshold applied to
+        them, and how many were kept by the threshold and by
+        `maximum_added_neurons`. Nothing is computed when None.
+    source_dtype : torch.dtype | None
+        dtype S, N and E were accumulated in, when they were cast before this call.
+        The numerical floor of both whitenings uses the epsilon of the less precise
+        of this dtype and the dtype of the matrix. When None, the dtype of each
+        matrix is used.
+    worst_case_numerical_floor : bool
+        Whether the numerical floor of the whitening of S includes its worst-case
+        term, the default tolerance of `torch.linalg.pinv` (see
+        `numerical_floor_terms`).
+    e_worst_case_numerical_floor : bool | None
+        The same for E_s. When None, `worst_case_numerical_floor` is used. Pass
+        False when E_s has been ridge-shrunk upstream: its eigenvalues are then
+        real, and the worst-case term could cut them.
 
     Returns
     -------
@@ -219,9 +681,28 @@ def compute_optimal_added_parameters(
     ------
     torch.linalg.LinAlgError
         If SVD of S^{-1/2} N fails.
+    ValueError
+        If maximum_added_neurons is negative.
     """
+    if spectra is not None:
+        # Always set every key so a caller merging this in cannot keep a stale one.
+        spectra.update(matrix_s=None, matrix_e=None, extension=None)
+
     # Validate inputs
     n_1, n_2 = matrix_n.shape
+
+    # Safeguard against the -1 "resolve from schedule" sentinel (or any negative
+    # budget) leaking in from the caller. ``None`` means "no limit"; a negative
+    # value would otherwise be silently misread as a Python negative index in the
+    # singular-value selection below (``selected[maximum_added_neurons:] = False``
+    # with -1 keeps rank-1 neurons instead of capping the count), so reject it.
+    if maximum_added_neurons is not None and maximum_added_neurons < 0:
+        raise ValueError(
+            f"maximum_added_neurons must be None (no limit) or non-negative, got "
+            f"{maximum_added_neurons}. A negative value (e.g. the -1 sentinel) must "
+            f"be resolved to a concrete per-layer count by the caller before reaching "
+            f"compute_optimal_added_parameters."
+        )
 
     if matrix_s is not None:
         # validate S matrix
@@ -242,9 +723,16 @@ def compute_optimal_added_parameters(
             matrix_s = (matrix_s + matrix_s.t()) / 2
 
         # Compute the square root of the inverse of S
+        matrix_s_spectra = dict() if spectra is not None else None
         matrix_s_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
-            matrix_s, threshold=numerical_threshold
+            matrix_s,
+            threshold=numerical_threshold,
+            spectra=matrix_s_spectra,
+            source_dtype=source_dtype,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
+        if spectra is not None:
+            spectra["matrix_s"] = matrix_s_spectra
         # Compute the product P := S^{-1/2} N
         matrix_p = matrix_s_inverse_sqrt @ matrix_n
     else:
@@ -269,9 +757,24 @@ def compute_optimal_added_parameters(
             matrix_covariance_loss_gradient = (
                 matrix_covariance_loss_gradient + matrix_covariance_loss_gradient.t()
             ) / 2
+        matrix_e_spectra = dict() if spectra is not None else None
         matrix_e_inverse_sqrt = sqrt_inverse_matrix_semi_positive(
-            matrix_covariance_loss_gradient, threshold=numerical_threshold
+            matrix_covariance_loss_gradient,
+            threshold=(
+                e_numerical_threshold
+                if e_numerical_threshold is not None
+                else numerical_threshold
+            ),
+            spectra=matrix_e_spectra,
+            source_dtype=source_dtype,
+            worst_case_numerical_floor=(
+                e_worst_case_numerical_floor
+                if e_worst_case_numerical_floor is not None
+                else worst_case_numerical_floor
+            ),
         )
+        if spectra is not None:
+            spectra["matrix_e"] = matrix_e_spectra
         matrix_p = matrix_p @ matrix_e_inverse_sqrt
 
     # Compute the SVD of the product
@@ -290,9 +793,21 @@ def compute_optimal_added_parameters(
         raise e
 
     # Select the singular values
+    statistical_threshold = resolve_threshold(statistical_threshold, s)
+    # The min(..., s.max()) keeps at least one neuron whatever the threshold.
     selected_singular_values = s >= min(statistical_threshold, s.max())
+    kept_by_threshold = int(selected_singular_values.sum())
     if maximum_added_neurons is not None:
         selected_singular_values[maximum_added_neurons:] = False
+
+    if spectra is not None:
+        spectra["extension"] = {
+            "singular_values": s.detach(),  # before any selection
+            "threshold": statistical_threshold,
+            "kept_by_threshold": kept_by_threshold,
+            "kept": int(selected_singular_values.sum()),
+            "maximum_added_neurons": maximum_added_neurons,
+        }
 
     # Keep only the significant singular values but keep at least one
     s = s[selected_singular_values]
@@ -318,6 +833,45 @@ def compute_optimal_added_parameters(
         omega = torch.zeros_like(omega)
 
     return alpha.t(), omega.t(), s
+
+
+def spectrum_summary(spectrum: torch.Tensor) -> dict[str, float]:
+    """
+    Summarize a spectrum (eigenvalues or singular values) with a few scalars.
+
+    Parameters
+    ----------
+    spectrum: torch.Tensor
+        one dimensional tensor of non-negative values
+
+    Returns
+    -------
+    dict[str, float]
+        maximum, minimum, mean and sum of the spectrum, its condition number
+        (maximum over minimum, restricted to the strictly positive values) and
+        its effective rank (the exponential of the entropy of the normalized
+        spectrum). Empty for an empty spectrum.
+    """
+    if spectrum.numel() == 0:
+        return dict()
+    spectrum = spectrum.detach().to(dtype=torch.float64)
+    positive = spectrum[spectrum > 0]
+    total = spectrum.sum()
+    if positive.numel() == 0:
+        condition_number = float("inf")
+        effective_rank = 0.0
+    else:
+        condition_number = (positive.max() / positive.min()).item()
+        proportions = positive / total
+        effective_rank = torch.exp(-(proportions * torch.log(proportions)).sum()).item()
+    return {
+        "max": spectrum.max().item(),
+        "min": spectrum.min().item(),
+        "mean": spectrum.mean().item(),
+        "sum": total.item(),
+        "condition_number": condition_number,
+        "effective_rank": effective_rank,
+    }
 
 
 def compute_output_shape_conv(
