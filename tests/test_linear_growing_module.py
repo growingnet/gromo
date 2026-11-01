@@ -667,8 +667,15 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         # empty array -> no-op
         second.prune_neurons_in(np.array([], dtype=np.int64))
+        second.prune_neurons_in([])
         self.assertEqual(first.out_features, 4)
         self.assertEqual(second.in_features, 4)
+
+        # direct layer pruning also checks the range
+        with self.assertRaises(IndexError):
+            first.prune_layer_out([4])
+        with self.assertRaises(IndexError):
+            second.prune_layer_in([-1])
 
         # out-of-range / negative index -> IndexError
         with self.assertRaises(IndexError):

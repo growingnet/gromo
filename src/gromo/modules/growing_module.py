@@ -27,6 +27,7 @@ from gromo.utils.tools import (
     resolve_threshold_rule,
 )
 from gromo.utils.utils import (
+    check_prune_indices,
     compute_tensor_stats,
     get_correct_device,
     known_activations_zero_plus_gradient,
@@ -4393,25 +4394,11 @@ class GrowingModule(torch.nn.Module):
                 f"got {type(self.previous_module)}"
             )
 
-        # make sure indices are a numpy array of integers
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
-        # Normalize + validate indices.
-        if indices_to_remove.size == 0:
+        indices = check_prune_indices(
+            indices_to_remove, self.previous_module.out_features
+        )
+        if indices.size == 0:
             return
-        indices = np.unique(indices_to_remove)
-        n_hidden = self.previous_module.out_features
-        if indices[0] < 0 or indices[-1] >= n_hidden:
-            raise IndexError(
-                f"indices {indices} out of range for hidden dim of size {n_hidden}"
-            )
-        if len(indices) == n_hidden:
-            raise ValueError("Cannot prune all neurons of a layer")
 
         # Drop matching dims on both sides. Subclasses implement the slicing.
         self.previous_module.prune_layer_out(indices)  # rows of W_prev

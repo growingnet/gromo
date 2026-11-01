@@ -19,6 +19,7 @@ from gromo.utils.tools import (
     compute_output_shape_conv,
     create_bordering_effect_weight,
 )
+from gromo.utils.utils import check_prune_indices
 
 
 class Conv2dMergeGrowingModule(MergeGrowingModule):
@@ -1247,13 +1248,7 @@ class Conv2dGrowingModule(GrowingModule):
                 "Pruning is only supported for Conv2d layers with groups == 1."
             )
 
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
+        indices_to_remove = check_prune_indices(indices_to_remove, self.in_channels)
         device = self.layer.weight.device
         keep = np.setdiff1d(np.arange(self.in_channels), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
@@ -1309,13 +1304,7 @@ class Conv2dGrowingModule(GrowingModule):
                 "Pruning is only supported for Conv2d layers with groups == 1."
             )
 
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
+        indices_to_remove = check_prune_indices(indices_to_remove, self.out_channels)
         device = self.layer.weight.device
         keep = np.setdiff1d(np.arange(self.out_channels), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)

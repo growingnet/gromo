@@ -6,6 +6,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from gromo.utils.utils import check_prune_indices
+
 
 # ---------------------------------------------------------------------------
 # Shared normalization configuration types
@@ -325,34 +327,10 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Feature indices to remove.
-
-        Raises
-        ------
-        TypeError
-            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
-        IndexError
-            If indices are out of range for the number of features.
-        ValueError
-            If attempting to prune all features.
         """
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
-        if indices_to_remove.size == 0:
+        indices = check_prune_indices(indices_to_remove, self.num_features)
+        if indices.size == 0:
             return
-
-        # Validate indices
-        indices = np.unique(indices_to_remove)
-        if indices[0] < 0 or indices[-1] >= self.num_features:
-            raise IndexError(
-                f"indices {indices} out of range for num_features {self.num_features}"
-            )
-        if len(indices) == self.num_features:
-            raise ValueError("Cannot prune all features of BatchNorm layer")
 
         keep_mask = torch.ones(
             self.num_features,
@@ -625,37 +603,12 @@ class GrowingLayerNorm(nn.LayerNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Feature indices to remove.
-
-        Raises
-        ------
-        TypeError
-            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
-        IndexError
-            If indices are out of range for LayerNorm first dimension.
-        ValueError
-            If attempting to prune all features.
         """
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
-        if indices_to_remove.size == 0:
-            return
-
         old_shape = tuple(int(v) for v in self.normalized_shape)
         first_dim = old_shape[0]
-
-        # Validate indices
-        indices = np.unique(indices_to_remove)
-        if indices[0] < 0 or indices[-1] >= first_dim:
-            raise IndexError(
-                f"indices {indices} out of range for LayerNorm first dimension {first_dim}"
-            )
-        if len(indices) == first_dim:
-            raise ValueError("Cannot prune all features of LayerNorm layer")
+        indices = check_prune_indices(indices_to_remove, first_dim)
+        if indices.size == 0:
+            return
 
         keep_mask = torch.ones(
             first_dim,
@@ -890,31 +843,12 @@ class GrowingGroupNorm(nn.GroupNorm):
 
         Raises
         ------
-        TypeError
-            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
-        IndexError
-            If indices are out of range for GroupNorm channels.
         ValueError
-            If attempting to prune all channels or the pruned channels are not divisible by num_groups.
+            If the remaining channels are not divisible by num_groups.
         """
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
-        if indices_to_remove.size == 0:
+        indices = check_prune_indices(indices_to_remove, self.num_channels)
+        if indices.size == 0:
             return
-
-        # Validate indices
-        indices = np.unique(indices_to_remove)
-        if indices[0] < 0 or indices[-1] >= self.num_channels:
-            raise IndexError(
-                f"indices {indices} out of range for GroupNorm channels {self.num_channels}"
-            )
-        if len(indices) == self.num_channels:
-            raise ValueError("Cannot prune all channels of GroupNorm layer")
 
         keep_mask = torch.ones(
             self.num_channels,

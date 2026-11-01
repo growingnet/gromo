@@ -7,6 +7,7 @@ import torch
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import KnownThresholdRuleName, ThresholdRule
+from gromo.utils.utils import check_prune_indices
 
 
 class LinearMergeGrowingModule(MergeGrowingModule):
@@ -1136,19 +1137,8 @@ class LinearGrowingModule(GrowingModule):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Column indices in ``self.layer.weight`` to drop.
-
-        Raises
-        ------
-        TypeError
-            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
         """
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
+        indices_to_remove = check_prune_indices(indices_to_remove, self.in_features)
         keep = np.setdiff1d(np.arange(self.in_features), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
 
@@ -1196,19 +1186,8 @@ class LinearGrowingModule(GrowingModule):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Row indices in ``self.layer.weight`` to drop.
-
-        Raises
-        ------
-        TypeError
-            If indices_to_remove is not a numpy.ndarray or a list, or does not contain integers.
         """
-        if isinstance(indices_to_remove, list):
-            indices_to_remove = np.array(indices_to_remove)
-        elif not isinstance(indices_to_remove, np.ndarray):
-            raise TypeError("indices_to_remove must be a numpy.ndarray or a list")
-        if not np.issubdtype(indices_to_remove.dtype, np.integer):
-            raise TypeError("indices_to_remove must contain integers")
-
+        indices_to_remove = check_prune_indices(indices_to_remove, self.out_features)
         keep = np.setdiff1d(np.arange(self.out_features), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
 
