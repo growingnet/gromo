@@ -1588,6 +1588,21 @@ class TestGrowingModulePruningValidation(TorchTestCase):
         with self.assertRaises(ValueError):
             second.prune_neurons_in(np.array([0, 1, 2, 3]))
 
+    def test_prune_neurons_in_after_flatten(self):
+        """A linear layer fed by a flattened convolution is rejected, unchanged."""
+        import numpy as np
+
+        conv = RestrictedConv2dGrowingModule(
+            2, 4, kernel_size=3, padding=1, device=global_device()
+        )
+        linear = LinearGrowingModule(
+            4 * 2 * 2, 3, previous_module=conv, device=global_device()
+        )
+        with self.assertRaises(NotImplementedError):
+            linear.prune_neurons_in(np.array([0]))
+        self.assertEqual(conv.out_channels, 4)
+        self.assertEqual(linear.in_features, 16)
+
     def test_prune_post_layer_function_none(self):
         import numpy as np
 

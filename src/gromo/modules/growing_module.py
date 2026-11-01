@@ -4399,6 +4399,12 @@ class GrowingModule(torch.nn.Module):
         )
         if indices.size == 0:
             return
+        # e.g. a convolution followed by a flatten and a linear layer
+        if self.layer.weight.shape[1] != self.previous_module.layer.weight.shape[0]:
+            raise NotImplementedError(
+                "Pruning requires the inputs of this layer to be the outputs of the "
+                "previous one, with no reshaping in between."
+            )
         # Checked here too so that nothing is pruned before the layers reject it.
         if any(getattr(m.layer, "groups", 1) != 1 for m in (self.previous_module, self)):
             raise NotImplementedError(
