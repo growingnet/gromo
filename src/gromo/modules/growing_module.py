@@ -4417,6 +4417,18 @@ class GrowingModule(torch.nn.Module):
         self.previous_module.prune_layer_out(indices)  # rows of W_prev
         self.prune_layer_in(indices)  # cols of W_self
 
+        # These statistics take their shape at their first update, so they must be
+        # emptied for the next update to use the pruned size.
+        stale = [
+            self.previous_module.tensor_m_prev,
+            self.previous_module.covariance_loss_gradient,
+            self.cross_covariance,
+        ]
+        if isinstance(self.next_module, GrowingModule):
+            stale += [self.next_module.tensor_m_prev, self.next_module.cross_covariance]
+        for statistic in stale:
+            statistic.reset()
+
     @torch.no_grad()
     def _prune_post_layer_function(self, indices: np.ndarray) -> None:
         """Prune the post-layer function of the previous module, if it exists.

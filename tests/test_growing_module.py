@@ -1603,6 +1603,29 @@ class TestGrowingModulePruningValidation(TorchTestCase):
         self.assertEqual(conv.out_channels, 4)
         self.assertEqual(linear.in_features, 16)
 
+    def test_prune_neurons_in_statistics_keep_updating(self):
+        """Statistics collected before pruning can be updated again afterwards."""
+        import numpy as np
+
+        device = global_device()
+        l1 = LinearGrowingModule(3, 5, device=device)
+        l2 = LinearGrowingModule(5, 4, previous_module=l1, device=device)
+        l3 = LinearGrowingModule(4, 2, previous_module=l2, device=device)
+        l1.next_module, l2.next_module = l2, l3
+        layers = (l1, l2, l3)
+        x = torch.randn(7, 3, device=device)
+
+        def collect():
+            l3(l2(l1(x))).pow(2).sum().backward()
+            for layer in layers:
+                layer.update_computation()
+
+        for layer in layers:
+            layer.init_computation()
+        collect()
+        l2.prune_neurons_in(np.array([1]))
+        collect()  # no init_computation in between
+
     def test_prune_post_layer_function_none(self):
         import numpy as np
 
