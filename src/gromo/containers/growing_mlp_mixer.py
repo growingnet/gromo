@@ -151,6 +151,7 @@ class GrowingMLPBlock(GrowingContainer):
             "update_value": self.second_layer.first_order_improvement,
             "parameter_improvement": self.second_layer.parameter_update_decrease,
             "eigenvalues_extension": self.second_layer.eigenvalues_extension,
+            "growth_spectra": self.second_layer.growth_spectra,
             "scaling_factor": self.second_layer.scaling_factor,
             "added_neurons": (
                 0

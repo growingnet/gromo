@@ -24,7 +24,7 @@ def gaussian_kernel(X: torch.Tensor, sigma: float | None = None) -> torch.Tensor
     ----------
     X : torch.Tensor
         input tensor X
-    sigma : float | None, optional
+    sigma : float | None
         standard deviation, is None the median heuristic is used, by default None
 
     Returns
@@ -96,7 +96,7 @@ def calculate_dependency(
         target tensor
     n_samples : int
         maximum number of samples to use for estimation
-    normalize : bool, optional
+    normalize : bool
         normalize the criterion, by default True
 
     Returns

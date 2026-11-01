@@ -39,9 +39,9 @@ class TensorStatistic:
         shape of the tensor to compute, if None use the shape of the first update
     update_function: Callable[[Any], tuple[torch.Tensor, int]] | Callable[[], tuple[torch.Tensor, int]]
         function to update the tensor
-    device : torch.device | str | None, optional
+    device : torch.device | str | None
         default device, by default None
-    name: str | None, optional
+    name: str | None
         used for debugging, by default None
     """
 
@@ -70,12 +70,33 @@ class TensorStatistic:
     def __str__(self):
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
 
+    @property
+    def dtype(self) -> torch.dtype | None:
+        """Dtype the statistic is accumulated in, None before the first update.
+
+        It is the dtype that bounds the precision of the statistic, even when the
+        averaged tensor is later cast to a more precise one.
+
+        Returns
+        -------
+        torch.dtype | None
+            dtype of the accumulated tensor
+        """
+        return None if self._tensor is None else self._tensor.dtype
+
     @torch.no_grad()
-    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
+    def update(
+        self, count_samples: bool = True, **kwargs: Any
+    ) -> tuple[torch.Tensor, int] | None:
         """Update tensor based on update_function
 
         Parameters
         ----------
+        count_samples : bool
+            if False, accumulate the update tensor without increasing the
+            sample counter. Used when several updates are computed from the
+            same samples (e.g. one backward pass per class for the true
+            Fisher) and should be averaged as a single-pass contribution.
         **kwargs : Any
 
         Returns
@@ -85,6 +106,8 @@ class TensorStatistic:
         """
         if self.updated is False:
             update, nb_sample = self._update_function(**kwargs)  # type: ignore
+            if not count_samples:
+                nb_sample = 0
             assert (self._shape is None or self._shape == update.size()) and (
                 self._tensor is None or self._tensor.size() == update.size()
             ), (
@@ -170,9 +193,9 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         shape of the tensor to compute, if None use the shape of the first update
     update_function: Callable[[Any], tuple[torch.Tensor, int]] | Callable[[], tuple[torch.Tensor, int]]
         function to update the tensor and compute the batch covariance
-    device : torch.device | str | None, optional
+    device : torch.device | str | None
         default device, by default None
-    name: str | None, optional
+    name: str | None
         used for debugging, by default None
     trace_precision: float
         relative precision for the trace computation, default 1e-3
@@ -226,11 +249,17 @@ class TensorStatiticWithEstimationError(TensorStatistic):
         return self._trace / self._batches
 
     @torch.no_grad()
-    def update(self, **kwargs: Any) -> tuple[torch.Tensor, int] | None:
+    def update(
+        self, count_samples: bool = True, **kwargs: Any
+    ) -> tuple[torch.Tensor, int] | None:
         """Update tensor based on update_function
 
         Parameters
         ----------
+        count_samples : bool
+            if False, accumulate the update tensor without increasing the
+            sample counter (see TensorStatistic.update) and without treating
+            this call as a new batch for the trace-error estimation below.
         **kwargs : Any
 
         Returns
@@ -239,10 +268,14 @@ class TensorStatiticWithEstimationError(TensorStatistic):
             the update tensor, number of samples used to compute the update
         """
         if self.updated is False:
-            update, nb_sample = super().update(**kwargs)  # type: ignore (we are sure updated is False here)
+            update, nb_sample = super().update(count_samples=count_samples, **kwargs)  # type: ignore (we are sure updated is False here)
             assert isinstance(
                 self._tensor, torch.Tensor
             )  # self._tensor should not be None here
+
+            if not count_samples:
+                return update, nb_sample
+
             self._batches += 1
 
             if self._compute_trace:

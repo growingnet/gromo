@@ -54,6 +54,17 @@ class TestTensorStatistic(TestCase):
             self.assertIsNone(t._tensor)
             self.assertEqual(t.samples, 0)
 
+    def test_dtype(self):
+        """The dtype is that of the accumulated tensor, None before any update."""
+        t = self._tested_class(
+            shape=None,
+            update_function=lambda: (torch.zeros(2, dtype=torch.float64), 1),
+        )
+        self.assertIsNone(t.dtype)
+        t.updated = False
+        t.update()
+        self.assertEqual(t.dtype, torch.float64)
+
     def tearDown(self) -> None:
         reset_device()
 
@@ -115,6 +126,25 @@ class TestTensorStatiticWithEstimationError(TestTensorStatistic):
             true_error, cov_statistic.error() * 2
         )  # this test pass most of the time, but can fail due to randomness
         # (if no seed is set)
+
+    def test_update_count_samples_false(self):
+        """update(count_samples=False) returns the raw update without
+        counting it as a new batch for the trace-error estimate or the
+        sample counter."""
+        mean_statistic = TensorStatiticWithEstimationError(
+            shape=None,
+            update_function=lambda x: (x.sum(dim=0), x.size(0)),
+            name="Mean with Error",
+        )
+        x = torch.randn(5, 2)
+
+        mean_statistic.updated = False
+        update, nb_sample = mean_statistic.update(x=x, count_samples=False)
+
+        self.assertTrue(torch.allclose(update, x.sum(dim=0)))
+        self.assertEqual(nb_sample, 0)
+        self.assertEqual(mean_statistic.samples, 0)
+        self.assertEqual(mean_statistic._batches, 0)
 
     def test_stop_trace_computation(self):
         num_batches = 3

@@ -12,6 +12,7 @@ from gromo.modules.conv2d_growing_module import (
     FullConv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -1121,6 +1122,33 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
             self.assertTrue(
                 torch.all(layer_out.extended_input_layer.weight[:, select:] == 0)
             )
+
+    @unittest_parametrize(({"rule": None}, {"rule": "operator_norm_noise_threshold"}))
+    def test_known_threshold_rules_end_to_end(self, rule: str | None):
+        """The default (the floor) and each known rule give a finite extension, and
+        the precision term keeps the epsilon of the statistics after a cast."""
+        if self._tested_class is Conv2dGrowingModule:
+            self.skipTest("Conv2dGrowingModule does not compute neuron extensions.")
+        demo_in, demo_out = self.demo_couple[True]
+        demo_out.init_computation()
+        y = demo_out(demo_in(self.input_x))
+        torch.nn.functional.mse_loss(y, torch.zeros_like(y)).backward()
+        demo_out.update_computation()
+
+        demo_out.compute_optimal_updates(
+            numerical_threshold=rule,  # type: ignore
+            dtype=torch.float64,
+            collect_spectra=True,
+        )
+        assert demo_out.growth_spectra is not None
+        matrix_s = demo_out.growth_spectra["matrix_s"]
+        expected = torch.finfo(torch.float32).eps * matrix_s["eigenvalues"].max().item()
+        precision = matrix_s["numerical_floor_terms"]["precision"]
+        self.assertAlmostEqual(precision / expected, 1.0, places=5)
+        self.assertGreaterEqual(matrix_s["threshold"], matrix_s["numerical_floor"])
+        self.assertLessEqual(matrix_s["kept"], matrix_s["total"])
+        assert isinstance(demo_out.extended_input_layer, torch.nn.Conv2d)
+        self.assertTrue(torch.isfinite(demo_out.extended_input_layer.weight).all())
 
 
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
@@ -2235,10 +2263,11 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
             extension_size = 13
 
             # Check that kaiming_initialization fallback is called
+            # kaiming_initialization is a static method: patch it on the class
             with mock.patch.object(
-                layer_out,
+                GrowingModule,
                 "kaiming_initialization",
-                wraps=layer_out.kaiming_initialization,
+                wraps=GrowingModule.kaiming_initialization,
             ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,

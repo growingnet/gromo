@@ -163,6 +163,7 @@ class GrowingResidualBlock(GrowingContainer):
             "update_value": self.second_layer.first_order_improvement,
             "parameter_improvement": self.second_layer.parameter_update_decrease,
             "eigenvalues_extension": self.second_layer.eigenvalues_extension,
+            "growth_spectra": self.second_layer.growth_spectra,
         }
         return layer_information
 
@@ -182,9 +183,9 @@ class GrowingResidualMLP(SequentialGrowingModel):
         hidden features
     num_blocks : int
         number of blocks
-    activation : torch.nn.Module, optional
+    activation : torch.nn.Module
         activation function, by default torch.nn.ReLU()
-    device : torch.device, optional
+    device : torch.device
         default device, by default None
     """
 
@@ -198,7 +199,6 @@ class GrowingResidualMLP(SequentialGrowingModel):
         activation: torch.nn.Module = torch.nn.ReLU(),
         device: torch.device = None,
     ) -> None:
-
         in_features = torch.tensor(in_features).prod().int().item()
         super(GrowingResidualMLP, self).__init__(
             in_features=in_features,
@@ -279,7 +279,7 @@ class GrowingResidualMLP(SequentialGrowingModel):
         ----------
         layer_index : int
             selected layer index
-        verbose : bool, optional
+        verbose : bool
             print info, by default False
 
         Returns
@@ -337,6 +337,7 @@ class GrowingResidualMLP(SequentialGrowingModel):
             layer_information["update_value"] = layer.first_order_improvement
             layer_information["parameter_improvement"] = layer.parameter_update_decrease
             layer_information["eigenvalues_extension"] = layer.eigenvalues_extension
+            layer_information["growth_spectra"] = layer.growth_spectra
             information[i] = layer_information
         return information
 

@@ -1,0 +1,9 @@
+# Commits listed here are ignored by `git blame` (configure with
+# `git config blame.ignoreRevsFile .git-blame-ignore-revs`, or automatically
+# on GitHub). Only mechanical, non-semantic reformatting commits belong here.
+
+# fix: strip optional
+# Stripped the numpydoc `, optional` suffix from docstring Parameters type
+# lines codebase-wide (pydoclint 0.9.x false-positives on it); no semantic
+# change, so it shouldn't shadow the real last-touched-by history.
+afed26c6dbbb4e9b932f8e0f5fe0910b2b90c023

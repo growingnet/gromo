@@ -71,19 +71,19 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
     ----------
     num_features : int
         Number of features (channels) in the input
-    eps : float, optional
+    eps : float
         A value added to the denominator for numerical stability, by default=1e-5
-    momentum : float, optional
+    momentum : float
         The value used for the running_mean and running_var computation, by default=0.1
-    affine : bool, optional
+    affine : bool
         Whether to learn affine parameters (weight and bias), by default=True
-    track_running_stats : bool, optional
+    track_running_stats : bool
         Whether to track running statistics, by default=True
-    device : torch.device | str | None, optional
+    device : torch.device | str | None
         Device to place the layer on, by default None
-    dtype : torch.dtype | None, optional
+    dtype : torch.dtype | None
         Data type for the parameters, by default None
-    name : str, optional
+    name : str
         Name of the layer for debugging, by default="growing_batch_norm"
     """
 
@@ -127,14 +127,14 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             Name of the parameter/buffer to extend
         additional_features : int
             Number of additional features to add
-        new_values : torch.Tensor | None, optional
+        new_values : torch.Tensor | None
             Custom values for the new features. If None, uses default_value_fn.
         default_value_fn : Callable
             Function to generate default values:
             fn(additional_features, device, dtype) -> torch.Tensor
         device : torch.device
             Device to place new parameters on
-        as_parameter : bool, optional
+        as_parameter : bool
             Whether to treat as nn.Parameter (True) or buffer (False), by default=True
 
         Raises
@@ -187,13 +187,13 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         ----------
         additional_features : int
             Number of additional features to add
-        new_weights : torch.Tensor | None, optional
+        new_weights : torch.Tensor | None
             Custom weights for the new features. If None, defaults to ones.
-        new_biases : torch.Tensor | None, optional
+        new_biases : torch.Tensor | None
             Custom biases for the new features. If None, defaults to zeros.
-        new_running_mean : torch.Tensor | None, optional
+        new_running_mean : torch.Tensor | None
             Custom running mean for new features. If None, defaults to zeros.
-        new_running_var : torch.Tensor | None, optional
+        new_running_var : torch.Tensor | None
             Custom running variance for new features. If None, defaults to ones.
 
         Raises
@@ -344,17 +344,17 @@ class GrowingLayerNorm(nn.LayerNorm):
     ----------
     normalized_shape : int | list[int] | torch.Size
         input shape from an expected input of size
-    eps : float, optional
+    eps : float
         a value added to the denominator for numerical stability, by default 1e-5
-    elementwise_affine : bool, optional
+    elementwise_affine : bool
         a boolean value that when set to True, this module has learnable per-element affine parameters initialized to ones (for weights) and zeros (for biases), by default True
-    bias : bool, optional
+    bias : bool
         if set to False, the layer will not learn an additive bias (only relevant if elementwise_affine is True), by default True
-    device : torch.device | str | None, optional
+    device : torch.device | str | None
         expected device, by default None
-    dtype : torch.dtype | None, optional
+    dtype : torch.dtype | None
         data type for parameters, by default None
-    name : str, optional
+    name : str
         name of the layer, by default "growing_layer_norm"
     """
 
@@ -431,9 +431,9 @@ class GrowingLayerNorm(nn.LayerNorm):
         ----------
         additional_first_dim : int
             number of additional channels to add to the first dimension
-        new_weights : torch.Tensor | None, optional
+        new_weights : torch.Tensor | None
             custom weights for the new channels, if None defaults to ones, by default None
-        new_biases : torch.Tensor | None, optional
+        new_biases : torch.Tensor | None
             custom bias for the new channels, if None defaults to zeros, by default None
 
         Raises
@@ -562,15 +562,15 @@ class GrowingGroupNorm(nn.GroupNorm):
         number of groups to separate the channels into
     num_channels : int
         number of channels expected in input
-    eps : float, optional
+    eps : float
         a value added to the denominator for numerical stability, by default 1e-5
-    affine : bool, optional
+    affine : bool
         a boolean value that when set to True, this module has learnable per-channel affine parameters initialized to ones (for weights) and zeros (for biases), by default True
-    device : torch.device | str | None, optional
+    device : torch.device | str | None
         expected device, by default None
-    dtype : torch.dtype | None, optional
+    dtype : torch.dtype | None
         data type for parameters, by default None
-    name : str, optional
+    name : str
         name of the layer, by default "growing_group_norm"
     """
 
@@ -643,11 +643,11 @@ class GrowingGroupNorm(nn.GroupNorm):
         ----------
         additional_channels : int
             number of additional channels
-        new_weights : torch.Tensor | None, optional
+        new_weights : torch.Tensor | None
             custom weights for the new channels, if None defaults to ones, by default None
-        new_biases : torch.Tensor | None, optional
+        new_biases : torch.Tensor | None
             custom bias for the new channels, if None defaults to zeros, by default None
-        new_num_groups : int | None, optional
+        new_num_groups : int | None
             updated number of groups, if None they are not updated, by default None
 
         Raises

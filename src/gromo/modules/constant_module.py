@@ -13,7 +13,7 @@ class ConstantModule(LinearGrowingModule):
         input features
     out_features : int
         output features
-    device : torch.device | None, optional
+    device : torch.device | None
         default device, by default None
     """
 

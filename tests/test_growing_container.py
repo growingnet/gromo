@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 
 import torch
 import torch.nn as nn
@@ -194,6 +195,18 @@ class TestGrowingContainer(unittest.TestCase):
                     getattr(layer, tensor_name)._tensor,
                     f"reset_computation was not called on the growing layer for {tensor_name}",
                 )
+
+    def test_compute_optimal_delta_forwards_worst_case_numerical_floor(self):
+        """The flag of the numerical floor reaches every growing layer."""
+        with unittest.mock.patch.object(
+            LinearGrowingModule, "compute_optimal_delta"
+        ) as compute_optimal_delta:
+            self.model.compute_optimal_delta(worst_case_numerical_floor=False)
+        self.assertEqual(
+            compute_optimal_delta.call_count, len(self.model._growing_layers)
+        )
+        for call in compute_optimal_delta.call_args_list:
+            self.assertIs(call.kwargs["worst_case_numerical_floor"], False)
 
     def test_compute_optimal_delta(self):
         gather_statistics(self.dataloader, self.model, self.loss)
