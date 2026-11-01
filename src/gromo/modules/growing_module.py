@@ -4399,6 +4399,11 @@ class GrowingModule(torch.nn.Module):
         )
         if indices.size == 0:
             return
+        # Checked here too so that nothing is pruned before the layers reject it.
+        if any(getattr(m.layer, "groups", 1) != 1 for m in (self.previous_module, self)):
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
 
         # Drop matching dims on both sides. Subclasses implement the slicing.
         # The post-layer goes first: it is the only step that can reject the pruning.

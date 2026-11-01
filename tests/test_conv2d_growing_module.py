@@ -829,6 +829,23 @@ class TestConv2dGrowingModule(TestConv2dGrowingModuleBase):
         y = second(first(x))
         self.assertShapeEqual(y, (4, second.out_channels, 6, 6))
 
+    def test_prune_neurons_in_grouped_conv_changes_nothing(self):
+        """A grouped convolution is rejected before the post-layer is pruned."""
+        from gromo.modules.growing_normalisation import GrowingBatchNorm2d
+
+        first, second = self.create_demo_layers(bias=True, hidden_channels=4)
+        bn = GrowingBatchNorm2d(4, device=global_device())
+        first.post_layer_function = bn
+        first.layer = torch.nn.Conv2d(
+            first.in_channels, 4, kernel_size=3, groups=first.in_channels
+        ).to(global_device())
+
+        with self.assertRaises(NotImplementedError):
+            second.prune_neurons_in(np.array([0]))
+        self.assertEqual(bn.num_features, 4)
+        self.assertEqual(first.out_channels, 4)
+        self.assertEqual(second.in_channels, 4)
+
     def test_get_fan_in_from_layer(self):
         """Test get_fan_in_from_layer method."""
         layer = self.demo_couple[True][0]
