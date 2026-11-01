@@ -666,3 +666,40 @@ def alphabetic_index(i: int, alphabet: str = string.ascii_lowercase) -> str:
         out.append(alphabet[r])
 
     return "".join(reversed(out))
+
+
+def check_prune_indices(indices: np.ndarray | list[int], size: int) -> np.ndarray:
+    """Validate the indices of the neurons to prune from a dimension of given size.
+
+    Parameters
+    ----------
+    indices : np.ndarray | list[int]
+        indices to remove
+    size : int
+        size of the pruned dimension
+
+    Returns
+    -------
+    np.ndarray
+        sorted unique indices, as an integer array (possibly empty)
+
+    Raises
+    ------
+    TypeError
+        if the indices are not integers
+    IndexError
+        if an index is out of range
+    ValueError
+        if all the neurons would be removed
+    """
+    indices = np.asarray(indices)
+    if indices.size == 0:
+        return indices.astype(np.int64)
+    if not np.issubdtype(indices.dtype, np.integer):
+        raise TypeError("indices_to_remove must contain integers")
+    indices = np.unique(indices)
+    if indices[0] < 0 or indices[-1] >= size:
+        raise IndexError(f"indices {indices} out of range for a dimension of size {size}")
+    if len(indices) == size:
+        raise ValueError("Cannot prune all neurons of a layer")
+    return indices

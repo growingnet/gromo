@@ -2,8 +2,11 @@
 
 from typing import Callable, Literal, TypeAlias, TypedDict
 
+import numpy as np
 import torch
 import torch.nn as nn
+
+from gromo.utils.utils import check_prune_indices
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +318,51 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         """
         return f"{super().extra_repr()}, name={self.name}"
 
+    @torch.no_grad()
+    def prune(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Prune the batch normalization layer by removing specified features.
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            Feature indices to remove.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
+        """
+        indices = check_prune_indices(indices_to_remove, self.num_features)
+        if indices.size == 0:
+            return
+
+        keep_mask = torch.ones(
+            self.num_features,
+            dtype=torch.bool,
+            device=self.weight.device if self.affine else "cpu",
+        )
+        keep_mask[indices] = False
+
+        self.num_features = int(keep_mask.sum().item())
+
+        if getattr(self, "affine", False):
+            weight_requires_grad = self.weight.requires_grad
+            bias_requires_grad = (
+                self.bias.requires_grad if self.bias is not None else False
+            )
+
+            self.weight = nn.Parameter(
+                self.weight[keep_mask].clone(), requires_grad=weight_requires_grad
+            )
+            if self.bias is not None:
+                self.bias = nn.Parameter(
+                    self.bias[keep_mask].clone(), requires_grad=bias_requires_grad
+                )
+
+        if getattr(self, "track_running_stats", False):
+            if self.running_mean is not None:
+                self.running_mean = self.running_mean[keep_mask].clone()
+            if self.running_var is not None:
+                self.running_var = self.running_var[keep_mask].clone()
+
 
 class GrowingBatchNorm2d(GrowingBatchNorm, nn.BatchNorm2d):
     """
@@ -548,6 +596,48 @@ class GrowingLayerNorm(nn.LayerNorm):
         """
         return f"{super().extra_repr()}, name={self.name}"
 
+    @torch.no_grad()
+    def prune(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Prune the LayerNorm layer by removing specified features along the first dimension.
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            Feature indices to remove.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
+        """
+        old_shape = tuple(int(v) for v in self.normalized_shape)
+        first_dim = old_shape[0]
+        indices = check_prune_indices(indices_to_remove, first_dim)
+        if indices.size == 0:
+            return
+
+        keep_mask = torch.ones(
+            first_dim,
+            dtype=torch.bool,
+            device=self.weight.device if self.elementwise_affine else "cpu",
+        )
+        keep_mask[indices] = False
+
+        new_normalized_shape = (int(keep_mask.sum().item()), *old_shape[1:])
+        self.normalized_shape = new_normalized_shape
+
+        if getattr(self, "elementwise_affine", False):
+            weight_requires_grad = self.weight.requires_grad
+            bias_requires_grad = (
+                self.bias.requires_grad if self.bias is not None else False
+            )
+
+            self.weight = nn.Parameter(
+                self.weight[keep_mask].clone(), requires_grad=weight_requires_grad
+            )
+            if self.bias is not None:
+                self.bias = nn.Parameter(
+                    self.bias[keep_mask].clone(), requires_grad=bias_requires_grad
+                )
+
 
 class GrowingGroupNorm(nn.GroupNorm):
     """Growing GroupNorm module.
@@ -744,3 +834,56 @@ class GrowingGroupNorm(nn.GroupNorm):
         Extra representation string for the layer.
         """
         return f"{super().extra_repr()}, name={self.name}"
+
+    @torch.no_grad()
+    def prune(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Prune the GroupNorm layer by removing specified channels.
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            1D array of channel indices to remove.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
+
+        Raises
+        ------
+        ValueError
+            If the groups do not all lose the same number of channels.
+        """
+        indices = check_prune_indices(indices_to_remove, self.num_channels)
+        if indices.size == 0:
+            return
+        # Removing as many channels from every group keeps the others in their group
+        # (their statistics still change, as the group loses members).
+        group_size = self.num_channels // self.num_groups
+        removed = np.bincount(indices // group_size, minlength=self.num_groups)
+        if np.any(removed != removed[0]):
+            raise ValueError(
+                f"The same number of channels must be removed from each group, "
+                f"got {removed.tolist()} for {self.num_groups} groups."
+            )
+
+        keep_mask = torch.ones(
+            self.num_channels,
+            dtype=torch.bool,
+            device=self.weight.device if self.affine else "cpu",
+        )
+        keep_mask[indices] = False
+
+        self.num_channels = int(keep_mask.sum().item())
+
+        if getattr(self, "affine", False):
+            weight_requires_grad = self.weight.requires_grad
+            bias_requires_grad = (
+                self.bias.requires_grad if self.bias is not None else False
+            )
+
+            self.weight = nn.Parameter(
+                self.weight[keep_mask].clone(), requires_grad=weight_requires_grad
+            )
+            if self.bias is not None:
+                self.bias = nn.Parameter(
+                    self.bias[keep_mask].clone(), requires_grad=bias_requires_grad
+                )
