@@ -671,6 +671,11 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertEqual(first.out_features, 4)
         self.assertEqual(second.in_features, 4)
 
+        # empty direct pruning keeps the layer (and its optimizer references)
+        weight = first.layer.weight
+        first.prune_layer_out([])
+        self.assertIs(first.layer.weight, weight)
+
         # direct layer pruning also checks the range
         with self.assertRaises(IndexError):
             first.prune_layer_out([4])

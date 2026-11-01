@@ -1249,6 +1249,8 @@ class Conv2dGrowingModule(GrowingModule):
             )
 
         indices_to_remove = check_prune_indices(indices_to_remove, self.in_channels)
+        if indices_to_remove.size == 0:
+            return
         device = self.layer.weight.device
         keep = np.setdiff1d(np.arange(self.in_channels), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)
@@ -1305,6 +1307,8 @@ class Conv2dGrowingModule(GrowingModule):
             )
 
         indices_to_remove = check_prune_indices(indices_to_remove, self.out_channels)
+        if indices_to_remove.size == 0:
+            return
         device = self.layer.weight.device
         keep = np.setdiff1d(np.arange(self.out_channels), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=device, dtype=torch.long)

@@ -1139,6 +1139,8 @@ class LinearGrowingModule(GrowingModule):
             Column indices in ``self.layer.weight`` to drop.
         """
         indices_to_remove = check_prune_indices(indices_to_remove, self.in_features)
+        if indices_to_remove.size == 0:
+            return
         keep = np.setdiff1d(np.arange(self.in_features), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
 
@@ -1188,6 +1190,8 @@ class LinearGrowingModule(GrowingModule):
             Row indices in ``self.layer.weight`` to drop.
         """
         indices_to_remove = check_prune_indices(indices_to_remove, self.out_features)
+        if indices_to_remove.size == 0:
+            return
         keep = np.setdiff1d(np.arange(self.out_features), indices_to_remove)
         keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
 
