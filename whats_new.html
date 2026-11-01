@@ -420,6 +420,7 @@
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Run pydoclint in CI through its pre-commit hook, so that CI and pre-commit use the same pinned version, and remove the debug step printing secrets in the documentation workflow (<a class="reference external" href="https://github.com/growingnet/gromo/issues/281">#281</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Fix the pseudo-inverses of <code class="docutils literal notranslate"><span class="pre">optimal_delta</span></code>: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and <code class="docutils literal notranslate"><span class="pre">torch.linalg.pinv</span></code> inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. <code class="docutils literal notranslate"><span class="pre">sqrt_inverse_matrix_semi_positive</span></code> no longer modifies its input matrix when <code class="docutils literal notranslate"><span class="pre">eigh</span></code> fails (<a class="reference external" href="https://github.com/growingnet/gromo/XXX">#XXX</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 </ul>
 </section>
