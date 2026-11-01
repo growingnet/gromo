@@ -1,32 +1,56 @@
 [project]
 name = "gromo"
-version = "0.0.1"
+dynamic = ["version"]
 authors = [
-    { name="Manon Verbockhaven", email="manon.verbockhaven@inria.fr" },
-    { name="Stella Douka", email="styliani.douka@inria.fr" },
-    { name="Theo Rudkiewicz", email="theo.rudkiewicz@inria.fr" },
-    { name="Stephane Rivaud", email="stephane.a.rivaud@inria.fr" },
-    { name="Guillaume Charpiat", email="guillaume.charpiat@inria.fr" },
+    { name="Théo Rudkiewicz" },
+    { name="Manon Verbockhaven" },
+    { name="Stella Douka" },
+    { name="Maxence Tekou" },
+    { name="Ying Jin" },
+    { name="Hugo Mousset" },
+    { name="Félix Houdouin" },
+    { name="Léo Burgund" },
+    { name="Stéphane Rivaud" },
+    { name="Alex Davey" },
+    { name="François Landes" },
+    { name="Guillaume Charpiat" },
+    { name="Sylvain Chevallier" },
+]
+maintainers = [
     { name="Sylvain Chevallier", email="sylvain.a.chevallier@inria.fr" },
-    { name="Francois Landes", email="francois.landes@universite-paris-saclay.fr" },
 ]
 description = "Growing module for pytorch"
 readme = "README.md"
-requires-python = ">=3.10"
+license = "BSD-3-Clause"
+license-files = ["LICENCE.md"]
+requires-python = ">=3.11"
+keywords = ["pytorch", "deep learning", "growing neural networks", "neural architecture growth"]
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "build",
     "networkx",
     "torch",
     "numpy",
-    "tomli",
     "deprecated",
     "torchmetrics",
 ]
+
+[project.urls]
+Homepage = "https://growingnet.github.io/gromo/"
+Documentation = "https://growingnet.github.io/gromo/"
+Source = "https://github.com/growingnet/gromo"
+Issues = "https://github.com/growingnet/gromo/issues"
+Changelog = "https://growingnet.github.io/gromo/whats_new.html"
+
 [project.optional-dependencies]
 test = ["coverage"]
 dev = ["ruff", "pre-commit", "pydoclint"]
@@ -48,11 +72,17 @@ doc = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/gromo/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gromo"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/gromo", "tests", "README.md", "LICENCE.md", "CITATION.cff"]
 
 [tool.coverage.run]
 branch = true

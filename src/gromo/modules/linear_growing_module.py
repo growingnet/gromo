@@ -6,6 +6,7 @@ import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tools import KnownThresholdRuleName, ThresholdRule
 
 
 class LinearMergeGrowingModule(MergeGrowingModule):
@@ -15,19 +16,19 @@ class LinearMergeGrowingModule(MergeGrowingModule):
 
     Parameters
     ----------
-    post_merge_function : torch.nn.Module, optional
+    post_merge_function : torch.nn.Module
         activation function after the merge, by default torch.nn.Identity()
-    previous_modules : list[GrowingModule | MergeGrowingModule] | None, optional
+    previous_modules : list[GrowingModule | MergeGrowingModule] | None
         list of preceding modules, by default None
-    next_modules : list[GrowingModule | MergeGrowingModule] | None, optional
+    next_modules : list[GrowingModule | MergeGrowingModule] | None
         list of succeeding modules, by default None
-    allow_growing : bool, optional
+    allow_growing : bool
         allow growth of the module, by default False
-    in_features : int | None, optional
+    in_features : int | None
         input features, by default None
-    device : torch.device | None, optional
+    device : torch.device | None
         default device, by default None
-    name : str | None, optional
+    name : str | None
         name of the module, by default None
     """
 
@@ -300,23 +301,23 @@ class LinearGrowingModule(GrowingModule):
         input features
     out_features : int
         output features
-    use_bias : bool, optional
+    use_bias : bool
         use bias, by default True
-    post_layer_function : torch.nn.Module, optional
+    post_layer_function : torch.nn.Module
         activation function, by default torch.nn.Identity()
-    extended_post_layer_function : torch.nn.Module | None, optional
+    extended_post_layer_function : torch.nn.Module | None
         extended activation function, by default None
-    previous_module : GrowingModule | MergeGrowingModule | None, optional
+    previous_module : GrowingModule | MergeGrowingModule | None
         the preceding growing module, by default None
-    next_module : GrowingModule | MergeGrowingModule | None, optional
+    next_module : GrowingModule | MergeGrowingModule | None
         the succeeding growing module, by default None
-    allow_growing : bool, optional
+    allow_growing : bool
         allow growth of this module, by default False
-    device : torch.device | None, optional
+    device : torch.device | None
         default device, by default None
-    name : str | None, optional
+    name : str | None
         name of the module, by default None
-    target_in_features: int | None, optional
+    target_in_features: int | None
         target fan-in size, by default None
     """
 
@@ -795,10 +796,10 @@ class LinearGrowingModule(GrowingModule):
             extension of the bias vector of the layer
             shape (added_out_features,)
             if None the layer is extended with zeros
-        added_in_features: int, optional
+        added_in_features: int
             number of input features added if None, the number of input
             features is not changed, by default 0
-        added_out_features: int, optional
+        added_out_features: int
             number of output features added if None, the number of output
             features is not changed, by default 0
 
@@ -893,7 +894,7 @@ class LinearGrowingModule(GrowingModule):
         ----------
         weight: torch.Tensor
             weight of the extension with shape (K, in_features)
-        bias: torch.Tensor | None, optional
+        bias: torch.Tensor | None
             bias of the extension if needed with shape (K)
         """
         assert weight.shape[1] == self.in_features, (
@@ -928,8 +929,8 @@ class LinearGrowingModule(GrowingModule):
     # Optimal update computation
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None = None,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -939,6 +940,9 @@ class LinearGrowingModule(GrowingModule):
         use_projection: bool = True,
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
+        fisher_shrinkage: float = 0.0,
+        collect_spectra: bool = False,
+        worst_case_numerical_floor: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -947,10 +951,15 @@ class LinearGrowingModule(GrowingModule):
 
         Parameters
         ----------
-        numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None
+            threshold to consider an eigenvalue as zero in the square root of the inverse of S.
+            None for the numerical floor only (see `numerical_floor_terms`); a
+            value or a rule can only raise the floor. When a rule is given it is
+            bound to the previous module's ``tensor_s``. Known rule names are
+            ``"mean_over_sqrt_n"`` and ``"operator_norm_noise_threshold"``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
         update_previous: bool
@@ -971,6 +980,17 @@ class LinearGrowingModule(GrowingModule):
         use_fisher: bool
             if True, use the covariance of the loss gradient as an additional
             preconditioner when computing the neuron extension
+        fisher_shrinkage: float
+            shrinkage intensity alpha in [0, 1]. If > 0, replace E by the
+            Ledoit-Wolf-style convex combination
+            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it at
+            the numerical floor without its worst-case term. Only has an effect
+            when ``use_fisher`` is True.
+        collect_spectra: bool
+            if True, record the growth spectra in ``self.growth_spectra``
+        worst_case_numerical_floor: bool
+            whether the numerical floor includes its worst-case term, the default
+            tolerance of `torch.linalg.pinv` (see `numerical_floor_terms`)
 
         Returns
         -------
@@ -999,6 +1019,9 @@ class LinearGrowingModule(GrowingModule):
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
             use_fisher=use_fisher,
+            fisher_shrinkage=fisher_shrinkage,
+            collect_spectra=collect_spectra,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
         k = self.eigenvalues_extension.shape[0]
         assert alpha.shape[0] == omega.shape[1], (

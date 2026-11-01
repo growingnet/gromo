@@ -1,5 +1,6 @@
 import copy
 import unittest
+import unittest.mock
 
 import torch
 from torch.nn.functional import one_hot
@@ -126,6 +127,16 @@ class TestGrowingGraphNetwork(TorchTestCase):
                 device=global_device(),
             ),
         }
+
+    def test_compute_optimal_delta_forwards_worst_case_numerical_floor(self) -> None:
+        """The flag of the numerical floor reaches the DAG."""
+        with unittest.mock.patch.object(
+            type(self.net.dag), "compute_optimal_delta"
+        ) as compute_optimal_delta:
+            self.net.compute_optimal_delta(worst_case_numerical_floor=False)
+        self.assertIs(
+            compute_optimal_delta.call_args.kwargs["worst_case_numerical_floor"], False
+        )
 
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
@@ -606,9 +617,9 @@ class TestGrowingGraphNetwork(TorchTestCase):
         self.assertEqual(start_linear_module.in_features, self.out_features + 1)
 
     def test_numeric_accuracy_when_expanding_around_pooling(self) -> None:
-        # import random
-        # torch.manual_seed(0)
-        # random.seed(0)
+        rng_state = torch.random.get_rng_state()
+        self.addCleanup(torch.random.set_rng_state, rng_state)
+        torch.manual_seed(0)
         start_conv, end_conv = self.net_conv.dag.root, self.net_conv.dag.end
         self.net_conv.dag.remove_node("1")
         self.net_conv.dag.add_direct_edge(
@@ -712,12 +723,32 @@ class TestGrowingGraphNetwork(TorchTestCase):
         # In local sweeps, 1.5e-2 is a stable upper bound for this setup.
         # self.assertAllClose(desired_output, output, atol=1.5e-2)
 
-        # Absolute difference between outputs is no longer applicable
-        # Compute alignment instead
-        scalar_product = (
-            torch.einsum("b...,b...->b", output, desired_output).mean().item()
+        output_flat = output.flatten(start_dim=1)
+        desired_output_flat = desired_output.flatten(start_dim=1)
+        cosine_alignment = (
+            torch.nn.functional.cosine_similarity(output_flat, desired_output_flat, dim=1)
+            .mean()
+            .item()
         )
-        self.assertGreater(scalar_product, 5e-2)
+        self.assertGreater(cosine_alignment, 0.9)
+
+    def test_update_computation_true_fisher_on_graph_network(self) -> None:
+        """update_computation_true_fisher/accumulate_true_fisher_covariance
+        must work on a GrowingGraphNetwork: its _growing_layers holds a
+        GrowingDAG instance directly (set_growing_layers appends self.dag),
+        so the container-level clear_pre_activity_grad/update_covariance_
+        loss_gradient dispatch must resolve on that nested container too,
+        not only on individual GrowingModule/MergeGrowingModule leaves."""
+        self.net.init_computation()
+        logits = self.net(self.x)
+        labels = torch.randint(
+            0, self.out_features, (self.batch_size,), device=global_device()
+        )
+        loss = torch.nn.functional.cross_entropy(logits, labels)
+        self.net.update_computation_true_fisher(loss, logits)
+
+        for edge_module in self.net.dag.get_all_edge_modules():
+            self.assertGreater(edge_module.covariance_loss_gradient.samples, 0)
 
 
 if __name__ == "__main__":

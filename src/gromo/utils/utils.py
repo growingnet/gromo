@@ -119,9 +119,9 @@ def set_from_conf(
         object where load_config() has been called
     name : str
         name of variable
-    default : Any, optional
+    default : Any
         default value in case config does not provide one, by default None
-    setter : bool, optional
+    setter : bool
         set the retrieved value as argument in the object, by default True
 
     Returns
@@ -266,7 +266,7 @@ def line_search(
     ----------
     cost_fn : Callable
         black-box convex function
-    return_history : bool, optional
+    return_history : bool
         return full loss history, by default False
 
     Returns
@@ -345,17 +345,17 @@ def mini_batch_gradient_descent(
         maximum epochs
     batch_size : int
         batch size
-    x_keys: list[str], optional
+    x_keys: list[str]
         input keys for lazy loading dataset, by default []
-    y_keys: list[str], optional
+    y_keys: list[str]
         target keys for lazy loading dataset, by default []
-    parameters: Iterable | None, optional
+    parameters: Iterable | None
         list of torch parameters in case the model is just a forward function, by default None
-    fast : bool, optional
+    fast : bool
         fast implementation without evaluation, by default False
-    eval_fn : Callable | None, optional
+    eval_fn : Callable | None
         evaluation function, by default None
-    verbose : bool, optional
+    verbose : bool
         print info, by default True
 
     Returns
@@ -461,13 +461,13 @@ def batch_gradient_descent(
         target tensor
     optimizer : torch.optim.Optimizer
         optimizer
-    max_epochs : int, optional
+    max_epochs : int
         max number of epochs, by default 100
-    tol : float, optional
+    tol : float
         tolerance, by default 1e-5
-    fast : bool, optional
+    fast : bool
         fast implementation without evaluation, by default True
-    eval_fn : Callable | None, optional
+    eval_fn : Callable | None
         evaluation function, by default None
 
     Returns
@@ -640,7 +640,7 @@ def alphabetic_index(i: int, alphabet: str = string.ascii_lowercase) -> str:
     ----------
     i : int
         index
-    alphabet : str, optional
+    alphabet : str
         alphabet to index and repeat, by default string.ascii_lowercase
 
     Returns

@@ -28,3 +28,15 @@ Helpers
     compute_optimal_added_parameters
     compute_output_shape_conv
     compute_mask_tensor_t
+    spectrum_summary
+
+----------
+Thresholds
+----------
+
+.. autosummary::
+    :toctree: generated/
+    :template: function.rst
+
+    resolve_threshold
+    resolve_threshold_rule

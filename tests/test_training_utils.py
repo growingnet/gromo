@@ -63,6 +63,18 @@ class _SimpleGrowingContainer(GrowingContainer):
         return self.forward(x), None
 
 
+class _ShapeCheckingMSELoss(nn.MSELoss):
+    """MSE loss that rejects predictions with an incorrect batch shape."""
+
+    def forward(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if prediction.shape != target.shape:
+            raise AssertionError(
+                f"Prediction shape {prediction.shape} does not match "
+                f"target shape {target.shape}."
+            )
+        return super().forward(prediction, target)
+
+
 class _SumMetric(Metric):
     """Accumulates the sum of first predictions — just enough to test the metrics path."""
 
@@ -224,13 +236,13 @@ class TestEvaluateModel(TorchTestCase):
         self.assertIsInstance(loss, float)
 
     def test_extended_growing_container(self):
-        """use_extended_model=True with a GrowingContainer."""
+        """GrowingContainer evaluation preserves the complete batch output."""
         model = _SimpleGrowingContainer(4, 2)
         dl = self._make_dataloader()
         loss, _ = evaluate_model(
             model,
             dl,
-            nn.MSELoss(reduction="mean"),
+            _ShapeCheckingMSELoss(reduction="mean"),
             use_extended_model=True,
         )
         self.assertIsInstance(loss, float)

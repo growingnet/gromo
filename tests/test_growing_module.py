@@ -14,7 +14,12 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import compute_optimal_added_parameters
+from gromo.utils.tools import (
+    compute_optimal_added_parameters,
+    optimal_delta,
+    pseudo_inverse_matrix_semi_positive,
+    sqrt_inverse_matrix_semi_positive,
+)
 from gromo.utils.utils import global_device
 from tests.torch_unittest import SizedIdentity, TorchTestCase
 from tests.unittest_tools import unittest_parametrize
@@ -121,7 +126,7 @@ class TestGrowingModule(TorchTestCase):
 
     def test_threshold_defaults_are_consistent_in_growth_apis(self):
         """Check that growth APIs use consistent threshold defaults."""
-        expected_numerical_threshold = 1e-6
+        expected_numerical_threshold = None  # the numerical floor only
         expected_statistical_threshold = 1e-3
 
         functions_to_check = [
@@ -146,6 +151,23 @@ class TestGrowingModule(TorchTestCase):
                 signature.parameters["statistical_threshold"].default,
                 expected_statistical_threshold,
                 f"{function_to_check.__qualname__} has unexpected statistical_threshold default",
+            )
+
+        # The worst-case term of the numerical floor is on by default everywhere
+        for function_to_check in [
+            *functions_to_check,
+            GrowingModule.compute_optimal_delta,
+            MergeGrowingModule.compute_optimal_delta,
+            optimal_delta,
+            sqrt_inverse_matrix_semi_positive,
+            pseudo_inverse_matrix_semi_positive,
+        ]:
+            signature = inspect.signature(function_to_check)
+            self.assertIs(
+                signature.parameters["worst_case_numerical_floor"].default,
+                True,
+                f"{function_to_check.__qualname__} has unexpected "
+                "worst_case_numerical_floor default",
             )
 
     def test_weight(self):

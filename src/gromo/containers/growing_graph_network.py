@@ -42,25 +42,25 @@ class GrowingGraphNetwork(GrowingContainer):
         size of output dimension
     loss_fn : torch.nn.Module
         loss function
-    neurons : int, optional
+    neurons : int
         default number of neurons to add at each step, by default 20
-    neuron_epochs : int, optional
+    neuron_epochs : int
         number of epochs to train the new neurons for, by default 100
-    neuron_lrate : float, optional
+    neuron_lrate : float
         learning rate used when training the new neurons, by default 1e-3
-    neuron_batch_size : int, optional
+    neuron_batch_size : int
         batch size used when training the new neurons, by default 256
-    use_bias : bool, optional
+    use_bias : bool
         automatically use bias in the layers, by default True
-    use_layer_norm : bool, optional
+    use_layer_norm : bool
         use layer normalization on the last layer, by default False
-    layer_type : str, optional
+    layer_type : str
         the type of the layers used to choose between "linear" and "convolution", by default "linear"
-    name : str, optional
+    name : str
         name of the growing dag, by default ""
-    input_shape : tuple[int, int] | None, optional
+    input_shape : tuple[int, int] | None
         the expected shape of the input excluding batch size and channels, by default None
-    device : str | None, optional
+    device : str | None
         default device, by default None
     """
 
@@ -114,9 +114,11 @@ class GrowingGraphNetwork(GrowingContainer):
         """Initialize statistics computations for growth procedure"""
         self.dag.init_computation()
 
-    def update_computation(self):
+    def update_computation(self, update_covariance_loss_gradient: bool = True):
         """Update statistics computations for growth procedure"""
-        self.dag.update_computation()
+        self.dag.update_computation(
+            update_covariance_loss_gradient=update_covariance_loss_gradient
+        )
 
     def reset_computation(self):
         """Reset statistics computations for growth procedure"""
@@ -127,23 +129,28 @@ class GrowingGraphNetwork(GrowingContainer):
         update: bool = True,
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
+        worst_case_numerical_floor: bool = True,
     ):
         """Compute optimal delta for growth procedure
 
         Parameters
         ----------
-        update : bool, optional
+        update : bool
             update the optimal delta layer attribute and the first order decrease, by default True
-        return_deltas: bool, optional
+        return_deltas: bool
             placeholder argument as this function does not return anything
-        force_pseudo_inverse : bool, optional
+        force_pseudo_inverse : bool
             use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible, by default False
+        worst_case_numerical_floor : bool
+            whether the numerical floor of the pseudo-inverses includes its
+            worst-case term (see `optimal_delta`), by default True
         """
         self.dag.compute_optimal_delta(
             update=update,
             return_deltas=return_deltas,
             force_pseudo_inverse=force_pseudo_inverse,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
 
     def delete_update(self) -> None:
@@ -280,11 +287,11 @@ class GrowingGraphNetwork(GrowingContainer):
             input keys for lazy loading dataset
         target_keys: list[str]
             target keys for lazy loading dataset
-        linear : bool, optional
+        linear : bool
             if the functions are linear or convolution, by default True
-        operation_args : dict, optional
+        operation_args : dict
             extra arguments for convolution, for example 'padding', by default {}
-        verbose : bool, optional
+        verbose : bool
             print info, by default True
 
         Returns
@@ -372,9 +379,9 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their pre-activity tensors as values
-        neuron_selection_threshold : float, optional
+        neuron_selection_threshold : float
             select neurons based on first order improvement threshold, by default -inf
-        verbose : bool, optional
+        verbose : bool
             print info, by default True
 
         Returns
@@ -656,7 +663,7 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their pre-activity tensors as values
-        verbose : bool, optional
+        verbose : bool
             print info, by default True
 
         Returns
@@ -785,7 +792,7 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         dataloader : DataLoader
             dataloader with input features and target
-        mask : dict, optional
+        mask : dict
             extension mask for specific nodes and edges, by default {}
             example: mask["edges"] for edges and mask["nodes"] for nodes
 
@@ -838,15 +845,15 @@ class GrowingGraphNetwork(GrowingContainer):
             use amplitude factor on new neurons
         evaluate : bool
             evaluate expansion on the data
-        neuron_selection_threshold : float, optional
+        neuron_selection_threshold : float
             select neurons based on first order improvement threshold, by default -inf
-        train_dataloader : DataLoader, optional
+        train_dataloader : DataLoader
             train dataloader, used if evaluate=True
-        dev_dataloader : DataLoader, optional
+        dev_dataloader : DataLoader
             development dataloader, used if evaluate=True or amplitude_factor=True
-        val_dataloader : DataLoader, optional
+        val_dataloader : DataLoader
             validation dataloader, used if evaluate=True
-        verbose : bool, optional
+        verbose : bool
             print info, by default False
         """
         if amplitude_factor:
@@ -943,9 +950,9 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         actions : list[Expansion]
             list with growth actions information
-        chosen_outputs : list[str] | None, optional
+        chosen_outputs : list[str] | None
             output node position to restrict to
-        chosen_inputs : list[str] | None, optional
+        chosen_inputs : list[str] | None
             input node position to restrict to
 
         Returns
@@ -1003,9 +1010,9 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         options : Sequence[Expansion]
             list with all possible graphs and their statistics
-        use_bic : bool, optional
+        use_bic : bool
             use BIC to select the network expansion, by default False
-        verbose : bool, optional
+        verbose : bool
             print info, by default False
         """
         # Greedy choice based on validation loss
@@ -1150,9 +1157,9 @@ class GrowingGraphNetwork(GrowingContainer):
         ----------
         x : torch.Tensor
             input tensor
-        x_ext: torch.Tensor, optional
+        x_ext: torch.Tensor
             extension tensor, by default None
-        mask : dict, optional
+        mask : dict
             extension mask for specific nodes and edges, by default {}
             example: mask["edges"] for edges and mask["nodes"] for nodes
 

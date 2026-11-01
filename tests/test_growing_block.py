@@ -847,6 +847,63 @@ class TestLinearGrowingBlock(TorchTestCase):
         self.assertFalse(block.second_layer.store_input)
         self.assertFalse(block.second_layer.store_pre_activity)
 
+    def test_update_computation_skips_covariance(self):
+        """update_computation(update_covariance_loss_gradient=False) updates
+        S/M but leaves the second layer's gradient covariance untouched."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_neurons,
+            device=self.device,
+        )
+        block.init_computation()
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        block(x).pow(2).sum().backward()
+
+        block.update_computation(update_covariance_loss_gradient=False)
+
+        self.assertEqual(block.second_layer.tensor_m_prev.samples, self.batch_size)
+        self.assertEqual(block.second_layer.covariance_loss_gradient.samples, 0)
+
+    def test_update_covariance_loss_gradient(self):
+        """update_covariance_loss_gradient updates only the second layer's
+        gradient-covariance statistic."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_neurons,
+            device=self.device,
+        )
+        block.init_computation()
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        block(x).pow(2).sum().backward()
+
+        block.update_covariance_loss_gradient()
+
+        self.assertEqual(
+            block.second_layer.covariance_loss_gradient.samples, self.batch_size
+        )
+
+    def test_clear_pre_activity_grad(self):
+        """clear_pre_activity_grad clears the retained pre-activity gradient
+        of both the first and second layers."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=self.hidden_neurons,
+            device=self.device,
+        )
+        block.init_computation()
+        x = torch.randn(self.batch_size, self.in_features, device=self.device)
+        block(x).pow(2).sum().backward(retain_graph=True)
+
+        # only the second layer stores its pre-activity (see init_computation)
+        self.assertIsNotNone(block.second_layer.pre_activity.grad)
+
+        block.clear_pre_activity_grad()
+
+        self.assertIsNone(block.second_layer.pre_activity.grad)
+
     def test_forward_backward_compatibility(self):
         """Test that forward and backward passes work correctly."""
         block = LinearGrowingBlock(
@@ -1036,6 +1093,39 @@ class TestLinearGrowingBlock(TorchTestCase):
         ]
         for obj in deleted_objects:
             self.assertIsNone(obj)
+
+    def test_growth_spectra_on_empty_block(self):
+        """The empty-block branch of compute_optimal_updates records its spectra."""
+        block = LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=0,
+            activation=torch.nn.Identity(),
+            device=self.device,
+            name="test_block",
+        )
+        block.init_computation()
+        x_batch = indicator_batch((self.in_features,), device=self.device)
+        block.zero_grad()
+        loss = (block(x_batch) ** 2).sum() / 2
+        loss.backward()
+        block.update_computation()
+
+        block.compute_optimal_updates(maximum_added_neurons=self.in_features)
+        self.assertIsNone(block.growth_spectra)
+
+        block.compute_optimal_updates(
+            maximum_added_neurons=self.in_features, collect_spectra=True
+        )
+        spectra = block.growth_spectra
+        assert spectra is not None
+        self.assertIsNotNone(spectra["extension"])
+        # There is no natural-gradient step on this path
+        self.assertIsNone(spectra["delta"])
+        assert block.eigenvalues_extension is not None
+        self.assertEqual(
+            spectra["extension"]["kept"], block.eigenvalues_extension.shape[0]
+        )
 
     def test_full_addition_loop_with_features_identity_initialization(
         self, bias: bool = False

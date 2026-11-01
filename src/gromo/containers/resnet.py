@@ -592,7 +592,7 @@ class ResNetBasicBlock(SequentialGrowingModel):
         ----------
         x : torch.Tensor
             input tensor
-        mask : dict | None, optional
+        mask : dict | None
             extension mask for specific nodes and edges, by default None
 
 

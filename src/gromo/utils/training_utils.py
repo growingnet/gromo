@@ -29,7 +29,7 @@ class AverageMeter(object):
         ----------
         val : torch.Tensor
             The new value to include in the average.
-        n : int, optional
+        n : int
             The number of samples that `val` represents. Default is 1.
         """
         if torch.isfinite(val).all():
@@ -92,14 +92,14 @@ def enumerate_dataloader(
     ----------
     dataloader : torch.utils.data.DataLoader
         The dataloader to iterate over.
-    dataloader_seed : int | None, optional
+    dataloader_seed : int | None
         An optional seed to set for the dataloader's random number generator (if it has
         one). This can be used to ensure reproducibility when shuffling is involved.
         Default is None.
-    batch_limit : int | None, optional
+    batch_limit : int | None
         Maximum number of batches to yield after `epochs` epochs.
         Use -1 for no limit. Default is None.
-    epochs : float | None, optional
+    epochs : float | None
         Proportion of the dataloader to iterate over.
         Is incompatible with non None `batch_limit`.
 
@@ -169,21 +169,21 @@ def evaluate_model(
         The dataloader for evaluation data.
     loss_function : nn.Module | Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
         The loss function to use. Must have reduction="mean".
-    use_extended_model : bool, optional
+    use_extended_model : bool
         Whether to use the extended model for evaluation. Default is False.
-    metrics : Metric | None, optional
+    metrics : Metric | None
         A Metric instance to track auxiliary metrics (e.g., accuracy).
         Will be reset at the start and updated each batch. Default is None.
-    batch_limit : int | None, optional
+    batch_limit : int | None
         Maximum number of batches to evaluate. Use -1 for no limit. Default is None.
-    dataloader_seed : int | None, optional
+    dataloader_seed : int | None
         An optional seed to set for the dataloader's random number generator (if it has
         one). This can be used to ensure reproducibility when shuffling is involved.
         Default is None.
-    mask : dict | None, optional
+    mask : dict | None
         The mask to use for the extended model. Only used if `use_extended_model` is True.
         Default is None.
-    device : torch.device, optional
+    device : torch.device
         Device to use. Default is torch.device("cpu").
 
     Returns
@@ -258,22 +258,22 @@ def gradient_descent(
         The dataloader for training data.
     optimizer : torch.optim.Optimizer
         The optimizer to use.
-    scheduler : torch.optim.lr_scheduler.LRScheduler | None, optional
+    scheduler : torch.optim.lr_scheduler.LRScheduler | None
         Learning rate scheduler. Default is None.
     loss_function : nn.Module
         The loss function to use. Must have reduction="mean".
-    metrics : Metric | None, optional
+    metrics : Metric | None
         A Metric instance to track auxiliary metrics (e.g., accuracy).
         Will be reset at the start and updated each batch. Default is None.
-    batch_limit : int | None, optional
+    batch_limit : int | None
         Maximum number of batches to train. Use -1 for no limit. Default is None.
-    dataloader_seed : int | None, optional
+    dataloader_seed : int | None
         An optional seed to set for the dataloader's random number generator (if it has
         one). This can be used to ensure reproducibility when shuffling is involved.
         Default is None.
-    device : torch.device, optional
+    device : torch.device
         Device to use. Default is torch.device("cpu").
-    scheduler_step_granularity : Literal["epoch", "batch"], optional
+    scheduler_step_granularity : Literal["epoch", "batch"]
         Whether to step the scheduler after each epoch (`"epoch"`, default) or each mini-batch (`"batch"`).
 
     Returns
@@ -345,16 +345,16 @@ def compute_statistics(
         The dataloader to use.
     loss_function : nn.Module
         The loss function to use. Must have reduction="sum".
-    metrics : Metric | None, optional
+    metrics : Metric | None
         A Metric instance to track auxiliary metrics (e.g., accuracy).
         Will be reset at the start and updated each batch. Default is None.
-    batch_limit : int | None, optional
+    batch_limit : int | None
         The maximum number of batches to use. Default is None (no limit).
-    dataloader_seed : int | None, optional
+    dataloader_seed : int | None
         An optional seed to set for the dataloader's random number generator (if it has
         one). This can be used to ensure reproducibility when shuffling is involved.
         Default is None.
-    device : torch.device, optional
+    device : torch.device
         The device to use. Default is torch.device("cpu").
 
     Returns
@@ -409,7 +409,7 @@ def evaluate_extended_dataset(
         dataloader containing the data
     loss_fn : Callable
         loss function for bottleneck calculation
-    mask : dict | None, optional
+    mask : dict | None
         extension mask for specific nodes and edges, by default None
         example: mask["edges"] for edges and mask["nodes"] for nodes
 
