@@ -1615,6 +1615,20 @@ class TestGrowingModulePruningValidation(TorchTestCase):
         with self.assertRaises(TypeError) as ctx:
             second.prune_neurons_in(np.array([0]))
         self.assertIn("does not support pruning", str(ctx.exception))
+        self.assertEqual(first.out_features, 4)
+        self.assertEqual(second.in_features, 4)
+
+        # a prunable module before the unsupported one is left untouched too
+        from gromo.modules.growing_normalisation import GrowingBatchNorm1d
+
+        bn = GrowingBatchNorm1d(4, device=global_device())
+        first.post_layer_function = torch.nn.Sequential(
+            bn, torch.nn.Linear(4, 4, device=global_device())
+        )
+        with self.assertRaises(TypeError):
+            second.prune_neurons_in(np.array([0]))
+        self.assertEqual(bn.num_features, 4)
+        self.assertEqual(first.out_features, 4)
 
 
 if __name__ == "__main__":

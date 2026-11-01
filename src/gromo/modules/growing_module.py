@@ -4401,8 +4401,9 @@ class GrowingModule(torch.nn.Module):
             return
 
         # Drop matching dims on both sides. Subclasses implement the slicing.
-        self.previous_module.prune_layer_out(indices)  # rows of W_prev
+        # The post-layer goes first: it is the only step that can reject the pruning.
         self._prune_post_layer_function(indices)  # post-layer of the previous module
+        self.previous_module.prune_layer_out(indices)  # rows of W_prev
         self.prune_layer_in(indices)  # cols of W_self
 
     @torch.no_grad()
@@ -4424,16 +4425,15 @@ class GrowingModule(torch.nn.Module):
             sub_modules = (
                 list(post_fn) if isinstance(post_fn, torch.nn.Sequential) else [post_fn]
             )
-            for m in sub_modules:
-                if is_passthrough(m):
-                    continue
-                # If the module has a prune method, call it.
-                if hasattr(m, "prune") and callable(m.prune):
-                    m.prune(indices)
-                else:
+            to_prune = [m for m in sub_modules if not is_passthrough(m)]
+            # Check every module before pruning any, so a failure changes nothing.
+            for m in to_prune:
+                if not callable(getattr(m, "prune", None)):
                     raise TypeError(
                         f"Module {type(m)} is not a passthrough module and does not support pruning (no prune method)."
                     )
+            for m in to_prune:
+                m.prune(indices)
 
     def missing_neurons(self) -> int:
         """
