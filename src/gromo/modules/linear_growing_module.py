@@ -1137,6 +1137,8 @@ class LinearGrowingModule(GrowingModule):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Column indices in ``self.layer.weight`` to drop.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
         """
         indices_to_remove = check_prune_indices(indices_to_remove, self.in_features)
         if indices_to_remove.size == 0:
@@ -1188,6 +1190,8 @@ class LinearGrowingModule(GrowingModule):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Row indices in ``self.layer.weight`` to drop.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
         """
         indices_to_remove = check_prune_indices(indices_to_remove, self.out_features)
         if indices_to_remove.size == 0:

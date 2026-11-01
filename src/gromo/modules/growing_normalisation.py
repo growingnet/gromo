@@ -327,6 +327,8 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Feature indices to remove.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
         """
         indices = check_prune_indices(indices_to_remove, self.num_features)
         if indices.size == 0:
@@ -603,6 +605,8 @@ class GrowingLayerNorm(nn.LayerNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             Feature indices to remove.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
         """
         old_shape = tuple(int(v) for v in self.normalized_shape)
         first_dim = old_shape[0]
@@ -840,6 +844,8 @@ class GrowingGroupNorm(nn.GroupNorm):
         ----------
         indices_to_remove : np.ndarray | list[int]
             1D array of channel indices to remove.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
 
         Raises
         ------
