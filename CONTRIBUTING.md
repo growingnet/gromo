@@ -49,7 +49,12 @@ GitHub username and add the main repository as
 
    - Code is formatted and linted with [ruff](https://docs.astral.sh/ruff/), run by
      the pre-commit hooks at each commit.
-   - We use [ty](https://docs.astral.sh/ty/). Existing code has type warning so we don't have a strict CI for now, but newly added code should be type warning free.
+   - Types are checked with [ty](https://docs.astral.sh/ty/), adopted gradually: the
+     existing code still has type errors, so the CI only reports ty diagnostics on
+     the lines changed by a pull request, without failing. New or modified code
+     should have none. Run ty on the package with
+     `uv run pre-commit run ty --hook-stage manual --all-files`, or use the ty
+     extension of your editor.
    - Public functions and classes have type annotations and
      [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html) docstrings,
      checked by pydoclint.
