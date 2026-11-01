@@ -189,3 +189,10 @@ lines-after-imports = 2
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.src]
+# Gradual adoption: start with the package, tests and examples will follow.
+include = ["src"]
