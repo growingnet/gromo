@@ -4411,7 +4411,7 @@ class GrowingModule(torch.nn.Module):
                 "Pruning is only supported for Conv2d layers with groups == 1."
             )
 
-        # Drop matching dims on both sides. Subclasses implement the slicing.
+        # Drop matching dims on both sides.
         # The post-layer goes first: it is the only step that can reject the pruning.
         self._prune_post_layer_function(indices)  # post-layer of the previous module
         self.previous_module.prune_layer_out(indices)  # rows of W_prev
@@ -4428,6 +4428,42 @@ class GrowingModule(torch.nn.Module):
             stale += [self.next_module.tensor_m_prev, self.next_module.cross_covariance]
         for statistic in stale:
             statistic.reset()
+
+    @torch.no_grad()
+    def _prune_layer(
+        self, indices_to_remove: np.ndarray | list[int], dim: int, size_name: str
+    ) -> None:
+        """Drop outputs (``dim=0``) or inputs (``dim=1``) of ``self.layer`` in place."""
+        size = self.layer.weight.shape[dim]
+        indices = check_prune_indices(indices_to_remove, size)
+        if indices.size == 0:
+            return
+        keep = np.setdiff1d(np.arange(size), indices)
+        keep_idx = torch.from_numpy(keep).to(self.layer.weight.device)
+
+        weight = self.layer.weight
+        self.layer.weight = torch.nn.Parameter(
+            weight.index_select(dim, keep_idx), requires_grad=weight.requires_grad
+        )
+        setattr(self.layer, size_name, len(keep))  # e.g. in_features, out_channels
+        if dim == 0 and self.layer.bias is not None:
+            bias = self.layer.bias
+            self.layer.bias = torch.nn.Parameter(
+                bias.index_select(0, keep_idx), requires_grad=bias.requires_grad
+            )
+        if dim == 1:
+            self._tensor_s = TensorStatistic(
+                (self.in_features + self.use_bias, self.in_features + self.use_bias),
+                update_function=self.compute_s_update,
+                device=self.device,
+                name=self.tensor_s.name,
+            )
+        self.tensor_m = TensorStatistic(
+            (self.in_features + self.use_bias, self.out_features),
+            update_function=self.compute_m_update,
+            device=self.device,
+            name=self.tensor_m.name,
+        )
 
     @torch.no_grad()
     def _prune_post_layer_function(self, indices: np.ndarray) -> None:

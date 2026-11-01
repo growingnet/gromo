@@ -7,7 +7,6 @@ import torch
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import KnownThresholdRuleName, ThresholdRule
-from gromo.utils.utils import check_prune_indices
 
 
 class LinearMergeGrowingModule(MergeGrowingModule):
@@ -1140,45 +1139,7 @@ class LinearGrowingModule(GrowingModule):
             Validated by ``check_prune_indices``, which raises TypeError,
             IndexError or ValueError.
         """
-        indices_to_remove = check_prune_indices(indices_to_remove, self.in_features)
-        if indices_to_remove.size == 0:
-            return
-        keep = np.setdiff1d(np.arange(self.in_features), indices_to_remove)
-        keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
-
-        weight_requires_grad = self.layer.weight.requires_grad
-        bias_requires_grad = (
-            self.layer.bias.requires_grad if self.layer.bias is not None else False
-        )
-
-        new_layer = torch.nn.Linear(
-            in_features=len(keep),
-            out_features=self.out_features,
-            bias=self.use_bias,
-            device=self.device,
-        )
-        new_layer.weight = torch.nn.Parameter(
-            self.layer.weight.index_select(1, keep_idx).clone(),
-            requires_grad=weight_requires_grad,
-        )
-        if self.use_bias:
-            new_layer.bias = torch.nn.Parameter(
-                self.layer.bias.clone(), requires_grad=bias_requires_grad
-            )
-
-        self.layer = new_layer
-
-        use_bias = int(self.use_bias)  # convert bool to int for the shape of S and M
-        self._tensor_s = TensorStatistic(
-            (self.in_features + use_bias, self.in_features + use_bias),
-            update_function=self.compute_s_update,
-            name=self.tensor_s.name,
-        )
-        self.tensor_m = TensorStatistic(
-            (self.in_features + use_bias, self.out_features),
-            update_function=self.compute_m_update,
-            name=self.tensor_m.name,
-        )
+        self._prune_layer(indices_to_remove, dim=1, size_name="in_features")
 
     @torch.no_grad()
     def prune_layer_out(self, indices_to_remove: np.ndarray | list[int]) -> None:
@@ -1193,37 +1154,4 @@ class LinearGrowingModule(GrowingModule):
             Validated by ``check_prune_indices``, which raises TypeError,
             IndexError or ValueError.
         """
-        indices_to_remove = check_prune_indices(indices_to_remove, self.out_features)
-        if indices_to_remove.size == 0:
-            return
-        keep = np.setdiff1d(np.arange(self.out_features), indices_to_remove)
-        keep_idx = torch.from_numpy(keep).to(device=self.device, dtype=torch.long)
-
-        weight_requires_grad = self.layer.weight.requires_grad
-        bias_requires_grad = (
-            self.layer.bias.requires_grad if self.layer.bias is not None else False
-        )
-
-        new_layer = torch.nn.Linear(
-            in_features=self.in_features,
-            out_features=len(keep),
-            bias=self.use_bias,
-            device=self.device,
-        )
-        new_layer.weight = torch.nn.Parameter(
-            self.layer.weight.index_select(0, keep_idx).clone(),
-            requires_grad=weight_requires_grad,
-        )
-        if self.use_bias:
-            new_layer.bias = torch.nn.Parameter(
-                self.layer.bias.index_select(0, keep_idx).clone(),
-                requires_grad=bias_requires_grad,
-            )
-
-        self.layer = new_layer
-
-        self.tensor_m = TensorStatistic(
-            (self.in_features + int(self.use_bias), self.out_features),
-            update_function=self.compute_m_update,
-            name=self.tensor_m.name,
-        )
+        self._prune_layer(indices_to_remove, dim=0, size_name="out_features")
