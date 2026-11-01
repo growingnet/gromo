@@ -64,13 +64,6 @@ jobs:
       - name: Add CNAME
         run: echo 'growingnet.github.io/gromo/' > docs/build/html/CNAME
 
-      # DEBUG only
-      - name: Check GITHUB_TOKEN Info
-        run: |
-          echo "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"
-          echo "GH_PAT: ${{ secrets.GH_PAT }}"
-          echo "SSH KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}"
-
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:

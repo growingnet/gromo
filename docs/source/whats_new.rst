@@ -21,6 +21,8 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Add Dependabot to open monthly grouped updates of the pre-commit hooks and GitHub Actions versions (:gh:`282` by `Sylvain Chevallier`_)
+- Add prune layer support to ``GrowingModule``, ``LinearGrowingModule``, ``Conv2dGrowingModule``, and growing normalisation layers to shrink layers along features/channels (:gh:`258` by `Ying jin`_).
+- Add sequentially growable transformer backbones and classifier variants, including CCT, CVT, ViT-Lite, and text/image transformer support, with sequential block scheduling and tests (:gh:`256` by `Santiago23florido`_).
 - Add a numerical floor under every eigenvalue threshold of ``S`` and ``E``: the maximum of the default tolerance of ``torch.linalg.pinv`` (``d * eps * lambda_1`` in the dtype of the eigendecomposition), one ulp of ``lambda_1`` in the less precise of the accumulation and inversion dtypes, and twice the most negative eigenvalue, which measures the noise of low-precision (e.g. bfloat16) statistics. The first term can be switched off with ``worst_case_numerical_floor=False``, forwarded by the growth APIs and the containers; it is off for the shrunk ``E`` of ``fisher_shrinkage``. The floor replaces the absolute fallback of :gh:`275`, records its terms in the spectra (``"numerical_floor"``, ``"numerical_floor_terms"``), and also applies to the pseudo-inverses of ``optimal_delta`` (``pseudo_inverse_matrix_semi_positive``). Add the threshold rule ``"operator_norm_noise_threshold"`` (a conservative estimate of the operator norm of the estimation error) and ``TensorStatistic.dtype`` (:gh:`XXX` by `Théo Rudkiewicz`_).
 - Allow the eigenvalue thresholds of the growth APIs to be data-dependent: ``numerical_threshold`` and ``statistical_threshold`` now accept a threshold rule (or its name, e.g. ``"mean_over_sqrt_n"``) mapping the ``TensorStatistic`` the thresholded matrix was estimated from and its spectrum to a threshold. The default of ``numerical_threshold`` changes in :gh:`XXX` (see API changes) (:gh:`275` by `Théo Rudkiewicz`_).
 - Expose the spectra computed during growth: ``GrowingModule.compute_optimal_updates`` gains ``collect_spectra`` and ``collect_delta_spectrum``, which record in ``GrowingModule.growth_spectra`` the whitening spectra of ``S`` and ``E``, the singular values of the SVD target before selection and those of the optimal delta, together with the thresholds applied and the resulting counts. Add ``spectrum_summary`` to derive the usual scalars from a spectrum (:gh:`275` by `Théo Rudkiewicz`_).
@@ -29,6 +31,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Run pydoclint in CI through its pre-commit hook, so that CI and pre-commit use the same pinned version, and remove the debug step printing secrets in the documentation workflow (:gh:`281` by `Sylvain Chevallier`_)
 - Fix the pseudo-inverses of ``optimal_delta``: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and ``torch.linalg.pinv`` inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. ``sqrt_inverse_matrix_semi_positive`` no longer modifies its input matrix when ``eigh`` fails (:gh:`XXX` by `Théo Rudkiewicz`_)
 
 API changes
@@ -178,3 +181,5 @@ API changes
 .. _Hugo Mousset: https://github.com/hmousset
 .. _ferdinandlouapre: https://github.com/ferdinandlouapre
 .. _Pako Maxence TEKOU: https://github.com/maxencelebaron
+.. _Ying jin: https://github.com/PineappleBlowsnow
+.. _Santiago23florido: https://github.com/Santiago23florido

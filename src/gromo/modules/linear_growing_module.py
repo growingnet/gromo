@@ -1,6 +1,7 @@
 import types
 from warnings import warn
 
+import numpy as np
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
@@ -1123,3 +1124,34 @@ class LinearGrowingModule(GrowingModule):
         self.extended_output_layer = torch.nn.Linear(
             self.in_features, extension_size, bias=self.use_bias, device=self.device
         )
+
+    @torch.no_grad()
+    def prune_layer_in(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Shrink ``self.layer`` by dropping the given input columns of its weight.
+
+        Bias is unchanged (bias dim = out_features).
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            Column indices in ``self.layer.weight`` to drop.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
+        """
+        self._prune_layer(indices_to_remove, dim=1, size_name="in_features")
+
+    @torch.no_grad()
+    def prune_layer_out(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """
+        Shrink ``self.layer`` by dropping the given output rows of its weight
+        (and the matching bias entries, if any).
+
+        Parameters
+        ----------
+        indices_to_remove : np.ndarray | list[int]
+            Row indices in ``self.layer.weight`` to drop.
+            Validated by ``check_prune_indices``, which raises TypeError,
+            IndexError or ValueError.
+        """
+        self._prune_layer(indices_to_remove, dim=0, size_name="out_features")

@@ -13,6 +13,8 @@ from typing import (
 
 import numpy as np
 import torch
+import torch.nn.modules.activation as activation_mod
+import torch.nn.modules.dropout as dropout_mod
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
@@ -25,6 +27,7 @@ from gromo.utils.tools import (
     resolve_threshold_rule,
 )
 from gromo.utils.utils import (
+    check_prune_indices,
     compute_tensor_stats,
     get_correct_device,
     known_activations_zero_plus_gradient,
@@ -848,6 +851,23 @@ class SupportsExtendedForward(Protocol):
             propagate as ``None`` outputs.
         """
         ...
+
+
+def is_passthrough(module: torch.nn.Module) -> bool:
+    """Check if a module is a passthrough layer (no learnable parameters/buffers)."""
+    cls = module.__class__
+    if cls is torch.nn.Identity:
+        return True
+    if cls.__module__ == dropout_mod.__name__:
+        return True
+    return (
+        cls.__module__ == activation_mod.__name__
+        and len(list(module.parameters(recurse=False))) == 0
+        and len(list(module.buffers(recurse=False))) == 0
+        and not isinstance(
+            module, (torch.nn.PReLU, torch.nn.MultiheadAttention, torch.nn.GLU)
+        )
+    )
 
 
 class GrowingModule(torch.nn.Module):
@@ -4358,6 +4378,148 @@ class GrowingModule(torch.nn.Module):
             neuron_pairing=neuron_pairing,
             noise_ratio=noise_ratio,
         )
+
+    @torch.no_grad()
+    def prune_neurons_in(
+        self,
+        indices_to_remove: list[int] | np.ndarray,
+    ) -> None:
+        """
+        Remove neurons between the previous module and this one.
+
+        The neurons are removed from the outputs of ``previous_module`` (rows of
+        its weight and bias), from its ``post_layer_function`` and from the
+        inputs of this module (columns of its weight). Each module of the
+        post-layer function must either have no parameters (activations,
+        dropout) or a ``prune`` method (growing normalisations).
+
+        The pruned weights are new ``torch.nn.Parameter`` objects: an optimizer
+        created before the pruning must be created again. Statistics whose shape
+        depends on the pruned neurons are emptied.
+
+        Parameters
+        ----------
+        indices_to_remove : list[int] | np.ndarray
+            Indices of the neurons to remove, between 0 and
+            ``previous_module.out_features - 1``. Validated by
+            ``check_prune_indices``, which raises TypeError, IndexError or
+            ValueError. An empty list does nothing.
+
+        Raises
+        ------
+        TypeError
+            If the previous module is not a GrowingModule, or a module of its
+            post-layer function cannot be pruned.
+        NotImplementedError
+            If the inputs of this module are reshaped outputs of the previous
+            one (e.g. a flatten), or a convolution uses ``groups != 1``.
+        """
+        # Need a previous GrowingModule to coordinate with.
+        if not isinstance(self.previous_module, GrowingModule):
+            raise TypeError(
+                f"prune_neurons_in requires a previous GrowingModule, "
+                f"got {type(self.previous_module)}"
+            )
+
+        indices = check_prune_indices(
+            indices_to_remove, self.previous_module.out_features
+        )
+        if indices.size == 0:
+            return
+        # e.g. a convolution followed by a flatten and a linear layer
+        if self.layer.weight.shape[1] != self.previous_module.layer.weight.shape[0]:
+            raise NotImplementedError(
+                "Pruning requires the inputs of this layer to be the outputs of the "
+                "previous one, with no reshaping in between."
+            )
+        # Checked here too so that nothing is pruned before the layers reject it.
+        if any(getattr(m.layer, "groups", 1) != 1 for m in (self.previous_module, self)):
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
+
+        # Drop matching dims on both sides.
+        # The post-layer goes first: it is the only step that can reject the pruning.
+        self._prune_post_layer_function(indices)  # post-layer of the previous module
+        self.previous_module.prune_layer_out(indices)  # rows of W_prev
+        self.prune_layer_in(indices)  # cols of W_self
+
+        # These statistics take their shape at their first update, so they must be
+        # emptied for the next update to use the pruned size.
+        stale = [
+            self.previous_module.tensor_m_prev,
+            self.previous_module.covariance_loss_gradient,
+            self.cross_covariance,
+        ]
+        if isinstance(self.next_module, GrowingModule):
+            stale += [self.next_module.tensor_m_prev, self.next_module.cross_covariance]
+        for statistic in stale:
+            statistic.reset()
+
+    @torch.no_grad()
+    def _prune_layer(
+        self, indices_to_remove: np.ndarray | list[int], dim: int, size_name: str
+    ) -> None:
+        """Drop outputs (``dim=0``) or inputs (``dim=1``) of ``self.layer`` in place."""
+        size = self.layer.weight.shape[dim]
+        indices = check_prune_indices(indices_to_remove, size)
+        if indices.size == 0:
+            return
+        keep = np.setdiff1d(np.arange(size), indices)
+        keep_idx = torch.from_numpy(keep).to(self.layer.weight.device)
+
+        weight = self.layer.weight
+        self.layer.weight = torch.nn.Parameter(
+            weight.index_select(dim, keep_idx), requires_grad=weight.requires_grad
+        )
+        setattr(self.layer, size_name, len(keep))  # e.g. in_features, out_channels
+        if dim == 0 and self.layer.bias is not None:
+            bias = self.layer.bias
+            self.layer.bias = torch.nn.Parameter(
+                bias.index_select(0, keep_idx), requires_grad=bias.requires_grad
+            )
+        if dim == 1:
+            self._tensor_s = TensorStatistic(
+                (self.in_features + self.use_bias, self.in_features + self.use_bias),
+                update_function=self.compute_s_update,
+                device=self.device,
+                name=self.tensor_s.name,
+            )
+        self.tensor_m = TensorStatistic(
+            (self.in_features + self.use_bias, self.out_features),
+            update_function=self.compute_m_update,
+            device=self.device,
+            name=self.tensor_m.name,
+        )
+
+    @torch.no_grad()
+    def _prune_post_layer_function(self, indices: np.ndarray) -> None:
+        """Prune the post-layer function of the previous module, if it exists.
+
+        Parameters
+        ----------
+        indices : np.ndarray
+            Clean prune list, already validated and sorted.
+
+        Raises
+        ------
+        TypeError
+            If the module is not a passthrough module and does not support pruning.
+        """
+        post_fn = self.previous_module.post_layer_function
+        if post_fn is not None:
+            sub_modules = (
+                list(post_fn) if isinstance(post_fn, torch.nn.Sequential) else [post_fn]
+            )
+            to_prune = [m for m in sub_modules if not is_passthrough(m)]
+            # Check every module before pruning any, so a failure changes nothing.
+            for m in to_prune:
+                if not callable(getattr(m, "prune", None)):
+                    raise TypeError(
+                        f"Module {type(m)} is not a passthrough module and does not support pruning (no prune method)."
+                    )
+            for m in to_prune:
+                m.prune(indices)
 
     def missing_neurons(self) -> int:
         """
