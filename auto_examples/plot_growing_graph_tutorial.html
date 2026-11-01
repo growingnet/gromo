@@ -1081,9 +1081,9 @@ Evaluating candidate: [Expansion]: New node 1@dag_a from start@dag to end@dag
   scaling=0.0  val_loss=5.7406
   scaling=0.1  val_loss=5.7340
   scaling=0.1  val_loss=5.7144
-  scaling=0.5  val_loss=5.2596
-  scaling=1.0  val_loss=4.9628
-  =&gt; best scaling=1.0  val_loss=4.9628
+  scaling=0.5  val_loss=5.2599
+  scaling=1.0  val_loss=4.9637
+  =&gt; best scaling=1.0  val_loss=4.9637
 Chose option [Expansion]: New node 1@dag_a from start@dag to end@dag
 Model after growing:
 GraphModel(
@@ -1099,25 +1099,25 @@ GraphModel(
     )
   )
 )
-[GRO] Step 4  Test Loss: 4.9790 (-0.8826)
-[SGD] Step 5  Test Loss: 4.7049 (-0.2741)
-[SGD] Step 6  Test Loss: 4.6278 (-0.0770)
-[SGD] Step 7  Test Loss: 4.5891 (-0.0387)
-Most important node: 1@dag (bottleneck norm = 0.5510)
+[GRO] Step 4  Test Loss: 4.9793 (-0.8822)
+[SGD] Step 5  Test Loss: 4.7048 (-0.2745)
+[SGD] Step 6  Test Loss: 4.6277 (-0.0770)
+[SGD] Step 7  Test Loss: 4.5890 (-0.0387)
+Most important node: 1@dag (bottleneck norm = 0.5506)
 Evaluating candidate: [Expansion]: New node 2@dag_a from start@dag to 1@dag
-  scaling=0.0  val_loss=4.5181
-  scaling=0.1  val_loss=4.5211
-  scaling=0.1  val_loss=4.5286
-  scaling=0.5  val_loss=4.6847
-  scaling=1.0  val_loss=5.7164
-  =&gt; best scaling=0.0  val_loss=4.5181
+  scaling=0.0  val_loss=4.5189
+  scaling=0.1  val_loss=4.5221
+  scaling=0.1  val_loss=4.5307
+  scaling=0.5  val_loss=4.7957
+  scaling=1.0  val_loss=6.1658
+  =&gt; best scaling=0.0  val_loss=4.5189
 Evaluating candidate: [Expansion]: Expanding node 1@dag
-  scaling=0.0  val_loss=4.5181
-  scaling=0.1  val_loss=4.5190
-  scaling=0.1  val_loss=4.5206
-  scaling=0.5  val_loss=4.4822
-  scaling=1.0  val_loss=4.4762
-  =&gt; best scaling=1.0  val_loss=4.4762
+  scaling=0.0  val_loss=4.5189
+  scaling=0.1  val_loss=4.5198
+  scaling=0.1  val_loss=4.5214
+  scaling=0.5  val_loss=4.4823
+  scaling=1.0  val_loss=4.4754
+  =&gt; best scaling=1.0  val_loss=4.4754
 Chose option [Expansion]: Expanding node 1@dag
 Model after growing:
 GraphModel(
@@ -1133,72 +1133,62 @@ GraphModel(
     )
   )
 )
-[GRO] Step 8  Test Loss: 4.5515 (-0.0376)
-[SGD] Step 9  Test Loss: 4.4268 (-0.1247)
-[SGD] Step 10  Test Loss: 4.3972 (-0.0296)
-[SGD] Step 11  Test Loss: 4.3777 (-0.0195)
-Most important node: 1@dag (bottleneck norm = 0.7594)
+[GRO] Step 8  Test Loss: 4.5474 (-0.0416)
+[SGD] Step 9  Test Loss: 4.4223 (-0.1251)
+[SGD] Step 10  Test Loss: 4.3929 (-0.0294)
+[SGD] Step 11  Test Loss: 4.3742 (-0.0188)
+Most important node: 1@dag (bottleneck norm = 0.7580)
 Evaluating candidate: [Expansion]: New node 2@dag_a from start@dag to 1@dag
-  scaling=0.0  val_loss=4.2835
-  scaling=0.1  val_loss=4.2903
-  scaling=0.1  val_loss=4.3198
-  scaling=0.5  val_loss=6.2090
-  scaling=1.0  val_loss=25.2054
-  =&gt; best scaling=0.0  val_loss=4.2835
+  scaling=0.0  val_loss=4.2826
+  scaling=0.1  val_loss=4.2887
+  scaling=0.1  val_loss=4.3121
+  scaling=0.5  val_loss=6.0254
+  scaling=1.0  val_loss=22.6488
+  =&gt; best scaling=0.0  val_loss=4.2826
 Evaluating candidate: [Expansion]: Expanding node 1@dag
-  scaling=0.0  val_loss=4.2835
-  scaling=0.1  val_loss=4.2840
-  scaling=0.1  val_loss=4.2848
-  scaling=0.5  val_loss=4.3012
-  scaling=1.0  val_loss=5.5418
-  =&gt; best scaling=0.0  val_loss=4.2835
-Chose option [Expansion]: New node 2@dag_a from start@dag to 1@dag
-/home/runner/work/gromo/gromo/src/gromo/modules/growing_module.py:2322: UserWarning: input_extension_scaling is null. The input extension will have no effect.
-  warnings.warn(
+  scaling=0.0  val_loss=4.2826
+  scaling=0.1  val_loss=4.2828
+  scaling=0.1  val_loss=4.2829
+  scaling=0.5  val_loss=4.2718
+  scaling=1.0  val_loss=5.2257
+  =&gt; best scaling=0.5  val_loss=4.2718
+Chose option [Expansion]: Expanding node 1@dag
 Model after growing:
 GraphModel(
   (growing_dag): GrowingGraphNetwork(
     (loss_fn): MSELoss()
     (dag): GrowingDAG[dag](
-        Nodes (4):
+        Nodes (3):
                 start@dag (layer type: linear, hidden size: 10, activation: None)
                 end@dag (layer type: linear, hidden size: 3, activation: [SELU()])
-                1@dag (layer type: linear, hidden size: 20, activation: [Identity(), SELU()])
-                2@dag (layer type: linear, hidden size: 10, activation: [Identity(), SELU()])
-        Edges (5):
-                start@dag-&gt;end@dag, start@dag-&gt;1@dag, start@dag-&gt;2@dag, 1@dag-&gt;end@dag, 2@dag-&gt;1@dag
+                1@dag (layer type: linear, hidden size: 30, activation: [Identity(), SELU()])
+        Edges (3):
+                start@dag-&gt;end@dag, start@dag-&gt;1@dag, 1@dag-&gt;end@dag
     )
   )
 )
-[GRO] Step 12  Test Loss: 4.3777 (+0.0000)
-[SGD] Step 13  Test Loss: 4.3609 (-0.0168)
-[SGD] Step 14  Test Loss: 4.3457 (-0.0152)
-[SGD] Step 15  Test Loss: 4.3320 (-0.0137)
-/home/runner/work/gromo/gromo/src/gromo/utils/tools.py:528: UserWarning: Using the pseudo-inverse for the computation of the optimal delta.
-  warn("Using the pseudo-inverse for the computation of the optimal delta.")
-Most important node: 1@dag (bottleneck norm = 0.7568)
-Evaluating candidate: [Expansion]: New node 3@dag_c from 2@dag to 1@dag
-  scaling=0.0  val_loss=4.2428
-  scaling=0.1  val_loss=4.2431
-  scaling=0.1  val_loss=4.2443
-  scaling=0.5  val_loss=4.5254
-  scaling=1.0  val_loss=6.9699
-  =&gt; best scaling=0.0  val_loss=4.2428
+[GRO] Step 12  Test Loss: 4.3722 (-0.0020)
+[SGD] Step 13  Test Loss: 4.3376 (-0.0346)
+[SGD] Step 14  Test Loss: 4.3219 (-0.0157)
+[SGD] Step 15  Test Loss: 4.3081 (-0.0138)
+Most important node: 1@dag (bottleneck norm = 0.8211)
+Evaluating candidate: [Expansion]: New node 2@dag_a from start@dag to 1@dag
+  scaling=0.0  val_loss=4.2040
+  scaling=0.1  val_loss=4.2137
+  scaling=0.1  val_loss=4.2641
+  scaling=0.5  val_loss=7.1824
+  scaling=1.0  val_loss=35.9086
+  =&gt; best scaling=0.0  val_loss=4.2040
 Evaluating candidate: [Expansion]: Expanding node 1@dag
-  scaling=0.0  val_loss=4.2428
-  scaling=0.1  val_loss=4.2430
-  scaling=0.1  val_loss=4.2432
-  scaling=0.5  val_loss=4.1906
-  scaling=1.0  val_loss=4.2662
-  =&gt; best scaling=0.5  val_loss=4.1906
-Evaluating candidate: [Expansion]: Expanding node 2@dag
-  scaling=0.0  val_loss=4.2428
-  scaling=0.1  val_loss=4.2484
-  scaling=0.1  val_loss=4.2702
-  scaling=0.5  val_loss=5.6428
-  scaling=1.0  val_loss=20.2080
-  =&gt; best scaling=0.0  val_loss=4.2428
-Chose option [Expansion]: Expanding node 1@dag
+  scaling=0.0  val_loss=4.2040
+  scaling=0.1  val_loss=4.2044
+  scaling=0.1  val_loss=4.2054
+  scaling=0.5  val_loss=4.2582
+  scaling=1.0  val_loss=5.6073
+  =&gt; best scaling=0.0  val_loss=4.2040
+Chose option [Expansion]: New node 2@dag_a from start@dag to 1@dag
+/home/runner/work/gromo/gromo/src/gromo/modules/growing_module.py:2322: UserWarning: input_extension_scaling is null. The input extension will have no effect.
+  warnings.warn(
 Model after growing:
 GraphModel(
   (growing_dag): GrowingGraphNetwork(
@@ -1214,7 +1204,7 @@ GraphModel(
     )
   )
 )
-[GRO] Step 16  Test Loss: 4.3101 (-0.0219)
+[GRO] Step 16  Test Loss: 4.3081 (+0.0000)
 </pre></div>
 </div>
 </section>
@@ -1331,7 +1321,7 @@ steps; stars (★) denote growth steps.</p>
 </span><a class="sphx-glr-backref-module-matplotlib-pyplot sphx-glr-backref-type-py-function reference external" href="https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.show.html#matplotlib.pyplot.show" title="matplotlib.pyplot.show"><span class="n">plt</span><span class="o">.</span><span class="n">show</span></a><span class="p">(</span><span class="p">)</span><span class="w">
 </span><span class="nb">print</span><span class="p">(</span><span class="p">)</span><span class="w">
 </span></pre></div></div>
-<img src="../_images/sphx_glr_plot_growing_graph_tutorial_005.png" srcset="../_images/sphx_glr_plot_growing_graph_tutorial_005.png" alt="GrowingGraphNetwork — Test Loss and Capacity Evolution" class = "sphx-glr-single-img"/><p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 41.726 seconds)</p>
+<img src="../_images/sphx_glr_plot_growing_graph_tutorial_005.png" srcset="../_images/sphx_glr_plot_growing_graph_tutorial_005.png" alt="GrowingGraphNetwork — Test Loss and Capacity Evolution" class = "sphx-glr-single-img"/><p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 48.772 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-growing-graph-tutorial-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/7031ea2c64cf5258aa3424c20fbb0e4a/plot_growing_graph_tutorial.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_growing_graph_tutorial.ipynb</span></code></a></p>
