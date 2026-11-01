@@ -1,0 +1,25 @@
+# Monthly grouped updates of the pre-commit hooks and GitHub Actions versions.
+# The `no changelog` label skips the whats_new check on these PRs.
+version: 2
+updates:
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      pre-commit-hooks:
+        patterns: ["*"]
+    labels: ["ci", "no changelog"]
+    commit-message:
+      prefix: "chore"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    labels: ["ci", "no changelog"]
+    commit-message:
+      prefix: "ci"

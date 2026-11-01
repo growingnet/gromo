@@ -2,6 +2,7 @@ import types
 from math import prod
 from warnings import warn
 
+import numpy as np
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
@@ -1237,6 +1238,24 @@ class Conv2dGrowingModule(GrowingModule):
             update_function=self.compute_m_update,
             name=self.tensor_m.name,
         )
+
+    @torch.no_grad()
+    def prune_layer_in(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """Shrink "self.layer" by dropping the input channels."""
+        if self.layer.groups != 1:
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
+        self._prune_layer(indices_to_remove, dim=1, size_name="in_channels")
+
+    @torch.no_grad()
+    def prune_layer_out(self, indices_to_remove: np.ndarray | list[int]) -> None:
+        """Shrink "self.layer" by dropping the output channels."""
+        if self.layer.groups != 1:
+            raise NotImplementedError(
+                "Pruning is only supported for Conv2d layers with groups == 1."
+            )
+        self._prune_layer(indices_to_remove, dim=0, size_name="out_channels")
 
     def update_input_size(  # type: ignore
         self,

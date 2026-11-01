@@ -1540,6 +1540,135 @@ class TestScalingMethods(TorchTestCase):
         self.assertIs(returned_layer, layer, "scale_layer should return the same layer")
 
 
+class TestGrowingModulePruningValidation(TorchTestCase):
+    def test_prune_neurons_in_validation(self):
+        import numpy as np
+
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        # list conversion
+        second.prune_neurons_in([1, 3])
+        self.assertEqual(second.in_features, 2)
+
+        # Recreate layers
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        # invalid type -> TypeError
+        with self.assertRaises(TypeError):
+            second.prune_neurons_in("invalid")
+
+        # non-integer type -> TypeError
+        with self.assertRaises(TypeError):
+            second.prune_neurons_in(np.array([1.0, 2.0]))
+
+        # empty index -> no-op
+        second.prune_neurons_in(np.array([], dtype=np.int64))
+        self.assertEqual(second.in_features, 4)
+
+        # previous module is not GrowingModule -> TypeError
+        third = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=None, device=global_device()
+        )
+        with self.assertRaises(TypeError):
+            third.prune_neurons_in(np.array([0]))
+
+        # out of range -> IndexError
+        with self.assertRaises(IndexError):
+            second.prune_neurons_in(np.array([4]))
+        with self.assertRaises(IndexError):
+            second.prune_neurons_in(np.array([-1]))
+
+        # prune all features -> ValueError
+        with self.assertRaises(ValueError):
+            second.prune_neurons_in(np.array([0, 1, 2, 3]))
+
+    def test_prune_neurons_in_after_flatten(self):
+        """A linear layer fed by a flattened convolution is rejected, unchanged."""
+        import numpy as np
+
+        conv = RestrictedConv2dGrowingModule(
+            2, 4, kernel_size=3, padding=1, device=global_device()
+        )
+        linear = LinearGrowingModule(
+            4 * 2 * 2, 3, previous_module=conv, device=global_device()
+        )
+        with self.assertRaises(NotImplementedError):
+            linear.prune_neurons_in(np.array([0]))
+        self.assertEqual(conv.out_channels, 4)
+        self.assertEqual(linear.in_features, 16)
+
+    def test_prune_neurons_in_statistics_keep_updating(self):
+        """Statistics collected before pruning can be updated again afterwards."""
+        import numpy as np
+
+        device = global_device()
+        l1 = LinearGrowingModule(3, 5, device=device)
+        l2 = LinearGrowingModule(5, 4, previous_module=l1, device=device)
+        l3 = LinearGrowingModule(4, 2, previous_module=l2, device=device)
+        l1.next_module, l2.next_module = l2, l3
+        layers = (l1, l2, l3)
+        x = torch.randn(7, 3, device=device)
+
+        def collect():
+            l3(l2(l1(x))).pow(2).sum().backward()
+            for layer in layers:
+                layer.update_computation()
+
+        for layer in layers:
+            layer.init_computation()
+        collect()
+        l2.prune_neurons_in(np.array([1]))
+        collect()  # no init_computation in between
+
+    def test_prune_post_layer_function_none(self):
+        import numpy as np
+
+        # post_layer_function is None
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        first.post_layer_function = None
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        # should run successfully without error
+        second.prune_neurons_in(np.array([0]))
+        self.assertEqual(second.in_features, 3)
+
+    def test_prune_post_layer_function_unsupported_module(self):
+        import numpy as np
+
+        # post_layer_function is nn.Linear, which has parameters but no prune method
+        first = LinearGrowingModule(in_features=5, out_features=4, device=global_device())
+        first.post_layer_function = torch.nn.Linear(4, 4, device=global_device())
+        second = LinearGrowingModule(
+            in_features=4, out_features=3, previous_module=first, device=global_device()
+        )
+
+        with self.assertRaises(TypeError) as ctx:
+            second.prune_neurons_in(np.array([0]))
+        self.assertIn("does not support pruning", str(ctx.exception))
+        self.assertEqual(first.out_features, 4)
+        self.assertEqual(second.in_features, 4)
+
+        # a prunable module before the unsupported one is left untouched too
+        from gromo.modules.growing_normalisation import GrowingBatchNorm1d
+
+        bn = GrowingBatchNorm1d(4, device=global_device())
+        first.post_layer_function = torch.nn.Sequential(
+            bn, torch.nn.Linear(4, 4, device=global_device())
+        )
+        with self.assertRaises(TypeError):
+            second.prune_neurons_in(np.array([0]))
+        self.assertEqual(bn.num_features, 4)
+        self.assertEqual(first.out_features, 4)
+
+
 if __name__ == "__main__":
     from unittest import main
 
