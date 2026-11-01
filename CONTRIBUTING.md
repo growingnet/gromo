@@ -23,23 +23,16 @@ so that we can agree on the approach before you write the code.
 
 ## Development setup
 
-1. Fork the repository on GitHub, clone your fork and add the main repository as
+1. Fork the repository on GitHub, clone your fork, replacing `$USER` with your
+GitHub username and add the main repository as
    `upstream`:
 
-   ```bash
-   git clone git@github.com:<your-username>/gromo.git
-   cd gromo
-   git remote add upstream git@github.com:growingnet/gromo.git
-   git remote set-url --push upstream no-pushing
-   ```
+   
 
 2. Install the package with its development dependencies using
    [uv](https://docs.astral.sh/uv/), and the pre-commit hooks:
 
-   ```bash
-   uv sync --extra dev --extra test --extra doc
-   uv run pre-commit install
-   ```
+   
 
    Without uv: `pip install -e ".[dev,test,doc]"`, then `pre-commit install`.
 
@@ -56,6 +49,7 @@ so that we can agree on the approach before you write the code.
 
    - Code is formatted and linted with [ruff](https://docs.astral.sh/ruff/), run by
      the pre-commit hooks at each commit.
+   - We use [ty](https://docs.astral.sh/ty/). Existing code has type warning so we don't have a strict CI for now, but newly added code should be type warning free.
    - Public functions and classes have type annotations and
      [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html) docstrings,
      checked by pydoclint.
