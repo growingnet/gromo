@@ -4385,7 +4385,34 @@ class GrowingModule(torch.nn.Module):
         indices_to_remove: list[int] | np.ndarray,
     ) -> None:
         """
-        Prune fan-in neurons
+        Remove neurons between the previous module and this one.
+
+        The neurons are removed from the outputs of ``previous_module`` (rows of
+        its weight and bias), from its ``post_layer_function`` and from the
+        inputs of this module (columns of its weight). Each module of the
+        post-layer function must either have no parameters (activations,
+        dropout) or a ``prune`` method (growing normalisations).
+
+        The pruned weights are new ``torch.nn.Parameter`` objects: an optimizer
+        created before the pruning must be created again. Statistics whose shape
+        depends on the pruned neurons are emptied.
+
+        Parameters
+        ----------
+        indices_to_remove : list[int] | np.ndarray
+            Indices of the neurons to remove, between 0 and
+            ``previous_module.out_features - 1``. Validated by
+            ``check_prune_indices``, which raises TypeError, IndexError or
+            ValueError. An empty list does nothing.
+
+        Raises
+        ------
+        TypeError
+            If the previous module is not a GrowingModule, or a module of its
+            post-layer function cannot be pruned.
+        NotImplementedError
+            If the inputs of this module are reshaped outputs of the previous
+            one (e.g. a flatten), or a convolution uses ``groups != 1``.
         """
         # Need a previous GrowingModule to coordinate with.
         if not isinstance(self.previous_module, GrowingModule):
