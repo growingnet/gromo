@@ -1241,7 +1241,7 @@ class TestGrowingNormalisationPruning(unittest.TestCase):
         gn = GrowingGroupNorm(num_groups=2, num_channels=8, device=self.device)
 
         # indices_to_remove is list
-        gn.prune([1, 3])
+        gn.prune([1, 5])
         self.assertEqual(gn.num_channels, 6)
 
         # invalid type -> TypeError
@@ -1266,16 +1266,18 @@ class TestGrowingNormalisationPruning(unittest.TestCase):
         with self.assertRaises(ValueError):
             gn.prune([0, 1, 2, 3, 4, 5])
 
-        # num_channels not divisible by num_groups -> ValueError
+        # groups losing different numbers of channels -> ValueError
         with self.assertRaises(ValueError):
             gn.prune([0])
+        with self.assertRaises(ValueError):
+            gn.prune([0, 1])
 
     def test_group_norm_prune_affine_false(self):
         gn = GrowingGroupNorm(
             num_groups=2, num_channels=8, affine=False, device=self.device
         )
         self.assertIsNone(gn.weight)
-        gn.prune([0, 2])
+        gn.prune([0, 4])
         self.assertEqual(gn.num_channels, 6)
         self.assertIsNone(gn.weight)
 
@@ -1284,7 +1286,7 @@ class TestGrowingNormalisationPruning(unittest.TestCase):
             num_groups=2, num_channels=8, affine=True, device=self.device
         )
         gn_bias_none.bias = None
-        gn_bias_none.prune([0, 2])
+        gn_bias_none.prune([0, 4])
         self.assertEqual(gn_bias_none.num_channels, 6)
         self.assertIsNone(gn_bias_none.bias)
 

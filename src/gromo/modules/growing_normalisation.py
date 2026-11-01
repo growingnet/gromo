@@ -850,11 +850,20 @@ class GrowingGroupNorm(nn.GroupNorm):
         Raises
         ------
         ValueError
-            If the remaining channels are not divisible by num_groups.
+            If the groups do not all lose the same number of channels.
         """
         indices = check_prune_indices(indices_to_remove, self.num_channels)
         if indices.size == 0:
             return
+        # Removing as many channels from every group keeps the others in their group
+        # (their statistics still change, as the group loses members).
+        group_size = self.num_channels // self.num_groups
+        removed = np.bincount(indices // group_size, minlength=self.num_groups)
+        if np.any(removed != removed[0]):
+            raise ValueError(
+                f"The same number of channels must be removed from each group, "
+                f"got {removed.tolist()} for {self.num_groups} groups."
+            )
 
         keep_mask = torch.ones(
             self.num_channels,
@@ -863,14 +872,7 @@ class GrowingGroupNorm(nn.GroupNorm):
         )
         keep_mask[indices] = False
 
-        new_num_channels = int(keep_mask.sum().item())
-        if new_num_channels % self.num_groups != 0:
-            raise ValueError(
-                f"After pruning: num_channels ({new_num_channels}) must be divisible by "
-                f"num_groups ({self.num_groups})."
-            )
-
-        self.num_channels = new_num_channels
+        self.num_channels = int(keep_mask.sum().item())
 
         if getattr(self, "affine", False):
             weight_requires_grad = self.weight.requires_grad
