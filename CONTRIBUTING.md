@@ -109,8 +109,11 @@ GitHub username and add the main repository as
 
 ## Maintainers
 
-The maintainers review and merge pull requests, prepare the releases, and enforce
-the Code of Conduct:
+The maintainers review and merge pull requests, and prepare the releases.
+Reports of Code of Conduct violations go to the project supervisors, see
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md#reporting-an-issue).
+
+Maintainers:
 
 - Sylvain Chevallier ([@sylvchev](https://github.com/sylvchev))
 - Guillaume Charpiat
