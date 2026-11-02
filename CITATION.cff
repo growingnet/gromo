@@ -94,3 +94,34 @@ references:
       city: Bruges
       country: BE
     year: 2025
+  - type: conference-paper
+    title: "Tackling brain signal inter-subject variability with adaptive neural architectures"
+    authors:
+      - given-names: Sébastien
+        family-names: Velut
+      - given-names: Stella
+        family-names: Douka
+      - given-names: Théo
+        family-names: Rudkiewicz
+      - given-names: Alex
+        family-names: Davey
+      - given-names: Stéphane
+        family-names: Rivaud
+      - given-names: François
+        family-names: Landes
+      - given-names: Julien
+        family-names: Mille
+      - given-names: Guillaume
+        family-names: Charpiat
+      - given-names: Sylvain
+        family-names: Chevallier
+      - given-names: Marie-Constance
+        family-names: Corsi
+      - given-names: Frédéric
+        family-names: Dehais
+    conference:
+      name: "2026 International Joint Conference on Neural Networks (IJCNN 2026)"
+      city: Maastricht
+      country: NL
+    year: 2026
+    url: "https://hal.science/hal-05752385v1"
