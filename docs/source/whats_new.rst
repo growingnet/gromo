@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add contribution guidelines (``CONTRIBUTING.md``), a code of conduct (Contributor Covenant 3.0), a security policy, and issue and pull request templates (:gh:`284` by `Sylvain Chevallier`_)
 - Add Dependabot to open monthly grouped updates of the pre-commit hooks and GitHub Actions versions (:gh:`282` by `Sylvain Chevallier`_)
 - Add prune layer support to ``GrowingModule``, ``LinearGrowingModule``, ``Conv2dGrowingModule``, and growing normalisation layers to shrink layers along features/channels (:gh:`258` by `Ying jin`_).
 - Add sequentially growable transformer backbones and classifier variants, including CCT, CVT, ViT-Lite, and text/image transformer support, with sequential block scheduling and tests (:gh:`256` by `Santiago23florido`_).
