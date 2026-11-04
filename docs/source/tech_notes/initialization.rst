@@ -116,7 +116,7 @@ positional arguments:
        reference_tensor: torch.Tensor | None,
        fan_in: int,
    ) -> None:
-       ...
+       """Initialize ``tensor`` in place."""
 
 The callable may also modify ``reference_tensor`` in-place if needed (e.g. to
 perturb existing weights at the same time).
