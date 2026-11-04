@@ -21,6 +21,7 @@ Enhancements
 ~~~~~~~~~~~~
 
 - Start a gradual adoption of the ty type checker on ``src``: a ``[tool.ty]`` configuration, a pre-commit hook in the manual stage, and a non-blocking CI job reporting ty diagnostics on the lines changed by a pull request (:gh:`289` by `Sylvain Chevallier`_)
+- Add contribution guidelines (``CONTRIBUTING.md``), a code of conduct (Contributor Covenant 3.0), a security policy, and issue and pull request templates (:gh:`284` by `Sylvain Chevallier`_)
 - Add Dependabot to open monthly grouped updates of the pre-commit hooks and GitHub Actions versions (:gh:`282` by `Sylvain Chevallier`_)
 - Add prune layer support to ``GrowingModule``, ``LinearGrowingModule``, ``Conv2dGrowingModule``, and growing normalisation layers to shrink layers along features/channels (:gh:`258` by `Ying jin`_).
 - Add sequentially growable transformer backbones and classifier variants, including CCT, CVT, ViT-Lite, and text/image transformer support, with sequential block scheduling and tests (:gh:`256` by `Santiago23florido`_).
