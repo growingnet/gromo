@@ -24,15 +24,24 @@ so that we can agree on the approach before you write the code.
 ## Development setup
 
 1. Fork the repository on GitHub, clone your fork, replacing `$USER` with your
-GitHub username and add the main repository as
-   `upstream`:
+GitHub username and add the main repository as `upstream`:
 
-   
+   ```bash
+    git clone git@github.com:$USER/gromo.git --origin origin
+    cd gromo
+    git remote add upstream git@github.com:growingnet/gromo.git
+    git remote set-url --push upstream no-pushing
+    git fetch upstream
+    git branch --set-upstream-to=upstream/main main
+    ```
 
 2. Install the package with its development dependencies using
    [uv](https://docs.astral.sh/uv/), and the pre-commit hooks:
 
-   
+   ```bash
+   uv sync --all-extras
+   uv run pre-commit install
+   ```
 
    Without uv: `pip install -e ".[dev,test,doc]"`, then `pre-commit install`.
 
