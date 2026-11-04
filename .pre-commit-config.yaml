@@ -48,6 +48,15 @@ repos:
         files: ^(src|tests|examples)/
         verbose: true
 
+  # Gradual adoption of ty: manual stage only, run it with
+  # `pre-commit run ty --hook-stage manual`. CI reports its diagnostics on the
+  # lines changed by a pull request (.github/workflows/ty.yml).
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.95
+    hooks:
+      - id: ty
+        stages: [manual]
+
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.3
     hooks:

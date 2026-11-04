@@ -1,0 +1,49 @@
+name: Type checking
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
+  cancel-in-progress: true
+
+# Gradual adoption of ty: its diagnostics are reported as annotations only on the
+# lines added or modified by the pull request, and the job never fails.
+# shortcut: reviewdog filters ty's output by diff while the existing code still has
+# type errors; remove it and run `ty check` directly once the checked code is clean.
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: read  # reviewdog reads the diff of the pull request
+
+jobs:
+  ty:
+    name: ty (changed lines)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # ty resolves the imports (torch, ...) from the project environment.
+      - name: Install the package
+        run: uv sync --locked
+
+      - name: Setup reviewdog
+        uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: v0.21.2
+
+      - name: Report ty diagnostics on the changed lines
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ github.token }}
+        run: |
+          # Same ty version as the pre-commit hook, which Dependabot keeps up to date.
+          ty_version=$(grep -A1 'astral-sh/ty-pre-commit' .pre-commit-config.yaml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          (uvx "ty@${ty_version}" check --output-format concise || true) \
+            | reviewdog -efm="%f:%l:%c: %m" -name=ty \
+                -reporter=github-pr-annotations -filter-mode=added -fail-level=none
