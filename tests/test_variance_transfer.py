@@ -636,27 +636,28 @@ class TestActivationVariance(TorchTestCase):
         block.second_layer.weight.data.mul_(0.5)
         return block
 
+    def _mean_main_path_variance(self, rescaling, h_t=128, dh=16, n_draws=10):
+        """Variance of the main path after growth, averaged over independent draws.
+
+        A single draw is noisy (standard deviation ~0.2), and the random generators
+        of the CPU, CUDA and MPS backends give different draws for the same seed, so
+        one fixed seed passes or fails depending on the backend. Averaging over
+        ``n_draws`` seeds brings the standard deviation of the mean to ~0.07.
+        """
+        variances = []
+        for seed in range(n_draws):
+            torch.manual_seed(seed)
+            block = self._make_block_with_perturbed_weights(h_t)
+            _grow_block(block, dh=dh, rescaling=rescaling, neuron_pairing="vv_z_negz")
+            x = torch.randn(512, 8, device=self.device)
+            with torch.no_grad():
+                main_path = block(x) - block.downsample(x)
+            variances.append(main_path.var().item())
+        return sum(variances) / n_draws
+
     def test_activation_variance_strategy_b(self):
         """V[conv_path]_init ~ 1 for Strategy B with pairing."""
-        h_t = 128
-        dh = 16
-        block = self._make_block_with_perturbed_weights(h_t)
-
-        _grow_block(
-            block,
-            dh=dh,
-            rescaling="vt_constraint_old_shape",
-            neuron_pairing="vv_z_negz",
-        )
-
-        x = torch.randn(512, 8, device=self.device)
-        with torch.no_grad():
-            y = block(x)
-            skip = block.downsample(x)
-            main_path = y - skip
-
-        var_cp = main_path.var().item()
-        # Statistical test — fairly loose tolerance
+        var_cp = self._mean_main_path_variance("vt_constraint_old_shape")
         self.assertAlmostEqual(
             var_cp,
             1.0,
@@ -666,27 +667,9 @@ class TestActivationVariance(TorchTestCase):
 
     def test_activation_variance_strategy_c(self):
         """V[conv_path]_init ~ h_t / h_{t+1} for Strategy C with pairing."""
-        h_t = 128
-        dh = 16
-        block = self._make_block_with_perturbed_weights(h_t)
-
-        _grow_block(
-            block,
-            dh=dh,
-            rescaling="vt_constraint_new_shape",
-            neuron_pairing="vv_z_negz",
-        )
-
-        h_t_plus_1 = h_t + dh
-        expected_var = h_t / h_t_plus_1
-
-        x = torch.randn(512, 8, device=self.device)
-        with torch.no_grad():
-            y = block(x)
-            skip = block.downsample(x)
-            main_path = y - skip
-
-        var_cp = main_path.var().item()
+        h_t, dh = 128, 16
+        expected_var = h_t / (h_t + dh)
+        var_cp = self._mean_main_path_variance("vt_constraint_new_shape", h_t=h_t, dh=dh)
         self.assertAlmostEqual(
             var_cp,
             expected_var,
