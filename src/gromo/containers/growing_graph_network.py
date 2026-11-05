@@ -110,9 +110,16 @@ class GrowingGraphNetwork(GrowingContainer):
         """
         self._growing_layers.append(self.dag)
 
-    def init_computation(self):
-        """Initialize statistics computations for growth procedure"""
-        self.dag.init_computation()
+    def init_computation(self, accumulation_dtype: torch.dtype | None = None) -> None:
+        """Initialize statistics computations for growth procedure
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype of the running sums of the statistics (see `TensorStatistic.init`);
+            None sums in the dtype of the updates
+        """
+        self.dag.init_computation(accumulation_dtype)
 
     def update_computation(self, update_covariance_loss_gradient: bool = True):
         """Update statistics computations for growth procedure"""

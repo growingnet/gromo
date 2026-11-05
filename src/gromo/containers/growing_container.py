@@ -80,10 +80,17 @@ class GrowingContainer(torch.nn.Module):
         """Get the first order improvement of the current update."""
         raise NotImplementedError
 
-    def init_computation(self) -> None:
-        """Initialize statistics computations for growth procedure"""
+    def init_computation(self, accumulation_dtype: torch.dtype | None = None) -> None:
+        """Initialize statistics computations for growth procedure
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype of the running sums of the statistics of every layer (see
+            `TensorStatistic.init`); None sums in the dtype of the updates
+        """
         for layer in self._growing_layers:
-            layer.init_computation()
+            layer.init_computation(accumulation_dtype)
 
     def update_computation(self, update_covariance_loss_gradient: bool = True) -> None:
         """Update statistics computations for growth procedure
