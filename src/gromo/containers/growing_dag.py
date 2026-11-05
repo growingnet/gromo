@@ -141,13 +141,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         self._growing_layers = self.get_all_edge_modules() + self.get_all_node_modules()
 
-    def init_computation(self):
-        """Initialize statistics computations for all nodes"""
+    def init_computation(self, accumulation_dtype: torch.dtype | None = None) -> None:
+        """Initialize statistics computations for all nodes
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype of the running sums of the statistics (see `TensorStatistic.init`);
+            None sums in the dtype of the updates
+        """
         for node_module in self.get_all_node_modules():
             if node_module._name == self.root:
                 node_module.store_activity = True
             else:
-                node_module.init_computation()
+                node_module.init_computation(accumulation_dtype)
 
     def update_computation(self, update_covariance_loss_gradient: bool = True):
         """Update statistics computations for all nodes"""

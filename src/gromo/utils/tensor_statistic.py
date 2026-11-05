@@ -66,6 +66,10 @@ class TensorStatistic:
         self.samples = 0
         self.updated = True
         self.device = device if device else global_device()
+        # dtype of the running sum (None: the dtype of the updates), and the dtype of
+        # the updates, in which the average is handed back
+        self._accumulation_dtype: torch.dtype | None = None
+        self._update_dtype: torch.dtype | None = None
 
     def __str__(self):
         return f"{self.name} tensor of shape {self._shape} with {self.samples} samples"
@@ -74,8 +78,10 @@ class TensorStatistic:
     def dtype(self) -> torch.dtype | None:
         """Dtype the statistic is accumulated in, None before the first update.
 
-        It is the dtype that bounds the precision of the statistic, even when the
-        averaged tensor is later cast to a more precise one.
+        Without an accumulation dtype (see `init`), it is the dtype of the updates,
+        which bounds the precision of the statistic, even when the averaged tensor
+        is later cast to a more precise one. With one, the running sum is kept in
+        that dtype and the average is rounded once to the dtype of the updates.
 
         Returns
         -------
@@ -116,21 +122,37 @@ class TensorStatistic:
                 f"{None if self._tensor is None else self._tensor.size()=}"
             )
             if self._tensor is None:
-                self._tensor = update
+                self._update_dtype = update.dtype
+                self._tensor = (
+                    update
+                    if self._accumulation_dtype is None
+                    else update.to(self._accumulation_dtype)
+                )
             else:
                 self._tensor += update
             self.samples += nb_sample
             self.updated = True
             return update, nb_sample
 
-    def init(self):
-        """Reset the tensor"""
+    def init(self, accumulation_dtype: torch.dtype | None = None) -> None:
+        """Reset the tensor and choose the dtype of the running sum
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype in which the updates are summed, e.g. ``torch.float64`` so that
+            the rounding of a long accumulation does not degrade the statistic.
+            The average is still returned in the dtype of the updates. None sums
+            in the dtype of the updates.
+        """
         self.reset()
+        self._accumulation_dtype = accumulation_dtype
 
     def reset(self):
         """Reset the tensor"""
         self._tensor = None
         self.samples = 0
+        self._update_dtype = None
 
     def __call__(self) -> torch.Tensor:
         """Get the average of the precomputed tensor over the number of samples
@@ -138,7 +160,7 @@ class TensorStatistic:
         Returns
         -------
         torch.Tensor
-            averaged tensor
+            averaged tensor, in the dtype of the updates
 
         Raises
         ------
@@ -151,7 +173,11 @@ class TensorStatistic:
             assert self._tensor is not None, (
                 "If the number of samples is not zero the tensor should not be None."
             )
-            return self._tensor / self.samples
+            average = self._tensor / self.samples
+            # _update_dtype is set with the first update, so whenever _tensor is
+            if self._accumulation_dtype is not None and self._update_dtype is not None:
+                average = average.to(self._update_dtype)
+            return average
 
 
 class TensorStatiticWithEstimationError(TensorStatistic):

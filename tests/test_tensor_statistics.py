@@ -65,6 +65,68 @@ class TestTensorStatistic(TestCase):
         t.update()
         self.assertEqual(t.dtype, torch.float64)
 
+    def _fed(
+        self, updates: list[torch.Tensor], accumulation_dtype: torch.dtype | None = None
+    ) -> TensorStatistic:
+        """A statistic that received ``updates`` in order, one sample each.
+
+        The statistic keeps its first update as its running sum and adds to it in
+        place, so it is fed copies.
+        """
+        pending = iter([u.clone() for u in updates])
+        t = self._tested_class(shape=None, update_function=lambda: (next(pending), 1))
+        t.init(accumulation_dtype)
+        for _ in updates:
+            t.updated = False
+            t.update()
+        return t
+
+    def test_default_accumulation_dtype(self):
+        """Without an override, accumulation uses the update dtype."""
+        t = self._fed([torch.ones(1, dtype=torch.bfloat16)])
+        self.assertEqual(t.dtype, torch.bfloat16)
+
+    def test_requested_accumulation_dtype(self):
+        """An explicit accumulation dtype determines the running sum dtype."""
+        t = self._fed([torch.ones(1, dtype=torch.bfloat16)], torch.float64)
+        self.assertEqual(t.dtype, torch.float64)
+
+    def test_average_dtype(self):
+        """The average retains the update dtype when accumulation uses float64."""
+        t = self._fed([torch.ones(1, dtype=torch.bfloat16)], torch.float64)
+        self.assertEqual(t().dtype, torch.bfloat16)
+
+    def test_float64_accumulation_keeps_small_updates(self):
+        """Float64 accumulation preserves increments lost during bfloat16 accumulation."""
+        updates = [
+            torch.tensor([value], dtype=torch.bfloat16)
+            for value in (1, 2**-9, 2**-9, 2**-9)
+        ]
+        # At 1, bfloat16 spacing is 2**-7: each increment rounds away.
+        for dtype, expected in ((None, 0.25), (torch.float64, 129 / 512)):
+            with self.subTest(accumulation_dtype=dtype):
+                t = self._fed(updates, dtype)
+                torch.testing.assert_close(
+                    t(),
+                    torch.tensor([expected], dtype=torch.bfloat16),
+                    rtol=0,
+                    atol=0,
+                )
+
+    def test_init_restores_default_accumulation(self):
+        """Calling init without a dtype clears a previous accumulation override."""
+        t = self._tested_class(
+            shape=None,
+            update_function=lambda: (torch.ones(1, dtype=torch.bfloat16), 1),
+        )
+        t.init(torch.float64)
+        t.updated = False
+        t.update()
+        t.init()
+        t.updated = False
+        t.update()
+        self.assertEqual(t.dtype, torch.bfloat16)
+
     def tearDown(self) -> None:
         reset_device()
 
