@@ -35,6 +35,10 @@ Verbockhaven, M., Rudkiewicz, T., Chevallier, S., and Charpiat, G. (2024). Growi
 Douka, S., Verbockhaven, M., Rudkiewicz, T., Rivaud, S., Landes, F., Chevallier, S., Charpiat, G. (2025). Growth strategies for arbitrary DAG neural architectures. European Symposium on Artificial Neural Networks.
 ```
 
+```
+Velut, S., Douka, S., Rudkiewicz, T., Davey, A., Rivaud, S., Landes, F., Mille, J., Charpiat, G., Chevallier, S., Corsi, M.-C., Dehais, F. (2026). Tackling brain signal inter-subject variability with adaptive neural architectures. International Joint Conference on Neural Networks.
+```
+
 To cite the software itself, use its Zenodo DOI [10.5281/zenodo.23421313](https://doi.org/10.5281/zenodo.23421313),
 which covers all versions, or the "Cite this repository" button on GitHub.
 

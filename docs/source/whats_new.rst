@@ -20,6 +20,21 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+Bugs
+~~~~
+
+API changes
+~~~~~~~~~~~
+
+
+.. _changes_0_2_0:
+
+Version 0.2.0 (2026-11-04)
+--------------------------
+
+Enhancements
+~~~~~~~~~~~~
+
 - Start a gradual adoption of the ty type checker on ``src``: a ``[tool.ty]`` configuration, a pre-commit hook in the manual stage, and a non-blocking CI job reporting ty diagnostics on the lines changed by a pull request (:gh:`289` by `Sylvain Chevallier`_)
 - Add contribution guidelines (``CONTRIBUTING.md``), a code of conduct (Contributor Covenant 3.0), a security policy, and issue and pull request templates (:gh:`284` by `Sylvain Chevallier`_)
 - Add Dependabot to open monthly grouped updates of the pre-commit hooks and GitHub Actions versions (:gh:`282` by `Sylvain Chevallier`_)
