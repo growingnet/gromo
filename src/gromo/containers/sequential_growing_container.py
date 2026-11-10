@@ -101,13 +101,38 @@ class SequentialGrowingModel(GrowingModel):
             **kwargs
         )
 
-    def update_information(self) -> dict[str, Any]:
+    def update_information(self) -> dict[str | int, Any]:
         """Update information for all growing layers including first order improvement
+
+        Must be called inside the growth lifecycle window: after
+        ``compute_optimal_updates`` and before ``delete_update``. Two
+        constraints follow from that, both of which are behaviour rather than
+        convention:
+
+        - ``growth_spectra`` is ``None`` unless ``compute_optimal_updates`` was
+          called with ``collect_spectra=True``, which is *not* its default.
+        - ``delete_update`` nulls ``parameter_update_decrease``,
+          ``eigenvalues_extension`` and ``growth_spectra`` together, so calling
+          this method afterwards trips the assertion below. That assertion is a
+          live guard against calling at the wrong time, not dead code.
+
+        ``parameter_improvement`` is ``0.0`` whenever the optimal delta was not
+        computed (``compute_delta=False``). That is a
+        structural zero meaning "no natural-gradient step was computed", *not*
+        a measurement that such a step would have bought nothing. In that case
+        ``update_value`` is exactly the new neurons' first-order improvement.
+
+        ``growth_spectra`` holds the raw tensors recorded at growth time
+        (``matrix_s``, ``matrix_e``, ``extension``, ``delta``), not scalar
+        summaries. Callers wanting summaries can apply
+        :func:`gromo.utils.tools.spectrum_summary` themselves.
 
         Returns
         -------
-        dict[str, Any]
-            information dictionary
+        dict[str | int, Any]
+            Information dictionary keyed by the layer's index in
+            ``_growing_layers``. Each entry also carries the layer's ``name``,
+            so consumers can key by layer without walking ``_growing_layers``.
         """
         information = {}
         for i, layer in enumerate(self._growing_layers):
@@ -115,6 +140,7 @@ class SequentialGrowingModel(GrowingModel):
                 "parameter_update_decrease should be a tensor"
             )
             layer_information = {
+                "name": layer.name,
                 "update_value": layer.first_order_improvement.item(),
                 "parameter_improvement": layer.parameter_update_decrease.item(),
                 "eigenvalues_extension": layer.eigenvalues_extension,

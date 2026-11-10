@@ -341,24 +341,30 @@ class GrowingBlock(GrowingContainer):
             out = self.second_layer(out)
         return out + identity
 
-    def init_computation(self):
+    def init_computation(self, accumulation_dtype: torch.dtype | None = None) -> None:
         """
         Initialise the computation of the block.
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype of the running sums of the statistics (see `TensorStatistic.init`);
+            None sums in the dtype of the updates
         """
         # growth part
         self.first_layer.store_input = True
         self.second_layer.store_pre_activity = True
-        self.second_layer.tensor_m_prev.init()
-        self.second_layer.tensor_s_growth.init()
-        self.second_layer.covariance_loss_gradient.init()
+        self.second_layer.tensor_m_prev.init(accumulation_dtype)
+        self.second_layer.tensor_s_growth.init(accumulation_dtype)
+        self.second_layer.covariance_loss_gradient.init(accumulation_dtype)
 
         if self.hidden_neurons > 0:
-            self.second_layer.cross_covariance.init()
+            self.second_layer.cross_covariance.init(accumulation_dtype)
 
             # natural gradient part
             self.second_layer.store_input = True
-            self.second_layer.tensor_s.init()
-            self.second_layer.tensor_m.init()
+            self.second_layer.tensor_s.init(accumulation_dtype)
+            self.second_layer.tensor_m.init(accumulation_dtype)
 
     def update_computation(self, update_covariance_loss_gradient: bool = True):
         """

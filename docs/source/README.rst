@@ -21,8 +21,10 @@ the package to train a simple neural network, and how to grow the network as
 it learns. The theoretical and algorithmic details of Gromo are described in
 the [TMLR24]_.
 
-The package is still in development, if you would like to contribute, please
-contact us!
+The package is still in development and contributions are welcome: see the
+`contributing guide <https://github.com/growingnet/gromo/blob/main/CONTRIBUTING.md>`_
+to get started, and the `Discussions <https://github.com/growingnet/gromo/discussions>`_
+for questions and ideas.
 
 To cite the software itself, use its Zenodo DOI
 `10.5281/zenodo.23421313 <https://doi.org/10.5281/zenodo.23421313>`_, which covers all versions.

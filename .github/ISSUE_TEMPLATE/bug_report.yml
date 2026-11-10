@@ -1,0 +1,36 @@
+name: Bug report
+description: Report something that does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please check first that it has not already
+        been reported in the [issues](https://github.com/growingnet/gromo/issues).
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Minimal example
+      description: >-
+        A short, self-contained code example that reproduces the problem, with the
+        full error message if there is one.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: >-
+        Output of `python -c "import sys, torch, gromo; print(sys.version, torch.__version__, gromo.__version__)"`,
+        and your operating system and device (CPU, CUDA or MPS).
+      render: text
+    validations:
+      required: true

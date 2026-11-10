@@ -750,6 +750,31 @@ class TestGrowingGraphNetwork(TorchTestCase):
         for edge_module in self.net.dag.get_all_edge_modules():
             self.assertGreater(edge_module.covariance_loss_gradient.samples, 0)
 
+    def test_init_computation_forwards_the_accumulation_dtype(self) -> None:
+        """GrowingGraphNetwork -> GrowingDAG -> node modules: every node statistic
+        that received an update is summed in the requested dtype."""
+        self.net.init_computation(accumulation_dtype=torch.float64)
+        logits = self.net(self.x)
+        labels = torch.randint(
+            0, self.out_features, (self.batch_size,), device=global_device()
+        )
+        torch.nn.functional.cross_entropy(logits, labels).backward()
+        self.net.update_computation()
+
+        updated = [
+            statistic
+            for node_module in self.net.dag.get_all_node_modules()
+            for statistic in (
+                node_module.tensor_s,
+                node_module.previous_tensor_s,
+                node_module.previous_tensor_m,
+            )
+            if statistic is not None and statistic.dtype is not None
+        ]
+        self.assertGreater(len(updated), 0)
+        for statistic in updated:
+            self.assertEqual(statistic.dtype, torch.float64)
+
 
 if __name__ == "__main__":
     unittest.main()

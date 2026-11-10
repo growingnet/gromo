@@ -26,19 +26,19 @@ repos:
     rev: 1.20.0
     hooks:
       - id: blacken-docs
-        additional_dependencies: [ black==23.3.0 ]
+        additional_dependencies: [ black==26.10.1 ]
         args: ["-l", "90"]
         exclude: ^.github/
 
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: 0.9.1
+    rev: 0.12.0
     hooks:
       - id: pydoclint
         exclude: ^docs/|^setup\.py$|^tests/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.6
+    rev: v0.17.3
     hooks:
       - id: ruff-check
         args: ["--fix", "--output-format=full"]
@@ -48,8 +48,17 @@ repos:
         files: ^(src|tests|examples)/
         verbose: true
 
+  # Gradual adoption of ty: manual stage only, run it with
+  # `pre-commit run ty --hook-stage manual`. CI reports its diagnostics on the
+  # lines changed by a pull request (.github/workflows/ty.yml).
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.95
+    hooks:
+      - id: ty
+        stages: [manual]
+
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: v2.4.3
     hooks:
       - id: codespell
         args:

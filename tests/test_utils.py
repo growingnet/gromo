@@ -39,6 +39,10 @@ class TestUtils(TorchTestCase):
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             cls.available_devices.append("mps")
 
+    def tearDown(self) -> None:
+        # Tests here change the global device: restore it for the tests run afterwards.
+        reset_device()
+
     def test_set_device(self) -> None:
         # Test setting each available device
         for device_name in self.available_devices:
