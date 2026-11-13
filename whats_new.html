@@ -35,7 +35,7 @@
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-binder.css?v=f4aeca0c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-dataframe.css?v=2082cf3c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-rendered-html.css?v=1277b6f3" />
-    <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=6a604523" />
     <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=7c1988a6" />
   
   <!-- So that users can add custom icons -->
@@ -52,7 +52,7 @@
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="_static/copybutton.js?v=f281be69"></script>
     <script src="_static/sg-tags.js?v=d80f6fa4"></script>
-    <script src="_static/design-tabs.js?v=f930bc37"></script>
+    <script data-sd-tabs-storage-prefix="sphinx-design-tab-id-" src="_static/design-tabs.js?v=fcb327ea"></script>
     <script>
                 window.dataLayer = window.dataLayer || [];
                 function gtag(){ dataLayer.push(arguments); }
@@ -424,6 +424,7 @@
 <section id="bugs">
 <h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
 <ul class="simple">
+<li><p>Fix the direction of the weights of new edges in <code class="docutils literal notranslate"><span class="pre">GrowingGraphNetwork.update_edge_weights</span></code>: the optimal delta layer now points uphill, as the weights are fitted to minimise the bottleneck loss (<a class="reference external" href="https://github.com/growingnet/gromo/issues/285">#285</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix the backend-dependent failures of <code class="docutils literal notranslate"><span class="pre">TestActivationVariance</span></code>: restore the global device after the <code class="docutils literal notranslate"><span class="pre">TestUtils</span></code> tests, and average the activation variance over 10 seeds, as the random generators of the CPU, CUDA and MPS backends differ for a same seed (<a class="reference external" href="https://github.com/growingnet/gromo/issues/293">#293</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Run pydoclint in CI through its pre-commit hook, so that CI and pre-commit use the same pinned version, and remove the debug step printing secrets in the documentation workflow (<a class="reference external" href="https://github.com/growingnet/gromo/issues/281">#281</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Fix the pseudo-inverses of <code class="docutils literal notranslate"><span class="pre">optimal_delta</span></code>: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and <code class="docutils literal notranslate"><span class="pre">torch.linalg.pinv</span></code> inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. <code class="docutils literal notranslate"><span class="pre">sqrt_inverse_matrix_semi_positive</span></code> no longer modifies its input matrix when <code class="docutils literal notranslate"><span class="pre">eigh</span></code> fails (<a class="reference external" href="https://github.com/growingnet/gromo/XXX">#XXX</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
