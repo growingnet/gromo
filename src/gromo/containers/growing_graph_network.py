@@ -110,9 +110,16 @@ class GrowingGraphNetwork(GrowingContainer):
         """
         self._growing_layers.append(self.dag)
 
-    def init_computation(self):
-        """Initialize statistics computations for growth procedure"""
-        self.dag.init_computation()
+    def init_computation(self, accumulation_dtype: torch.dtype | None = None) -> None:
+        """Initialize statistics computations for growth procedure
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype of the running sums of the statistics (see `TensorStatistic.init`);
+            None sums in the dtype of the updates
+        """
+        self.dag.init_computation(accumulation_dtype)
 
     def update_computation(self, update_covariance_loss_gradient: bool = True):
         """Update statistics computations for growth procedure"""
@@ -245,7 +252,7 @@ class GrowingGraphNetwork(GrowingContainer):
         # If activity has extra trailing singleton dims like (b, c, 1, 1)
         if activity.dim() == bottleneck.dim() + 2 and activity.shape[2:] == (1, 1):
             activity = activity.squeeze(-1).squeeze(-1)
-        # loss = activity - bottleneck  # + 0.001 * torch.sum(activity**2)
+        # loss = activity + bottleneck  # + 0.001 * torch.sum(activity**2)
         # return (loss**2).sum() / loss.numel()
         eps = 1e-8
         scalar_product = torch.einsum("b...,b...->b", activity, bottleneck)
@@ -401,7 +408,10 @@ class GrowingGraphNetwork(GrowingContainer):
         if isinstance(expansion, InterMergeExpansion):
             prev_node_modules = expansion.previous_nodes
             next_node_modules = expansion.next_nodes
-            adjacent_node_module = node_module.next_modules[0]
+            # Assumes only one next module
+            adjacent_node_module = node_module.next_modules[
+                0
+            ]  # TODO: iterate to find index
             assert adjacent_node_module._name == expansion.adjacent_expanding_node
             linear_omega_layer = isinstance(
                 adjacent_node_module, LinearMergeGrowingModule
@@ -776,7 +786,7 @@ class GrowingGraphNetwork(GrowingContainer):
 
         # Record layer extensions
         new_edge_module.optimal_delta_layer = new_edge_module.layer_of_tensor(
-            weight, bias
+            -weight, -bias
         )
 
         return loss_history

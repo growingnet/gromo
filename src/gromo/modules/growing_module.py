@@ -460,20 +460,26 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def init_computation(self) -> None:
+    def init_computation(self, accumulation_dtype: torch.dtype | None = None) -> None:
         """
         Initialize the computation of the optimal added parameters.
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype of the running sums of the statistics (see `TensorStatistic.init`);
+            None sums in the dtype of the updates
         """
         self.store_input = True
         self.store_activity = True
-        self.tensor_s.init()
+        self.tensor_s.init(accumulation_dtype)
         for module in self.previous_modules:
             module.store_input = True
             module.store_pre_activity = True
         if self.previous_tensor_s is not None:
-            self.previous_tensor_s.init()
+            self.previous_tensor_s.init(accumulation_dtype)
         if self.previous_tensor_m is not None:
-            self.previous_tensor_m.init()
+            self.previous_tensor_m.init(accumulation_dtype)
 
     def update_computation(
         self,
@@ -2912,24 +2918,38 @@ class GrowingModule(torch.nn.Module):
         else:
             raise NotImplementedError
 
-    def init_computation(self) -> None:
+    def init_computation(self, accumulation_dtype: torch.dtype | None = None) -> None:
         """
         Initialize the computation of the optimal added parameters.
+
+        Parameters
+        ----------
+        accumulation_dtype : torch.dtype | None
+            dtype of the running sums of the statistics (see `TensorStatistic.init`);
+            None sums in the dtype of the updates. ``tensor_s_growth`` is the
+            previous module's ``tensor_s``, which that module also initializes:
+            give both modules the same value.
+
+        Raises
+        ------
+        NotImplementedError
+            If the previous module is neither a GrowingModule nor a
+            MergeGrowingModule and is not None.
         """
         self.store_input = True
         self.store_pre_activity = True
-        self.tensor_s.init()
-        self.tensor_m.init()
-        self.covariance_loss_gradient.init()
+        self.tensor_s.init(accumulation_dtype)
+        self.tensor_m.init(accumulation_dtype)
+        self.covariance_loss_gradient.init(accumulation_dtype)
         if self.previous_module is None:
             return
         elif isinstance(self.previous_module, GrowingModule):
             self.previous_module.store_input = True
-            self.tensor_m_prev.init()
-            self.cross_covariance.init()
-            self.tensor_s_growth.init()
+            self.tensor_m_prev.init(accumulation_dtype)
+            self.cross_covariance.init(accumulation_dtype)
+            self.tensor_s_growth.init(accumulation_dtype)
         elif isinstance(self.previous_module, MergeGrowingModule):
-            self.previous_module.init_computation()
+            self.previous_module.init_computation(accumulation_dtype)
         else:
             raise NotImplementedError
 
