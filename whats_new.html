@@ -7,7 +7,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="gromo icon" sizes="300x168" href="_static/gromo_small.png" type="image/png">
-    <title>What’s new &#8212; GroMo 0.2.0.dev0 documentation</title>
+    <title>What’s new &#8212; GroMo 0.2.0 documentation</title>
   
   
   
@@ -46,7 +46,7 @@
 
     <script src="_static/jquery.js?v=5d32c60e"></script>
     <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-    <script src="_static/documentation_options.js?v=286342b3"></script>
+    <script src="_static/documentation_options.js?v=1be0d999"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -79,7 +79,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.2.0.dev0" />
+  <meta name="docsearch:version" content="0.2.0" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -149,8 +149,8 @@
     
     
     
-    <img src="_static/logo_bg_white_small.png" class="logo__image only-light" alt="GroMo 0.2.0.dev0 documentation - Home"/>
-    <img src="_static/logo_bg_white_small.png" class="logo__image only-dark pst-js-only" alt="GroMo 0.2.0.dev0 documentation - Home"/>
+    <img src="_static/logo_bg_white_small.png" class="logo__image only-light" alt="GroMo 0.2.0 documentation - Home"/>
+    <img src="_static/logo_bg_white_small.png" class="logo__image only-dark pst-js-only" alt="GroMo 0.2.0 documentation - Home"/>
   
   
 </a></div>
@@ -408,6 +408,18 @@
 <span id="current"></span><h2>Develop branch<a class="headerlink" href="#develop-branch" title="Link to this heading">#</a></h2>
 <section id="enhancements">
 <h3>Enhancements<a class="headerlink" href="#enhancements" title="Link to this heading">#</a></h3>
+</section>
+<section id="bugs">
+<h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
+</section>
+<section id="api-changes">
+<h3>API changes<a class="headerlink" href="#api-changes" title="Link to this heading">#</a></h3>
+</section>
+</section>
+<section id="version-0-2-0-2026-11-04">
+<span id="changes-0-2-0"></span><h2>Version 0.2.0 (2026-11-04)<a class="headerlink" href="#version-0-2-0-2026-11-04" title="Link to this heading">#</a></h2>
+<section id="id1">
+<h3>Enhancements<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p>Start a gradual adoption of the ty type checker on <code class="docutils literal notranslate"><span class="pre">src</span></code>: a <code class="docutils literal notranslate"><span class="pre">[tool.ty]</span></code> configuration, a pre-commit hook in the manual stage, and a non-blocking CI job reporting ty diagnostics on the lines changed by a pull request (<a class="reference external" href="https://github.com/growingnet/gromo/issues/289">#289</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Add contribution guidelines (<code class="docutils literal notranslate"><span class="pre">CONTRIBUTING.md</span></code>), a code of conduct (Contributor Covenant 3.0), a security policy, and issue and pull request templates (<a class="reference external" href="https://github.com/growingnet/gromo/issues/284">#284</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
@@ -421,8 +433,8 @@
 <li><p>Add the Zenodo DOI to <code class="docutils literal notranslate"><span class="pre">CITATION.cff</span></code> and the README, with PyPI, Python versions, documentation and DOI badges, and set the development status to beta (<a class="reference external" href="https://github.com/growingnet/gromo/issues/280">#280</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 </ul>
 </section>
-<section id="bugs">
-<h3>Bugs<a class="headerlink" href="#bugs" title="Link to this heading">#</a></h3>
+<section id="id2">
+<h3>Bugs<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p>Fix the direction of the weights of new edges in <code class="docutils literal notranslate"><span class="pre">GrowingGraphNetwork.update_edge_weights</span></code>: the optimal delta layer now points uphill, as the weights are fitted to minimise the bottleneck loss (<a class="reference external" href="https://github.com/growingnet/gromo/issues/285">#285</a> by <a class="reference external" href="https://github.com/stelladk">Stella Douka</a>)</p></li>
 <li><p>Fix the backend-dependent failures of <code class="docutils literal notranslate"><span class="pre">TestActivationVariance</span></code>: restore the global device after the <code class="docutils literal notranslate"><span class="pre">TestUtils</span></code> tests, and average the activation variance over 10 seeds, as the random generators of the CPU, CUDA and MPS backends differ for a same seed (<a class="reference external" href="https://github.com/growingnet/gromo/issues/293">#293</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
@@ -430,8 +442,8 @@
 <li><p>Fix the pseudo-inverses of <code class="docutils literal notranslate"><span class="pre">optimal_delta</span></code>: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and <code class="docutils literal notranslate"><span class="pre">torch.linalg.pinv</span></code> inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. <code class="docutils literal notranslate"><span class="pre">sqrt_inverse_matrix_semi_positive</span></code> no longer modifies its input matrix when <code class="docutils literal notranslate"><span class="pre">eigh</span></code> fails (<a class="reference external" href="https://github.com/growingnet/gromo/XXX">#XXX</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 </ul>
 </section>
-<section id="api-changes">
-<h3>API changes<a class="headerlink" href="#api-changes" title="Link to this heading">#</a></h3>
+<section id="id3">
+<h3>API changes<a class="headerlink" href="#id3" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">numerical_threshold</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>, the numerical floor, instead of <code class="docutils literal notranslate"><span class="pre">1e-6</span></code>, and explicit values are floored like rules: a threshold can only raise the floor, and falls back to it when it would drop the whole spectrum of a non-zero matrix. <code class="docutils literal notranslate"><span class="pre">0</span></code> (and <code class="docutils literal notranslate"><span class="pre">e_numerical_threshold=0.0</span></code>) now means the floor, not “keep everything”. Results change in both directions: the floor is relative, so a matrix of small scale (<code class="docutils literal notranslate"><span class="pre">lambda_1</span> <span class="pre">&lt;</span> <span class="pre">8.4</span> <span class="pre">/</span> <span class="pre">d</span></code> in float32, typical of the gradient covariance <code class="docutils literal notranslate"><span class="pre">E</span></code>) keeps more directions than with the absolute <code class="docutils literal notranslate"><span class="pre">1e-6</span></code>; for larger scales, directions below <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">*</span> <span class="pre">eps</span> <span class="pre">*</span> <span class="pre">lambda_1</span></code> are dropped (<code class="docutils literal notranslate"><span class="pre">worst_case_numerical_floor=False</span></code> keeps them); with bfloat16 statistics, rounding-noise directions are dropped. (<a class="reference external" href="https://github.com/growingnet/gromo/XXX">#XXX</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>).</p></li>
 </ul>
@@ -439,8 +451,8 @@
 </section>
 <section id="version-0-1-0-2026-10-16">
 <span id="changes-0-1-0"></span><h2>Version 0.1.0 (2026-10-16)<a class="headerlink" href="#version-0-1-0-2026-10-16" title="Link to this heading">#</a></h2>
-<section id="id1">
-<h3>Enhancements<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
+<section id="id4">
+<h3>Enhancements<a class="headerlink" href="#id4" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p>Add a GitHub Actions workflow publishing the package to PyPI with trusted publishing when a GitHub release is published, and to TestPyPI on manual runs (<a class="reference external" href="https://github.com/growingnet/gromo/issues/277">#277</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Prepare the packaging for PyPI: single-sourced version in <code class="docutils literal notranslate"><span class="pre">gromo/__init__.py</span></code>, BSD-3-Clause licence metadata, project URLs and classifiers, lighter runtime dependencies and source distribution, and a <code class="docutils literal notranslate"><span class="pre">CITATION.cff</span></code> file (<a class="reference external" href="https://github.com/growingnet/gromo/issues/276">#276</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
@@ -529,8 +541,8 @@
 <li><p>Add WideResNet-style dropout support to ResNet with <cite>GrowingDropout2d</cite> modules that preserve network growth (<a class="reference external" href="https://github.com/growingnet/gromo/issues/243">#243</a> by <a class="reference external" href="https://github.com/ferdinandlouapre">ferdinandlouapre</a>)</p></li>
 </ul>
 </section>
-<section id="id2">
-<h3>Bugs<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
+<section id="id5">
+<h3>Bugs<a class="headerlink" href="#id5" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p>Fix the author credits on the PyPI page, which linked the authors without email to the email of the first author: list the authors by name only and add a maintainer contact (<a class="reference external" href="https://github.com/growingnet/gromo/issues/278">#278</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p>Rename the unused <code class="docutils literal notranslate"><span class="pre">**_</span></code> argument of <code class="docutils literal notranslate"><span class="pre">GrowingContainer.dummy_select_update</span></code> to <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code>, as pydoclint &gt;= 0.10 ignores <code class="docutils literal notranslate"><span class="pre">_</span></code> and rejected its docstring (<a class="reference external" href="https://github.com/growingnet/gromo/issues/276">#276</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
@@ -557,8 +569,8 @@
 <li><p>Fix memory leak from issue <a class="reference external" href="https://github.com/growingnet/gromo/issues/96">#96</a> (<a class="reference external" href="https://github.com/growingnet/gromo/issues/97">#97</a> by <a class="reference external" href="https://github.com/TheoRudkiewicz">Théo Rudkiewicz</a>)</p></li>
 </ul>
 </section>
-<section id="id3">
-<h3>API changes<a class="headerlink" href="#id3" title="Link to this heading">#</a></h3>
+<section id="id6">
+<h3>API changes<a class="headerlink" href="#id6" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p>Drop support for Python 3.10, which reached its end of life, and test on Python 3.11 to 3.14 (<a class="reference external" href="https://github.com/growingnet/gromo/issues/276">#276</a> by <a class="reference external" href="https://github.com/sylvchev">Sylvain Chevallier</a>)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">compute_optimal_updates()</span></code> now exposes primitive boolean controls (<code class="docutils literal notranslate"><span class="pre">compute_delta</span></code>, <code class="docutils literal notranslate"><span class="pre">use_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha_zero</span></code>, <code class="docutils literal notranslate"><span class="pre">use_projection</span></code>) and growth-related defaults are intentionally unified to <code class="docutils literal notranslate"><span class="pre">numerical_threshold=1e-6</span></code> and <code class="docutils literal notranslate"><span class="pre">statistical_threshold=1e-3</span></code> for consistency across modules. Migration for direct internal calls: <code class="docutils literal notranslate"><span class="pre">compute_optimal_added_parameters()</span></code> is now <code class="docutils literal notranslate"><span class="pre">_compute_optimal_added_parameters()</span></code>; external users should prefer <code class="docutils literal notranslate"><span class="pre">compute_optimal_updates()</span></code> (<a class="reference external" href="https://github.com/growingnet/gromo/issues/193">#193</a> by <a class="reference external" href="https://github.com/streethagore">Stéphane Rivaud</a>)</p></li>
@@ -625,10 +637,16 @@
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#api-changes">API changes</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#version-0-1-0-2026-10-16">Version 0.1.0 (2026-10-16)</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#version-0-2-0-2026-11-04">Version 0.2.0 (2026-11-04)</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Enhancements</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Bugs</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">API changes</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#version-0-1-0-2026-10-16">Version 0.1.0 (2026-10-16)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">Enhancements</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">Bugs</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id6">API changes</a></li>
 </ul>
 </li>
 </ul>
