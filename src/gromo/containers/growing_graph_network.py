@@ -121,10 +121,28 @@ class GrowingGraphNetwork(GrowingContainer):
         """
         self.dag.init_computation(accumulation_dtype)
 
-    def update_computation(self, update_covariance_loss_gradient: bool = True):
-        """Update statistics computations for growth procedure"""
+    def update_computation(
+        self,
+        update_covariance_loss_gradient: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ):
+        """Update statistics computations for growth procedure
+
+        Parameters
+        ----------
+        update_covariance_loss_gradient: bool
+            if False, skip the gradient-covariance statistic (see
+            GrowingModule.update_computation).
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]`` of each layer,
+            e.g. (N, R) for inputs of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored by layers with 2-D
+            inputs. None, by default, uses every position.
+        """
         self.dag.update_computation(
-            update_covariance_loss_gradient=update_covariance_loss_gradient
+            update_covariance_loss_gradient=update_covariance_loss_gradient,
+            position_mask=position_mask,
         )
 
     def reset_computation(self):

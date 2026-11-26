@@ -92,7 +92,11 @@ class GrowingContainer(torch.nn.Module):
         for layer in self._growing_layers:
             layer.init_computation(accumulation_dtype)
 
-    def update_computation(self, update_covariance_loss_gradient: bool = True) -> None:
+    def update_computation(
+        self,
+        update_covariance_loss_gradient: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
         """Update statistics computations for growth procedure
 
         Parameters
@@ -100,22 +104,49 @@ class GrowingContainer(torch.nn.Module):
         update_covariance_loss_gradient: bool
             if False, skip the gradient-covariance statistic (see
             GrowingModule.update_computation).
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]`` of each layer,
+            e.g. (N, R) for inputs of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored by layers with 2-D
+            inputs. None, by default, uses every position.
         """
         for layer in self._growing_layers:
             layer.update_computation(
-                update_covariance_loss_gradient=update_covariance_loss_gradient
+                update_covariance_loss_gradient=update_covariance_loss_gradient,
+                position_mask=position_mask,
             )
 
-    def update_covariance_loss_gradient(self, count_samples: bool = True) -> None:
-        """Update only the gradient-covariance statistics of the growing layers."""
+    def update_covariance_loss_gradient(
+        self,
+        count_samples: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
+        """Update only the gradient-covariance statistics of the growing layers.
+
+        Parameters
+        ----------
+        count_samples : bool
+            count the batch into the sample counter of the statistic (see
+            GrowingModule.update_covariance_loss_gradient).
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]`` of each layer,
+            e.g. (N, R) for inputs of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored by layers with 2-D
+            inputs. None, by default, uses every position.
+        """
         for layer in self._growing_layers:
-            layer.update_covariance_loss_gradient(count_samples=count_samples)
+            layer.update_covariance_loss_gradient(
+                count_samples=count_samples, position_mask=position_mask
+            )
 
     def update_computation_true_fisher(
         self,
         loss: torch.Tensor,
         logits: torch.Tensor,
         loss_normalization: float | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> None:
         """Per-batch statistics update with the exact (true) softmax Fisher.
 
@@ -133,15 +164,30 @@ class GrowingContainer(torch.nn.Module):
             forward pass as the loss.
         loss_normalization: float | None
             see accumulate_true_fisher_covariance.
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]`` of each layer,
+            e.g. (N, R) for inputs of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored by layers with 2-D
+            inputs. None, by default, uses every position. Every seeded pass is
+            masked, so that the gradient covariance sums over the valid positions
+            only.
         """
         loss.backward(retain_graph=True)
-        self.update_computation(update_covariance_loss_gradient=False)
+        self.update_computation(
+            update_covariance_loss_gradient=False, position_mask=position_mask
+        )
         self.accumulate_true_fisher_covariance(
-            logits, loss_normalization=loss_normalization
+            logits,
+            loss_normalization=loss_normalization,
+            position_mask=position_mask,
         )
 
     def accumulate_true_fisher_covariance(
-        self, logits: torch.Tensor, loss_normalization: float | None = None
+        self,
+        logits: torch.Tensor,
+        loss_normalization: float | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> None:
         """Accumulate the exact (true) softmax Fisher into the gradient
         covariances, replacing the empirical Fisher for one batch.
@@ -168,6 +214,14 @@ class GrowingContainer(torch.nn.Module):
             scale by which per-sample gradients were divided in the real-label
             loss, so both statistics share one convention. None uses the batch
             size (matching a mean-reduced cross-entropy).
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]`` of each layer,
+            e.g. (N, R) for inputs of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored by layers with 2-D
+            inputs. None, by default, uses every position. Every seeded pass is
+            masked, so that the gradient covariance sums over the valid positions
+            only.
         """
         assert logits.dim() == 2, (
             f"Expected classification logits of shape (batch, n_classes), "
@@ -192,7 +246,9 @@ class GrowingContainer(torch.nn.Module):
             ) / norm
             self.clear_pre_activity_grad()
             torch.autograd.backward(logits, seed, retain_graph=j < n_classes - 1)
-            self.update_covariance_loss_gradient(count_samples=(j == 1))
+            self.update_covariance_loss_gradient(
+                count_samples=(j == 1), position_mask=position_mask
+            )
 
     def clear_pre_activity_grad(self) -> None:
         """Clear retained pre-activity gradients of the growing layers.

@@ -11,6 +11,8 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.utils import global_device
+from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
 
 
@@ -453,6 +455,157 @@ class TestGrowingContainer(unittest.TestCase):
         # Check that the result is a dictionary
         self.assertIsInstance(
             stats, dict, "weights_statistics should return a dictionary"
+        )
+
+
+class TestContainerPositionMask(TorchTestCase):
+    """Tests of the position_mask argument of the GrowingContainer statistics."""
+
+    n_classes = 3
+
+    def test_update_computation_forwards_position_mask(self):
+        """update_computation and update_covariance_loss_gradient forward the
+        position_mask, unchanged, to every growing layer of the container."""
+        container = DummyGrowingContainer(in_features=3, out_features=2)
+        mask = torch.ones(4, 5, dtype=torch.bool, device=global_device())
+
+        for method in ("update_computation", "update_covariance_loss_gradient"):
+            with self.subTest(method=method):
+                patchers = [
+                    unittest.mock.patch.object(layer, method)
+                    for layer in container._growing_layers
+                ]
+                mocks = []
+                for patcher in patchers:
+                    mocks.append(patcher.start())
+                    self.addCleanup(patcher.stop)
+
+                getattr(container, method)(position_mask=mask)
+
+                for layer_mock in mocks:
+                    layer_mock.assert_called_once()
+                    self.assertIs(layer_mock.call_args.kwargs["position_mask"], mask)
+
+    def _build(self):
+        """Two-layer token-level MLP (3 -> 5 -> K) with a container around it."""
+        torch.manual_seed(0)
+        first = LinearGrowingModule(
+            3,
+            5,
+            post_layer_function=torch.nn.ReLU(),
+            device=global_device(),
+            name="first",
+        )
+        second = LinearGrowingModule(
+            5,
+            self.n_classes,
+            previous_module=first,
+            device=global_device(),
+            name="second",
+        )
+        first.next_module = second
+        container = GrowingContainer(3, self.n_classes, device=global_device())
+        container._growing_layers = [first, second]
+        return container, first, second
+
+    def _padded_run(self, x, labels, norm, mask):
+        """True-Fisher statistics of the padded batch, optionally masked."""
+        container, first, second = self._build()
+        container.init_computation()
+        logits = second(first(x)).flatten(0, 1)
+        loss = (
+            torch.nn.functional.cross_entropy(logits, labels.flatten(), reduction="sum")
+            / norm
+        )
+        container.update_computation_true_fisher(
+            loss, logits, loss_normalization=norm, position_mask=mask
+        )
+        return first, second
+
+    def test_true_fisher_position_mask(self):
+        """update_computation_true_fisher with position_mask gives the same
+        statistics (S, M, M_prev, cross-covariance and the true-Fisher E) as
+        the unpadded sequences fed one at a time without mask, while the
+        padded positions carry random activations and random labels."""
+        lengths = [2, 5, 1, 4]
+        N, R, d = len(lengths), max(lengths), 3
+        norm = float(N)
+
+        torch.manual_seed(1)
+        seqs = [torch.randn(r, d, device=global_device()) for r in lengths]
+        x = torch.randn(N, R, d, device=global_device())
+        mask = torch.zeros(N, R, dtype=torch.bool, device=global_device())
+        for n, r in enumerate(lengths):
+            x[n, :r] = seqs[n]
+            mask[n, :r] = True
+        labels = torch.randint(0, self.n_classes, (N, R), device=global_device())
+
+        first, second = self._padded_run(x, labels, norm, mask)
+
+        # Reference: one unpadded sequence at a time, no mask.
+        container_r, first_r, second_r = self._build()
+        container_r.init_computation()
+        for n, r in enumerate(lengths):
+            logits_n = second_r(first_r(seqs[n].unsqueeze(0))).flatten(0, 1)
+            loss_n = (
+                torch.nn.functional.cross_entropy(
+                    logits_n, labels[n, :r], reduction="sum"
+                )
+                / norm
+            )
+            container_r.update_computation_true_fisher(
+                loss_n, logits_n, loss_normalization=norm
+            )
+
+        for name, layer, layer_r in (
+            ("first", first, first_r),
+            ("second", second, second_r),
+        ):
+            with self.subTest(layer=name):
+                self.assertEqual(layer.covariance_loss_gradient.samples, N)
+                self.assertEqual(layer.tensor_s.samples, N)
+                self.assertAllClose(
+                    layer.covariance_loss_gradient(),
+                    layer_r.covariance_loss_gradient(),
+                    atol=1e-6,
+                    rtol=1e-4,
+                )
+                self.assertAllClose(
+                    layer.tensor_s(),
+                    layer_r.tensor_s(),
+                    atol=1e-6,
+                    rtol=1e-4,
+                )
+                self.assertAllClose(
+                    layer.tensor_m(),
+                    layer_r.tensor_m(),
+                    atol=1e-6,
+                    rtol=1e-4,
+                )
+        with self.subTest(layer="second", statistic="m_prev and cross-covariance"):
+            self.assertAllClose(
+                second.tensor_m_prev(),
+                second_r.tensor_m_prev(),
+                atol=1e-6,
+                rtol=1e-4,
+            )
+            self.assertAllClose(
+                second.cross_covariance(),
+                second_r.cross_covariance(),
+                atol=1e-6,
+                rtol=1e-4,
+            )
+
+        # Sanity check: without the mask, the padded positions leak into E.
+        _, second_unmasked = self._padded_run(x, labels, norm, mask=None)
+        self.assertFalse(
+            torch.allclose(
+                second_unmasked.covariance_loss_gradient(),
+                second_r.covariance_loss_gradient(),
+                atol=1e-6,
+                rtol=1e-4,
+            ),
+            "Unmasked padded run should differ from the reference E.",
         )
 
 

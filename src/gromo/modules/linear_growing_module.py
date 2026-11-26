@@ -7,6 +7,7 @@ import torch
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import KnownThresholdRuleName, ThresholdRule
+from gromo.utils.utils import flatten_positions
 
 
 class LinearMergeGrowingModule(MergeGrowingModule):
@@ -215,11 +216,19 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             current_index += module_features + int(module.use_bias)
         return full_activity
 
-    def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_previous_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S for the input of all previous modules.
         B: full activity tensor
         S = B^T B
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions; not supported by merge modules, must be
+            None
 
         Returns
         -------
@@ -227,18 +236,36 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             update of the tensor S
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         full_activity = self.construct_full_activity()
         return (
             torch.einsum("ij,ik->jk", full_activity, full_activity),
             full_activity.shape[0],
         )
 
-    def compute_previous_m_update(self) -> tuple[torch.Tensor, int]:
+    def compute_previous_m_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M for the input of all previous modules.
         B: full activity tensor
         M = dLoss/dA^T B
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions; not supported by merge modules, must be
+            None
 
         Returns
         -------
@@ -246,7 +273,17 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             update of the tensor M
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         # assert self.input.grad is not None, f"No gradient for input for {self.name}."
         # assert self.pre_activity.grad is not None, f"No gradient for pre_activity for {self.name}."
         full_activity = self.construct_full_activity()
@@ -255,16 +292,36 @@ class LinearMergeGrowingModule(MergeGrowingModule):
             self.input.shape[0],
         )
 
-    def compute_s_update(self) -> torch.Tensor:
+    def compute_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S.
         With the input tensor X, the update is U^{j k} = X^{i j} X^{i k}.
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions; not supported by merge modules, must be
+            None
 
         Returns
         -------
         torch.Tensor
             update of the tensor S
+        int
+            number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         assert self.store_activity, (
             f"The input must be stored to compute the update of S. (error in {self.name})"
         )
@@ -471,10 +528,21 @@ class LinearGrowingModule(GrowingModule):
         return _forward
 
     # Statistics computation
-    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S.
         With the input tensor B, the update is U^{j k} = B^{i j} B^{i k}.
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g.
+            (N, R) for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The sum runs over the valid positions only, but the sample
+            count stays the number of sequences N. Ignored for 2-D inputs. None,
+            by default, uses every position.
 
         Returns
         -------
@@ -489,18 +557,16 @@ class LinearGrowingModule(GrowingModule):
         assert self.input is not None, (
             f"The input must be stored to compute the update of S. (error in {self.name})"
         )
-        input_extended = self.input_extended
+        input_flat = flatten_positions(self.input_extended, position_mask)
         return (
-            torch.einsum(
-                "ij,ik->jk",
-                torch.flatten(input_extended, 0, -2),
-                torch.flatten(input_extended, 0, -2),
-            ),
+            torch.einsum("ij,ik->jk", input_flat, input_flat),
             self.input.shape[0],
         )
 
     def compute_m_update(
-        self, desired_activation: torch.Tensor | None = None
+        self,
+        desired_activation: torch.Tensor | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M.
@@ -512,6 +578,12 @@ class LinearGrowingModule(GrowingModule):
         ----------
         desired_activation: torch.Tensor | None
             desired variation direction of the output  of the layer
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g.
+            (N, R) for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The sum runs over the valid positions only, but the sample
+            count stays the number of sequences N. Ignored for 2-D inputs. None,
+            by default, uses every position.
 
         Returns
         -------
@@ -526,14 +598,16 @@ class LinearGrowingModule(GrowingModule):
         return (
             torch.einsum(
                 "ij,ik->jk",
-                torch.flatten(self.input_extended, 0, -2),
-                torch.flatten(desired_activation, 0, -2),
+                flatten_positions(self.input_extended, position_mask),
+                flatten_positions(desired_activation, position_mask),
             ),
             self.input.shape[0],
         )
 
     def compute_m_prev_update(
-        self, desired_activation: torch.Tensor | None = None
+        self,
+        desired_activation: torch.Tensor | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M_{-2} := B[-2]^T dA .
@@ -542,6 +616,13 @@ class LinearGrowingModule(GrowingModule):
         ----------
         desired_activation: torch.Tensor | None
             desired variation direction of the output  of the layer
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g.
+            (N, R) for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The sum runs over the valid positions only, but the sample
+            count stays the number of sequences N. Ignored for 2-D inputs. None,
+            by default, uses every position. Not supported when the previous
+            module is a LinearMergeGrowingModule.
 
         Returns
         -------
@@ -555,7 +636,9 @@ class LinearGrowingModule(GrowingModule):
         ValueError
             if there is no previous module
         NotImplementedError
-            if the previous module is not of type LinearGrowingModule or LinearMergeGrowingModule
+            if the previous module is not of type LinearGrowingModule or
+            LinearMergeGrowingModule, or if a position mask is given with a
+            LinearMergeGrowingModule as previous module
         """
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
@@ -568,12 +651,17 @@ class LinearGrowingModule(GrowingModule):
             return (
                 torch.einsum(
                     "ij,ik->jk",
-                    torch.flatten(self.previous_module.input_extended, 0, -2),
-                    torch.flatten(desired_activation, 0, -2),
+                    flatten_positions(self.previous_module.input_extended, position_mask),
+                    flatten_positions(desired_activation, position_mask),
                 ),
                 desired_activation.size(0),
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            if position_mask is not None:
+                raise NotImplementedError(
+                    f"The position mask is not supported with a "
+                    f"LinearMergeGrowingModule as previous module. (error in {self.name})"
+                )
             if self.previous_module.number_of_successors > 1:
                 warn("The previous module has multiple successors.")
             return (
@@ -590,9 +678,21 @@ class LinearGrowingModule(GrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
-    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+    def compute_cross_covariance_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor P := B[-2]^T B[-1] .
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g.
+            (N, R) for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The sum runs over the valid positions only, but the sample
+            count stays the number of sequences N. Ignored for 2-D inputs. None,
+            by default, uses every position. Not supported when the previous
+            module is a LinearMergeGrowingModule.
 
         Returns
         -------
@@ -606,7 +706,9 @@ class LinearGrowingModule(GrowingModule):
         ValueError
             if there is no previous module
         NotImplementedError
-            if the previous module is not of type LinearGrowingModule or LinearMergeGrowingModule
+            if the previous module is not of type LinearGrowingModule or
+            LinearMergeGrowingModule, or if a position mask is given with a
+            LinearMergeGrowingModule as previous module
         """
         if self.previous_module is None:
             raise ValueError(
@@ -616,12 +718,17 @@ class LinearGrowingModule(GrowingModule):
             return (
                 torch.einsum(
                     "ij,ik->jk",
-                    torch.flatten(self.previous_module.input_extended, 0, -2),
-                    torch.flatten(self.input_extended, 0, -2),
+                    flatten_positions(self.previous_module.input_extended, position_mask),
+                    flatten_positions(self.input_extended, position_mask),
                 ),
                 self.input.shape[0],
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            if position_mask is not None:
+                raise NotImplementedError(
+                    f"The position mask is not supported with a "
+                    f"LinearMergeGrowingModule as previous module. (error in {self.name})"
+                )
             return (
                 torch.einsum(
                     "ij,ik->jk",
@@ -637,11 +744,20 @@ class LinearGrowingModule(GrowingModule):
             )
 
     def compute_covariance_loss_gradient_update(
-        self,
+        self, position_mask: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the empirical Fisher / gradient covariance
         :math:`E_s := dA^T dA` on the output-channel axis.
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g.
+            (N, R) for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The sum runs over the valid positions only, but the sample
+            count stays the number of sequences N. Ignored for 2-D inputs. None,
+            by default, uses every position.
 
         Returns
         -------
@@ -659,7 +775,7 @@ class LinearGrowingModule(GrowingModule):
             f"The gradient of the pre-activity must be available to compute "
             f"the update of the gradient covariance. (error in {self.name})"
         )
-        flat = torch.flatten(desired_activation, 0, -2)
+        flat = flatten_positions(desired_activation, position_mask)
         return (
             torch.einsum("ij,ik->jk", flat, flat),
             desired_activation.shape[0],

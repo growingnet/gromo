@@ -1891,3 +1891,133 @@ class TestLinearGrowingBlock(TorchTestCase):
         # Test setter with None
         block.optimal_delta_layer = None
         self.assertIsNone(block.optimal_delta_layer)
+
+    def _build_block(self, hidden_features: int) -> LinearGrowingBlock:
+        """Build the block deterministically (same weights at every call)."""
+        torch.manual_seed(0)
+        return LinearGrowingBlock(
+            in_features=self.in_features,
+            out_features=self.in_features,
+            hidden_features=hidden_features,
+            activation=torch.nn.ReLU(),
+            device=self.device,
+            name="block",
+        )
+
+    def _padded_data(self) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor]:
+        """Sequences of lengths [2, 5, 1, 4] padded to R=5 with random values.
+
+        Returns
+        -------
+        tuple[list[torch.Tensor], torch.Tensor, torch.Tensor]
+            the unpadded sequences, the padded batch of shape (N, R, d) and the
+            boolean mask of shape (N, R), True on the real positions.
+        """
+        torch.manual_seed(1)
+        lengths = [2, 5, 1, 4]
+        n_seq, max_len = len(lengths), 5
+        seqs = [torch.randn(r, self.in_features, device=self.device) for r in lengths]
+        x = torch.randn(n_seq, max_len, self.in_features, device=self.device)
+        mask = torch.zeros(n_seq, max_len, dtype=torch.bool, device=self.device)
+        for n, (seq, r) in enumerate(zip(seqs, lengths, strict=True)):
+            x[n, :r] = seq
+            mask[n, :r] = True
+        return seqs, x, mask
+
+    def _accumulate_padded(
+        self,
+        block: LinearGrowingBlock,
+        x: torch.Tensor,
+        mask: torch.Tensor | None,
+    ) -> None:
+        """Accumulate the statistics on the padded batch, optionally masked."""
+        block.init_computation()
+        block(x).pow(2).sum().backward()
+        block.update_computation(position_mask=mask)
+
+    def _accumulate_reference(
+        self, block: LinearGrowingBlock, seqs: list[torch.Tensor]
+    ) -> None:
+        """Accumulate the statistics over the unpadded sequences, one at a time."""
+        block.init_computation()
+        for seq in seqs:
+            block(seq.unsqueeze(0)).pow(2).sum().backward()
+            block.update_computation()
+
+    def _statistic_names(self, hidden_features: int) -> list[str]:
+        """Names of the second layer statistics compared in the padding tests."""
+        names = ["tensor_m_prev", "tensor_s_growth", "covariance_loss_gradient"]
+        if hidden_features > 0:
+            names += ["cross_covariance", "tensor_m", "tensor_s"]
+        return names
+
+    @unittest_parametrize(({"hidden_features": 0}, {"hidden_features": 2}))
+    def test_position_mask_padding_invariance(self, hidden_features: int = 0):
+        """Padding invariance: with the position mask, the statistics of a padded
+        batch equal those of the unpadded sequences fed one at a time.
+
+        The block acts position by position (linear layers, element-wise
+        activation, identity skip), so the padded positions only contribute
+        through the masked sums. The count stays N, the number of sequences.
+        Without the mask, the padded positions change the statistics.
+        """
+        seqs, x, mask = self._padded_data()
+        n_seq = len(seqs)
+
+        block = self._build_block(hidden_features)
+        self._accumulate_padded(block, x, mask)
+
+        block_ref = self._build_block(hidden_features)
+        self._accumulate_reference(block_ref, seqs)
+
+        for name in self._statistic_names(hidden_features):
+            with self.subTest(statistic=name):
+                stat = getattr(block.second_layer, name)
+                stat_ref = getattr(block_ref.second_layer, name)
+                self.assertEqual(stat.samples, n_seq)
+                self.assertEqual(stat_ref.samples, n_seq)
+                self.assertAllClose(stat(), stat_ref(), atol=1e-5, rtol=1e-5)
+
+        # Sanity check: without the mask, the padded positions change the statistic
+        block_unmasked = self._build_block(hidden_features)
+        self._accumulate_padded(block_unmasked, x, None)
+        self.assertFalse(
+            torch.allclose(
+                block_unmasked.second_layer.tensor_s_growth(),
+                block_ref.second_layer.tensor_s_growth(),
+                atol=1e-5,
+                rtol=1e-5,
+            )
+        )
+
+    @unittest_parametrize(({"hidden_features": 0}, {"hidden_features": 2}))
+    def test_position_mask_update_covariance_loss_gradient(
+        self, hidden_features: int = 0
+    ):
+        """The position mask is forwarded by update_covariance_loss_gradient.
+
+        Updating the covariance of the loss gradient separately with the mask
+        gives the same statistic as the unpadded reference, with count N.
+        """
+        seqs, x, mask = self._padded_data()
+        n_seq = len(seqs)
+
+        block = self._build_block(hidden_features)
+        block.init_computation()
+        block(x).pow(2).sum().backward()
+        block.update_computation(
+            update_covariance_loss_gradient=False, position_mask=mask
+        )
+        block.update_covariance_loss_gradient(position_mask=mask)
+
+        block_ref = self._build_block(hidden_features)
+        self._accumulate_reference(block_ref, seqs)
+
+        grad_stat = block.second_layer.covariance_loss_gradient
+        self.assertEqual(grad_stat.samples, n_seq)
+        self.assertAllClose(
+            grad_stat(),
+            block_ref.second_layer.covariance_loss_gradient(),
+            atol=1e-5,
+            rtol=1e-5,
+        )

@@ -485,8 +485,16 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             current_index += module.in_features + module.use_bias
         return full_activity
 
-    def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_previous_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """Compute the update of the tensor S for the input of all previous modules.
+
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -494,7 +502,17 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             update of the tensor S
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         full_activity = self.construct_full_activity()
         return (
             torch.einsum(
@@ -505,11 +523,19 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             full_activity.shape[0],
         )
 
-    def compute_previous_m_update(self) -> tuple[torch.Tensor, int]:
+    def compute_previous_m_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M for the input of all previous modules.
         B: full activity tensor
         M = dLoss/dA^T B
+
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -517,7 +543,17 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             update of the tensor M
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         full_activity = (
             self.construct_full_activity()
         )  # (n, total_in_parameters, W_out*H_out)
@@ -527,7 +563,9 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             self.input.shape[0],
         )
 
-    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of tensor S based on the unfolded activity tensor.
 
@@ -549,6 +587,12 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             shape (batch_size, D), and S is computed via:
                 S = ∑_{i} A[i]^T A[i] = einsum("ij, ik -> jk", A, A)
 
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
+
         Returns
         -------
         torch.Tensor
@@ -561,7 +605,14 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         ------
         AssertionError
             if the activity is not stored
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         if not self.store_activity or self.activity is None:
             raise AssertionError(
                 f"The activity must be stored to compute the update of S. "
@@ -998,11 +1049,19 @@ class Conv2dGrowingModule(GrowingModule):
         return _forward
 
     # Statistics computation
-    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         r"""
         Compute the update of the tensor S.
         With the input tensor B, the update is
         S := (B^c_F)^T B^c_F \in (C d[+1]d[+1], C d[+1]d[+1]).
+
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -1010,7 +1069,17 @@ class Conv2dGrowingModule(GrowingModule):
             update of the tensor S
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         assert self.store_input, (
             f"The input must be stored to compute the update of S. (error in {self.name})"
         )
@@ -1028,7 +1097,9 @@ class Conv2dGrowingModule(GrowingModule):
         )
 
     def compute_m_update(
-        self, desired_activation: torch.Tensor | None = None
+        self,
+        desired_activation: torch.Tensor | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M.
@@ -1040,6 +1111,9 @@ class Conv2dGrowingModule(GrowingModule):
         ----------
         desired_activation: torch.Tensor | None
             desired variation direction of the output  of the layer
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -1047,7 +1121,17 @@ class Conv2dGrowingModule(GrowingModule):
             update of the tensor M
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
             assert isinstance(desired_activation, torch.Tensor), (
@@ -1064,11 +1148,17 @@ class Conv2dGrowingModule(GrowingModule):
         )
 
     def compute_covariance_loss_gradient_update(
-        self,
+        self, position_mask: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the empirical Fisher / gradient covariance
         E_s := sum_{i,h,w} dA_{i,a,h,w} dA_{i,b,h,w} on the output-channel axis.
+
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -1076,7 +1166,17 @@ class Conv2dGrowingModule(GrowingModule):
             update of the gradient covariance, shape (out_channels, out_channels)
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         assert self.store_pre_activity, (
             f"The pre-activity must be stored to compute the update of the "
             f"gradient covariance. (error in {self.name})"
@@ -1322,7 +1422,11 @@ class Conv2dGrowingModule(GrowingModule):
         self._input_size = new_size
         return self._input_size
 
-    def update_computation(self, update_covariance_loss_gradient: bool = True) -> None:
+    def update_computation(
+        self,
+        update_covariance_loss_gradient: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
         """
         Update the computation of the layer.
 
@@ -1331,7 +1435,20 @@ class Conv2dGrowingModule(GrowingModule):
         update_covariance_loss_gradient: bool
             if False, skip the gradient-covariance statistic (see
             GrowingModule.update_computation).
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         self.update_input_size()
         super(Conv2dGrowingModule, self).update_computation(
             update_covariance_loss_gradient=update_covariance_loss_gradient
@@ -1559,7 +1676,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         )
 
     def compute_m_prev_update(
-        self, desired_activation: torch.Tensor | None = None
+        self,
+        desired_activation: torch.Tensor | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M_{-2} := B[-2] <x> dA.
@@ -1570,6 +1689,9 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         ----------
         desired_activation: torch.Tensor | None
             desired variation direction of the output  of the layer
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -1583,8 +1705,14 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         ValueError
             if there is no previous module
         NotImplementedError
-            if the previous module is not of type Conv2dGrowingModule
+            if the previous module is not of type Conv2dGrowingModule, or if a
+            position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
             assert isinstance(desired_activation, torch.Tensor), (
@@ -1631,12 +1759,20 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
-    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+    def compute_cross_covariance_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor P := B[-2] <x> B[-1].
         Precisely: P(ab) = Bc[-2](iax) Bc[-1](ibx)
         where Bc[-2] is the unfolded input of the previous layer
         and Bc[-1] is the unfolded input of the current layer.
+
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -1650,8 +1786,14 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         ValueError
             if there is no previous module
         NotImplementedError
-            if the previous module is not of type Conv2dGrowingModule
+            if the previous module is not of type Conv2dGrowingModule, or if a
+            position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         if self.previous_module is None:
             raise ValueError(
                 f"No previous module for {self.name}. Thus the cross covariance is "
@@ -2036,7 +2178,9 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             )
 
     def compute_m_prev_update(
-        self, desired_activation: torch.Tensor | None = None
+        self,
+        desired_activation: torch.Tensor | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M_{-2} := B[-2] <x> dA.
@@ -2047,6 +2191,9 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         ----------
         desired_activation: torch.Tensor | None
             desired variation direction of the output  of the layer
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -2060,8 +2207,14 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         ValueError
             if there is no previous module
         NotImplementedError
-            if the previous module is not of type Conv2dGrowingModule
+            if the previous module is not of type Conv2dGrowingModule, or if a
+            position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         if desired_activation is None:
             desired_activation = self.pre_activity.grad
             assert isinstance(desired_activation, torch.Tensor), (
@@ -2097,11 +2250,19 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
-    def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
+    def compute_s_growth_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         r"""
         Compute the update of the tensor S_growth.
         With the input tensor B, the update is
         S_growth := (Bt)^T Bt \in (C dd, C dd).
+
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -2109,7 +2270,17 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             update of the tensor S_growth
         int
             number of samples used to compute the update
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         return (
             torch.einsum(
                 "ijea, ijeb -> ab",
@@ -2119,12 +2290,20 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             self.masked_unfolded_prev_input.shape[0],
         )
 
-    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+    def compute_cross_covariance_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor P := B[-2] <x> B[-1].
         Precisely: P(abe) = Bt[-2](ixab) Bc[-1](iex)
         where Bt[-2] is the masked unfolded input of the previous layer
         and Bc[-1] is the unfolded input of the current layer.
+
+        Parameters
+        ----------
+        position_mask: torch.Tensor | None
+            mask of the valid positions; not supported by convolutional modules,
+            must be None
 
         Returns
         -------
@@ -2138,8 +2317,14 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         ValueError
             if there is no previous module
         NotImplementedError
-            if the previous module is not of type Conv2dGrowingModule
+            if the previous module is not of type Conv2dGrowingModule, or if a
+            position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         if self.previous_module is None:
             raise ValueError(
                 f"No previous module for {self.name}. Thus the cross covariance"

@@ -2660,5 +2660,82 @@ class TestConv2dPruningValidation(TorchTestCase):
             grouped_layer.prune_layer_out(np.array([0]))
 
 
+class TestPositionMaskNotSupportedConv(TorchTestCase):
+    """Conv2d and merge modules do not support the position mask: every
+    statistic method must raise NotImplementedError when given a mask."""
+
+    def setUp(self) -> None:
+        torch.manual_seed(0)
+        self.mask = torch.ones(2, 3, dtype=torch.bool, device=global_device())
+
+    def _previous_conv(self) -> Conv2dGrowingModule:
+        return Conv2dGrowingModule(
+            in_channels=2,
+            out_channels=3,
+            kernel_size=3,
+            input_size=(8, 8),
+            device=global_device(),
+        )
+
+    def test_position_mask_not_supported(self) -> None:
+        """Passing a position mask to a Conv2d or merge statistic method raises
+        NotImplementedError, before any computation, for every such method."""
+        merge = Conv2dMergeGrowingModule(
+            in_channels=3,
+            input_size=(6, 6),
+            next_kernel_size=(3, 3),
+            device=global_device(),
+        )
+        with self.subTest(
+            module="Conv2dMergeGrowingModule", method="compute_previous_s_update"
+        ):
+            with self.assertRaises(NotImplementedError):
+                merge.compute_previous_s_update(position_mask=self.mask)
+        with self.subTest(
+            module="Conv2dMergeGrowingModule", method="compute_previous_m_update"
+        ):
+            with self.assertRaises(NotImplementedError):
+                merge.compute_previous_m_update(position_mask=self.mask)
+        with self.subTest(module="Conv2dMergeGrowingModule", method="compute_s_update"):
+            with self.assertRaises(NotImplementedError):
+                merge.compute_s_update(position_mask=self.mask)
+
+        for cls in (RestrictedConv2dGrowingModule, FullConv2dGrowingModule):
+            layer = cls(
+                in_channels=3,
+                out_channels=5,
+                kernel_size=3,
+                previous_module=self._previous_conv(),
+                device=global_device(),
+            )
+            methods = ["update_computation"]
+            if cls is RestrictedConv2dGrowingModule:
+                methods += [
+                    "compute_s_update",
+                    "compute_m_update",
+                    "compute_covariance_loss_gradient_update",
+                    "compute_m_prev_update",
+                    "compute_cross_covariance_update",
+                    "update_covariance_loss_gradient",
+                ]
+            else:
+                methods += [
+                    "compute_m_prev_update",
+                    "compute_s_growth_update",
+                    "compute_cross_covariance_update",
+                ]
+            for method in methods:
+                with self.subTest(module=cls.__name__, method=method):
+                    with self.assertRaises(NotImplementedError):
+                        getattr(layer, method)(position_mask=self.mask)
+
+        plain = Conv2dGrowingModule(
+            in_channels=2, out_channels=3, kernel_size=3, device=global_device()
+        )
+        with self.subTest(module="Conv2dGrowingModule", method="update_computation"):
+            with self.assertRaises(NotImplementedError):
+                plain.update_computation(position_mask=self.mask)
+
+
 if __name__ == "__main__":
     main()
