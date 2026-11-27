@@ -17,6 +17,7 @@ import torch.nn.modules.activation as activation_mod
 import torch.nn.modules.dropout as dropout_mod
 
 from gromo.config.loader import load_config
+from gromo.utils.shrinkage import fixed_shrinkage
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import (
     KnownThresholdRuleName,
@@ -40,32 +41,6 @@ GRADIENT_COMPUTATION_EPSILON = 1e-5  # Small perturbation for gradient computati
 # Signature of the layer extension initializations, see
 # `GrowingModule.KNOWN_EXTENSION_INITS`.
 ExtensionInit = Callable[[torch.Tensor, torch.Tensor | None, int], None]
-
-
-def _shrink_psd_matrix(matrix: torch.Tensor, shrinkage: float) -> torch.Tensor:
-    """Ledoit-Wolf-style ridge shrinkage of a positive semi-definite matrix.
-
-    Replaces M by the convex combination (1 - alpha) * M + alpha * tr(M)/d * I,
-    which keeps M positive definite (hence invertible/full-rank) even when its
-    empirical spectrum sits at or below the usual whitening threshold.
-
-    Parameters
-    ----------
-    matrix: torch.Tensor
-        positive semi-definite matrix M, of shape (d, d)
-    shrinkage: float
-        shrinkage intensity alpha in [0, 1]
-
-    Returns
-    -------
-    torch.Tensor
-        the shrunk matrix M
-    """
-    assert 0.0 <= shrinkage <= 1.0, f"shrinkage must be in [0, 1], got {shrinkage}"
-    d = matrix.shape[0]
-    return (1 - shrinkage) * matrix + shrinkage * (matrix.trace() / d) * torch.eye(
-        d, device=matrix.device, dtype=matrix.dtype
-    )
 
 
 @overload
@@ -2547,7 +2522,7 @@ class GrowingModule(torch.nn.Module):
             self.covariance_loss_gradient() if use_fisher else None
         )
         if tensor_covariance_loss_gradient is not None and fisher_shrinkage > 0:
-            tensor_covariance_loss_gradient = _shrink_psd_matrix(
+            tensor_covariance_loss_gradient = fixed_shrinkage(
                 tensor_covariance_loss_gradient, fisher_shrinkage
             )
 
@@ -2681,7 +2656,7 @@ class GrowingModule(torch.nn.Module):
         e_numerical_threshold: float | SpectrumThreshold | None = None
         e_worst_case_numerical_floor: bool | None = None
         if matrix_e is not None and fisher_shrinkage > 0:
-            matrix_e = _shrink_psd_matrix(matrix_e, fisher_shrinkage)
+            matrix_e = fixed_shrinkage(matrix_e, fisher_shrinkage)
             # 0.0 is the floor (None would fall back to the threshold of S), and the
             # worst-case term could cut the shrunk eigenvalues.
             e_numerical_threshold = 0.0

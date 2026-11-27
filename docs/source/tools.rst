@@ -40,3 +40,27 @@ Thresholds
 
     resolve_threshold
     resolve_threshold_rule
+
+---------
+Shrinkage
+---------
+
+.. automodule:: gromo.utils.shrinkage
+   :no-index:
+
+.. currentmodule:: gromo.utils.shrinkage
+
+.. autosummary::
+    :toctree: generated/
+    :template: function.rst
+
+    fixed_shrinkage
+    weighted_ledoit_wolf
+    reduce_fourth_moment
+
+.. autosummary::
+    :toctree: generated/
+    :template: class.rst
+
+    LedoitWolfEstimate
+    ReduceMoments

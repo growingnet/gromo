@@ -2100,7 +2100,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
     def test_fisher_shrinkage_out_of_range_rejected(self):
         """Shrinkage intensity is a convex-combination weight: must be <= 1."""
         layer2 = self._fisher_two_layer_setup()
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             self._fisher_shrinkage_eigenvalues(layer2, fisher_shrinkage=1.5)
 
     def test_fisher_shrinkage_whitens_at_the_floor(self):
