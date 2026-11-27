@@ -1,6 +1,6 @@
 """Shrinkage of square matrices towards a multiple of the identity.
 
-The shrinkage of a d x d matrix M with intensity tau in [0, 1] is
+The shrinkage of a d x d matrix M with intensity tau in [0, 1] is the matrix::
 
     (1 - tau) * M + tau * tr(M) / d * I.
 
@@ -88,12 +88,13 @@ def weighted_ledoit_wolf(
     sum_weights: float,
     sum_squared_weights: float,
     weighted_fourth_moment: float,
+    dtype: torch.dtype = torch.float64,
 ) -> LedoitWolfEstimate:
     """Ledoit-Wolf shrinkage of a weighted mean of symmetric matrices.
 
     The matrix is the weighted mean S = sum_n nu_n Z_n / sum_n nu_n of symmetric
     d x d matrices Z_n, with weights nu_n > 0. It is shrunk towards lambda * I with
-    the intensity of Ledoit and Wolf (2004), generalised to weights:
+    the intensity of Ledoit and Wolf (2004), generalised to weights::
 
         lambda = tr(S) / d,
         delta^2 = ||S||_F^2 - d * lambda^2 = ||S - lambda I||_F^2,
@@ -115,7 +116,10 @@ def weighted_ledoit_wolf(
     Centring is the caller's job: the Z_n are centred by the caller, and S and the
     fourth moment must use the same centre.
 
-    The scalars are computed in float64.
+    The trace and the squared Frobenius norm of S are computed in `dtype`, without a
+    copy of S when it already has this dtype, and the rest in Python floats. In a
+    dtype of precision eps, delta^2 = ||S||_F^2 - d * lambda^2 has an absolute error
+    of about eps * ||S||_F^2: it matters only when S is close to lambda I.
 
     Parameters
     ----------
@@ -127,6 +131,8 @@ def weighted_ledoit_wolf(
         sum_n nu_n^2
     weighted_fourth_moment: float
         sum_n nu_n^2 ||Z_n||_F^2, e.g. from `reduce_fourth_moment`
+    dtype: torch.dtype
+        dtype of the trace and of the squared Frobenius norm of S
 
     Returns
     -------
@@ -151,9 +157,11 @@ def weighted_ledoit_wolf(
             f"{sum_squared_weights=}."
         )
     d = matrix.shape[0]
-    matrix_64 = matrix.to(torch.float64)
-    mean_eigenvalue = float(matrix_64.trace()) / d
-    squared_norm = float(matrix_64.square().sum())
+    # `to` returns the matrix itself when it already has the dtype, and the norm is
+    # a reduction: no d x d tensor is allocated in that case.
+    matrix_cast = matrix.to(dtype)
+    mean_eigenvalue = float(matrix_cast.trace()) / d
+    squared_norm = float(torch.linalg.vector_norm(matrix_cast)) ** 2
     # ||S - lambda I||_F^2 >= 0, but the subtraction can round below 0.
     delta2 = max(squared_norm - d * mean_eigenvalue**2, 0.0)
     unclipped_beta2 = (
@@ -176,7 +184,7 @@ class ReduceMoments:
     """Accumulators of the weighted fourth moment of rank-one matrices.
 
     For vectors x_n in R^d with weights nu_n, and w_n = nu_n^2, accumulate in one
-    pass sum_n nu_n and
+    pass sum_n nu_n and the sums::
 
         s_0 = sum_n w_n,                  s_1 = sum_n w_n x_n,
         s_2 = sum_n w_n ||x_n||^2,        s_3 = sum_n w_n ||x_n||^2 x_n,
@@ -297,16 +305,24 @@ class ReduceMoments:
             accumulator.add_(term.to(accumulator.dtype))
 
 
-def reduce_fourth_moment(moments: ReduceMoments, centre: torch.Tensor) -> float:
+def reduce_fourth_moment(
+    moments: ReduceMoments,
+    centre: torch.Tensor,
+    dtype: torch.dtype = torch.float64,
+) -> float:
     """Weighted fourth moment of the vectors around a centre.
 
     Return sum_n nu_n^2 ||x_n - c||^4, from the accumulators of `ReduceMoments`
-    (with w_n = nu_n^2), by
+    (with w_n = nu_n^2), by the formula::
 
         sum_n w_n ||x_n - c||^4 = s_4 - 4 c^T s_3 + 2 ||c||^2 s_2 + 4 c^T Q c
-                                  - 4 ||c||^2 (c^T s_1) + ||c||^4 s_0,
+                                  - 4 ||c||^2 (c^T s_1) + ||c||^4 s_0.
 
-    evaluated in float64. The vectors and the centre are relative to the same origin.
+    The vectors and the centre are relative to the same origin. The formula is
+    evaluated in `dtype`, without a copy of the accumulators when they already have
+    this dtype. Its terms cancel when the centre is far from the origin compared with
+    the spread of the vectors: float64 and an origin close to the mean of the vectors
+    limit the rounding error.
 
     Parameters
     ----------
@@ -314,6 +330,8 @@ def reduce_fourth_moment(moments: ReduceMoments, centre: torch.Tensor) -> float:
         accumulators of the vectors x_n and their weights nu_n
     centre: torch.Tensor
         centre c, of shape (d,)
+    dtype: torch.dtype
+        dtype of the evaluation
 
     Returns
     -------
@@ -330,14 +348,14 @@ def reduce_fourth_moment(moments: ReduceMoments, centre: torch.Tensor) -> float:
             f"The centre must be of shape {tuple(moments.sum_vectors.shape)}, got "
             f"{tuple(centre.shape)}."
         )
-    c = centre.to(dtype=torch.float64, device=moments.sum_vectors.device)
+    c = centre.to(dtype=dtype, device=moments.sum_vectors.device)
     squared_norm_c = c @ c
     fourth_moment = (
-        moments.sum_fourth_powers.to(torch.float64)
-        - 4 * (c @ moments.sum_squared_norm_vectors.to(torch.float64))
-        + 2 * squared_norm_c * moments.sum_squared_norms.to(torch.float64)
-        + 4 * (c @ moments.sum_outer_products.to(torch.float64) @ c)
-        - 4 * squared_norm_c * (c @ moments.sum_vectors.to(torch.float64))
-        + squared_norm_c**2 * moments.sum_squared_weights.to(torch.float64)
+        moments.sum_fourth_powers.to(dtype)
+        - 4 * (c @ moments.sum_squared_norm_vectors.to(dtype))
+        + 2 * squared_norm_c * moments.sum_squared_norms.to(dtype)
+        + 4 * (c @ (moments.sum_outer_products.to(dtype) @ c))
+        - 4 * squared_norm_c * (c @ moments.sum_vectors.to(dtype))
+        + squared_norm_c**2 * moments.sum_squared_weights.to(dtype)
     )
     return float(fourth_moment)

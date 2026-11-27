@@ -230,6 +230,32 @@ class TestWeightedLedoitWolf(TorchTestCase):
         ):
             self.assertIsInstance(value, float)
 
+    def test_computation_dtype(self) -> None:
+        """For a float32 S, the scalars computed in float32 match those computed in
+        float64 (the default) up to float32 rounding, and so does the matrix, which
+        keeps the dtype of S."""
+        n, d = 10, 6
+        y = torch.randn(n, d) * torch.linspace(0.5, 2.0, d)
+        z = outer_products(y)
+        nu = random_weights(n).to(torch.float32)
+        s = torch.einsum("n,nij->ij", nu, z) / nu.sum()
+        sums = (
+            float(nu.sum()),
+            float(nu.square().sum()),
+            float(nu.square() @ z.square().sum(dim=(1, 2))),
+        )
+        reference = weighted_ledoit_wolf(s, *sums)
+        estimate = weighted_ledoit_wolf(s, *sums, dtype=torch.float32)
+
+        self.assertEqual(estimate.matrix.dtype, torch.float32)
+        self.assertAllClose(estimate.matrix, reference.matrix, atol=1e-6, rtol=1e-5)
+        for field in ("intensity", "mean_eigenvalue", "beta2", "delta2"):
+            with self.subTest(field=field):
+                expected = getattr(reference, field)
+                self.assertAlmostEqual(
+                    getattr(estimate, field), expected, delta=1e-5 * abs(expected)
+                )
+
     def test_invalid_inputs(self) -> None:
         """A non-square or empty matrix, or a non-positive sum of weights, raises
         ValueError."""
@@ -359,6 +385,20 @@ class TestReduceFourthMoment(TorchTestCase):
         expected = self.direct(x, nu, centre)
         self.assertAlmostEqual(
             reduce_fourth_moment(moments, centre), expected, delta=1e-5 * expected
+        )
+
+    def test_evaluation_dtype(self) -> None:
+        """float32 accumulators evaluated in float32 match the direct computation up
+        to float32 rounding."""
+        x = self.x.to(torch.float32)
+        nu = self.nu.to(torch.float32)
+        moments = self.accumulate(x, nu, dtype=torch.float32)
+        centre = x.mean(dim=0)
+        expected = self.direct(x, nu, centre)
+        self.assertAlmostEqual(
+            reduce_fourth_moment(moments, centre, dtype=torch.float32),
+            expected,
+            delta=1e-5 * expected,
         )
 
     def test_invalid_shapes(self) -> None:
