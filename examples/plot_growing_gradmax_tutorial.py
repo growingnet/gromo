@@ -74,6 +74,7 @@ from gromo.utils.utils import global_device
 # 3. Plotting: Visualizing the evolution of loss and parameter count across training.
 ###############################################################################
 
+
 def count_parameters(model: torch.nn.Module) -> int:
     """Return the number of trainable parameters in a model."""
     return sum(
@@ -90,8 +91,12 @@ def grow_with_gradmax(
 ) -> float:
     """Run one GradMax growth step and return the chosen scaling factor."""
     model.set_growing_layers(index=layer_to_grow)
-    compute_statistics(model, train_loader, loss_function=torch.nn.MSELoss(reduction="sum"), device=device)
-
+    compute_statistics(
+        model,
+        train_loader,
+        loss_function=torch.nn.MSELoss(reduction="sum"),
+        device=device,
+    )
 
     # Compute the optimal updates for the new neurons using GradMax flags
     # - ``compute_delta=False``: skip the natural-gradient delta update
@@ -112,7 +117,13 @@ def grow_with_gradmax(
     best_scale = 0.0
     for scale in [0.0, 0.1, 0.5, 1.0]:
         model.set_scaling_factor(scale)
-        loss,_ = evaluate_model(model, train_loader, torch.nn.MSELoss(reduction="mean"), device=device, use_extended_model=True)
+        loss, _ = evaluate_model(
+            model,
+            train_loader,
+            torch.nn.MSELoss(reduction="mean"),
+            device=device,
+            use_extended_model=True,
+        )
         print(f"Scaling factor: {scale}, loss: {loss:.4f}")
         if loss < best_loss:
             best_loss = loss
@@ -343,7 +354,7 @@ def main() -> None:
     criterion = torch.nn.MSELoss()
     learning_rate = 1e-2
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    initial_loss,_ = evaluate_model(model, test_loader, criterion, device=device)
+    initial_loss, _ = evaluate_model(model, test_loader, criterion, device=device)
     print(f"[N/A] Step {0}, Initial Loss: {initial_loss:.4f}")
     history["step"].append(0)
     history["test_loss"].append(initial_loss)
@@ -356,15 +367,15 @@ def main() -> None:
 
         for epoch in range(intermediate_epochs):
             gradient_descent(
-                        model,
-                        train_loader,
-                        optimizer,
-                        scheduler=None,
-                        loss_function=criterion,
-                        device=device,
-                    )
-            train_loss,_ = evaluate_model(model, train_loader, criterion, device=device)
-            test_loss,_ = evaluate_model(model, test_loader, criterion, device=device)
+                model,
+                train_loader,
+                optimizer,
+                scheduler=None,
+                loss_function=criterion,
+                device=device,
+            )
+            train_loss, _ = evaluate_model(model, train_loader, criterion, device=device)
+            test_loss, _ = evaluate_model(model, test_loader, criterion, device=device)
             current_step = growth_step * (intermediate_epochs + 1) + epoch + 1
             print(
                 f"[SGD] step {current_step}, train loss: {train_loss:.4f}, "
@@ -385,7 +396,7 @@ def main() -> None:
             layer_to_grow=layer_to_grow,
             neurons_to_add=neurons_to_add,
         )
-        test_loss,_ = evaluate_model(model, test_loader, criterion, device=device)
+        test_loss, _ = evaluate_model(model, test_loader, criterion, device=device)
         current_step = (growth_step + 1) * (intermediate_epochs + 1)
         print(
             f"[GRO] step {current_step}, scale: {scale:.1f}, test loss: {test_loss:.4f}"
