@@ -10,6 +10,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.kfac import KFACVariant
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import (
     KnownThresholdRuleName,
@@ -783,6 +784,26 @@ class Conv2dGrowingModule(GrowingModule):
         self.use_bias = use_bias
 
         self.layer.forward = types.MethodType(self.__make_safe_forward(), self.layer)
+
+    def set_kfac_variant(self, variant: KFACVariant | None) -> None:
+        """K-FAC variants are not supported by convolutional modules.
+
+        Parameters
+        ----------
+        variant: KFACVariant | None
+            must be None (see `GrowingModule.set_kfac_variant`)
+
+        Raises
+        ------
+        NotImplementedError
+            if a variant is given
+        """
+        if variant is not None:
+            raise NotImplementedError(
+                f"K-FAC variants are not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
+        super().set_kfac_variant(variant)
 
     # Information functions
     # TODO: implement activation_gradient ?

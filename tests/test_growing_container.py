@@ -7,10 +7,14 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.containers.growing_mlp import GrowingMLP, Perceptron
+from gromo.containers.growing_residual_mlp import GrowingResidualMLP
+from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.kfac import KFACVariant
+from gromo.utils.tensor_statistic import KroneckerFactorStatistic, TensorStatistic
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
@@ -607,6 +611,194 @@ class TestContainerPositionMask(TorchTestCase):
             ),
             "Unmasked padded run should differ from the reference E.",
         )
+
+
+class TestContainerKFACVariant(TorchTestCase):
+    """Tests of the K-FAC variant propagation of the GrowingContainer."""
+
+    n_classes = 3
+
+    def _variant(self):
+        """The implemented K-FAC variant, (reduce, count_weighted)."""
+        return KFACVariant("reduce", "count_weighted")
+
+    def _build(self):
+        """Two-layer token-level MLP (3 -> 5 -> K) with a container around it."""
+        torch.manual_seed(0)
+        first = LinearGrowingModule(
+            3,
+            5,
+            post_layer_function=torch.nn.ReLU(),
+            device=global_device(),
+            name="first",
+        )
+        second = LinearGrowingModule(
+            5,
+            self.n_classes,
+            previous_module=first,
+            device=global_device(),
+            name="second",
+        )
+        first.next_module = second
+        container = GrowingContainer(3, self.n_classes, device=global_device())
+        container.first = first
+        container.second = second
+        container._growing_layers = [first, second]
+        return container, first, second
+
+    def _assert_psd(self, B, label):
+        """Check that B is finite, symmetric and has non-negative eigenvalues."""
+        with self.subTest(factor=label):
+            self.assertTrue(torch.isfinite(B).all())
+            self.assertAllClose(B, B.T, atol=1e-6, rtol=1e-6)
+            eigenvalues = torch.linalg.eigvalsh(B)
+            self.assertTrue(
+                bool((eigenvalues >= -1e-6).all()),
+                f"{label} has negative eigenvalues: {eigenvalues}",
+            )
+
+    def test_set_kfac_variant_reaches_nested_modules(self):
+        """set_kfac_variant of a GrowingResidualMLP reaches the layers of its
+        nested GrowingResidualBlock containers, which are not in _growing_layers,
+        and None restores the plain statistics S and E on all of them."""
+        variant = self._variant()
+        model = GrowingResidualMLP(
+            in_features=(3,),
+            out_features=2,
+            num_features=4,
+            hidden_features=2,
+            num_blocks=2,
+            device=global_device(),
+        )
+        linear_layers = [
+            module
+            for module in model.modules()
+            if isinstance(module, LinearGrowingModule)
+        ]
+        self.assertEqual(len(linear_layers), 4)
+
+        model.set_kfac_variant(variant)
+        for layer in linear_layers:
+            with self.subTest(layer=layer.name):
+                self.assertEqual(layer.kfac_variant, variant)
+                self.assertIsInstance(layer.tensor_s, KroneckerFactorStatistic)
+                self.assertIsInstance(
+                    layer.covariance_loss_gradient, KroneckerFactorStatistic
+                )
+
+        model.set_kfac_variant(None)
+        for layer in linear_layers:
+            with self.subTest(layer=layer.name, variant=None):
+                self.assertIsNone(layer.kfac_variant)
+                self.assertIs(type(layer.tensor_s), TensorStatistic)
+                self.assertIs(type(layer.covariance_loss_gradient), TensorStatistic)
+
+    def test_set_kfac_variant_sequential_scheduling(self):
+        """With sequential scheduling only one layer is in _growing_layers, but
+        set_kfac_variant reaches every GrowingModule of the model, including the
+        layers that are not currently scheduled for growth."""
+        variant = self._variant()
+        model = GrowingMLP(
+            in_features=3,
+            out_features=2,
+            hidden_size=4,
+            number_hidden_layers=2,
+            device=global_device(),
+        )
+        model.set_growing_layers(scheduling_method="sequential")
+        self.assertEqual(len(model._growing_layers), 1)
+
+        growing_modules = [
+            module for module in model.modules() if isinstance(module, GrowingModule)
+        ]
+        self.assertGreater(len(growing_modules), len(model._growing_layers))
+
+        model.set_kfac_variant(variant)
+        for module in growing_modules:
+            with self.subTest(layer=module.name):
+                self.assertEqual(module.kfac_variant, variant)
+                self.assertIsInstance(module.tensor_s, KroneckerFactorStatistic)
+                self.assertIsInstance(
+                    module.covariance_loss_gradient, KroneckerFactorStatistic
+                )
+
+    def test_set_kfac_variant_with_merge_module(self):
+        """A K-FAC variant is refused for a layer whose previous module is a
+        MergeGrowingModule, which owns tensor_s, while the container call with
+        None and the layers without a merge predecessor still work."""
+        variant = self._variant()
+        merge = LinearMergeGrowingModule(
+            in_features=4, name="merge", device=global_device()
+        )
+        layer = LinearGrowingModule(
+            3, 4, device=global_device(), next_module=merge, name="layer"
+        )
+        next_layer = LinearGrowingModule(
+            4, 2, device=global_device(), previous_module=merge, name="next_layer"
+        )
+        merge.set_previous_modules([layer])
+        merge.set_next_modules([next_layer])
+
+        container = GrowingContainer(3, 2, device=global_device())
+        container.layer = layer
+        container.merge = merge
+        container.next_layer = next_layer
+        container._growing_layers = [layer, merge, next_layer]
+
+        with self.assertRaises(NotImplementedError):
+            container.set_kfac_variant(variant)
+        container.set_kfac_variant(None)
+        self.assertIsNone(next_layer.kfac_variant)
+
+        with self.assertRaises(NotImplementedError):
+            next_layer.set_kfac_variant(variant)
+        layer.set_kfac_variant(variant)
+        self.assertEqual(layer.kfac_variant, variant)
+        self.assertIsInstance(layer.tensor_s, KroneckerFactorStatistic)
+
+    def test_true_fisher_with_kfac_variant(self):
+        """With the (reduce, count_weighted) variant on a pooled sequence
+        classifier, the factors are finite, symmetric and positive semi-definite,
+        and the input factor of the first layer equals the closed form
+        A = sum_n u_n u_n^T / sum_n R_n^2, where u_n is the sum of the extended
+        inputs over the valid positions of sequence n and R_n its length."""
+        lengths = [2, 5, 1, 4]
+        N, R, d = len(lengths), max(lengths), 3
+
+        torch.manual_seed(1)
+        x = torch.randn(N, R, d, device=global_device())
+        mask = torch.zeros(N, R, dtype=torch.bool, device=global_device())
+        for n, r in enumerate(lengths):
+            x[n, r:] = torch.randn(R - r, d, device=global_device())
+            mask[n, :r] = True
+
+        container, first, second = self._build()
+        container.set_kfac_variant(self._variant())
+        container.init_computation()
+        out = second(first(x))
+        logits = (out * mask.unsqueeze(-1)).sum(dim=1)
+        labels = torch.randint(0, self.n_classes, (N,), device=global_device())
+        loss = torch.nn.functional.cross_entropy(logits, labels, reduction="sum") / N
+        container.update_computation_true_fisher(
+            loss, logits, loss_normalization=float(N), position_mask=mask
+        )
+
+        for layer in (first, second):
+            with self.subTest(layer=layer.name):
+                self.assertEqual(layer.covariance_loss_gradient.samples, N)
+                self.assertEqual(layer.tensor_s.samples, N)
+                self._assert_psd(layer.tensor_s(), f"{layer.name} tensor_s")
+                self._assert_psd(
+                    layer.covariance_loss_gradient(),
+                    f"{layer.name} covariance_loss_gradient",
+                )
+
+        # Closed form for the input factor of the first layer.
+        ext = first.input_extended.detach()
+        u = (ext * mask.unsqueeze(-1)).sum(dim=1)  # (N, d + 1)
+        denominator = float(sum(r**2 for r in lengths))
+        A_expected = u.T @ u / denominator
+        self.assertAllClose(first.tensor_s(), A_expected, atol=1e-5, rtol=1e-5)
 
 
 if __name__ == "__main__":

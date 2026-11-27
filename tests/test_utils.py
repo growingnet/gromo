@@ -24,6 +24,7 @@ from gromo.utils.utils import (
     reset_device,
     set_device,
     set_from_conf,
+    sum_positions,
     torch_ones,
     torch_zeros,
 )
@@ -685,6 +686,102 @@ class TestFlattenPositions(TorchTestCase):
         message = str(context.exception)
         self.assertIn("(2, 4)", message)
         self.assertIn("(2, 3, 4)", message)
+
+
+class TestSumPositions(TorchTestCase):
+    def test_sum_positions_no_mask(self) -> None:
+        """With no mask, the sums are sum_{n,*} t[n, *, :] (the sum over all positions) and R_n is the number of positions of sample n, in the dtype of t."""
+        device = global_device()
+        for shape, n_positions in [((2, 3, 4), 3), ((2, 3, 5, 4), 15)]:
+            for dtype in [torch.float32, torch.float64]:
+                with self.subTest(shape=shape, dtype=dtype):
+                    t = torch.randn(*shape, device=device, dtype=dtype)
+                    sums, lengths = sum_positions(t)
+                    self.assertShapeEqual(sums, (shape[0], shape[-1]))
+                    self.assertAllClose(sums, t.flatten(1, -2).sum(dim=1))
+                    self.assertShapeEqual(lengths, (shape[0],))
+                    self.assertAllClose(
+                        lengths,
+                        torch.full(
+                            (shape[0],), float(n_positions), device=device, dtype=dtype
+                        ),
+                    )
+                    self.assertEqual(lengths.dtype, t.dtype)
+
+    def test_sum_positions_2d_identity(self) -> None:
+        """A 2-D tensor is its own sum with R_n = 1 for every sample, whatever the mask."""
+        device = global_device()
+        t = torch.randn(5, 4, device=device)
+        masks = [
+            None,
+            torch.zeros(5, dtype=torch.bool, device=device),
+            torch.ones(5, 7, device=device),  # mismatching shape: no error for 2-D
+        ]
+        for mask in masks:
+            with self.subTest(mask_shape=None if mask is None else tuple(mask.shape)):
+                sums, lengths = sum_positions(t, mask)
+                self.assertShapeEqual(sums, (5, 4))
+                self.assertAllClose(sums, t)
+                self.assertShapeEqual(lengths, (5,))
+                self.assertAllClose(lengths, torch.ones(5, device=device))
+
+    def test_sum_positions_masks_agree(self) -> None:
+        """Bool, int64 0/1, float 0/1 and CPU int64 masks give the same sums s_n = sum_{p: m[n,p]=1} t[n, p] and lengths R_n = sum_p m[n,p]."""
+        device = global_device()
+        t = torch.randn(2, 3, 4, device=device)
+        mask_values = [[1, 1, 0], [1, 0, 1]]
+        expected_sums = torch.stack([t[0, 0] + t[0, 1], t[1, 0] + t[1, 2]])
+        expected_lengths = torch.tensor([2.0, 2.0], device=device)
+        masks = [
+            torch.tensor(mask_values, dtype=torch.bool, device=device),
+            torch.tensor(mask_values, dtype=torch.int64, device=device),
+            torch.tensor(mask_values, dtype=torch.float32, device=device),
+            # A mask created on the CPU must work for a tensor on global_device()
+            torch.tensor(mask_values, dtype=torch.int64),
+        ]
+        for mask in masks:
+            with self.subTest(mask_dtype=mask.dtype, mask_device=mask.device):
+                sums, lengths = sum_positions(t, mask)
+                self.assertShapeEqual(sums, (2, 4))
+                self.assertAllClose(sums, expected_sums)
+                self.assertShapeEqual(lengths, (2,))
+                self.assertAllClose(lengths, expected_lengths)
+
+    def test_sum_positions_shape_mismatch(self) -> None:
+        """A mask whose shape is not tensor.shape[:-1] raises a ValueError naming both shapes."""
+        device = global_device()
+        t = torch.randn(2, 3, 4, device=device)
+        mask = torch.ones(2, 4, dtype=torch.bool, device=device)
+        with self.assertRaises(ValueError) as context:
+            sum_positions(t, mask)
+        message = str(context.exception)
+        self.assertIn("(2, 4)", message)
+        self.assertIn("(2, 3, 4)", message)
+
+    def test_sum_positions_ignores_masked_inf_nan(self) -> None:
+        """Masked positions holding +inf, -inf or NaN do not reach the sums: s_n is finite and equals the sum over the valid rows only."""
+        device = global_device()
+        t = torch.randn(2, 3, 4, device=device)
+        t[0, 2, :] = float("inf")
+        t[1, 1, :] = float("nan")
+        mask = torch.tensor([[1, 1, 0], [1, 0, 1]], dtype=torch.bool, device=device)
+        sums, lengths = sum_positions(t, mask)
+        self.assertTrue(torch.isfinite(sums).all())
+        self.assertAllClose(sums[0], t[0, 0] + t[0, 1])
+        self.assertAllClose(sums[1], t[1, 0] + t[1, 2])
+        self.assertAllClose(lengths, torch.tensor([2.0, 2.0], device=device))
+
+    def test_sum_positions_empty_sample(self) -> None:
+        """A sample with no valid position has R_n = 0 and its sum is exactly zero."""
+        device = global_device()
+        t = torch.randn(3, 3, 4, device=device)
+        mask = torch.tensor(
+            [[1, 1, 1], [0, 0, 0], [1, 0, 0]], dtype=torch.int64, device=device
+        )
+        sums, lengths = sum_positions(t, mask)
+        self.assertAllClose(lengths, torch.tensor([3.0, 0.0, 1.0], device=device))
+        self.assertTrue(torch.equal(sums[1], torch.zeros(4, device=device)))
+        self.assertAllClose(sums[2], t[2, 0])
 
 
 if __name__ == "__main__":

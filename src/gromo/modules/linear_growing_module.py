@@ -988,11 +988,7 @@ class LinearGrowingModule(GrowingModule):
             weight=torch.cat((self.weight, weight), dim=1), bias=self.bias
         )
 
-        self._tensor_s = TensorStatistic(
-            (self.in_features + self.use_bias, self.in_features + self.use_bias),
-            update_function=self.compute_s_update,
-            name=self.tensor_s.name,
-        )
+        self._tensor_s = self._new_tensor_s()
         self.tensor_m = TensorStatistic(
             (self.in_features + self.use_bias, self.out_features),
             update_function=self.compute_m_update,

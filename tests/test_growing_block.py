@@ -1,6 +1,8 @@
 import torch
 
 from gromo.containers.growing_block import GrowingBlock, LinearGrowingBlock
+from gromo.utils.kfac import KFACVariant
+from gromo.utils.tensor_statistic import KroneckerFactorStatistic
 from gromo.utils.utils import global_device
 
 
@@ -2021,3 +2023,95 @@ class TestLinearGrowingBlock(TorchTestCase):
             atol=1e-5,
             rtol=1e-5,
         )
+
+    def _accumulate_kfac_reduce(
+        self, block: LinearGrowingBlock, x: torch.Tensor, mask: torch.Tensor
+    ) -> None:
+        """Accumulate the K-FAC (reduce, count-weighted) statistics on a padded batch.
+
+        The output is pooled over the valid positions, so that the backward pass
+        gives the gradients of a loss depending on the sums g_n = sum_m g_{n,m}.
+        """
+        block.set_kfac_variant(KFACVariant("reduce", "count_weighted"))
+        block.init_computation()
+        out = block(x)
+        ((out * mask.unsqueeze(-1)).sum(dim=1) ** 2).sum().backward()
+        block.update_computation(position_mask=mask)
+
+    @unittest_parametrize(({"hidden_features": 0}, {"hidden_features": 2}))
+    def test_kfac_variant_factors(self, hidden_features: int = 0):
+        """K-FAC reduce factors match their closed form on a padded batch.
+
+        With a_{n,m} the input of the first layer (bias column included), g_{n,m}
+        the gradient of the loss with respect to the pre-activation of the second
+        layer, R_n the number of valid positions of sequence n and N the number of
+        sequences, the factors are::
+
+            A = sum_n u_n u_n^T / sum_n R_n^2,   u_n = sum_m a_{n,m},
+            B = (1 / N) sum_n g_n g_n^T,         g_n = sum_m g_{n,m}.
+
+        The statistic of the input side is a `KroneckerFactorStatistic` shared
+        with `tensor_s_growth` of the second layer, and it differs from the plain
+        second moment S = sum_n sum_m a_{n,m} a_{n,m}^T / N.
+        """
+        seqs, x, mask = self._padded_data()
+        n_seq = len(seqs)
+
+        block = self._build_block(hidden_features)
+        self._accumulate_kfac_reduce(block, x, mask)
+
+        dtype = x.dtype
+        mask_f = mask.to(dtype)
+        a = block.first_layer.input_extended.detach()
+        g = block.second_layer.pre_activity.grad.detach()
+
+        # Reference A: sum of the valid inputs per sequence, weighted by R_n^2
+        u = (a * mask_f.unsqueeze(-1)).sum(dim=1)
+        r_n = mask_f.sum(dim=1)
+        a_ref = u.T @ u / (r_n**2).sum()
+
+        # Reference B: sum of the valid gradients per sequence, divided by N
+        g_sum = (g * mask_f.unsqueeze(-1)).sum(dim=1)
+        b_ref = g_sum.T @ g_sum / n_seq
+
+        self.assertAllClose(block.first_layer.tensor_s(), a_ref, atol=1e-5, rtol=1e-5)
+        self.assertAllClose(
+            block.second_layer.covariance_loss_gradient(),
+            b_ref,
+            atol=1e-5,
+            rtol=1e-5,
+        )
+
+        self.assertIs(block.second_layer.tensor_s_growth, block.first_layer.tensor_s)
+        self.assertIsInstance(block.first_layer.tensor_s, KroneckerFactorStatistic)
+        self.assertIsInstance(
+            block.second_layer.covariance_loss_gradient, KroneckerFactorStatistic
+        )
+        self.assertEqual(block.first_layer.tensor_s.samples, n_seq)
+        self.assertEqual(block.second_layer.covariance_loss_gradient.samples, n_seq)
+
+        # Sanity check: the K-FAC factor A differs from the plain second moment S
+        a_valid = a[mask]
+        s_plain = a_valid.T @ a_valid / n_seq
+        self.assertFalse(torch.allclose(a_ref, s_plain, atol=1e-5, rtol=1e-5))
+
+    @unittest_parametrize(({"hidden_features": 0}, {"hidden_features": 2}))
+    def test_kfac_variant_compute_optimal_updates(self, hidden_features: int = 0):
+        """Optimal updates run with K-FAC statistics and set the extension.
+
+        Execution test: after accumulating the K-FAC statistics on a padded batch,
+        `compute_optimal_updates` (with and without the Fisher) sets the eigenvalues
+        of the extension and the extended input layer of the second layer.
+        """
+        _, x, mask = self._padded_data()
+
+        for use_fisher in (False, True):
+            with self.subTest(use_fisher=use_fisher):
+                block = self._build_block(hidden_features)
+                self._accumulate_kfac_reduce(block, x, mask)
+                block.compute_optimal_updates(use_fisher=use_fisher)
+
+                self.assertIsInstance(
+                    block.second_layer.eigenvalues_extension, torch.Tensor
+                )
+                self.assertIsNotNone(block.second_layer.extended_input_layer)

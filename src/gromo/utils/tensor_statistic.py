@@ -1,9 +1,11 @@
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any, Literal
 
 import numpy as np
 import torch
 
-from gromo.utils.utils import global_device
+from gromo.utils.kfac import KFACVariant
+from gromo.utils.utils import global_device, sum_positions
 
 
 class TensorStatistic:
@@ -178,6 +180,259 @@ class TensorStatistic:
             if self._accumulation_dtype is not None and self._update_dtype is not None:
                 average = average.to(self._update_dtype)
             return average
+
+
+class KroneckerFactorStatistic(TensorStatistic):
+    """
+    Kronecker factor A or B of a K-FAC variant, accumulated over batches.
+
+    It replaces the `TensorStatistic` of the input second moment S (input side) or of
+    the gradient second moment E (gradient side) of a layer. A batch has N
+    sequences; sequence n has R_n valid positions, given by the position mask. At
+    position m, a_{n,m} is the input of the layer (bias column included) and g_{n,m}
+    the gradient of the loss with respect to its pre-activation. With the means over
+    the valid positions x̄_n = (sum_m x_{n,m}) / R_n, rho_n = ``variant.rho(R_n)``
+    and the weights omega_n of the side (see `KFACVariant`), the factors are::
+
+        A = sum_n omega_n ā_n ā_n^T / D_A,    D_A = sum_n omega_n (count-weighted),
+        B = sum_n omega_n ḡ_n ḡ_n^T / N,
+
+    the sums running over every batch accumulated. For K-FAC-reduce with
+    count-weighted lengths, with u_n = sum_m a_{n,m} and g_n = sum_m g_{n,m}::
+
+        A = sum_n u_n u_n^T / sum_n R_n^2,    B = sum_n g_n g_n^T / N.
+
+    A sequence without valid position adds nothing to the sums, but counts in N.
+
+    The sums are accumulated about a shift s::
+
+        W_0 = sum_n omega_n,    w_1 = sum_n omega_n (x̄_n - s),
+        W_2 = sum_n omega_n (x̄_n - s)(x̄_n - s)^T,
+
+    and the numerator is recovered exactly, for any s, by::
+
+        sum_n omega_n x̄_n x̄_n^T = W_2 + w_1 s^T + s w_1^T + W_0 s s^T.
+
+    With ``assume_centered=False``, s is the weighted mean
+    sum omega_n x̄_n / sum omega_n of the first update with a valid position, which
+    keeps the accumulators close to zero mean. With ``assume_centered=True``, the
+    means x̄_n are assumed to be close to zero mean already, and s = 0. Unlike the
+    ``assume_centered`` of scikit-learn, it does not change the factor, which is the
+    uncentred one in both cases, only how its sums are accumulated.
+
+    The number of samples `samples` is N, the number of sequences, as for
+    `TensorStatistic`.
+
+    Parameters
+    ----------
+    variant: KFACVariant
+        K-FAC variant giving rho_n, the weights and the denominator of A
+    side: Literal["input", "gradient"]
+        factor computed: A for ``"input"``, B for ``"gradient"``
+    positions_function: Callable[[], torch.Tensor]
+        function returning the tensor of the current batch, of shape (N, *, d): the
+        input of the layer on the input side, the gradient of the loss with respect
+        to the pre-activation on the gradient side. Use a bound method of the module
+        rather than a closure, so that ``copy.deepcopy`` binds it to the copy.
+    assume_centered: bool
+        if True, accumulate the sums about s = 0; if False, by default, about the
+        weighted mean of the first update with a valid position
+    device: torch.device | str | None
+        default device, by default None
+    name: str | None
+        used for debugging, by default None
+
+    Raises
+    ------
+    ValueError
+        if the side is neither ``"input"`` nor ``"gradient"``
+    """
+
+    def __init__(
+        self,
+        variant: KFACVariant,
+        side: Literal["input", "gradient"],
+        positions_function: Callable[[], torch.Tensor],
+        assume_centered: bool = False,
+        device: torch.device | str | None = None,
+        name: str | None = None,
+    ) -> None:
+        if side not in ("input", "gradient"):
+            raise ValueError(f"The side must be 'input' or 'gradient', got {side!r}.")
+        # `update` is overridden: it reads the positions with `_read_positions`.
+        super().__init__(
+            None,
+            update_function=self._read_positions,
+            device=device,
+            name=name if name is not None else "KroneckerFactorStatistic",
+        )
+        self.variant = variant
+        self.side = side
+        self.assume_centered = assume_centered
+        self._positions_function = positions_function
+        # s, in the dtype of the updates: set by the first update with a valid
+        # position unless assume_centered (None means s = 0), cleared by reset
+        self._shift: torch.Tensor | None = None
+        self._weight_sum: torch.Tensor | None = None  # W_0
+        self._first_moment: torch.Tensor | None = None  # w_1
+
+    def __str__(self) -> str:
+        return (
+            f"{self.name} Kronecker factor ({self.side} side of {self.variant}) "
+            f"with {self.samples} samples"
+        )
+
+    def _read_positions(self) -> tuple[torch.Tensor, int]:
+        """Read the tensor of the current batch.
+
+        Returns
+        -------
+        torch.Tensor
+            tensor of shape (N, *, d) returned by the positions function
+        int
+            number of sequences N
+        """
+        positions = self._positions_function()
+        return positions, positions.shape[0]
+
+    @torch.no_grad()
+    def update(self, count_samples: bool = True, **kwargs: Any) -> None:
+        """Add the current batch to the factor.
+
+        Does nothing when `updated` is True. Otherwise, adds the batch to W_0, w_1
+        and W_2, adds N to `samples` when ``count_samples`` is True, and sets
+        `updated` to True. Unless ``assume_centered``, the first batch with a valid
+        position sets the shift.
+
+        Parameters
+        ----------
+        count_samples : bool
+            if False, accumulate the batch without increasing the sample counter
+            (see `TensorStatistic.update`)
+        **kwargs : Any
+            ``position_mask``, the mask of the valid positions, of shape
+            ``positions.shape[:-1]`` (see `gromo.utils.utils.sum_positions`), by
+            default None (every position is valid). No other keyword is accepted.
+
+        Raises
+        ------
+        TypeError
+            if a keyword other than ``position_mask`` is given
+        """
+        position_mask = kwargs.pop("position_mask", None)
+        if kwargs:
+            raise TypeError(
+                f"{type(self).__name__}.update got unexpected keyword arguments "
+                f"{sorted(kwargs)}, only position_mask is accepted."
+            )
+        if self.updated:
+            return
+        positions, n_sequences = self._read_positions()
+        sums, lengths = sum_positions(positions, position_mask)
+        valid = lengths > 0
+        sums, lengths = sums[valid], lengths[valid]
+        means = sums / lengths.unsqueeze(1)
+        rho = self.variant.rho(lengths)
+        if self.side == "input":
+            weights = self.variant.input_weights(rho)
+        else:
+            weights = self.variant.gradient_weights(rho)
+        if not self.assume_centered and self._shift is None and lengths.numel() > 0:
+            self._shift = weights @ means / weights.sum()
+        centred = means if self._shift is None else means - self._shift
+        weighted = weights.unsqueeze(1) * centred
+        self._accumulate(weights.sum(), weighted.sum(dim=0), weighted.T @ centred)
+        if count_samples:
+            self.samples += n_sequences
+        self.updated = True
+
+    def _accumulate(
+        self,
+        weight_sum: torch.Tensor,
+        first_moment: torch.Tensor,
+        second_moment: torch.Tensor,
+    ) -> None:
+        """Add the terms of a batch to W_0, w_1 and W_2.
+
+        Parameters
+        ----------
+        weight_sum: torch.Tensor
+            term of W_0, a scalar
+        first_moment: torch.Tensor
+            term of w_1, of shape (d,)
+        second_moment: torch.Tensor
+            term of W_2, of shape (d, d)
+        """
+        if self._tensor is None:
+            self._update_dtype = second_moment.dtype
+            dtype = (
+                second_moment.dtype
+                if self._accumulation_dtype is None
+                else self._accumulation_dtype
+            )
+            self._weight_sum = weight_sum.to(dtype)
+            self._first_moment = first_moment.to(dtype)
+            self._tensor = second_moment.to(dtype)
+        else:
+            assert self._weight_sum is not None and self._first_moment is not None
+            self._weight_sum += weight_sum
+            self._first_moment += first_moment
+            self._tensor += second_moment
+
+    def _second_moment(self) -> torch.Tensor:
+        """Numerator sum_n omega_n x̄_n x̄_n^T, in the accumulation dtype.
+
+        Returns
+        -------
+        torch.Tensor
+            W_2 + w_1 s^T + s w_1^T + W_0 s s^T, of shape (d, d)
+        """
+        assert (
+            self._tensor is not None
+            and self._first_moment is not None
+            and self._weight_sum is not None
+        )
+        if self._shift is None:
+            return self._tensor
+        shift = self._shift.to(self._tensor.dtype)
+        cross = torch.outer(self._first_moment, shift)
+        return (
+            self._tensor + cross + cross.T + self._weight_sum * torch.outer(shift, shift)
+        )
+
+    def __call__(self) -> torch.Tensor:
+        """Get the factor A (input side) or B (gradient side).
+
+        Returns
+        -------
+        torch.Tensor
+            the factor, of shape (d, d), in the dtype of the updates
+
+        Raises
+        ------
+        ValueError
+            if no sample has been counted, or, on the input side, if no valid
+            position has been seen
+        """
+        if self.samples == 0:
+            raise ValueError(f"The Kronecker factor {self.name} has not been computed.")
+        assert self._weight_sum is not None and self._update_dtype is not None
+        if self.side == "input":
+            denominator = self.variant.input_denominator(self._weight_sum, self.samples)
+            if denominator == 0:
+                raise ValueError(
+                    f"The Kronecker factor {self.name} has no valid position yet."
+                )
+        else:
+            denominator = self.samples
+        return (self._second_moment() / denominator).to(self._update_dtype)
+
+    def reset(self) -> None:
+        """Reset the accumulators and the shift, keeping the accumulation dtype."""
+        super().reset()
+        self._shift = None
+        self._weight_sum = None
+        self._first_moment = None
 
 
 class TensorStatiticWithEstimationError(TensorStatistic):
