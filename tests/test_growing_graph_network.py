@@ -775,6 +775,15 @@ class TestGrowingGraphNetwork(TorchTestCase):
         for statistic in updated:
             self.assertEqual(statistic.dtype, torch.float64)
 
+    def test_update_computation_forwards_position_mask(self) -> None:
+        """GrowingGraphNetwork.update_computation passes the position mask,
+        unchanged, to its GrowingDAG."""
+        mask = torch.ones(self.batch_size, dtype=torch.bool, device=global_device())
+        with unittest.mock.patch.object(self.net.dag, "update_computation") as mocked:
+            self.net.update_computation(position_mask=mask)
+        mocked.assert_called_once()
+        self.assertIs(mocked.call_args.kwargs["position_mask"], mask)
+
 
 if __name__ == "__main__":
     unittest.main()

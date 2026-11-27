@@ -5535,6 +5535,265 @@ class TestLinearPruningValidation(TorchTestCase):
             layer.prune_layer_out(np.array([1.0, 2.0]))
 
 
+class TestPositionMask(TorchTestCase):
+    """Tests of the optional position mask of the growth statistics.
+
+    A mask of shape ``input.shape[:-1]`` removes the masked positions from the
+    sums of the statistics, while the sample count stays the number of sequences.
+    """
+
+    N_SEQ = 4
+    MAX_LEN = 5
+    LENGTHS = (2, 5, 1, 4)
+
+    def _build(self, bias: bool) -> tuple[LinearGrowingModule, LinearGrowingModule]:
+        """Build a seeded pair of linear layers, first -> ReLU -> second.
+
+        Calling it twice gives two pairs with identical weights.
+        """
+        torch.manual_seed(0)
+        first = LinearGrowingModule(
+            3,
+            5,
+            use_bias=bias,
+            post_layer_function=torch.nn.ReLU(),
+            device=global_device(),
+            name="first",
+        )
+        second = LinearGrowingModule(
+            5,
+            2,
+            use_bias=bias,
+            previous_module=first,
+            device=global_device(),
+            name="second",
+        )
+        first.next_module = second
+        return first, second
+
+    def _padded_data(self):
+        """Return the unpadded sequences, the padded batch and its mask.
+
+        The padded positions of the batch hold random activations, not zeros.
+        """
+        torch.manual_seed(1)
+        seqs = [torch.randn(r, 3, device=global_device()) for r in self.LENGTHS]
+        x = torch.randn(self.N_SEQ, self.MAX_LEN, 3, device=global_device())
+        mask = torch.zeros(
+            self.N_SEQ, self.MAX_LEN, dtype=torch.bool, device=global_device()
+        )
+        for n, (s, r) in enumerate(zip(seqs, self.LENGTHS, strict=True)):
+            x[n, :r] = s
+            mask[n, :r] = True
+        return seqs, x, mask
+
+    @staticmethod
+    def _step(
+        first: LinearGrowingModule,
+        second: LinearGrowingModule,
+        x: torch.Tensor,
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
+        """Forward, backward with the loss sum(out^2), then accumulate the statistics."""
+        out = second(first(x))
+        out.pow(2).sum().backward()
+        first.update_computation(position_mask=position_mask)
+        second.update_computation(position_mask=position_mask)
+
+    @staticmethod
+    def _statistics(first, second) -> dict:
+        """Return the statistics compared by the tests, keyed by name."""
+        return {
+            "second.tensor_s": second.tensor_s,
+            "second.tensor_m": second.tensor_m,
+            "second.covariance_loss_gradient": second.covariance_loss_gradient,
+            "second.tensor_m_prev": second.tensor_m_prev,
+            "second.cross_covariance": second.cross_covariance,
+            "second.tensor_s_growth": second.tensor_s_growth,
+            "first.tensor_s": first.tensor_s,
+            "first.tensor_m": first.tensor_m,
+            "first.covariance_loss_gradient": first.covariance_loss_gradient,
+        }
+
+    def _assert_same_statistics(self, pair_a, pair_b, n_samples: int) -> None:
+        """Check that both pairs have the same statistics, all counting n_samples."""
+        stats_a = self._statistics(*pair_a)
+        stats_b = self._statistics(*pair_b)
+        for name in stats_a:
+            with self.subTest(name=name):
+                self.assertEqual(stats_a[name].samples, n_samples)
+                self.assertEqual(stats_b[name].samples, n_samples)
+                self.assertAllClose(
+                    stats_a[name](), stats_b[name](), atol=1e-5, rtol=1e-5
+                )
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_padding_invariance(self, bias: bool):
+        """Padding invariance. Let the N sequences s_n have lengths R_n, padded to
+        R = max_n R_n with random activations. A linear layer acts position by
+        position, so the masked statistics over the padded batch, with the mask
+        m_{n,r} = 1 for r < R_n, equal the statistics over the unpadded sequences fed
+        one at a time without mask, with the count N in both cases:
+        sum_{n, r: m=1} x_{n,r} y_{n,r}^T / N = sum_n sum_r x_{n,r} y_{n,r}^T / N.
+        The loss sum(out^2) depends on the padded outputs, so their gradient is not
+        zero and the mask must remove them from the backward statistics too.
+        Checked on tensor_s, tensor_m, covariance_loss_gradient, tensor_m_prev,
+        cross_covariance and tensor_s_growth (second layer) and on the first layer.
+        A run without mask must differ, so the test is not trivially satisfied.
+        """
+        seqs, x, mask = self._padded_data()
+
+        first, second = self._build(bias)
+        first.init_computation()
+        second.init_computation()
+        self._step(first, second, x, mask)
+
+        first_r, second_r = self._build(bias)
+        first_r.init_computation()
+        second_r.init_computation()
+        for s in seqs:
+            self._step(first_r, second_r, s.unsqueeze(0))
+
+        self._assert_same_statistics((first, second), (first_r, second_r), self.N_SEQ)
+
+        # sanity check: without mask, the padded positions are summed
+        first_u, second_u = self._build(bias)
+        first_u.init_computation()
+        second_u.init_computation()
+        self._step(first_u, second_u, x)
+        self.assertFalse(
+            torch.allclose(second_u.tensor_s(), second_r.tensor_s(), atol=1e-5, rtol=1e-5)
+        )
+
+    def test_update_covariance_loss_gradient_mask(self):
+        """Masked E through update_covariance_loss_gradient. For a layer, with the
+        mask m, calling update_computation(update_covariance_loss_gradient=False, m)
+        followed by update_covariance_loss_gradient(m) must give the same statistics
+        as update_computation(m) on an identical layer: the masked
+        E = (1/N) sum_{n, r: m=1} dA_{n,r}^T dA_{n,r} is the same in both paths, and
+        the sample count is N.
+        """
+        _, x, mask = self._padded_data()
+
+        torch.manual_seed(0)
+        layer_a = LinearGrowingModule(3, 2, device=global_device())
+        layer_a.init_computation()
+        out = layer_a(x)
+        out.pow(2).sum().backward()
+        layer_a.update_computation(
+            update_covariance_loss_gradient=False, position_mask=mask
+        )
+        layer_a.update_covariance_loss_gradient(position_mask=mask)
+
+        torch.manual_seed(0)
+        layer_b = LinearGrowingModule(3, 2, device=global_device())
+        layer_b.init_computation()
+        out = layer_b(x)
+        out.pow(2).sum().backward()
+        layer_b.update_computation(position_mask=mask)
+
+        for name in ("tensor_s", "tensor_m", "covariance_loss_gradient"):
+            with self.subTest(name=name):
+                stat_a = getattr(layer_a, name)
+                stat_b = getattr(layer_b, name)
+                self.assertEqual(stat_a.samples, self.N_SEQ)
+                self.assertEqual(stat_b.samples, self.N_SEQ)
+                self.assertAllClose(stat_a(), stat_b(), atol=1e-5, rtol=1e-5)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_all_ones_mask_matches_no_mask(self, bias: bool):
+        """All-ones mask. For an all-ones 0/1 int64 mask (as a Hugging Face
+        attention_mask), the masked sums are the full sums
+        sum_{n,r} 1 x_{n,r} y_{n,r}^T = sum_{n,r} x_{n,r} y_{n,r}^T, so every
+        statistic equals the one computed without mask, with the count N.
+        """
+        torch.manual_seed(1)
+        x = torch.randn(3, 4, 3, device=global_device())
+        mask = torch.ones(3, 4, dtype=torch.int64, device=global_device())
+
+        first, second = self._build(bias)
+        first.init_computation()
+        second.init_computation()
+        self._step(first, second, x)
+
+        first_m, second_m = self._build(bias)
+        first_m.init_computation()
+        second_m.init_computation()
+        self._step(first_m, second_m, x, mask)
+
+        self._assert_same_statistics((first, second), (first_m, second_m), 3)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_2d_input_ignores_mask(self, bias: bool):
+        """2-D input ignores the mask. For an input x of shape (N, d), each sample
+        has a single position, so the mask is ignored: a mask of any shape, here
+        (N, 7), gives the same statistics as no mask, without raising an error.
+        """
+        torch.manual_seed(1)
+        x = torch.randn(6, 3, device=global_device())
+        mask = torch.rand(6, 7, device=global_device()) > 0.5
+
+        first, second = self._build(bias)
+        first.init_computation()
+        second.init_computation()
+        self._step(first, second, x)
+
+        first_m, second_m = self._build(bias)
+        first_m.init_computation()
+        second_m.init_computation()
+        self._step(first_m, second_m, x, mask)
+
+        self._assert_same_statistics((first, second), (first_m, second_m), 6)
+
+    def test_mask_with_merge_previous_module_raises(self):
+        """Merge previous module. Masks are not supported when the previous module
+        is a LinearMergeGrowingModule: compute_m_prev_update and
+        compute_cross_covariance_update raise NotImplementedError with a mask, while
+        with position_mask=None they still return an update of the expected shape,
+        (d_merge, d_out) for M_{-2} and (d_merge, d_merge) for P, with N samples.
+        """
+        in_features, merge_features, out_features, batch = 3, 4, 5, 6
+        merge = LinearMergeGrowingModule(
+            in_features=merge_features, name="merge", device=global_device()
+        )
+        layer = LinearGrowingModule(
+            in_features,
+            merge_features,
+            device=global_device(),
+            next_module=merge,
+            name="layer",
+        )
+        next_layer = LinearGrowingModule(
+            merge_features,
+            out_features,
+            device=global_device(),
+            previous_module=merge,
+            name="next_layer",
+        )
+        merge.set_previous_modules([layer])
+        merge.set_next_modules([next_layer])
+
+        layer.init_computation()
+        next_layer.init_computation()
+
+        x = torch.randn(batch, in_features, device=global_device())
+        out = next_layer(merge(layer(x)))
+        out.pow(2).sum().backward()
+
+        mask = torch.ones(batch, dtype=torch.bool, device=global_device())
+        with self.assertRaises(NotImplementedError):
+            next_layer.compute_m_prev_update(position_mask=mask)
+        with self.assertRaises(NotImplementedError):
+            next_layer.compute_cross_covariance_update(position_mask=mask)
+
+        m_prev, n_m_prev = next_layer.compute_m_prev_update()
+        self.assertEqual(tuple(m_prev.shape), (merge_features, out_features))
+        self.assertEqual(n_m_prev, batch)
+        cross, n_cross = next_layer.compute_cross_covariance_update()
+        self.assertEqual(tuple(cross.shape), (merge_features, merge_features))
+        self.assertEqual(n_cross, batch)
+
+
 if __name__ == "__main__":
     from unittest import main
 

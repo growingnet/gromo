@@ -406,10 +406,21 @@ class MergeGrowingModule(torch.nn.Module):
 
         return v_proj
 
-    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S. Should be added to the type of layer.
 
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
+
         Returns
         -------
         torch.Tensor
@@ -424,10 +435,21 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def compute_previous_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_previous_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S for the input of all previous modules.
 
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
+
         Returns
         -------
         torch.Tensor
@@ -442,9 +464,20 @@ class MergeGrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def compute_previous_m_update(self) -> tuple[torch.Tensor, int]:
+    def compute_previous_m_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M for the input of all previous modules.
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
 
         Returns
         -------
@@ -484,6 +517,7 @@ class MergeGrowingModule(torch.nn.Module):
     def update_computation(
         self,
         update_covariance_loss_gradient: bool = True,  # noqa: ARG002
+        position_mask: torch.Tensor | None = None,
     ) -> None:
         """
         Update the computation of the optimal added parameters.
@@ -493,15 +527,50 @@ class MergeGrowingModule(torch.nn.Module):
         update_covariance_loss_gradient: bool
             accepted for interface compatibility; merge modules have no
             gradient-covariance statistic.
+        position_mask : torch.Tensor | None
+            mask of the valid positions; not supported by merge modules, must be None
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
         """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
         self.tensor_s.update()
         if self.previous_tensor_s is not None:
             self.previous_tensor_s.update()
         if self.previous_tensor_m is not None:
             self.previous_tensor_m.update()
 
-    def update_covariance_loss_gradient(self, count_samples: bool = True) -> None:
-        """No-op: merge modules have no gradient-covariance statistic."""
+    def update_covariance_loss_gradient(
+        self,
+        count_samples: bool = True,  # noqa: ARG002
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
+        """
+        No-op: merge modules have no gradient-covariance statistic.
+
+        Parameters
+        ----------
+        count_samples : bool
+            accepted for interface compatibility
+        position_mask : torch.Tensor | None
+            mask of the valid positions; not supported by merge modules, must be None
+
+        Raises
+        ------
+        NotImplementedError
+            if a position mask is given
+        """
+        if position_mask is not None:
+            raise NotImplementedError(
+                f"The position mask is not supported by {type(self).__name__}. "
+                f"(error in {self.name})"
+            )
 
     def clear_pre_activity_grad(self) -> None:
         """Clear the retained gradient of the stored input (this module's pre-activity).
@@ -1757,9 +1826,20 @@ class GrowingModule(torch.nn.Module):
         )
         return self.pre_activity.grad - self.optimal_delta_layer(input_vector)
 
-    def compute_s_update(self) -> tuple[torch.Tensor, int]:
+    def compute_s_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S. Should be added to the type of layer.
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
 
         Returns
         -------
@@ -1825,7 +1905,9 @@ class GrowingModule(torch.nn.Module):
         )
 
     def compute_m_update(
-        self, desired_activation: torch.Tensor | None = None
+        self,
+        desired_activation: torch.Tensor | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M. Should be added to the type of layer.
@@ -1834,6 +1916,12 @@ class GrowingModule(torch.nn.Module):
         ----------
         desired_activation: torch.Tensor | None
             desired variation direction of the output  of the layer
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
 
         Returns
         -------
@@ -1850,7 +1938,9 @@ class GrowingModule(torch.nn.Module):
         raise NotImplementedError
 
     def compute_m_prev_update(
-        self, desired_activation: torch.Tensor | None = None
+        self,
+        desired_activation: torch.Tensor | None = None,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor M_{-2} := dA B[-2]^T.
@@ -1859,6 +1949,12 @@ class GrowingModule(torch.nn.Module):
         ----------
         desired_activation: torch.Tensor | None
             desired variation direction of the output  of the layer
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
 
         Returns
         -------
@@ -1874,9 +1970,20 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+    def compute_cross_covariance_update(
+        self, position_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor C := B[-1] B[-2]^T.
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
 
         Returns
         -------
@@ -1912,12 +2019,22 @@ class GrowingModule(torch.nn.Module):
 
     def compute_covariance_loss_gradient_update(
         self,
+        position_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the empirical Fisher / gradient covariance
         :math:`E_s = dA^T dA` summed over the batch (and over spatial positions
         for convolutional layers), i.e. the sum of per-sample outer products.
         Should be implemented by each layer type.
+
+        Parameters
+        ----------
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
 
         Returns
         -------
@@ -2953,7 +3070,11 @@ class GrowingModule(torch.nn.Module):
         else:
             raise NotImplementedError
 
-    def update_computation(self, update_covariance_loss_gradient: bool = True) -> None:
+    def update_computation(
+        self,
+        update_covariance_loss_gradient: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
         """
         Update the computation of the optimal added parameters.
 
@@ -2964,6 +3085,12 @@ class GrowingModule(torch.nn.Module):
             multi-backward accumulation schemes (e.g. the true Fisher) where
             E is accumulated separately via update_covariance_loss_gradient
             while S and M keep the real-label gradient.
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
 
         Raises
         ------
@@ -2971,22 +3098,26 @@ class GrowingModule(torch.nn.Module):
             if the previous module is neither a GrowingModule nor a
             MergeGrowingModule.
         """
-        self.tensor_s.update()
-        self.tensor_m.update()
+        self.tensor_s.update(position_mask=position_mask)
+        self.tensor_m.update(position_mask=position_mask)
         if update_covariance_loss_gradient:
-            self.covariance_loss_gradient.update()
+            self.covariance_loss_gradient.update(position_mask=position_mask)
         if self.previous_module is None:
             return
         elif isinstance(self.previous_module, GrowingModule):
-            self.tensor_m_prev.update()
-            self.cross_covariance.update()
-            self.tensor_s_growth.update()
+            self.tensor_m_prev.update(position_mask=position_mask)
+            self.cross_covariance.update(position_mask=position_mask)
+            self.tensor_s_growth.update(position_mask=position_mask)
         elif isinstance(self.previous_module, MergeGrowingModule):
-            self.previous_module.update_computation()
+            self.previous_module.update_computation(position_mask=position_mask)
         else:
             raise NotImplementedError
 
-    def update_covariance_loss_gradient(self, count_samples: bool = True) -> None:
+    def update_covariance_loss_gradient(
+        self,
+        count_samples: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
         """
         Update only the gradient-covariance statistic from the current
         pre-activity gradient.
@@ -3005,9 +3136,17 @@ class GrowingModule(torch.nn.Module):
             count the batch into the statistic's sample counter. Pass True on
             the first accumulation pass of a batch and False on the others so
             the passes average as one batch.
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]``, e.g. (N, R)
+            for an input of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored for 2-D inputs.
+            None, by default, uses every position.
         """
         self.covariance_loss_gradient.updated = False
-        self.covariance_loss_gradient.update(count_samples=count_samples)
+        self.covariance_loss_gradient.update(
+            count_samples=count_samples, position_mask=position_mask
+        )
 
     def clear_pre_activity_grad(self) -> None:
         """

@@ -20,6 +20,9 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Exclude padded positions from the growth statistics: ``update_computation``, ``update_covariance_loss_gradient`` (modules, blocks and containers), ``update_computation_true_fisher``, ``accumulate_true_fisher_covariance`` and the ``compute_*_update`` methods take ``position_mask``, of shape ``input.shape[:-1]`` (e.g. a Hugging Face ``attention_mask``), whose zero entries are removed from the sums of ``tensor_s``, ``tensor_m``, ``tensor_m_prev``, ``cross_covariance`` and ``covariance_loss_gradient``. The sample count stays the number of sequences, and 2-D inputs ignore the mask. The helper ``gromo.utils.utils.flatten_positions`` selects the rows of the valid positions. Supported by ``LinearGrowingModule``; convolutional and merge modules raise ``NotImplementedError`` when a mask is given. The default ``None`` keeps the current behaviour (:gh:`XXX` by `Théo Rudkiewicz`_).
+
+
 Bugs
 ~~~~
 

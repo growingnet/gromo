@@ -16,6 +16,7 @@ from gromo.utils.utils import (
     f1,
     f1_macro,
     f1_micro,
+    flatten_positions,
     get_correct_device,
     global_device,
     line_search,
@@ -626,6 +627,64 @@ class TestUtils(TorchTestCase):
         self.assertEqual(accuracy, -1)
         self.assertGreaterEqual(loss, 0)
         self.assertEqual(loss, loss_fn(model(x), y).item())
+
+
+class TestFlattenPositions(TorchTestCase):
+    def test_flatten_positions_no_mask(self) -> None:
+        """With no mask, every position of (N, *, d) becomes a row: equals torch.flatten(t, 0, -2)."""
+        device = global_device()
+        for shape, n_rows in [((2, 3, 4), 6), ((2, 3, 5, 4), 30)]:
+            with self.subTest(shape=shape):
+                t = torch.randn(*shape, device=device)
+                result = flatten_positions(t)
+                self.assertShapeEqual(result, (n_rows, 4))
+                self.assertAllClose(result, torch.flatten(t, 0, -2))
+
+    def test_flatten_positions_2d_unchanged(self) -> None:
+        """A 2-D tensor is returned unchanged (same values and shape) whatever the mask."""
+        device = global_device()
+        t = torch.randn(5, 4, device=device)
+        masks = [
+            None,
+            torch.ones(5, dtype=torch.bool, device=device),
+            torch.tensor([1, 0, 1, 0, 1], device=device),
+            torch.ones(5, 7, device=device),  # mismatching shape: no error for 2-D
+        ]
+        for mask in masks:
+            with self.subTest(mask_shape=None if mask is None else tuple(mask.shape)):
+                result = flatten_positions(t, mask)
+                self.assertShapeEqual(result, (5, 4))
+                self.assertAllClose(result, t)
+
+    def test_flatten_positions_masks_select_same_rows(self) -> None:
+        """Bool, int64 0/1 and float 0/1 masks select the same rows, in row-major order."""
+        device = global_device()
+        t = torch.randn(2, 3, 4, device=device)
+        mask_values = [[1, 1, 0], [1, 0, 1]]
+        expected = torch.stack([t[0, 0], t[0, 1], t[1, 0], t[1, 2]])
+        masks = [
+            torch.tensor(mask_values, dtype=torch.bool, device=device),
+            torch.tensor(mask_values, dtype=torch.int64, device=device),
+            torch.tensor(mask_values, dtype=torch.float32, device=device),
+            # A mask created on the CPU must work for a tensor on global_device()
+            torch.tensor(mask_values, dtype=torch.int64),
+        ]
+        for mask in masks:
+            with self.subTest(mask_dtype=mask.dtype, mask_device=mask.device):
+                result = flatten_positions(t, mask)
+                self.assertShapeEqual(result, (4, 4))
+                self.assertAllClose(result, expected)
+
+    def test_flatten_positions_shape_mismatch(self) -> None:
+        """A mask whose shape is not tensor.shape[:-1] raises a ValueError naming both shapes."""
+        device = global_device()
+        t = torch.randn(2, 3, 4, device=device)
+        mask = torch.ones(2, 4, dtype=torch.bool, device=device)
+        with self.assertRaises(ValueError) as context:
+            flatten_positions(t, mask)
+        message = str(context.exception)
+        self.assertIn("(2, 4)", message)
+        self.assertIn("(2, 3, 4)", message)
 
 
 if __name__ == "__main__":

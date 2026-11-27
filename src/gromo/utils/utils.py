@@ -703,3 +703,42 @@ def check_prune_indices(indices: np.ndarray | list[int], size: int) -> np.ndarra
     if len(indices) == size:
         raise ValueError("Cannot prune all neurons of a layer")
     return indices
+
+
+def flatten_positions(
+    tensor: torch.Tensor, position_mask: torch.Tensor | None = None
+) -> torch.Tensor:
+    """Rows of the valid positions: (N, *, d) -> (n_valid, d).
+
+    The positions of ``tensor`` are all its dimensions but the last one. Without
+    mask, every position is a row. With a mask, only the positions where it is
+    non-zero are kept, in row-major order. A 2-D tensor has one position per
+    sample, so it is returned unchanged whatever the mask.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        tensor of shape (N, *, d)
+    position_mask : torch.Tensor | None
+        mask of shape ``tensor.shape[:-1]``, of any dtype; a non-zero entry
+        marks a valid position. None keeps every position.
+
+    Returns
+    -------
+    torch.Tensor
+        rows of the valid positions, of shape (n_valid, d)
+
+    Raises
+    ------
+    ValueError
+        if the shape of the mask is not ``tensor.shape[:-1]``
+    """
+    if position_mask is None or tensor.dim() == 2:
+        return torch.flatten(tensor, 0, -2)
+    if position_mask.shape != tensor.shape[:-1]:
+        raise ValueError(
+            f"The position mask of shape {tuple(position_mask.shape)} does not match "
+            f"the tensor of shape {tuple(tensor.shape)}: expected a mask of shape "
+            f"{tuple(tensor.shape[:-1])}."
+        )
+    return tensor[position_mask.to(device=tensor.device, dtype=torch.bool)]

@@ -889,6 +889,33 @@ class TestMergeGrowingModules(TorchTestCase):
         # TODO:
         pass
 
+    def test_position_mask_not_supported(self) -> None:
+        """A LinearMergeGrowingModule raises NotImplementedError for every statistic
+        method when given a position mask; without a mask, the no-op
+        update_covariance_loss_gradient returns None."""
+        previous = LinearGrowingModule(
+            in_features=self.conv_in_features,
+            out_features=self.linear_in_features,
+            name="previous_linear",
+        )
+        self.linear_merge.add_previous_module(previous)
+        self.assertIsNotNone(self.linear_merge.previous_tensor_s)
+        mask = torch.ones(self.batch_size, dtype=torch.bool, device=self.device)
+
+        methods = [
+            "compute_s_update",
+            "compute_previous_s_update",
+            "compute_previous_m_update",
+            "update_computation",
+            "update_covariance_loss_gradient",
+        ]
+        for method in methods:
+            with self.subTest(method=method):
+                with self.assertRaises(NotImplementedError):
+                    getattr(self.linear_merge, method)(position_mask=mask)
+
+        self.assertIsNone(self.linear_merge.update_covariance_loss_gradient())
+
 
 if __name__ == "__main__":
     unittest.main()

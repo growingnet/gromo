@@ -366,7 +366,11 @@ class GrowingBlock(GrowingContainer):
             self.second_layer.tensor_s.init(accumulation_dtype)
             self.second_layer.tensor_m.init(accumulation_dtype)
 
-    def update_computation(self, update_covariance_loss_gradient: bool = True):
+    def update_computation(
+        self,
+        update_covariance_loss_gradient: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ):
         """
         Update the computation of the block.
 
@@ -375,23 +379,48 @@ class GrowingBlock(GrowingContainer):
         update_covariance_loss_gradient: bool
             if False, skip the gradient-covariance statistic (see
             GrowingModule.update_computation).
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]`` of each layer,
+            e.g. (N, R) for inputs of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored by layers with 2-D
+            inputs. None, by default, uses every position.
         """
         # growth part
-        self.second_layer.tensor_m_prev.update()
-        self.second_layer.tensor_s_growth.update()
+        self.second_layer.tensor_m_prev.update(position_mask=position_mask)
+        self.second_layer.tensor_s_growth.update(position_mask=position_mask)
         if update_covariance_loss_gradient:
-            self.second_layer.covariance_loss_gradient.update()
+            self.second_layer.covariance_loss_gradient.update(position_mask=position_mask)
 
         if self.hidden_neurons > 0:
-            self.second_layer.cross_covariance.update()
+            self.second_layer.cross_covariance.update(position_mask=position_mask)
 
             # natural gradient part
-            self.second_layer.tensor_m.update()
-            self.second_layer.tensor_s.update()
+            self.second_layer.tensor_m.update(position_mask=position_mask)
+            self.second_layer.tensor_s.update(position_mask=position_mask)
 
-    def update_covariance_loss_gradient(self, count_samples: bool = True) -> None:
-        """Update only the gradient-covariance statistic of the second layer."""
-        self.second_layer.update_covariance_loss_gradient(count_samples=count_samples)
+    def update_covariance_loss_gradient(
+        self,
+        count_samples: bool = True,
+        position_mask: torch.Tensor | None = None,
+    ) -> None:
+        """Update only the gradient-covariance statistic of the second layer.
+
+        Parameters
+        ----------
+        count_samples : bool
+            count the batch into the sample counter of the statistic (see
+            GrowingModule.update_covariance_loss_gradient).
+        position_mask : torch.Tensor | None
+            mask of the valid positions, of shape ``input.shape[:-1]`` of each layer,
+            e.g. (N, R) for inputs of shape (N, R, d); a non-zero entry marks a valid
+            position. The statistics sum over the valid positions only, but the
+            sample count stays the number of sequences N. Ignored by layers with 2-D
+            inputs. None, by default, uses every position.
+        """
+        self.second_layer.update_covariance_loss_gradient(
+            count_samples=count_samples, position_mask=position_mask
+        )
 
     def clear_pre_activity_grad(self) -> None:
         """Clear retained pre-activity gradients of the block's layers."""

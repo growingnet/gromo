@@ -683,6 +683,22 @@ class TestGrowingDAG(TorchTestCase):
         for call in wrapped.call_args_list:
             self.assertIs(call.kwargs["worst_case_numerical_floor"], False)
 
+    def test_update_computation_position_mask_not_supported(self) -> None:
+        """GrowingDAG.update_computation forwards a position mask to its merge
+        nodes, which do not support it: NotImplementedError is raised."""
+        self.dag.add_node_with_two_edges(
+            self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
+        )
+        self.dag.get_node_module(self.dag.root).store_activity = True
+        self.dag.init_computation()
+        x = torch.rand((50, self.in_features), device=global_device())
+        y = torch.rand((50, self.out_features), device=global_device())
+        self.loss_fn(self.dag(x), y).backward()
+
+        mask = torch.ones(50, dtype=torch.bool, device=global_device())
+        with self.assertRaises(NotImplementedError):
+            self.dag.update_computation(position_mask=mask)
+
     def test_compute_optimal_delta_use_fisher_not_implemented(self) -> None:
         """use_fisher is not supported for GrowingDAG: delta computation for
         DAG nodes goes through MergeGrowingModule.compute_optimal_delta, which
