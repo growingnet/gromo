@@ -46,6 +46,7 @@ Enhancements
 - Expose the spectra computed during growth: ``GrowingModule.compute_optimal_updates`` gains ``collect_spectra`` and ``collect_delta_spectrum``, which record in ``GrowingModule.growth_spectra`` the whitening spectra of ``S`` and ``E``, the singular values of the SVD target before selection and those of the optimal delta, together with the thresholds applied and the resulting counts. Add ``spectrum_summary`` to derive the usual scalars from a spectrum (:gh:`275` by `Théo Rudkiewicz`_).
 - Add the layer name in the ``update_information`` of ``SequentialGrowingModel`` (:gh:`296` by `Théo Rudkiewicz`_)
 - Add the Zenodo DOI to ``CITATION.cff`` and the README, with PyPI, Python versions, documentation and DOI badges, and set the development status to beta (:gh:`280` by `Sylvain Chevallier`_)
+- Add a new tutorial for `GradMax` (:gh:`300` by `Sébastien Velut`_)
 
 Bugs
 ~~~~
