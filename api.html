@@ -362,6 +362,15 @@
 <li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.tools.resolve_threshold.html">gromo.utils.tools.resolve_threshold</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.tools.resolve_threshold_rule.html">gromo.utils.tools.resolve_threshold_rule</a></li>
 </ul>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.shrinkage.fixed_shrinkage.html">gromo.utils.shrinkage.fixed_shrinkage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.shrinkage.weighted_ledoit_wolf.html">gromo.utils.shrinkage.weighted_ledoit_wolf</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.shrinkage.reduce_fourth_moment.html">gromo.utils.shrinkage.reduce_fourth_moment</a></li>
+</ul>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.shrinkage.LedoitWolfEstimate.html">gromo.utils.shrinkage.LedoitWolfEstimate</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated/gromo.utils.shrinkage.ReduceMoments.html">gromo.utils.shrinkage.ReduceMoments</a></li>
+</ul>
 </div>
 </nav></div>
     </div>
@@ -501,6 +510,50 @@
 </table>
 </div>
 </section>
+<section id="shrinkage">
+<h3>Shrinkage<a class="headerlink" href="#shrinkage" title="Link to this heading">#</a></h3>
+<p>Shrinkage of square matrices towards a multiple of the identity.</p>
+<p>The shrinkage of a d x d matrix M with intensity tau in [0, 1] is the matrix:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="n">M</span> <span class="o">+</span> <span class="n">tau</span> <span class="o">*</span> <span class="n">tr</span><span class="p">(</span><span class="n">M</span><span class="p">)</span> <span class="o">/</span> <span class="n">d</span> <span class="o">*</span> <span class="n">I</span><span class="o">.</span>
+</pre></div>
+</div>
+<p>It keeps the trace, and for a positive semi-definite M it raises the smallest
+eigenvalue to at least tau * tr(M) / d.</p>
+<p>Provide:</p>
+<ul class="simple">
+<li><p><cite>fixed_shrinkage</cite>, the shrinkage with a given intensity;</p></li>
+<li><p><cite>weighted_ledoit_wolf</cite> and <cite>LedoitWolfEstimate</cite>, the Ledoit-Wolf estimate of the
+intensity for a weighted mean of matrices;</p></li>
+<li><p><cite>ReduceMoments</cite> and <cite>reduce_fourth_moment</cite>, the one-pass accumulation of the
+weighted fourth moment that <cite>weighted_ledoit_wolf</cite> needs when each matrix is rank
+one (K-FAC-reduce).</p></li>
+</ul>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.utils.shrinkage.fixed_shrinkage.html#gromo.utils.shrinkage.fixed_shrinkage" title="gromo.utils.shrinkage.fixed_shrinkage"><code class="xref py py-obj docutils literal notranslate"><span class="pre">fixed_shrinkage</span></code></a>(matrix, intensity)</p></td>
+<td><p>Shrink a square matrix with a given intensity.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/gromo.utils.shrinkage.weighted_ledoit_wolf.html#gromo.utils.shrinkage.weighted_ledoit_wolf" title="gromo.utils.shrinkage.weighted_ledoit_wolf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">weighted_ledoit_wolf</span></code></a>(matrix, sum_weights, ...)</p></td>
+<td><p>Ledoit-Wolf shrinkage of a weighted mean of symmetric matrices.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.utils.shrinkage.reduce_fourth_moment.html#gromo.utils.shrinkage.reduce_fourth_moment" title="gromo.utils.shrinkage.reduce_fourth_moment"><code class="xref py py-obj docutils literal notranslate"><span class="pre">reduce_fourth_moment</span></code></a>(moments, centre[, dtype])</p></td>
+<td><p>Weighted fourth moment of the vectors around a centre.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/gromo.utils.shrinkage.LedoitWolfEstimate.html#gromo.utils.shrinkage.LedoitWolfEstimate" title="gromo.utils.shrinkage.LedoitWolfEstimate"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LedoitWolfEstimate</span></code></a>(matrix, intensity, ...)</p></td>
+<td><p>Result of <cite>weighted_ledoit_wolf</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/gromo.utils.shrinkage.ReduceMoments.html#gromo.utils.shrinkage.ReduceMoments" title="gromo.utils.shrinkage.ReduceMoments"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReduceMoments</span></code></a>(sum_weights, ...)</p></td>
+<td><p>Accumulators of the weighted fourth moment of rank-one matrices.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 </section>
 </section>
 
@@ -563,6 +616,9 @@
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#matrix-inversion">Matrix inversion</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#helpers">Helpers</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#thresholds">Thresholds</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#shrinkage">Shrinkage</a><ul class="nav section-nav flex-column">
+</ul>
+</li>
 </ul>
 </li>
 </ul>
