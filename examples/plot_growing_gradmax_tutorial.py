@@ -49,20 +49,17 @@ First, we import the necessary libraries:
 """
 
 ###############################################################################
-
-from __future__ import annotations
-
 import matplotlib.pyplot as plt
 import torch
 from helpers.synthetic_data import MultiSinDataloader
 
 from gromo.containers.growing_mlp import GrowingMLP
-from gromo.utils.utils import global_device
 from gromo.utils.training_utils import (
     compute_statistics,
     evaluate_model,
     gradient_descent,
 )
+from gromo.utils.utils import global_device
 
 
 ###############################################################################
