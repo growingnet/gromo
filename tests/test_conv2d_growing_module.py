@@ -18,6 +18,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.kfac import KFACVariant
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_output_shape_conv
 from gromo.utils.utils import global_device
@@ -2735,6 +2736,28 @@ class TestPositionMaskNotSupportedConv(TorchTestCase):
         with self.subTest(module="Conv2dGrowingModule", method="update_computation"):
             with self.assertRaises(NotImplementedError):
                 plain.update_computation(position_mask=self.mask)
+
+
+class TestKFACVariantNotSupportedConv(TorchTestCase):
+    def test_kfac_variant_not_supported(self) -> None:
+        """Conv2d modules refuse a K-FAC variant with NotImplementedError and keep
+        their plain statistics; set_kfac_variant(None) is accepted."""
+        for cls in (
+            Conv2dGrowingModule,
+            RestrictedConv2dGrowingModule,
+            FullConv2dGrowingModule,
+        ):
+            with self.subTest(module=cls.__name__):
+                layer = cls(
+                    in_channels=2, out_channels=3, kernel_size=3, device=global_device()
+                )
+                statistics = (layer.tensor_s, layer.covariance_loss_gradient)
+                with self.assertRaises(NotImplementedError):
+                    layer.set_kfac_variant(KFACVariant("reduce", "count_weighted"))
+                layer.set_kfac_variant(None)
+                self.assertIsNone(layer.kfac_variant)
+                self.assertIs(layer.tensor_s, statistics[0])
+                self.assertIs(layer.covariance_loss_gradient, statistics[1])
 
 
 if __name__ == "__main__":

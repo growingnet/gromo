@@ -17,8 +17,9 @@ import torch.nn.modules.activation as activation_mod
 import torch.nn.modules.dropout as dropout_mod
 
 from gromo.config.loader import load_config
+from gromo.utils.kfac import KFACVariant
 from gromo.utils.shrinkage import fixed_shrinkage
-from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.tensor_statistic import KroneckerFactorStatistic, TensorStatistic
 from gromo.utils.tools import (
     KnownThresholdRuleName,
     SpectrumThreshold,
@@ -1054,6 +1055,8 @@ class GrowingModule(torch.nn.Module):
         self._pre_activity: torch.Tensor | None = None
         self._input_size: tuple[int, ...] | None = None
 
+        # K-FAC variant of tensor_s and covariance_loss_gradient, see set_kfac_variant
+        self._kfac_variant: KFACVariant | None = None
         self._tensor_s = TensorStatistic(
             tensor_s_shape,
             update_function=self.compute_s_update,
@@ -1878,6 +1881,129 @@ class GrowingModule(torch.nn.Module):
             f"This is not allowed because tensor_s_growth refers to the previous module's"
             f" tensor_s, not the current module's tensor_s."
         )
+
+    @property
+    def kfac_variant(self) -> KFACVariant | None:
+        """K-FAC variant of ``tensor_s`` and ``covariance_loss_gradient``.
+
+        None, by default, for the plain statistics S and E. Set it with
+        `set_kfac_variant`.
+
+        Returns
+        -------
+        KFACVariant | None
+            the K-FAC variant, or None
+        """
+        return self._kfac_variant
+
+    def set_kfac_variant(self, variant: KFACVariant | None) -> None:
+        """Choose the statistics behind ``tensor_s`` and ``covariance_loss_gradient``.
+
+        With a variant, they become the K-FAC factors A and B of this variant (see
+        `KroneckerFactorStatistic`), A accumulated about a shift and B, whose mean
+        is assumed close to zero, without (``assume_centered=True``); with None,
+        the plain statistics S and E. The other statistics are unchanged. As
+        ``tensor_s_growth`` is the previous
+        module's ``tensor_s``, the S used to grow this layer follows the variant of
+        the previous module.
+
+        Call it before ``init_computation``: the statistics are rebuilt, so the
+        values already accumulated are discarded. Nothing happens when the variant
+        does not change.
+
+        Parameters
+        ----------
+        variant: KFACVariant | None
+            the K-FAC variant, or None for the plain statistics
+
+        Raises
+        ------
+        NotImplementedError
+            if a variant is given and the previous module is a MergeGrowingModule,
+            which owns ``tensor_s``
+        """
+        if variant == self._kfac_variant:
+            return
+        if variant is not None and isinstance(self.previous_module, MergeGrowingModule):
+            raise NotImplementedError(
+                f"K-FAC variants are not supported after a MergeGrowingModule, which "
+                f"owns tensor_s. (error in {self.name})"
+            )
+        self._kfac_variant = variant
+        self._tensor_s = self._new_tensor_s()
+        if variant is None:
+            self.covariance_loss_gradient = TensorStatistic(
+                None,
+                update_function=self.compute_covariance_loss_gradient_update,
+                device=self.device,
+                name=self.covariance_loss_gradient.name,
+            )
+        else:
+            self.covariance_loss_gradient = KroneckerFactorStatistic(
+                variant,
+                "gradient",
+                self._gradient_positions,
+                assume_centered=True,
+                device=self.device,
+                name=self.covariance_loss_gradient.name,
+            )
+
+    def _new_tensor_s(self) -> TensorStatistic:
+        """Build an empty statistic for ``_tensor_s``, following the K-FAC variant.
+
+        Returns
+        -------
+        TensorStatistic
+            the plain S, of shape (in_features + use_bias, in_features + use_bias),
+            without variant; the factor A of the variant otherwise. It keeps the
+            name of the current ``_tensor_s``.
+        """
+        if self._kfac_variant is None:
+            size = self.in_features + (1 if self.use_bias else 0)
+            return TensorStatistic(
+                (size, size),
+                update_function=self.compute_s_update,
+                device=self.device,
+                name=self._tensor_s.name,
+            )
+        return KroneckerFactorStatistic(
+            self._kfac_variant,
+            "input",
+            self._input_positions,
+            assume_centered=False,
+            device=self.device,
+            name=self._tensor_s.name,
+        )
+
+    def _input_positions(self) -> torch.Tensor:
+        """Input of the layer, bias column included: the positions of the factor A.
+
+        Returns
+        -------
+        torch.Tensor
+            ``input_extended``, of shape (N, *, in_features + use_bias)
+        """
+        return self.input_extended
+
+    def _gradient_positions(self) -> torch.Tensor:
+        """Gradient of the loss with respect to the pre-activation: the positions of
+        the factor B.
+
+        Returns
+        -------
+        torch.Tensor
+            ``pre_activity.grad``, of shape (N, *, out_features)
+        """
+        assert self.store_pre_activity, (
+            f"The pre-activity must be stored to compute the gradient factor. "
+            f"(error in {self.name})"
+        )
+        gradient = self.pre_activity.grad
+        assert gradient is not None, (
+            f"The gradient of the pre-activity must be available to compute the "
+            f"gradient factor. (error in {self.name})"
+        )
+        return gradient
 
     def compute_m_update(
         self,
@@ -4613,12 +4739,7 @@ class GrowingModule(torch.nn.Module):
                 bias.index_select(0, keep_idx), requires_grad=bias.requires_grad
             )
         if dim == 1:
-            self._tensor_s = TensorStatistic(
-                (self.in_features + self.use_bias, self.in_features + self.use_bias),
-                update_function=self.compute_s_update,
-                device=self.device,
-                name=self.tensor_s.name,
-            )
+            self._tensor_s = self._new_tensor_s()
         self.tensor_m = TensorStatistic(
             (self.in_features + self.use_bias, self.out_features),
             update_function=self.compute_m_update,

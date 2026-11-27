@@ -1,3 +1,4 @@
+import math
 import string
 from typing import Any, Callable, Iterable
 
@@ -735,10 +736,84 @@ def flatten_positions(
     """
     if position_mask is None or tensor.dim() == 2:
         return torch.flatten(tensor, 0, -2)
-    if position_mask.shape != tensor.shape[:-1]:
-        raise ValueError(
-            f"The position mask of shape {tuple(position_mask.shape)} does not match "
-            f"the tensor of shape {tuple(tensor.shape)}: expected a mask of shape "
-            f"{tuple(tensor.shape[:-1])}."
-        )
+    mismatch = _position_mask_mismatch(tensor, position_mask)
+    if mismatch is not None:
+        raise ValueError(mismatch)
     return tensor[position_mask.to(device=tensor.device, dtype=torch.bool)]
+
+
+def sum_positions(
+    tensor: torch.Tensor, position_mask: torch.Tensor | None = None
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sum over the valid positions of each sample: (N, *, d) -> (N, d).
+
+    The positions of ``tensor`` are all its dimensions between the first and the
+    last, as in `flatten_positions`. Without mask, every position is valid. With a
+    mask, only the positions where it is non-zero are summed; the masked positions
+    are zeroed by selection, not by a product with the mask, so that an ``inf`` or
+    a ``NaN`` there cannot reach the sums. A 2-D tensor has one position per sample,
+    so it is its own sum, with length 1, whatever the mask.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        tensor of shape (N, *, d)
+    position_mask : torch.Tensor | None
+        mask of shape ``tensor.shape[:-1]``, of any dtype; a non-zero entry
+        marks a valid position. None keeps every position.
+
+    Returns
+    -------
+    torch.Tensor
+        sums over the valid positions, of shape (N, d)
+    torch.Tensor
+        numbers of valid positions R_n, of shape (N,), in the dtype of ``tensor``
+
+    Raises
+    ------
+    ValueError
+        if the shape of the mask is not ``tensor.shape[:-1]``
+    """
+    n_samples = tensor.shape[0]
+    if tensor.dim() == 2:
+        return tensor, torch.ones(n_samples, dtype=tensor.dtype, device=tensor.device)
+    if position_mask is None:
+        lengths = torch.full(
+            (n_samples,),
+            math.prod(tensor.shape[1:-1]),
+            dtype=tensor.dtype,
+            device=tensor.device,
+        )
+        return tensor.flatten(1, -2).sum(dim=1), lengths
+    mismatch = _position_mask_mismatch(tensor, position_mask)
+    if mismatch is not None:
+        raise ValueError(mismatch)
+    mask = position_mask.to(device=tensor.device, dtype=torch.bool)
+    sums = tensor.masked_fill(~mask.unsqueeze(-1), 0).flatten(1, -2).sum(dim=1)
+    return sums, mask.flatten(1).sum(dim=1).to(tensor.dtype)
+
+
+def _position_mask_mismatch(
+    tensor: torch.Tensor, position_mask: torch.Tensor
+) -> str | None:
+    """Check that the shape of a position mask is ``tensor.shape[:-1]``.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        tensor of shape (N, *, d)
+    position_mask : torch.Tensor
+        mask of the valid positions of ``tensor``
+
+    Returns
+    -------
+    str | None
+        the error message if the shapes do not match, None otherwise
+    """
+    if position_mask.shape == tensor.shape[:-1]:
+        return None
+    return (
+        f"The position mask of shape {tuple(position_mask.shape)} does not match "
+        f"the tensor of shape {tuple(tensor.shape)}: expected a mask of shape "
+        f"{tuple(tensor.shape[:-1])}."
+    )

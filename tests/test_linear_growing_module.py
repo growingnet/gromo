@@ -14,9 +14,10 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
-from gromo.utils.tensor_statistic import TensorStatistic
+from gromo.utils.kfac import KFACVariant
+from gromo.utils.tensor_statistic import KroneckerFactorStatistic, TensorStatistic
 from gromo.utils.tools import optimal_delta, sqrt_inverse_matrix_semi_positive
-from gromo.utils.utils import global_device
+from gromo.utils.utils import global_device, set_device
 from tests.torch_unittest import (
     GrowableIdentity,
     SizedIdentity,
@@ -5792,6 +5793,388 @@ class TestPositionMask(TorchTestCase):
         cross, n_cross = next_layer.compute_cross_covariance_update()
         self.assertEqual(tuple(cross.shape), (merge_features, merge_features))
         self.assertEqual(n_cross, batch)
+
+
+class TestKFACVariant(TorchTestCase):
+    """Tests of the K-FAC variant of the statistics of LinearGrowingModule.
+
+    With the variant ``KFACVariant("reduce", "count_weighted")``, ``tensor_s`` and
+    ``covariance_loss_gradient`` are the K-FAC-reduce factors
+    A = sum_n u_n u_n^T / sum_n R_n^2 and B = (1/N) sum_n g_n g_n^T, where u_n and
+    g_n sum, over the R_n valid positions of sequence n, the input of the layer
+    (bias column included) and the gradient of the loss with respect to its
+    pre-activation. Everything is computed in float64.
+    """
+
+    LENGTHS = (2, 5, 1, 4)
+    MAX_LEN = 5
+    IN_FEATURES = 3
+    OUT_FEATURES = 2
+    VARIANT = KFACVariant("reduce", "count_weighted")
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.addCleanup(torch.set_default_dtype, torch.get_default_dtype())
+        torch.set_default_dtype(torch.float64)
+        self.device = global_device()
+
+    def _layer(
+        self, bias: bool, variant: KFACVariant | None = VARIANT
+    ) -> LinearGrowingModule:
+        """Seeded layer (same weights at every call) with the given variant."""
+        torch.manual_seed(0)
+        layer = LinearGrowingModule(
+            self.IN_FEATURES,
+            self.OUT_FEATURES,
+            use_bias=bias,
+            device=self.device,
+            name="layer",
+        )
+        layer.set_kfac_variant(variant)
+        return layer
+
+    def _padded_data(self) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor]:
+        """Unpadded sequences, padded batch (random padding) and boolean mask."""
+        torch.manual_seed(1)
+        seqs = [
+            torch.randn(r, self.IN_FEATURES, device=self.device) for r in self.LENGTHS
+        ]
+        x = torch.randn(
+            len(self.LENGTHS), self.MAX_LEN, self.IN_FEATURES, device=self.device
+        )
+        mask = torch.zeros(
+            len(self.LENGTHS), self.MAX_LEN, dtype=torch.bool, device=self.device
+        )
+        for n, (seq, r) in enumerate(zip(seqs, self.LENGTHS, strict=True)):
+            x[n, :r] = seq
+            mask[n, :r] = True
+        return seqs, x, mask
+
+    @staticmethod
+    def _extend(x: torch.Tensor, bias: bool) -> torch.Tensor:
+        """Input with a column of ones appended when the layer has a bias."""
+        return torch.cat([x, torch.ones_like(x[..., :1])], dim=-1) if bias else x
+
+    @staticmethod
+    def _factors(
+        inputs: torch.Tensor, gradients: torch.Tensor, mask: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """A and B by hand, from u_n, g_n and R_n."""
+        valid = mask.unsqueeze(-1).to(inputs.dtype)
+        u = (inputs * valid).sum(dim=1)
+        g = (gradients * valid).sum(dim=1)
+        lengths = mask.sum(dim=1).to(inputs.dtype)
+        return u.T @ u / lengths.square().sum(), g.T @ g / mask.shape[0]
+
+    @staticmethod
+    def _step(
+        layer: LinearGrowingModule,
+        x: torch.Tensor,
+        mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Forward, backward of sum(out^2) over every position, then update."""
+        out = layer(x)
+        out.pow(2).sum().backward()
+        layer.update_computation(position_mask=mask)
+        return out.detach()
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_values(self, bias: bool):
+        """Values. After set_kfac_variant, init_computation, forward, backward of
+        sum(out^2) and update_computation(position_mask), tensor_s() and
+        covariance_loss_gradient() equal A and B computed by hand, with
+        g_{n,m} = 2 out_{n,m}. tensor_m() equals the one of an identical layer
+        without variant, while tensor_s() differs from its S. A is accumulated about
+        a shift, B is not (assume_centered)."""
+        _, x, mask = self._padded_data()
+        layer = self._layer(bias)
+        self.assertFalse(layer.tensor_s.assume_centered)
+        self.assertTrue(layer.covariance_loss_gradient.assume_centered)
+        layer.init_computation()
+        out = self._step(layer, x, mask)
+        a_ref, b_ref = self._factors(self._extend(x, bias), 2 * out, mask)
+        self.assertAllClose(layer.tensor_s(), a_ref, atol=1e-12, rtol=1e-12)
+        self.assertAllClose(
+            layer.covariance_loss_gradient(), b_ref, atol=1e-12, rtol=1e-12
+        )
+
+        plain = self._layer(bias, variant=None)
+        plain.init_computation()
+        self._step(plain, x, mask)
+        self.assertAllClose(layer.tensor_m(), plain.tensor_m(), atol=1e-12, rtol=1e-12)
+        self.assertFalse(torch.allclose(layer.tensor_s(), plain.tensor_s()))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_padding_invariance(self, bias: bool):
+        """Padding invariance. A padded batch with random activations at the padded
+        positions and its mask gives the same factors (and M) as the unpadded
+        sequences fed one at a time without mask: u_n, g_n and R_n are the same in
+        both cases, and both count N sequences. The loss sum(out^2) gives a non-zero
+        gradient at the padded positions, so the mask must remove them from B."""
+        seqs, x, mask = self._padded_data()
+        padded = self._layer(bias)
+        padded.init_computation()
+        self._step(padded, x, mask)
+
+        reference = self._layer(bias)
+        reference.init_computation()
+        for seq in seqs:
+            self._step(reference, seq.unsqueeze(0))
+
+        for name in ("tensor_s", "covariance_loss_gradient", "tensor_m"):
+            with self.subTest(statistic=name):
+                statistic = getattr(padded, name)
+                statistic_ref = getattr(reference, name)
+                self.assertEqual(statistic.samples, len(self.LENGTHS))
+                self.assertEqual(statistic_ref.samples, len(self.LENGTHS))
+                self.assertAllClose(statistic(), statistic_ref(), atol=1e-12, rtol=1e-12)
+
+    def _kfac_curvature(
+        self,
+        layer: LinearGrowingModule,
+        x: torch.Tensor,
+        mask: torch.Tensor,
+        pool,
+        w_out: torch.Tensor,
+    ) -> torch.Tensor:
+        """kron(B, A) with B accumulated exactly for Lambda = I: one backward pass
+        per output coordinate c, of the loss sum_n f_n[c]."""
+        layer.init_computation()
+        outputs = pool(layer(x)) @ w_out.T  # f_n, of shape (N, C)
+        for c in range(w_out.shape[0]):
+            layer.clear_pre_activity_grad()
+            outputs[:, c].sum().backward(retain_graph=True)
+            if c == 0:
+                layer.update_computation(
+                    update_covariance_loss_gradient=False, position_mask=mask
+                )
+            layer.update_covariance_loss_gradient(
+                count_samples=(c == 0), position_mask=mask
+            )
+        self.assertEqual(layer.covariance_loss_gradient.samples, x.shape[0])
+        self.assertEqual(layer.tensor_s.samples, x.shape[0])
+        return torch.kron(layer.covariance_loss_gradient(), layer.tensor_s())
+
+    def _gauss_newton(
+        self,
+        layer: LinearGrowingModule,
+        x: torch.Tensor,
+        pool,
+        w_out: torch.Tensor,
+        bias: bool,
+    ) -> torch.Tensor:
+        """G = (1/N) sum_n J_n^T J_n, with J_n the Jacobian of f_n with respect to
+        W~ = [W | b] flattened row by row, computed with autograd."""
+        weight = layer.weight.detach()
+        if bias:
+            weight = torch.cat([weight, layer.bias.detach().unsqueeze(1)], dim=1)
+        inputs = self._extend(x, bias)
+
+        def outputs(flat: torch.Tensor) -> torch.Tensor:
+            return pool(inputs @ flat.view_as(weight).T) @ w_out.T
+
+        jacobian = torch.autograd.functional.jacobian(outputs, weight.flatten())
+        return torch.einsum("ncp,ncq->pq", jacobian, jacobian) / x.shape[0]
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_deep_linear_exactness(self, bias: bool):
+        """Exactness for deep linear networks. Model: the layer s = W~ a (identity
+        post-layer function), the sum pooling z_n = sum_m s_{n,m} over the valid
+        positions, and a fixed linear map f_n = W_> z_n to C = 3 outputs, with
+        variable lengths R_n and random padding. Then f_n = W_> W~ u_n, so
+        J_n = W_> ⊗ u_n^T and G = (W_>^T W_>) ⊗ (1/N) sum_n u_n u_n^T. With
+        Lambda = I, g_n^c = R_n W_>[c]^T, so
+        B = (1/N) sum_n R_n^2 W_>^T W_> and A = sum_n u_n u_n^T / sum_n R_n^2,
+        hence kron(B, A) = G exactly.
+
+        Control: with the mean pooling z_n = (1/R_n) sum_m s_{n,m}, kron(B, A)
+        weights the means ā_n by R_n^2 while G weights them equally, so the two
+        differ when the R_n vary (relative error above 1e-3): the test detects a
+        wrong placement of R_n.
+        """
+        _, x, mask = self._padded_data()
+        torch.manual_seed(2)
+        w_out = torch.randn(3, self.OUT_FEATURES, device=self.device)
+        lengths = mask.sum(dim=1, keepdim=True).to(x.dtype)
+
+        def sum_pool(s: torch.Tensor) -> torch.Tensor:
+            return (s * mask.unsqueeze(-1)).sum(dim=1)
+
+        def mean_pool(s: torch.Tensor) -> torch.Tensor:
+            return sum_pool(s) / lengths
+
+        for name, pool in (("sum", sum_pool), ("mean", mean_pool)):
+            with self.subTest(pooling=name):
+                layer = self._layer(bias)
+                kron = self._kfac_curvature(layer, x, mask, pool, w_out)
+                gauss_newton = self._gauss_newton(layer, x, pool, w_out, bias)
+                relative_error = (kron - gauss_newton).norm() / gauss_newton.norm()
+                if name == "sum":
+                    self.assertAllClose(kron, gauss_newton, atol=1e-12, rtol=1e-10)
+                else:
+                    self.assertGreater(relative_error.item(), 1e-3)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_set_variant_to_none(self, bias: bool):
+        """set_kfac_variant(None) gives back plain statistics, of the shape and
+        name of those built in __init__, which accumulate S and E bit for bit as a
+        layer that never had a variant. Setting the same variant again keeps the
+        statistics; setting a variant discards the accumulated values."""
+        _, x, mask = self._padded_data()
+        layer = self._layer(bias)
+        statistic = layer.tensor_s
+        layer.set_kfac_variant(KFACVariant("reduce", "count_weighted"))
+        self.assertIs(layer.tensor_s, statistic)
+
+        layer.set_kfac_variant(None)
+        plain = self._layer(bias, variant=None)
+        self.assertIsNone(layer.kfac_variant)
+        size = self.IN_FEATURES + bias
+        for name in ("tensor_s", "covariance_loss_gradient"):
+            with self.subTest(statistic=name):
+                self.assertIs(type(getattr(layer, name)), TensorStatistic)
+                self.assertEqual(getattr(layer, name).name, getattr(plain, name).name)
+        self.assertEqual(layer.tensor_s._shape, (size, size))
+
+        for module in (layer, plain):
+            module.init_computation()
+            self._step(module, x, mask)
+        for name in ("tensor_s", "covariance_loss_gradient"):
+            with self.subTest(statistic=name):
+                self.assertTrue(
+                    torch.equal(getattr(layer, name)(), getattr(plain, name)())
+                )
+
+        layer.set_kfac_variant(self.VARIANT)
+        with self.assertRaises(ValueError):
+            layer.tensor_s()
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_extension_and_pruning_keep_variant(self, bias: bool):
+        """layer_in_extension and prune_layer_in rebuild tensor_s with the variant,
+        the name and the device of the module: after the change, A has the new
+        size and equals the formula. Without variant, they rebuild the plain S with
+        the new shape and the device of the module. The global device is set to
+        "meta" so that a statistic built on the global device would be detected."""
+        self.addCleanup(set_device, global_device())
+        set_device("meta")
+        cpu = torch.device("cpu")
+        changes = {
+            "extension": (
+                lambda layer: layer.layer_in_extension(
+                    torch.randn(self.OUT_FEATURES, 2, device=cpu)
+                ),
+                self.IN_FEATURES + 2,
+            ),
+            "pruning": (lambda layer: layer.prune_layer_in([1]), self.IN_FEATURES - 1),
+        }
+        for change, (apply_change, in_features) in changes.items():
+            for variant in (self.VARIANT, None):
+                with self.subTest(change=change, variant=variant):
+                    torch.manual_seed(0)
+                    layer = LinearGrowingModule(
+                        self.IN_FEATURES,
+                        self.OUT_FEATURES,
+                        use_bias=bias,
+                        device=cpu,
+                        name="layer",
+                    )
+                    layer.set_kfac_variant(variant)
+                    name = layer.tensor_s.name
+                    apply_change(layer)
+                    self.assertEqual(layer.kfac_variant, variant)
+                    self.assertEqual(layer.tensor_s.device, cpu)
+                    self.assertEqual(layer.tensor_s.name, name)
+                    if variant is None:
+                        self.assertIs(type(layer.tensor_s), TensorStatistic)
+                        size = in_features + bias
+                        self.assertEqual(layer.tensor_s._shape, (size, size))
+                        continue
+                    self.assertIsInstance(layer.tensor_s, KroneckerFactorStatistic)
+                    layer.init_computation()
+                    x = torch.randn(4, 5, in_features, device=cpu)
+                    mask = torch.rand(4, 5, device=cpu) > 0.3
+                    out = self._step(layer, x, mask)
+                    a_ref, _ = self._factors(self._extend(x, bias), 2 * out, mask)
+                    self.assertShapeEqual(
+                        layer.tensor_s(), (in_features + bias, in_features + bias)
+                    )
+                    self.assertAllClose(layer.tensor_s(), a_ref, atol=1e-12, rtol=1e-12)
+
+    def test_deepcopy(self):
+        """copy.deepcopy binds the positions functions of the factors to the copy:
+        fed different batches, the copy and the original each give the factors of
+        their own stored tensors."""
+        _, x, mask = self._padded_data()
+        layer = self._layer(bias=True)
+        layer.init_computation()
+        clone = deepcopy(layer)
+        x_clone = torch.randn_like(x)
+        for module, batch in ((layer, x), (clone, x_clone)):
+            with self.subTest(module="clone" if module is clone else "original"):
+                out = self._step(module, batch, mask)
+                a_ref, b_ref = self._factors(self._extend(batch, True), 2 * out, mask)
+                self.assertAllClose(module.tensor_s(), a_ref, atol=1e-12, rtol=1e-12)
+                self.assertAllClose(
+                    module.covariance_loss_gradient(), b_ref, atol=1e-12, rtol=1e-12
+                )
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_growth_computations(self, bias: bool):
+        """Execution test: with a variant on two consecutive layers,
+        compute_optimal_delta (with and without the Fisher) and
+        compute_optimal_updates run on the factors and give finite updates."""
+        _, x, mask = self._padded_data()
+        torch.manual_seed(0)
+        first = LinearGrowingModule(
+            self.IN_FEATURES,
+            5,
+            use_bias=bias,
+            post_layer_function=torch.nn.ReLU(),
+            device=self.device,
+            name="first",
+        )
+        second = LinearGrowingModule(
+            5,
+            self.OUT_FEATURES,
+            use_bias=bias,
+            previous_module=first,
+            device=self.device,
+            name="second",
+        )
+        first.next_module = second
+        for module in (first, second):
+            module.set_kfac_variant(self.VARIANT)
+            module.init_computation()
+        out = second(first(x))
+        (out * mask.unsqueeze(-1)).sum(dim=1).pow(2).sum().backward()
+        for module in (first, second):
+            module.update_computation(position_mask=mask)
+
+        for use_fisher in (False, True):
+            with self.subTest(use_fisher=use_fisher):
+                delta_weight, _, decrease = second.compute_optimal_delta(
+                    use_fisher=use_fisher, dtype=torch.float64
+                )
+                self.assertShapeEqual(delta_weight, (self.OUT_FEATURES, 5))
+                self.assertTrue(torch.isfinite(delta_weight).all())
+                self.assertTrue(torch.isfinite(torch.as_tensor(decrease)).all())
+                second.compute_optimal_updates(use_fisher=use_fisher, dtype=torch.float64)
+                self.assertIsNotNone(second.extended_input_layer)
+                self.assertIsNotNone(first.extended_output_layer)
+                self.assertIsInstance(second.eigenvalues_extension, torch.Tensor)
+                second.delete_update()
+
+    def test_after_merge_module_not_supported(self):
+        """A layer whose previous module is a merge module, which owns tensor_s,
+        refuses a variant with NotImplementedError; None is accepted."""
+        merge = LinearMergeGrowingModule(in_features=4, device=self.device)
+        layer = LinearGrowingModule(4, 2, previous_module=merge, device=self.device)
+        merge.set_next_modules([layer])
+        with self.assertRaises(NotImplementedError):
+            layer.set_kfac_variant(self.VARIANT)
+        layer.set_kfac_variant(None)
+        self.assertIsNone(layer.kfac_variant)
 
 
 if __name__ == "__main__":

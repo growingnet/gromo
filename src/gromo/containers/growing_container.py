@@ -4,6 +4,7 @@ import torch
 
 from gromo.config.loader import load_config
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
+from gromo.utils.kfac import KFACVariant
 from gromo.utils.utils import get_correct_device
 
 
@@ -91,6 +92,23 @@ class GrowingContainer(torch.nn.Module):
         """
         for layer in self._growing_layers:
             layer.init_computation(accumulation_dtype)
+
+    def set_kfac_variant(self, variant: KFACVariant | None) -> None:
+        """Set the K-FAC variant of every GrowingModule of the container.
+
+        Calls `GrowingModule.set_kfac_variant` on every GrowingModule of
+        ``self.modules()``, including those of nested containers and those not
+        scheduled for growth; merge modules are skipped. Call it before
+        ``init_computation``.
+
+        Parameters
+        ----------
+        variant: KFACVariant | None
+            the K-FAC variant, or None for the plain statistics S and E
+        """
+        for module in self.modules():
+            if isinstance(module, GrowingModule):
+                module.set_kfac_variant(variant)
 
     def update_computation(
         self,
